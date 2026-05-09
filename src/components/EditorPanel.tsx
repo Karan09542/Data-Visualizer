@@ -1,11 +1,20 @@
 import { useStore } from '../store/useStore';
 import Editor, { useMonaco } from '@monaco-editor/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Play, Code, Loader2, Globe } from 'lucide-react';
 
 export default function EditorPanel() {
   const { code, setCode, error, parsedData, appTheme } = useStore();
   const monaco = useMonaco();
   const editorRef = useRef<any>(null);
+
+  const [activeTab, setActiveTab] = useState<'raw' | 'api'>('raw');
+  const [apiUrl, setApiUrl] = useState('https://jsonplaceholder.typicode.com/todos/1');
+  const [apiMethod, setApiMethod] = useState('GET');
+  const [apiHeaders, setApiHeaders] = useState('{\n  "Accept": "application/json"\n}');
+  const [apiBody, setApiBody] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   useEffect(() => {
     if (monaco) {
@@ -33,13 +42,13 @@ export default function EditorPanel() {
 
   useEffect(() => {
     const handleFormat = () => {
-      if (editorRef.current) {
+      if (editorRef.current && activeTab === 'raw') {
         editorRef.current.getAction('editor.action.formatDocument').run();
       }
     };
     window.addEventListener('format-editor', handleFormat);
     return () => window.removeEventListener('format-editor', handleFormat);
-  }, []);
+  }, [activeTab]);
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
@@ -51,33 +60,166 @@ export default function EditorPanel() {
     editorRef.current = editor;
   };
 
+  const handleFetch = async () => {
+    if (!apiUrl) {
+      setApiError('URL is required');
+      return;
+    }
+    
+    setIsLoading(true);
+    setApiError('');
+    try {
+      let headers = {};
+      try {
+        if (apiHeaders.trim()) {
+          headers = JSON.parse(apiHeaders);
+        }
+      } catch (e) {
+        throw new Error('Invalid JSON in Headers');
+      }
+      
+      const options: RequestInit = {
+        method: apiMethod,
+        headers,
+      };
+      
+      if (apiMethod !== 'GET' && apiMethod !== 'HEAD' && apiBody.trim()) {
+        options.body = apiBody;
+      }
+
+      const response = await fetch(apiUrl, options);
+      const data = await response.text();
+      
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}: ${data.substring(0, 50)}...`);
+      }
+      
+      // Try to format if it's JSON
+      try {
+        const parsed = JSON.parse(data);
+        setCode(JSON.stringify(parsed, null, 2));
+      } catch {
+        setCode(data);
+      }
+      setActiveTab('raw');
+    } catch (e: any) {
+      setApiError(e.message || 'Fetch failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0d1117] overflow-hidden">
-      <div className="flex items-center justify-between opacity-80 pl-4 py-2 border-b border-slate-300 dark:border-slate-800">
-        <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Input Data (JSON/YAML)</span>
-        {error && <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded truncate max-w-[200px]" title={error}>{error}</span>}
-        {!error && parsedData && <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded">Valid</span>}
+      <div className="flex items-center justify-between border-b border-slate-300 dark:border-slate-800">
+        <div className="flex">
+          <button 
+            onClick={() => setActiveTab('raw')}
+            className={`flex items-center gap-2 px-4 py-2 border-r border-slate-300 dark:border-slate-800 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'raw' ? 'bg-blue-100/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+          >
+            <Code size={14} /> Editor
+          </button>
+          <button 
+            onClick={() => setActiveTab('api')}
+            className={`flex items-center gap-2 px-4 py-2 border-r border-slate-300 dark:border-slate-800 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'api' ? 'bg-blue-100/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+          >
+            <Globe size={14} /> Fetch API
+          </button>
+        </div>
+        <div className="pr-4 flex items-center">
+          {error && activeTab === 'raw' && <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded truncate max-w-[200px]" title={error}>{error}</span>}
+          {!error && parsedData && activeTab === 'raw' && <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded">Valid JSON/YAML</span>}
+        </div>
       </div>
-      <div className="flex-1 w-full pt-2">
-        <Editor
-          height="100%"
-          defaultLanguage="json"
-          value={code}
-          onChange={handleEditorChange}
-          onMount={handleEditorDidMount}
-          theme={appTheme === 'dark' ? 'customDark' : 'customLight'}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 13,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-            wordWrap: 'on',
-            scrollBeyondLastLine: false,
-            folding: true,
-            lineNumbersMinChars: 3,
-            formatOnPaste: true,
-            padding: { top: 10, bottom: 10 }
-          }}
-        />
+      
+      <div className="flex-1 w-full relative">
+        {activeTab === 'raw' && (
+          <div className="h-full pt-2">
+            <Editor
+              height="100%"
+              defaultLanguage="json"
+              value={code}
+              onChange={handleEditorChange}
+              onMount={handleEditorDidMount}
+              theme={appTheme === 'dark' ? 'customDark' : 'customLight'}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                wordWrap: 'on',
+                scrollBeyondLastLine: false,
+                folding: true,
+                lineNumbersMinChars: 3,
+                formatOnPaste: true,
+                padding: { top: 10, bottom: 10 }
+              }}
+            />
+          </div>
+        )}
+
+        {activeTab === 'api' && (
+          <div className="absolute inset-0 overflow-y-auto p-4 flex flex-col gap-4 text-slate-800 dark:text-slate-200">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Request URL</label>
+              <div className="flex rounded-md overflow-hidden border border-slate-300 dark:border-slate-700 shadow-sm focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
+                <select 
+                  value={apiMethod} 
+                  onChange={(e) => setApiMethod(e.target.value)}
+                  className="bg-slate-200 dark:bg-slate-800 border-r border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium outline-none text-blue-600 dark:text-blue-400"
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="PATCH">PATCH</option>
+                  <option value="DELETE">DELETE</option>
+                </select>
+                <input 
+                  type="text" 
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder="https://api.example.com/data"
+                  className="flex-1 bg-white dark:bg-[#0f172a] px-3 py-2 text-sm outline-none font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Headers (JSON)</label>
+              <textarea 
+                value={apiHeaders}
+                onChange={(e) => setApiHeaders(e.target.value)}
+                className="w-full bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 rounded-md p-3 text-sm font-mono h-24 outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y shadow-sm"
+                placeholder={'{\n  "Authorization": "Bearer token"\n}'}
+              />
+            </div>
+
+            {['POST', 'PUT', 'PATCH'].includes(apiMethod) && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Body Request</label>
+                <textarea 
+                  value={apiBody}
+                  onChange={(e) => setApiBody(e.target.value)}
+                  className="w-full bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 rounded-md p-3 text-sm font-mono h-32 outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y shadow-sm"
+                  placeholder={'{\n  "key": "value"\n}'}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex-1 pr-4">
+                {apiError && <span className="text-xs text-red-500 font-medium">{apiError}</span>}
+              </div>
+              <button 
+                onClick={handleFetch}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-70 text-white rounded-md text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+              >
+                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                Send Request
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
