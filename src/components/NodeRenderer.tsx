@@ -1,0 +1,265 @@
+import React, { useEffect, useRef } from 'react';
+import * as d3 from 'd3';
+import { HierarchyPointNode } from 'd3';
+import { TreeNode } from '../utils/transformer';
+import { useStore, NodeTheme } from '../store/useStore';
+import { ChevronRight, ChevronDown, Type, Hash, Braces, AlignLeft, ToggleLeft, HelpCircle } from 'lucide-react';
+
+interface NodeProps {
+  key?: React.Key;
+  node: HierarchyPointNode<TreeNode>;
+  layoutMode: string;
+  isSelectedPath?: boolean;
+  isSelected?: boolean;
+  onContextMenu?: (e: React.MouseEvent, node: TreeNode) => void;
+}
+
+const getMediaType = (val: string) => {
+  if (!val || typeof val !== 'string') return null;
+  val = val.trim();
+  if (val.startsWith('data:image/') || val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)) return 'image';
+  if (val.startsWith('data:audio/') || val.match(/\.(mp3|wav|ogg|aac)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac)/i)) return 'audio';
+  if (val.startsWith('data:video/') || val.match(/\.(mp4|webm|ogg)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp4|webm|ogg)/i) || val.includes("youtube.com")) return 'video';
+  return null;
+}
+
+const VideoComponent = ({ src }: { src: string }) => {
+  if (src.startsWith("https://www.youtube.com") || src.startsWith("https://youtube.com")) {
+    return <iframe width="560" height="315" src={src} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen></iframe>
+  }
+  if (src.trim()) {
+    return <video src={src} controls className="max-w-full max-h-[160px] rounded focus:outline-none" />
+  }
+  return null;
+}
+
+export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelected, onContextMenu }: NodeProps) {
+  const { nodeTheme, nodeShape, nodeSize, toggleNodeCollapse, collapsedNodes, searchQuery, searchMatches, searchAncestors, setSelectedNodeId, showMediaPreview, setDragOverride } = useStore();
+  const foreignRef = useRef<SVGForeignObjectElement>(null);
+  
+  const nodeRef = useRef(node);
+  nodeRef.current = node;
+
+  useEffect(() => {
+    if (!foreignRef.current) return;
+
+    const drag = d3.drag<SVGForeignObjectElement, unknown>()
+      .subject(() => ({ x: nodeRef.current.x, y: nodeRef.current.y }))
+      .on('start', function (event) {
+        event.sourceEvent?.stopPropagation();
+        d3.select(this).raise();
+      })
+      .on('drag', function (event) {
+        setDragOverride(nodeRef.current.data.id, { x: event.x, y: event.y });
+      });
+
+    d3.select(foreignRef.current).call(drag);
+  }, [setDragOverride]);
+
+  const data = node.data;
+  const isCollapsed = collapsedNodes.has(data.id);
+  const hasChildren = !!data.children && data.children.length > 0;
+
+  // Search highlighting
+  const hasQuery = !!searchQuery;
+  const isMatch = searchMatches.has(data.id);
+  const isAncestor = searchAncestors.has(data.id);
+  const isDimmed = (hasQuery && !isMatch && !isAncestor) || (!hasQuery && !isSelected && !isSelectedPath && useStore.getState().selectedNodeId != null);
+
+  const getThemeClasses = (theme: NodeTheme) => {
+    switch (theme) {
+      case 'vscode':
+        return 'bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md';
+      case 'github':
+        return 'bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm';
+      case 'glassmorphism':
+        return 'bg-white/10 border-white/20 text-white backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]';
+      case 'cyberpunk':
+        return 'bg-[#000000] border-[#00ff2a] text-[#00ff2a] shadow-[0_0_10px_#00ff2a]';
+      case 'minimal':
+        return 'bg-white border-transparent text-slate-800 shadow-sm';
+      case 'gradient':
+        return 'bg-gradient-to-br from-indigo-500 to-purple-600 border-transparent text-white shadow-lg';
+      case 'pastel':
+        return 'bg-[#fdfcdc] border-[#f0ead2] text-[#6d6875] shadow-sm';
+      case 'terminal':
+        return 'bg-black border-[#33ff00] text-[#33ff00] shadow-none font-mono';
+      case 'material':
+        return 'bg-[#212121] border-transparent text-white shadow-[0_3px_6px_rgba(0,0,0,0.16),0_3px_6px_rgba(0,0,0,0.23)]';
+      case 'blueprint':
+        return 'bg-[#003366] border-[#4fa8fb] text-[#4fa8fb] shadow-none';
+      case 'retro':
+        return 'bg-[#ff9900] border-[#8a2be2] text-[#8a2be2] shadow-[4px_4px_0_#8a2be2]';
+      case 'holographic':
+        return 'bg-gradient-to-tr from-fuchsia-500/30 via-cyan-500/30 to-violet-500/30 border-cyan-400/50 text-cyan-100 backdrop-blur-xl shadow-[0_0_15px_rgba(34,211,238,0.5)]';
+      case 'notebook':
+        return 'bg-[#fff9e6] border-[#e0d6b8] text-[#4a4a4a] border-l-4 border-l-red-400 shadow-md font-serif';
+      default:
+        return 'bg-[#1e293b] border-[#334155] text-slate-200 shadow-sm';
+    }
+  };
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case 'object': return <Braces size={14} className="opacity-70" />;
+      case 'array': return <AlignLeft size={14} className="opacity-70" />;
+      case 'string': return <Type size={14} className="text-green-400 opacity-80" />;
+      case 'number': return <Hash size={14} className="text-orange-400 opacity-80" />;
+      case 'boolean': return <ToggleLeft size={14} className="text-blue-400 opacity-80" />;
+      default: return <HelpCircle size={14} className="opacity-50" />;
+    }
+  }
+
+  const baseClasses = getThemeClasses(nodeTheme);
+
+  // Custom tweaks per theme
+  const isDarkBase = ['vscode', 'github', 'cyberpunk', 'terminal', 'material', 'blueprint', 'glassmorphism', 'gradient', 'holographic'].includes(nodeTheme);
+  const mutedText = isDarkBase ? 'text-white/50' : nodeTheme === 'retro' ? 'text-[#8a2be2]/70' : 'text-black/50';
+  const valText = isDarkBase ? 'text-white/90' : nodeTheme === 'retro' ? 'text-[#8a2be2]/90' : 'text-black/90';
+
+  let highlightClasses = '';
+  if (isMatch) {
+    highlightClasses = 'ring-2 ring-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.6)] brightness-110';
+  } else if (isAncestor) {
+    highlightClasses = 'ring-1 ring-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.4)]';
+  } else if (isSelected) {
+    highlightClasses = 'ring-2 ring-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] brightness-110';
+  } else if (isSelectedPath) {
+    highlightClasses = 'ring-1 ring-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.4)]';
+  }
+
+  const strVal = data.value !== undefined ? String(data.value) : '';
+  const mediaType = showMediaPreview && data.type === 'string' ? getMediaType(strVal) : null;
+  const isMedia = !!mediaType;
+
+  let fWidth = isMedia ? 320 : 260;
+  let fHeight = isMedia ? 240 : 120; 
+
+  let shapeClasses = 'rounded-md px-3 py-1.5 min-w-[120px] max-w-[260px]';
+  let shapeStyle: React.CSSProperties = {};
+  
+  switch(nodeShape) {
+    case 'circle':
+      fWidth = isMedia ? 320 : 200;
+      fHeight = isMedia ? 240 : 200;
+      shapeClasses = 'rounded-full justify-center text-center p-6 min-w-[160px] max-w-[200px]';
+      shapeStyle.aspectRatio = '1';
+      break;
+    case 'pill':
+      shapeClasses = 'rounded-[2rem] px-8 py-3 min-w-[140px] max-w-[260px] text-center justify-center';
+      break;
+    case 'rectangle':
+      shapeClasses = 'rounded-none px-4 py-2 min-w-[120px] max-w-[260px]';
+      break;
+    case 'hexagon':
+      fWidth = isMedia ? 340 : 280;
+      fHeight = isMedia ? 260 : 140;
+      shapeClasses = 'px-10 py-6 justify-center min-w-[160px] max-w-[280px] text-center';
+      shapeStyle.clipPath = 'polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%)';
+      break;
+    case 'triangle':
+      fWidth = isMedia ? 360 : 300;
+      fHeight = isMedia ? 300 : 200;
+      shapeClasses = 'px-12 pt-24 pb-8 justify-end items-center min-w-[220px] max-w-[300px] text-center flex-col';
+      shapeStyle.clipPath = 'polygon(50% 0%, 100% 100%, 0% 100%)';
+      break;
+    case 'diamond':
+      fWidth = isMedia ? 360 : 280;
+      fHeight = isMedia ? 360 : 240;
+      shapeClasses = 'px-16 py-16 justify-center text-center items-center min-w-[240px] max-w-[280px] flex-col';
+      shapeStyle.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+      break;
+    case 'parallelogram':
+      fWidth = isMedia ? 340 : 280;
+      shapeClasses = 'px-12 py-3 min-w-[160px] max-w-[280px] text-center justify-center';
+      shapeStyle.clipPath = 'polygon(15% 0%, 100% 0%, 85% 100%, 0% 100%)';
+      break;
+    default:
+      shapeClasses = 'rounded-md px-3 py-1.5 min-w-[120px] max-w-[260px]';
+  }
+
+  fWidth *= nodeSize;
+  fHeight *= nodeSize;
+
+  return (
+    <foreignObject
+      ref={foreignRef}
+      x={node.x - fWidth / 2}
+      y={node.y - fHeight / 2}
+      width={fWidth}
+      height={fHeight}
+      className={`pointer-events-none transition-all duration-500 ease-out origin-center ${isDimmed ? 'opacity-30 grayscale scale-95' : 'opacity-100'} ${(isMatch || isSelected) ? 'z-20' : (isAncestor || isSelectedPath) ? 'z-10' : 'z-0'}`}
+      style={{ overflow: 'visible' }}
+    >
+      <div className={`flex flex-col items-center justify-center w-full h-full transition-transform duration-300 ${(isMatch || isSelected) ? 'scale-105' : ''}`}>
+        <div
+          className={`pointer-events-auto relative flex ${isMedia ? 'flex-col' : 'items-center'} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
+          style={{ ...shapeStyle, transform: `scale(${nodeSize})`, transformOrigin: 'center' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedNodeId(data.id);
+          }}
+          onContextMenu={(e) => {
+            if (onContextMenu) {
+              e.preventDefault();
+              e.stopPropagation();
+              onContextMenu(e, data);
+            }
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            if (hasChildren) toggleNodeCollapse(data.id);
+          }}
+        >
+          <div className={`flex w-full ${isMedia ? 'items-start mb-2' : 'items-center'}`}>
+            <div className="flex-shrink-0 mr-2 flex items-center">
+              {hasChildren && (
+                <div
+                  className={`mr-1 -ml-1 ${mutedText} hover:text-slate-200 transition-colors p-1 -m-1 rounded z-10`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleNodeCollapse(data.id);
+                  }}
+                >
+                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                </div>
+              )}
+              {getIcon(data.type)}
+            </div>
+
+            <div className="flex flex-col overflow-hidden w-full leading-tight py-0.5">
+              <div className="flex items-baseline space-x-1.5">
+                <span className={`font-mono text-xs font-semibold truncate ${nodeTheme === 'cyberpunk' ? 'drop-shadow-md' : ''}`} title={data.name}>
+                  {data.name}
+                </span>
+                {data.type !== 'object' && data.type !== 'array' && (
+                  <span className={`text-[10px] uppercase font-bold px-1 rounded-sm bg-black/10 tracking-widest ${mutedText}`}>
+                    {data.type}
+                  </span>
+                )}
+              </div>
+              {data.value !== undefined && !isMedia && (
+                <span className={`text-[11px] font-mono truncate mt-0.5 ${valText}`} title={String(data.value)}>
+                  {String(data.value)}
+                </span>
+              )}
+              {hasChildren && isCollapsed && (
+                <span className={`text-[10px] mt-0.5 italic ${mutedText}`}>
+                  {data.children!.length} item{data.children!.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {isMedia && (
+            <div className="w-full rounded bg-black/20 p-1 flex justify-center items-center overflow-hidden border border-white/5">
+              {mediaType === 'image' && <img src={strVal} alt={data.name} className="max-w-full max-h-[160px] object-contain rounded" />}
+              {mediaType === 'audio' && <audio src={strVal} controls className="w-full h-8 outline-none" />}
+              {mediaType === 'video' && <VideoComponent src={strVal} />}
+            </div>
+          )}
+        </div>
+      </div>
+    </foreignObject>
+  );
+}
