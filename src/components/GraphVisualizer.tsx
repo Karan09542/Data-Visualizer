@@ -111,6 +111,40 @@ export default function GraphVisualizer() {
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
 
+  const lastTwoFingerTap = useRef<number>(0);
+  const twoFingerTapTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const processUndoRedoGesture = () => {
+    const now = Date.now();
+    if (now - lastTwoFingerTap.current < 300) {
+      // Double tap => redo
+      if (twoFingerTapTimeout.current) {
+        clearTimeout(twoFingerTapTimeout.current);
+        twoFingerTapTimeout.current = null;
+      }
+      useStore.getState().redo();
+      lastTwoFingerTap.current = 0; // reset
+    } else {
+      // Single tap => maybe undo
+      lastTwoFingerTap.current = now;
+      twoFingerTapTimeout.current = setTimeout(() => {
+        useStore.getState().undo();
+        twoFingerTapTimeout.current = null;
+      }, 300);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      processUndoRedoGesture();
+    }
+  };
+
+  const handleBackgroundContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    processUndoRedoGesture();
+  };
+
   useEffect(() => {
     setLocalSearch(searchQuery);
   }, [searchQuery]);
@@ -310,7 +344,7 @@ export default function GraphVisualizer() {
   }, [searchQuery, searchMatches, nodes]);
 
   return (
-    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none" style={{ backgroundColor: canvasBackgroundColor }}>
+    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onTouchStart={handleTouchStart} onContextMenu={handleBackgroundContextMenu} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none" style={{ backgroundColor: canvasBackgroundColor }}>
       <svg className="absolute inset-0 w-full h-full pointer-events-none graph-svg">
         <defs>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -354,6 +388,7 @@ export default function GraphVisualizer() {
               isSelected={selectedNodeId === node.data.id} 
               onContextMenu={(e, treeNode) => {
                 e.preventDefault();
+                e.stopPropagation();
                 setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
               }}
             />
@@ -368,7 +403,10 @@ export default function GraphVisualizer() {
       )}
 
       {/* Floating Search & Settings */}
-      <div className="no-export absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10 bg-white/80 dark:bg-[#0d1117]/80 backdrop-blur-md p-1.5 rounded-full border border-slate-300 dark:border-slate-700/50 shadow-lg pointer-events-auto">
+      <div 
+        onContextMenu={e => e.stopPropagation()}
+        className="no-export absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10 bg-white/80 dark:bg-[#0d1117]/80 backdrop-blur-md p-1.5 rounded-full border border-slate-300 dark:border-slate-700/50 shadow-lg pointer-events-auto"
+      >
         <div className="relative flex items-center">
           <Search size={16} className="absolute left-3 text-slate-500 top-1/2 -translate-y-1/2" />
           <input 
