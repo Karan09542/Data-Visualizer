@@ -435,6 +435,16 @@ export default function GraphVisualizer() {
             Copy JSON Path
           </button>
           <button 
+            className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors"
+            onClick={() => {
+               navigator.clipboard.writeText(contextMenu.node.name);
+               setContextMenu(null);
+            }}
+          >
+            <Copy size={16} className="text-slate-400" />
+            Copy Key
+          </button>
+          <button 
             className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
             onClick={() => {
                let valToEdit = "";
