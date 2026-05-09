@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { HierarchyPointNode } from 'd3';
 import { TreeNode } from '../utils/transformer';
 import { useStore, NodeTheme } from '../store/useStore';
-import { ChevronRight, ChevronDown, Type, Hash, Braces, AlignLeft, ToggleLeft, HelpCircle } from 'lucide-react';
+import { ChevronRight, ChevronDown, Type, Hash, Braces, AlignLeft, ToggleLeft, HelpCircle, MoreVertical } from 'lucide-react';
 
 interface NodeProps {
   key?: React.Key;
@@ -248,6 +248,16 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
                   {data.children!.length} item{data.children!.length !== 1 ? 's' : ''}
                 </span>
               )}
+            </div>
+
+            <div 
+              className="ml-1 flex-shrink-0 flex items-center justify-center p-1 md:hidden rounded-full hover:bg-black/10 touch-manipulation z-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onContextMenu) onContextMenu(e, data);
+              }}
+            >
+              <MoreVertical size={14} className={mutedText} />
             </div>
           </div>
 

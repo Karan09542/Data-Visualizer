@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { useStore } from '../store/useStore';
 import { computeLayout, getEdgePath } from '../utils/layout';
@@ -77,6 +77,34 @@ export default function GraphVisualizer() {
   }, [nodes, selectedNodeId]);
 
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, node: TreeNode } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (contextMenu && contextMenuRef.current) {
+      const rect = contextMenuRef.current.getBoundingClientRect();
+      const x = contextMenu.x;
+      const y = contextMenu.y;
+      
+      let newX = x;
+      let newY = y;
+      
+      if (x + rect.width > window.innerWidth) {
+        newX = window.innerWidth - rect.width - 10;
+      }
+      if (y + rect.height > window.innerHeight) {
+        newY = window.innerHeight - rect.height - 10;
+      }
+      
+      newX = Math.max(10, newX);
+      newY = Math.max(10, newY);
+      
+      if (newX !== x || newY !== y) {
+        contextMenuRef.current.style.left = `${newX}px`;
+        contextMenuRef.current.style.top = `${newY}px`;
+      }
+    }
+  }, [contextMenu]);
+
   const [editingNode, setEditingNode] = useState<{ node: TreeNode, value: string, action: 'edit' | 'add', newKey?: string, typeOverride?: string } | null>(null);
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -355,6 +383,7 @@ export default function GraphVisualizer() {
       {/* Context Menu */}
       {contextMenu && (
         <div 
+          ref={contextMenuRef}
           className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
