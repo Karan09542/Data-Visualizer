@@ -117,8 +117,20 @@ export default function GraphVisualizer() {
 
     // Initial centering only once
     if (nodes.length > 0 && !hasCentered.current) {
-      const transform = d3.zoomIdentity.translate(wrapperRef.current.clientWidth / 2, 50).scale(1);
-      selection.call(zoom.transform, transform);
+      if (wrapperRef.current) {
+        const xExtent = d3.extent(nodes, d => (d as any).x) as [number, number];
+        const yExtent = d3.extent(nodes, d => (d as any).y) as [number, number];
+        const width = xExtent[1] - xExtent[0] || 1;
+        const height = yExtent[1] - yExtent[0] || 1;
+        const cw = wrapperRef.current!.clientWidth;
+        const ch = wrapperRef.current!.clientHeight;
+        const scale = Math.min(cw / (width + 300), ch / (height + 300), 2);
+        const tx = cw / 2 - ((xExtent[0] + xExtent[1]) / 2) * scale;
+        const ty = ch / 2 - ((yExtent[0] + yExtent[1]) / 2) * scale;
+        
+        const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+        selection.call(zoom.transform, transform);
+      }
       hasCentered.current = true;
     }
     
