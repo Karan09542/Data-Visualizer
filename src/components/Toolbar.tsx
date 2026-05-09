@@ -289,75 +289,82 @@ export default function Toolbar() {
       </div>
 
       {isMobileMenuOpen && (
-        <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-[#0f172a] border-b border-slate-800 z-30 shadow-xl overflow-y-auto max-h-[80vh]">
+        <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-30 shadow-xl overflow-y-auto max-h-[80vh]">
           <div className="p-4 grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Layout</label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Layout</label>
               <select 
                 value={layoutMode} 
                 onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
-                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-300 text-sm"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
               >
                 {layoutModes.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Theme</label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Theme</label>
               <select 
                 value={nodeTheme} 
                 onChange={(e) => setNodeTheme(e.target.value as NodeTheme)}
-                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-300 text-sm"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
               >
                 {nodeThemes.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Edge Style</label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Edge Style</label>
               <select 
                 value={edgeStyle} 
                 onChange={(e) => setEdgeStyle(e.target.value as EdgeStyle)}
-                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-300 text-sm"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
               >
                 {edgeStyles.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Node Shape</label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Node Shape</label>
               <select 
                 value={nodeShape} 
                 onChange={(e) => setNodeShape(e.target.value as NodeShape)}
-                className="bg-slate-900 border border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-300 text-sm"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
               >
                 {nodeShapes.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             
-            <div className="col-span-2 mt-2 pt-4 border-t border-slate-800 grid grid-cols-2 gap-3">
-               <button onClick={expandAll} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md text-slate-300 hover:bg-slate-700 transition-colors text-sm font-medium">
+            <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-3">
+               <button onClick={expandAll} className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
                  <Maximize size={16} /> Expand All
                </button>
-               <button onClick={collapseAll} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md text-slate-300 hover:bg-slate-700 transition-colors text-sm font-medium">
+               <button onClick={collapseAll} className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
                  <Minimize size={16} /> Collapse All
                </button>
             </div>
 
             <div className="col-span-2 grid grid-cols-2 gap-3">
-               <button onClick={() => { const btnId=document.getElementById('fit-graph-btn'); if(btnId) btnId.click(); }} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md text-slate-300 hover:bg-slate-700 transition-colors text-sm font-medium">
+               <button onClick={() => { const btnId=document.getElementById('fit-graph-btn'); if(btnId) btnId.click(); }} className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
                  <Maximize2 size={16} /> Fit View
                </button>
-               <button onClick={formatCode} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md text-slate-300 hover:bg-slate-700 transition-colors text-sm font-medium">
+               <button onClick={formatCode} className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
                  <Paintbrush size={16} /> Format
+               </button>
+            </div>
+
+            <div className="col-span-2 mt-1 -mb-1">
+               <button onClick={toggleTheme} className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
+                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} 
+                 {appTheme === 'dark' ? 'Light Mode' : 'Dark Mode'}
                </button>
             </div>
             
             <div className="col-span-2 mt-1 grid grid-cols-2 gap-3">
-               <button disabled={isExporting} onClick={() => exportHDImage('png')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-colors text-sm font-medium">
+               <button disabled={isExporting} onClick={() => exportHDImage('png')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-colors text-sm font-medium">
                  <Download size={16} /> {isExporting ? '...' : 'PNG (HD)'}
                </button>
-               <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-purple-600/20 text-purple-400 border border-purple-500/30 rounded-md hover:bg-purple-600/30 transition-colors text-sm font-medium">
+               <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 rounded-md hover:bg-purple-600/30 transition-colors text-sm font-medium">
                  <Download size={16} /> {isExporting ? '...' : 'SVG'}
                </button>
             </div>
