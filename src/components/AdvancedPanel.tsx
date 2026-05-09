@@ -1,7 +1,8 @@
 import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette } from 'lucide-react';
 import { useStore, CanvasTheme } from '../store/useStore';
 import { ChromePicker, ColorResult } from 'react-color';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 const canvasThemes: CanvasTheme[] = ['none', 'dots', 'grid', 'lines'];
 
@@ -21,14 +22,81 @@ export default function AdvancedPanel() {
 
   const bgPickerRef = useRef<HTMLDivElement>(null);
   const patternPickerRef = useRef<HTMLDivElement>(null);
+  const bgButtonRef = useRef<HTMLButtonElement>(null);
+  const patternButtonRef = useRef<HTMLButtonElement>(null);
+
+  const [bgPickerStyle, setBgPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+  const [patternPickerStyle, setPatternPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+
+  useLayoutEffect(() => {
+    const updatePosition = (buttonRef: React.RefObject<HTMLButtonElement>, setStyle: React.Dispatch<React.SetStateAction<React.CSSProperties>>) => {
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      const pickerWidth = 225; // Approximate ChromePicker width
+      const pickerHeight = 250; // Approximate ChromePicker height
+      
+      let top = rect.bottom + 8;
+      let left = rect.right - pickerWidth;
+      
+      // Auto-adjust vertical if overflowing bottom
+      if (top + pickerHeight > window.innerHeight) {
+        top = rect.top - pickerHeight - 8;
+      }
+      
+      // Auto-adjust horizontal if overflowing left
+      if (left < 10) {
+        left = 10;
+      }
+      
+      setStyle({
+        position: 'fixed',
+        top,
+        left,
+        zIndex: 9999,
+        opacity: 1
+      });
+    };
+
+    if (showBgPicker) updatePosition(bgButtonRef, setBgPickerStyle);
+    if (showPatternPicker) updatePosition(patternButtonRef, setPatternPickerStyle);
+    
+    // Auto-update position on window resize
+    const handleResize = () => {
+      if (showBgPicker) updatePosition(bgButtonRef, setBgPickerStyle);
+      if (showPatternPicker) updatePosition(patternButtonRef, setPatternPickerStyle);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    // Adding scroll listener to the panel container would be ideal, but window resize is usually enough.
+    // For a fixed element, we might want to update position when scrolling the advanced panel.
+    const panelNode = bgButtonRef.current?.closest('.overflow-y-auto');
+    if (panelNode) {
+      panelNode.addEventListener('scroll', handleResize);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (panelNode) {
+        panelNode.removeEventListener('scroll', handleResize);
+      }
+    };
+  }, [showBgPicker, showPatternPicker]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Don't close if clicking the toggle button itself
+      if (bgButtonRef.current?.contains(event.target as Node) || 
+          patternButtonRef.current?.contains(event.target as Node)) {
+        return;
+      }
       if (bgPickerRef.current && !bgPickerRef.current.contains(event.target as Node)) {
         setShowBgPicker(false);
+        setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
       }
       if (patternPickerRef.current && !patternPickerRef.current.contains(event.target as Node)) {
         setShowPatternPicker(false);
+        setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
       }
     };
     if (showBgPicker || showPatternPicker) {
@@ -188,18 +256,28 @@ export default function AdvancedPanel() {
                     <span className="text-xs text-slate-500 dark:text-slate-400">Background</span>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => { setShowBgPicker(!showBgPicker); setShowPatternPicker(false); }}
+                        ref={bgButtonRef}
+                        onClick={() => {
+                          if (showBgPicker) {
+                            setShowBgPicker(false);
+                            setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+                          } else {
+                            setShowBgPicker(true); 
+                            setShowPatternPicker(false);
+                          }
+                        }}
                         className="w-8 h-8 rounded border border-slate-300 dark:border-slate-600 shadow-sm transition-transform cursor-pointer"
                         style={{ backgroundColor: canvasBackgroundColor }}
                       />
-                      {showBgPicker && (
-                        <div className="absolute right-0 top-10 z-50" ref={bgPickerRef}>
+                      {showBgPicker && createPortal(
+                        <div style={bgPickerStyle} ref={bgPickerRef}>
                           <ChromePicker
                             color={canvasBackgroundColor}
                             onChange={(color) => handleColorChange(color, setCanvasBackgroundColor)}
                             disableAlpha={false}
                           />
-                        </div>
+                        </div>,
+                        document.body
                       )}
                     </div>
                   </div>
@@ -208,18 +286,28 @@ export default function AdvancedPanel() {
                       <span className="text-xs text-slate-500 dark:text-slate-400">Pattern Shape</span>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => { setShowPatternPicker(!showPatternPicker); setShowBgPicker(false); }}
+                          ref={patternButtonRef}
+                          onClick={() => {
+                            if (showPatternPicker) {
+                              setShowPatternPicker(false);
+                              setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+                            } else {
+                              setShowPatternPicker(true);
+                              setShowBgPicker(false);
+                            }
+                          }}
                           className="w-8 h-8 rounded border border-slate-300 dark:border-slate-600 shadow-sm transition-transform cursor-pointer"
                           style={{ backgroundColor: canvasPatternColor }}
                         />
-                        {showPatternPicker && (
-                          <div className="absolute right-0 top-10 z-50" ref={patternPickerRef}>
+                        {showPatternPicker && createPortal(
+                          <div style={patternPickerStyle} ref={patternPickerRef}>
                             <ChromePicker
                               color={canvasPatternColor}
                               onChange={(color) => handleColorChange(color, setCanvasPatternColor)}
                               disableAlpha={false}
                             />
-                          </div>
+                          </div>,
+                          document.body
                         )}
                       </div>
                     </div>

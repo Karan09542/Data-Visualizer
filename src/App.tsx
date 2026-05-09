@@ -7,7 +7,7 @@ import { useStore } from "./store/useStore";
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-  const { isEditorPanelOpen, appTheme } = useStore();
+  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -87,19 +87,34 @@ export default function App() {
       >
         {isEditorPanelOpen && (
           <>
+            {/* Desktop Editor */}
             <div
               style={{ width: `${editorWidth}%` }}
-              className="h-full flex-shrink-0"
+              className="hidden md:block h-full flex-shrink-0"
             >
               <EditorPanel />
             </div>
 
+            {/* Mobile Editor Overlay */}
             <div
-              className="w-4 md:w-1.5 h-full bg-slate-200 dark:bg-[#0d1117] border-x border-slate-300 dark:border-slate-800 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors cursor-col-resize z-20 flex items-center justify-center group flex-shrink-0 touch-none"
+              className="md:hidden absolute top-0 bottom-0 left-0 w-[85%] z-30 shadow-2xl bg-white dark:bg-[#0d1117]"
+            >
+              <EditorPanel />
+            </div>
+
+            {/* Mobile Backdrop */}
+            <div 
+              className="md:hidden absolute inset-0 z-20 bg-black/20 dark:bg-black/40 backdrop-blur-sm"
+              onClick={() => setIsEditorPanelOpen(false)}
+            />
+
+            {/* Desktop Resizer */}
+            <div
+              className="hidden md:flex w-1.5 h-full bg-slate-200 dark:bg-[#0d1117] border-x border-slate-300 dark:border-slate-800 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors cursor-col-resize z-20 items-center justify-center group flex-shrink-0 touch-none"
               onMouseDown={startDragging}
               onTouchStart={startDragging}
             >
-              <div className="h-8 w-1 md:w-0.5 bg-slate-400 dark:bg-slate-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-300 rounded-full transition-colors" />
+              <div className="h-8 w-0.5 bg-slate-400 dark:bg-slate-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-300 rounded-full transition-colors" />
             </div>
           </>
         )}

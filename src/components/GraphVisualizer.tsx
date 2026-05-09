@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
 import { useStore } from '../store/useStore';
 import { computeLayout, getEdgePath } from '../utils/layout';
@@ -13,7 +14,8 @@ export default function GraphVisualizer() {
     searchQuery, searchMatches, searchAncestors,
     selectedNodeId, setSelectedNodeId, dragOverrides,
     nodeShape, nodeSpread, nodeSize, 
-    canvasTheme, canvasBackgroundColor, canvasPatternColor
+    canvasTheme, canvasBackgroundColor, canvasPatternColor,
+    appTheme
   } = useStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const svgGRef = useRef<SVGGElement>(null);
@@ -388,13 +390,19 @@ export default function GraphVisualizer() {
       </div>
 
       {/* Context Menu */}
-      {contextMenu && (
-        <div 
-          ref={contextMenuRef}
-          className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px]"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      {contextMenu && createPortal(
+        <div className={appTheme}>
+          <div 
+            ref={contextMenuRef}
+            className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px]"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          >
           <div className="px-3 py-2.5 border-b border-slate-300 dark:border-slate-700/50 bg-slate-50 dark:bg-[#0f172a]/50">
             <span className="text-xs font-mono text-slate-600 dark:text-slate-400 truncate block max-w-[200px]" title={contextMenu.node.path}>{contextMenu.node.path}</span>
             <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider mt-1 block">{contextMenu.node.type}</span>
@@ -498,13 +506,16 @@ export default function GraphVisualizer() {
               Delete Node
             </button>
           )}
-        </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Editing Modal */}
-      {editingNode && (
-        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditingNode(null)}>
-          <div className="bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700 rounded-xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      {editingNode && createPortal(
+        <div className={appTheme}>
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditingNode(null)}>
+            <div className="bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700 rounded-xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b border-slate-300 dark:border-slate-700/50 pb-2">
               <h3 className="text-slate-800 dark:text-slate-100 font-medium text-sm flex items-center gap-2">
                  <Edit2 size={16} className={editingNode.action === 'add' ? "text-green-500 dark:text-green-400" : "text-blue-500 dark:text-blue-400"}/>
@@ -591,6 +602,8 @@ export default function GraphVisualizer() {
             </div>
           </div>
         </div>
+        </div>,
+        document.body
       )}
     </div>
   );

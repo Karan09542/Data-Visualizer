@@ -312,8 +312,13 @@ export default function Toolbar() {
       </div>
 
       {isMobileMenuOpen && (
-        <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-30 shadow-xl overflow-y-auto max-h-[80vh]">
-          <div className="p-4 grid grid-cols-2 gap-4">
+        <>
+          <div 
+            className="lg:hidden fixed inset-0 z-20" 
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-30 shadow-xl overflow-y-auto max-h-[80vh]">
+            <div className="p-4 grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Layout</label>
               <select 
@@ -410,6 +415,7 @@ export default function Toolbar() {
             </div>
           </div>
         </div>
+        </>
       )}
     </>
   );

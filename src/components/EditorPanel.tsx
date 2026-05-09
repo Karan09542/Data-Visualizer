@@ -137,7 +137,8 @@ export default function EditorPanel() {
           <div className="h-full pt-2">
             <Editor
               height="100%"
-              defaultLanguage="json"
+              defaultLanguage={code.trim().startsWith('{') || code.trim().startsWith('[') ? 'json' : 'yaml'}
+              language={code.trim().startsWith('{') || code.trim().startsWith('[') ? 'json' : 'yaml'}
               value={code}
               onChange={handleEditorChange}
               onMount={handleEditorDidMount}
@@ -183,25 +184,55 @@ export default function EditorPanel() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 h-32">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Headers (JSON)</label>
-              <textarea 
-                value={apiHeaders}
-                onChange={(e) => setApiHeaders(e.target.value)}
-                className="w-full bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 rounded-md p-3 text-sm font-mono h-24 outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y shadow-sm"
-                placeholder={'{\n  "Authorization": "Bearer token"\n}'}
-              />
+              <div className="flex-1 w-full border border-slate-300 dark:border-slate-700 rounded-md overflow-hidden shadow-sm focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 flex flex-col relative z-0">
+                <Editor
+                  height="100%"
+                  defaultLanguage="json"
+                  value={apiHeaders}
+                  onChange={(val) => setApiHeaders(val || '')}
+                  theme={appTheme === 'dark' ? 'customDark' : 'customLight'}
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 12,
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    wordWrap: 'on',
+                    scrollBeyondLastLine: false,
+                    folding: false,
+                    lineNumbers: 'off',
+                    padding: { top: 8, bottom: 8 },
+                    overviewRulerLanes: 0,
+                    hideCursorInOverviewRuler: true,
+                    scrollbar: { vertical: 'hidden' },
+                    renderLineHighlight: 'none'
+                  }}
+                />
+              </div>
             </div>
 
             {['POST', 'PUT', 'PATCH'].includes(apiMethod) && (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 h-40">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Body Request</label>
-                <textarea 
-                  value={apiBody}
-                  onChange={(e) => setApiBody(e.target.value)}
-                  className="w-full bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 rounded-md p-3 text-sm font-mono h-32 outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-y shadow-sm"
-                  placeholder={'{\n  "key": "value"\n}'}
-                />
+                <div className="flex-1 w-full border border-slate-300 dark:border-slate-700 rounded-md overflow-hidden shadow-sm focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 flex flex-col relative z-0">
+                  <Editor
+                    height="100%"
+                    defaultLanguage="json"
+                    value={apiBody}
+                    onChange={(val) => setApiBody(val || '')}
+                    theme={appTheme === 'dark' ? 'customDark' : 'customLight'}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 12,
+                      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                      wordWrap: 'on',
+                      scrollBeyondLastLine: false,
+                      folding: true,
+                      lineNumbersMinChars: 2,
+                      padding: { top: 8, bottom: 8 },
+                    }}
+                  />
+                </div>
               </div>
             )}
 
