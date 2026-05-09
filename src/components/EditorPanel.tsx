@@ -159,7 +159,7 @@ export default function EditorPanel() {
         )}
 
         {activeTab === 'api' && (
-          <div className="absolute inset-0 overflow-y-auto p-4 flex flex-col gap-4 text-slate-800 dark:text-slate-200">
+          <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4 text-slate-800 dark:text-slate-200">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Request URL</label>
               <div className="flex rounded-md overflow-hidden border border-slate-300 dark:border-slate-700 shadow-sm focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
@@ -200,7 +200,7 @@ export default function EditorPanel() {
                     wordWrap: 'on',
                     scrollBeyondLastLine: false,
                     folding: false,
-                    lineNumbers: 'off',
+                    lineNumbersMinChars: 2,
                     padding: { top: 8, bottom: 8 },
                     overviewRulerLanes: 0,
                     hideCursorInOverviewRuler: true,

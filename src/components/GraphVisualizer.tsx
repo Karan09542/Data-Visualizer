@@ -15,6 +15,7 @@ export default function GraphVisualizer() {
     selectedNodeId, setSelectedNodeId, dragOverrides,
     nodeShape, nodeSpread, nodeSize, 
     canvasTheme, canvasBackgroundColor, canvasPatternColor,
+    canvasBackgroundImage, canvasBackgroundBlur,
     appTheme
   } = useStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -355,8 +356,19 @@ export default function GraphVisualizer() {
   }, [searchQuery, searchMatches, nodes]);
 
   return (
-    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none" style={{ backgroundColor: canvasBackgroundColor }}>
-      <svg className="absolute inset-0 w-full h-full pointer-events-none graph-svg">
+    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none">
+      <div 
+        className="absolute inset-0 z-0 pointer-events-none" 
+        style={{ 
+          backgroundColor: canvasBackgroundColor, 
+          backgroundImage: canvasBackgroundImage ? `url(${canvasBackgroundImage})` : 'none', 
+          backgroundSize: 'cover', 
+          backgroundPosition: 'center', 
+          filter: canvasBackgroundBlur > 0 ? `blur(${canvasBackgroundBlur}px)` : 'none',
+          transform: canvasBackgroundBlur > 0 ? 'scale(1.1)' : 'none' // Prevent blurred edges from creeping in
+        }} 
+      />
+      <svg className="absolute inset-0 z-10 w-full h-full pointer-events-none graph-svg">
         <defs>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="blur" />

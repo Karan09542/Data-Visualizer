@@ -3,6 +3,7 @@ import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
 import Toolbar from "./components/Toolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
+import ShortcutsPopup from "./components/ShortcutsPopup";
 import { useStore } from "./store/useStore";
 
 export default function App() {
@@ -124,6 +125,7 @@ export default function App() {
         </div>
       </div>
       <AdvancedPanel />
+      <ShortcutsPopup />
     </div>
   );
 }

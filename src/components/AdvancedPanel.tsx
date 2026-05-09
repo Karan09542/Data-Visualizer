@@ -1,5 +1,5 @@
-import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette } from 'lucide-react';
-import { useStore, CanvasTheme } from '../store/useStore';
+import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard } from 'lucide-react';
+import { useStore, CanvasTheme, defaultSettings } from '../store/useStore';
 import { ChromePicker, ColorResult } from 'react-color';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,7 +14,10 @@ export default function AdvancedPanel() {
     nodeSize, setNodeSize,
     canvasTheme, setCanvasTheme,
     canvasBackgroundColor, setCanvasBackgroundColor,
-    canvasPatternColor, setCanvasPatternColor
+    canvasPatternColor, setCanvasPatternColor,
+    canvasBackgroundImage, setCanvasBackgroundImage,
+    canvasBackgroundBlur, setCanvasBackgroundBlur,
+    resetAllSettings, setIsShortcutsOpen
   } = useStore();
 
   const [showBgPicker, setShowBgPicker] = useState(false);
@@ -134,7 +137,7 @@ export default function AdvancedPanel() {
           </button>
         </div>
 
-        <div className="p-4 flex-1 overflow-y-auto space-y-4">
+        <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
           {/* Media Preview Toggle */}
           <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50">
             <div className="flex items-start gap-3">
@@ -146,7 +149,7 @@ export default function AdvancedPanel() {
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Renders image/audio/video from URLs or Base64 explicitly</div>
               </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
               <input
                 type="checkbox"
                 className="sr-only peer"
@@ -163,10 +166,15 @@ export default function AdvancedPanel() {
               <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
                 <Expand size={18} />
               </div>
-              <div>
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between">
+              <div className="w-full">
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between items-center w-full">
                   <span>Node Spread Distance</span>
-                  <span className="text-blue-500 dark:text-blue-400">{nodeSpread.toFixed(1)}x</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-500 dark:text-blue-400">{nodeSpread.toFixed(1)}x</span>
+                    <button onClick={() => setNodeSpread(defaultSettings.nodeSpread)} title="Reset" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                      <RotateCcw size={12} />
+                    </button>
+                  </div>
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Adjust the padding/margin between nodes uniformly.</div>
               </div>
@@ -194,10 +202,15 @@ export default function AdvancedPanel() {
               <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-md shrink-0">
                 <Maximize size={18} />
               </div>
-              <div>
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between">
+              <div className="w-full">
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between items-center">
                   <span>Node Size Scale</span>
-                  <span className="text-emerald-500 dark:text-emerald-400">{nodeSize.toFixed(1)}x</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-500 dark:text-emerald-400">{nodeSize.toFixed(1)}x</span>
+                    <button onClick={() => setNodeSize(defaultSettings.nodeSize)} title="Reset" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                      <RotateCcw size={12} />
+                    </button>
+                  </div>
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Adjust the overall size of nodes and their content.</div>
               </div>
@@ -225,8 +238,13 @@ export default function AdvancedPanel() {
               <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md shrink-0">
                 <LayoutTemplate size={18} />
               </div>
-              <div>
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Canvas Background</div>
+              <div className="w-full">
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <span>Canvas Background</span>
+                  <button onClick={() => setCanvasTheme(defaultSettings.canvasTheme)} title="Reset" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                    <RotateCcw size={12} />
+                  </button>
+                </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Choose a background pattern for the canvas.</div>
               </div>
             </div>
@@ -250,7 +268,19 @@ export default function AdvancedPanel() {
                 <Palette size={18} />
               </div>
               <div className="w-full">
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Canvas Colors</div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between items-center">
+                  <span>Canvas Colors</span>
+                  <button 
+                    onClick={() => {
+                      setCanvasBackgroundColor(defaultSettings.canvasBackgroundColor);
+                      setCanvasPatternColor(defaultSettings.canvasPatternColor);
+                    }} 
+                    title="Reset Colors" 
+                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-3 mt-3 w-full">
                   <div className="flex items-center justify-between relative">
                     <span className="text-xs text-slate-500 dark:text-slate-400">Background</span>
@@ -312,10 +342,68 @@ export default function AdvancedPanel() {
                       </div>
                     </div>
                   )}
+
+                  {/* Background Image Sub-section */}
+                  <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/50">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Background Image Settings</span>
+                      <button 
+                        onClick={() => {
+                          setCanvasBackgroundImage(defaultSettings.canvasBackgroundImage);
+                          setCanvasBackgroundBlur(defaultSettings.canvasBackgroundBlur);
+                        }} 
+                        title="Reset Background Image" 
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                    </div>
+                    
+                    <div className="flex flex-col gap-2 relative">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Image URL</span>
+                      <input 
+                        type="text" 
+                        value={canvasBackgroundImage}
+                        onChange={(e) => setCanvasBackgroundImage(e.target.value)}
+                        placeholder="https://example.com/image.png"
+                        className="w-full bg-slate-100 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 rounded-md px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Image Blur</span>
+                      <span className="text-xs text-slate-700 dark:text-slate-300">{canvasBackgroundBlur}px</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="0" max="20" step="1"
+                      value={canvasBackgroundBlur}
+                      onChange={(e) => setCanvasBackgroundBlur(parseFloat(e.target.value))}
+                      className="w-full mt-1 accent-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Global Reset and Shortcuts */}
+        <div className="p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex gap-2">
+          <button
+            onClick={() => setIsShortcutsOpen(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded-md transition-colors text-sm font-medium"
+          >
+            <Keyboard size={16} />
+            Shortcuts
+          </button>
+          <button
+            onClick={resetAllSettings}
+            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-md transition-colors text-sm font-medium"
+          >
+            <RotateCcw size={16} />
+            Reset All
+          </button>
         </div>
       </div>
     </>
