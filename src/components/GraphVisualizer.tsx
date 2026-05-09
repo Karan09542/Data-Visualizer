@@ -134,11 +134,22 @@ export default function GraphVisualizer() {
     }
   };
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length === 2) {
-      processUndoRedoGesture();
-    }
-  };
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const onNativeTouchStart = (e: TouchEvent) => {
+      // Use capture mode to run before d3 intercepts the event
+      if (e.touches.length === 2) {
+        processUndoRedoGesture();
+      }
+    };
+
+    el.addEventListener('touchstart', onNativeTouchStart, { capture: true });
+    return () => {
+      el.removeEventListener('touchstart', onNativeTouchStart, { capture: true });
+    };
+  }, []);
 
   const handleBackgroundContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -344,7 +355,7 @@ export default function GraphVisualizer() {
   }, [searchQuery, searchMatches, nodes]);
 
   return (
-    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onTouchStart={handleTouchStart} onContextMenu={handleBackgroundContextMenu} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none" style={{ backgroundColor: canvasBackgroundColor }}>
+    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none" style={{ backgroundColor: canvasBackgroundColor }}>
       <svg className="absolute inset-0 w-full h-full pointer-events-none graph-svg">
         <defs>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
