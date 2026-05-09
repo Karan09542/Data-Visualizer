@@ -7,6 +7,7 @@ export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'm
 export type EdgeStyle = 'curved' | 'bezier' | 'straight' | 'step' | 'animated' | 'dashed' | 'neon' | 'double' | 'pipe' | 'thin' | 'orgChart' | 'circuit' | 'glow' | 'zigzag' | 'pulse';
 export type NodeShape = 'default' | 'circle' | 'rectangle' | 'triangle' | 'hexagon' | 'pill' | 'diamond' | 'parallelogram';
 export type CanvasTheme = 'none' | 'dots' | 'grid' | 'lines';
+export type AppTheme = 'dark' | 'light';
 
 export interface StoreState {
   code: string;
@@ -18,6 +19,7 @@ export interface StoreState {
   edgeStyle: EdgeStyle;
   nodeShape: NodeShape;
   canvasTheme: CanvasTheme;
+  appTheme: AppTheme;
   canvasBackgroundColor: string;
   canvasPatternColor: string;
   nodeSpread: number;
@@ -39,6 +41,7 @@ export interface StoreState {
   setEdgeStyle: (style: EdgeStyle) => void;
   setNodeShape: (shape: NodeShape) => void;
   setCanvasTheme: (theme: CanvasTheme) => void;
+  setAppTheme: (theme: AppTheme) => void;
   setCanvasBackgroundColor: (color: string) => void;
   setCanvasPatternColor: (color: string) => void;
   setNodeSpread: (spread: number) => void;
@@ -81,6 +84,7 @@ export const useStore = create<StoreState>((set, get) => ({
   edgeStyle: 'curved',
   nodeShape: 'default',
   canvasTheme: 'none',
+  appTheme: 'dark',
   canvasBackgroundColor: 'rgba(13, 17, 23, 1)',
   canvasPatternColor: 'rgba(148, 163, 184, 0.15)',
   nodeSpread: 1.0,
@@ -114,6 +118,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setEdgeStyle: (style: EdgeStyle) => set({ edgeStyle: style }),
   setNodeShape: (shape: NodeShape) => set({ nodeShape: shape, dragOverrides: {} }),
   setCanvasTheme: (theme: CanvasTheme) => set({ canvasTheme: theme }),
+  setAppTheme: (theme: AppTheme) => set({ appTheme: theme }),
   setCanvasBackgroundColor: (color: string) => set({ canvasBackgroundColor: color }),
   setCanvasPatternColor: (color: string) => set({ canvasPatternColor: color }),
   setNodeSpread: (spread: number) => set({ nodeSpread: spread, dragOverrides: {} }),

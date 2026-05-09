@@ -331,7 +331,7 @@ export default function GraphVisualizer() {
       )}
 
       {/* Floating Search & Settings */}
-      <div className="no-export absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10 bg-[#0d1117]/80 backdrop-blur-md p-1.5 rounded-full border border-slate-700/50 shadow-lg pointer-events-auto">
+      <div className="no-export absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10 bg-white/80 dark:bg-[#0d1117]/80 backdrop-blur-md p-1.5 rounded-full border border-slate-300 dark:border-slate-700/50 shadow-lg pointer-events-auto">
         <div className="relative flex items-center">
           <Search size={16} className="absolute left-3 text-slate-500 top-1/2 -translate-y-1/2" />
           <input 
@@ -339,13 +339,13 @@ export default function GraphVisualizer() {
             placeholder="Search nodes..." 
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
-            className="bg-transparent border-none pl-9 pr-4 py-1.5 text-sm outline-none w-48 lg:w-64 focus:ring-0 text-slate-200 placeholder-slate-500"
+            className="bg-transparent border-none pl-9 pr-4 py-1.5 text-sm outline-none w-48 lg:w-64 focus:ring-0 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500"
           />
         </div>
-        <div className="w-[1px] h-6 bg-slate-700/50"></div>
+        <div className="w-[1px] h-6 bg-slate-300 dark:bg-slate-700/50"></div>
         <button 
           onClick={() => useStore.getState().setIsAdvancedPanelOpen(true)}
-          className="p-1.5 bg-transparent hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-full transition-colors mr-1"
+          className="p-1.5 bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-full transition-colors mr-1"
           title="Advanced Options"
         >
           <Settings size={18} />
@@ -355,16 +355,16 @@ export default function GraphVisualizer() {
       {/* Context Menu */}
       {contextMenu && (
         <div 
-          className="fixed z-50 bg-[#1e293b] border border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px]"
+          className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-2.5 border-b border-slate-700/50 bg-[#0f172a]/50">
-            <span className="text-xs font-mono text-slate-400 truncate block max-w-[200px]" title={contextMenu.node.path}>{contextMenu.node.path}</span>
-            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mt-1 block">{contextMenu.node.type}</span>
+          <div className="px-3 py-2.5 border-b border-slate-300 dark:border-slate-700/50 bg-slate-50 dark:bg-[#0f172a]/50">
+            <span className="text-xs font-mono text-slate-600 dark:text-slate-400 truncate block max-w-[200px]" title={contextMenu.node.path}>{contextMenu.node.path}</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider mt-1 block">{contextMenu.node.type}</span>
           </div>
           <button 
-            className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white flex items-center gap-3 transition-colors"
+            className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors"
             onClick={() => {
                let valToCopy = "";
                const { code } = useStore.getState();
@@ -389,7 +389,7 @@ export default function GraphVisualizer() {
             Copy Value
           </button>
           <button 
-            className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white flex items-center gap-3 transition-colors"
+            className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors"
             onClick={() => {
                navigator.clipboard.writeText(contextMenu.node.path);
                setContextMenu(null);
@@ -399,7 +399,7 @@ export default function GraphVisualizer() {
             Copy JSON Path
           </button>
           <button 
-            className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white flex items-center gap-3 transition-colors border-t border-slate-700/50"
+            className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
             onClick={() => {
                let valToEdit = "";
                const { code } = useStore.getState();
@@ -426,7 +426,7 @@ export default function GraphVisualizer() {
           
           {(contextMenu.node.type === 'object' || contextMenu.node.type === 'array') && (
             <button 
-              className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700/50 hover:text-white flex items-center gap-3 transition-colors border-t border-slate-700/50"
+              className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
               onClick={() => {
                  setEditingNode({ node: contextMenu.node, value: "", action: 'add', typeOverride: 'auto' });
                  setContextMenu(null);
@@ -439,7 +439,7 @@ export default function GraphVisualizer() {
 
           {contextMenu.node.path !== 'root' && (
             <button 
-              className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-slate-700/50 hover:text-red-300 flex items-center gap-3 transition-colors border-t border-slate-700/50"
+              className="w-full text-left px-4 py-2 text-sm text-red-500 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-red-600 dark:hover:text-red-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
               onClick={() => {
                  applyJsonChange(contextMenu.node.path, 'delete', "");
                  setContextMenu(null);
@@ -455,20 +455,20 @@ export default function GraphVisualizer() {
       {/* Editing Modal */}
       {editingNode && (
         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditingNode(null)}>
-          <div className="bg-[#1e293b] border border-slate-700 rounded-xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-slate-700/50 pb-2">
-              <h3 className="text-slate-100 font-medium text-sm flex items-center gap-2">
-                 <Edit2 size={16} className={editingNode.action === 'add' ? "text-green-400" : "text-blue-400"}/>
+          <div className="bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700 rounded-xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-slate-300 dark:border-slate-700/50 pb-2">
+              <h3 className="text-slate-800 dark:text-slate-100 font-medium text-sm flex items-center gap-2">
+                 <Edit2 size={16} className={editingNode.action === 'add' ? "text-green-500 dark:text-green-400" : "text-blue-500 dark:text-blue-400"}/>
                  {editingNode.action === 'add' ? 'Add to Node' : 'Edit Node Value'}
               </h3>
-              <button className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition-colors" onClick={() => setEditingNode(null)}>
+              <button className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={() => setEditingNode(null)}>
                 <X size={16} />
               </button>
             </div>
             
             <div className="flex flex-col gap-1">
-               <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Node Path</label>
-               <div className="text-xs font-mono text-blue-300 bg-[#0f172a] p-2 rounded-md max-w-full overflow-x-auto border border-blue-900/30 truncate" title={editingNode.node.path}>
+               <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Node Path</label>
+               <div className="text-xs font-mono text-blue-600 dark:text-blue-300 bg-slate-50 dark:bg-[#0f172a] p-2 rounded-md max-w-full overflow-x-auto border border-blue-200 dark:border-blue-900/30 truncate" title={editingNode.node.path}>
                  {editingNode.node.path}
                </div>
             </div>
@@ -476,23 +476,23 @@ export default function GraphVisualizer() {
             <div className="flex gap-3">
               {editingNode.action === 'add' && editingNode.node.type === 'object' && (
                 <div className="flex flex-col gap-1 flex-1">
-                   <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">New Key</label>
+                   <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">New Key</label>
                    <input 
                      type="text"
                      value={editingNode.newKey || ''}
                      onChange={(e) => setEditingNode({ ...editingNode, newKey: e.target.value })}
-                     className="bg-[#0f172a] border border-slate-700/80 rounded-md p-1.5 text-slate-200 font-mono text-xs focus:border-blue-500 outline-none"
+                     className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-1.5 text-slate-800 dark:text-slate-200 font-mono text-xs focus:border-blue-500 outline-none"
                      placeholder="e.g. newField"
                    />
                 </div>
               )}
 
               <div className="flex flex-col gap-1 flex-1">
-                 <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Data Type</label>
+                 <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data Type</label>
                  <select 
                    value={editingNode.typeOverride || 'auto'} 
                    onChange={(e) => setEditingNode({ ...editingNode, typeOverride: e.target.value })}
-                   className="bg-[#0f172a] border border-slate-700/80 rounded-md p-1.5 text-slate-200 text-xs focus:border-blue-500 outline-none min-h-[30px]"
+                   className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-1.5 text-slate-800 dark:text-slate-200 text-xs focus:border-blue-500 outline-none min-h-[30px]"
                  >
                    <option value="auto">Auto Parse</option>
                    <option value="string">String</option>
@@ -507,11 +507,11 @@ export default function GraphVisualizer() {
 
             {!['object', 'array', 'null'].includes(editingNode.typeOverride || 'auto') && (
               <div className="flex flex-col gap-1 flex-1">
-                 <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Content</label>
+                 <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Content</label>
                  <textarea 
                    value={editingNode.value}
                    onChange={(e) => setEditingNode({ ...editingNode, value: e.target.value })}
-                   className="bg-[#0f172a] border border-slate-700/80 rounded-md p-2 text-slate-200 font-mono text-xs h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y shadow-inner"
+                   className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-2 text-slate-800 dark:text-slate-200 font-mono text-xs h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y shadow-inner"
                    placeholder={editingNode.typeOverride === 'boolean' ? "true or false" : editingNode.typeOverride === 'number' ? "123.45" : "Enter value..."}
                  />
                  <span className="text-[10px] text-slate-500 leading-tight">
@@ -522,7 +522,7 @@ export default function GraphVisualizer() {
 
             <div className="flex justify-end gap-2 pt-1">
               <button 
-                className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-md hover:bg-slate-700 hover:text-white transition-all text-xs font-medium border border-slate-700"
+                className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-md hover:bg-slate-300 dark:hover:bg-slate-700 transition-all text-xs font-medium border border-slate-300 dark:border-slate-700"
                 onClick={() => setEditingNode(null)}
               >
                 Cancel

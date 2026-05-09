@@ -1,5 +1,5 @@
-import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X } from 'lucide-react';
+import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Toolbar() {
@@ -14,7 +14,11 @@ export default function Toolbar() {
     isEditorPanelOpen,
     setIsEditorPanelOpen,
     isMobileMenuOpen,
-    setIsMobileMenuOpen
+    setIsMobileMenuOpen,
+    appTheme,
+    setAppTheme,
+    setCanvasBackgroundColor,
+    setCanvasPatternColor
   } = useStore();
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -31,6 +35,18 @@ export default function Toolbar() {
     }, 300);
     return () => clearTimeout(timer);
   }, [localSearch, setSearchQuery, searchQuery]);
+
+  const toggleTheme = () => {
+    if (appTheme === 'dark') {
+      setAppTheme('light');
+      setCanvasBackgroundColor('#f8fafc');
+      setCanvasPatternColor('rgba(51, 65, 85, 0.15)');
+    } else {
+      setAppTheme('dark');
+      setCanvasBackgroundColor('#0d1117');
+      setCanvasPatternColor('rgba(148, 163, 184, 0.15)');
+    }
+  };
 
   const layoutModes: LayoutMode[] = ['vertical', 'horizontal', 'radial', 'force', 'compact', 'mindmap'];
   const nodeThemes: NodeTheme[] = ['vscode', 'github', 'glassmorphism', 'cyberpunk', 'minimal', 'gradient', 'pastel', 'terminal', 'material', 'blueprint', 'retro', 'holographic', 'notebook'];
@@ -163,16 +179,16 @@ export default function Toolbar() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 p-3 bg-[#0d1117] border-b border-slate-800 text-sm shadow-sm select-none z-40 relative">
-        <div className="flex items-center gap-3 mr-2 lg:border-r border-slate-800 lg:pr-4 flex-shrink-0">
+      <div className="flex items-center justify-between gap-4 p-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-40 relative transition-colors">
+        <div className="flex items-center gap-3 mr-2 lg:border-r border-slate-300 dark:border-slate-800 lg:pr-4 flex-shrink-0">
           <button 
             onClick={() => setIsEditorPanelOpen(!isEditorPanelOpen)}
-            className={`p-1.5 rounded transition-colors ${isEditorPanelOpen ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}
+            className={`p-1.5 rounded transition-colors ${isEditorPanelOpen ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100'}`}
             title="Toggle Editor Panel"
           >
             <PanelLeft size={18} />
           </button>
-          <div className="font-semibold text-slate-100 flex items-center gap-2">
+          <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
             </svg>
@@ -182,45 +198,45 @@ export default function Toolbar() {
 
         <div className="hidden lg:flex items-center justify-between flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <div className="flex items-center gap-1 xl:gap-4 lg:gap-2">
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
-              <label className="text-slate-400">Layout</label>
+            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
+              <label className="text-slate-500 dark:text-slate-400">Layout</label>
               <select 
                 value={layoutMode} 
                 onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-300"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 transition-colors"
               >
                 {layoutModes.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
-              <label className="text-slate-400">Theme</label>
+            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
+              <label className="text-slate-500 dark:text-slate-400">Theme</label>
               <select 
                 value={nodeTheme} 
                 onChange={(e) => setNodeTheme(e.target.value as NodeTheme)}
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-300"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 transition-colors"
               >
                 {nodeThemes.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
-              <label className="text-slate-400">Edge</label>
+            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
+              <label className="text-slate-500 dark:text-slate-400">Edge</label>
               <select 
                 value={edgeStyle} 
                 onChange={(e) => setEdgeStyle(e.target.value as EdgeStyle)}
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-300"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 transition-colors"
               >
                 {edgeStyles.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
-              <label className="text-slate-400">Shape</label>
+            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
+              <label className="text-slate-500 dark:text-slate-400">Shape</label>
               <select 
                 value={nodeShape} 
                 onChange={(e) => setNodeShape(e.target.value as NodeShape)}
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-300"
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 transition-colors"
               >
                 {nodeShapes.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
@@ -228,27 +244,33 @@ export default function Toolbar() {
           </div>
 
           <div className="flex items-center gap-1 xl:gap-4 lg:gap-2">
-            <div className="flex items-center space-x-2 border-r border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
-              <button onClick={expandAll} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors" title="Expand All">
+            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
+              <button onClick={expandAll} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Expand All">
                 <Maximize size={16} />
               </button>
-              <button onClick={collapseAll} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors" title="Collapse All">
+              <button onClick={collapseAll} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Collapse All">
                 <Minimize size={16} />
               </button>
-              <button id="fit-graph-btn" className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors" title="Fit to Screen">
+              <button id="fit-graph-btn" className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Fit to Screen">
                 <Maximize2 size={16} />
               </button>
             </div>
 
+            <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-2">
+              <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Toggle Theme">
+                {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
+
             <div className="flex items-center space-x-2 flex-shrink-0">
-              <button onClick={formatCode} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors" title="Format JSON/YAML">
+              <button onClick={formatCode} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Format JSON/YAML">
                 <Paintbrush size={16} />
               </button>
-              <button disabled={isExporting} onClick={() => exportHDImage('png')} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export High-Res PNG">
+              <button disabled={isExporting} onClick={() => exportHDImage('png')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export High-Res PNG">
                 <Download size={16} />
                 <span className="text-xs font-semibold">{isExporting ? '...' : 'PNG'}</span>
               </button>
-              <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export Vector SVG">
+              <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export Vector SVG">
                 <Download size={16} />
                 <span className="text-xs font-semibold">{isExporting ? '...' : 'SVG'}</span>
               </button>

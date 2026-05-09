@@ -7,7 +7,7 @@ import { useStore } from './store/useStore';
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-  const { isEditorPanelOpen } = useStore();
+  const { isEditorPanelOpen, appTheme } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -40,7 +40,7 @@ export default function App() {
   }, [onDrag, stopDragging]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0d1117] text-slate-300 font-sans overflow-hidden">
+    <div className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors`}>
       <Toolbar />
       <div ref={containerRef} className="flex-1 w-full overflow-hidden flex relative">
           {isEditorPanelOpen && (
@@ -50,10 +50,10 @@ export default function App() {
               </div>
               
               <div 
-                className="w-1.5 h-full bg-[#0d1117] border-x border-slate-800 hover:bg-blue-600 transition-colors cursor-col-resize z-20 flex items-center justify-center group flex-shrink-0"
+                className="w-1.5 h-full bg-slate-200 dark:bg-[#0d1117] border-x border-slate-300 dark:border-slate-800 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors cursor-col-resize z-20 flex items-center justify-center group flex-shrink-0"
                 onMouseDown={startDragging}
               >
-                <div className="h-8 w-0.5 bg-slate-600 group-hover:bg-blue-300 rounded-full transition-colors" />
+                <div className="h-8 w-0.5 bg-slate-400 dark:bg-slate-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-300 rounded-full transition-colors" />
               </div>
             </>
           )}

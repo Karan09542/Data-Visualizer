@@ -54,13 +54,13 @@ export default function AdvancedPanel() {
 
       {/* Panel */}
       <div
-        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-900 border-l border-slate-800 z-50 transform transition-transform duration-300 ease-out flex flex-col shadow-2xl ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-slate-900 border-l border-slate-300 dark:border-slate-800 z-50 transform transition-transform duration-300 ease-out flex flex-col shadow-2xl ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
-          <h2 className="text-lg font-semibold text-slate-200">Advanced Options</h2>
+        <div className="flex items-center justify-between p-4 border-b border-slate-300 dark:border-slate-800">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Advanced Options</h2>
           <button
             onClick={() => setIsAdvancedPanelOpen(false)}
-            className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors focus:outline-none"
+            className="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors focus:outline-none"
           >
             <X size={20} />
           </button>
@@ -68,14 +68,14 @@ export default function AdvancedPanel() {
 
         <div className="p-4 flex-1 overflow-y-auto space-y-4">
           {/* Media Preview Toggle */}
-          <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+          <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-blue-500/10 text-blue-400 rounded-md shrink-0">
                 <ImageIcon size={18} />
               </div>
               <div>
-                <div className="text-sm font-medium text-slate-200">Media Preview</div>
-                <div className="text-xs text-slate-400 mt-0.5 leading-snug">Renders image/audio/video from URLs or Base64 explicitly</div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Media Preview</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Renders image/audio/video from URLs or Base64 explicitly</div>
               </div>
             </div>
             <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
@@ -90,17 +90,17 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Node Spread Slider */}
-          <div className="flex flex-col p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 gap-2">
+          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-2">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
                 <Expand size={18} />
               </div>
               <div>
-                <div className="text-sm font-medium text-slate-200 flex justify-between">
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between">
                   <span>Node Spread Distance</span>
-                  <span className="text-blue-400">{nodeSpread.toFixed(1)}x</span>
+                  <span className="text-blue-500 dark:text-blue-400">{nodeSpread.toFixed(1)}x</span>
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5 leading-snug">Adjust the padding/margin between nodes uniformly.</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Adjust the padding/margin between nodes uniformly.</div>
               </div>
             </div>
             <div className="px-1 pt-2 pb-1">
@@ -121,17 +121,17 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Node Size Slider */}
-          <div className="flex flex-col p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 gap-2">
+          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-2">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-md shrink-0">
                 <Maximize size={18} />
               </div>
               <div>
-                <div className="text-sm font-medium text-slate-200 flex justify-between">
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between">
                   <span>Node Size Scale</span>
-                  <span className="text-emerald-400">{nodeSize.toFixed(1)}x</span>
+                  <span className="text-emerald-500 dark:text-emerald-400">{nodeSize.toFixed(1)}x</span>
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5 leading-snug">Adjust the overall size of nodes and their content.</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Adjust the overall size of nodes and their content.</div>
               </div>
             </div>
             <div className="px-1 pt-2 pb-1">
@@ -152,14 +152,14 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Canvas Theme Selector */}
-          <div className="flex flex-col p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 gap-3">
+          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-3">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md shrink-0">
                 <LayoutTemplate size={18} />
               </div>
               <div>
-                <div className="text-sm font-medium text-slate-200">Canvas Background</div>
-                <div className="text-xs text-slate-400 mt-0.5 leading-snug">Choose a background pattern for the canvas.</div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Canvas Background</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Choose a background pattern for the canvas.</div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 mt-1">
@@ -169,7 +169,7 @@ export default function AdvancedPanel() {
                   onClick={() => setCanvasTheme(theme)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${canvasTheme === theme
                       ? 'bg-blue-600 text-white'
-                      : 'bg-slate-900 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-slate-700'
+                      : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 border border-slate-300 dark:border-slate-700'
                     }`}
                 >
                   {theme}
@@ -177,19 +177,19 @@ export default function AdvancedPanel() {
               ))}
             </div>
 
-            <div className="flex items-start gap-3 mt-2 pt-3 border-t border-slate-700/50">
-              <div className="p-2 bg-pink-500/10 text-pink-400 rounded-md shrink-0">
+            <div className="flex items-start gap-3 mt-2 pt-3 border-t border-slate-300 dark:border-slate-700/50">
+              <div className="p-2 bg-pink-500/10 text-pink-500 dark:text-pink-400 rounded-md shrink-0">
                 <Palette size={18} />
               </div>
               <div className="w-full">
-                <div className="text-sm font-medium text-slate-200">Canvas Colors</div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Canvas Colors</div>
                 <div className="flex flex-col gap-3 mt-3 w-full">
                   <div className="flex items-center justify-between relative">
-                    <span className="text-xs text-slate-400">Background</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Background</span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => { setShowBgPicker(!showBgPicker); setShowPatternPicker(false); }}
-                        className="w-8 h-8 rounded border border-slate-600 shadow-sm transition-transform cursor-pointer"
+                        className="w-8 h-8 rounded border border-slate-300 dark:border-slate-600 shadow-sm transition-transform cursor-pointer"
                         style={{ backgroundColor: canvasBackgroundColor }}
                       />
                       {showBgPicker && (
@@ -204,12 +204,12 @@ export default function AdvancedPanel() {
                     </div>
                   </div>
                   {canvasTheme !== 'none' && (
-                    <div className="flex items-center justify-between relative">
-                      <span className="text-xs text-slate-400">Pattern Shape</span>
+                    <div className="flex items-center justify-between relative mt-2">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Pattern Shape</span>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => { setShowPatternPicker(!showPatternPicker); setShowBgPicker(false); }}
-                          className="w-8 h-8 rounded border border-slate-600 shadow-sm transition-transform cursor-pointer"
+                          className="w-8 h-8 rounded border border-slate-300 dark:border-slate-600 shadow-sm transition-transform cursor-pointer"
                           style={{ backgroundColor: canvasPatternColor }}
                         />
                         {showPatternPicker && (

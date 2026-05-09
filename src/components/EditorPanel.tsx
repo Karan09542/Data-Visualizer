@@ -3,7 +3,7 @@ import Editor, { useMonaco } from '@monaco-editor/react';
 import { useEffect, useRef } from 'react';
 
 export default function EditorPanel() {
-  const { code, setCode, error, parsedData } = useStore();
+  const { code, setCode, error, parsedData, appTheme } = useStore();
   const monaco = useMonaco();
   const editorRef = useRef<any>(null);
 
@@ -18,9 +18,18 @@ export default function EditorPanel() {
           'editor.lineHighlightBackground': '#161b22',
         }
       });
-      monaco.editor.setTheme('customDark');
+      monaco.editor.defineTheme('customLight', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#ffffff',
+          'editor.lineHighlightBackground': '#f1f5f9',
+        }
+      });
+      monaco.editor.setTheme(appTheme === 'dark' ? 'customDark' : 'customLight');
     }
-  }, [monaco]);
+  }, [monaco, appTheme]);
 
   useEffect(() => {
     const handleFormat = () => {
@@ -43,9 +52,9 @@ export default function EditorPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0d1117] overflow-hidden">
-      <div className="flex items-center justify-between p-2 pb-0 opacity-80 pl-4 py-2 border-b border-slate-800">
-        <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Input Data (JSON/YAML)</span>
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0d1117] overflow-hidden">
+      <div className="flex items-center justify-between opacity-80 pl-4 py-2 border-b border-slate-300 dark:border-slate-800">
+        <span className="text-xs font-semibold tracking-wider text-slate-500 dark:text-slate-400 uppercase">Input Data (JSON/YAML)</span>
         {error && <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded truncate max-w-[200px]" title={error}>{error}</span>}
         {!error && parsedData && <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded">Valid</span>}
       </div>
@@ -56,7 +65,7 @@ export default function EditorPanel() {
           value={code}
           onChange={handleEditorChange}
           onMount={handleEditorDidMount}
-          theme="customDark"
+          theme={appTheme === 'dark' ? 'customDark' : 'customLight'}
           options={{
             minimap: { enabled: false },
             fontSize: 13,
