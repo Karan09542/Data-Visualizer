@@ -60,6 +60,22 @@ export default function App() {
     };
   }, [onDrag, stopDragging]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          useStore.getState().redo();
+        } else {
+          useStore.getState().undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        useStore.getState().redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div
       className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors`}

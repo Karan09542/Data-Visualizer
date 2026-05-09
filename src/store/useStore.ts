@@ -34,8 +34,12 @@ export interface StoreState {
   isMobileMenuOpen: boolean;
   showMediaPreview: boolean;
   dragOverrides: Record<string, { x: number, y: number }>;
+  undoStack: string[];
+  redoStack: string[];
   
-  setCode: (code: string) => void;
+  setCode: (code: string, skipHistory?: boolean) => void;
+  undo: () => void;
+  redo: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
   setNodeTheme: (theme: NodeTheme) => void;
   setEdgeStyle: (style: EdgeStyle) => void;
@@ -99,19 +103,60 @@ export const useStore = create<StoreState>((set, get) => ({
   isMobileMenuOpen: false,
   showMediaPreview: false,
   dragOverrides: {},
+  undoStack: [],
+  redoStack: [],
 
-  setCode: (code: string) => {
+  setCode: (code: string, skipHistory = false) => {
+    const currentCode = get().code;
     const { data, error } = parseInput(code);
     let treeData = null;
     if (data !== null) {
         treeData = transformToTree(data);
     }
+
+    if (!skipHistory && code !== currentCode) {
+      set((state) => ({
+        undoStack: [...state.undoStack, currentCode].slice(-50),
+        redoStack: []
+      }));
+    }
+
     set({ code, parsedData: data, error, treeData, dragOverrides: {} });
     if (get().searchQuery && treeData) {
       get().setSearchQuery(get().searchQuery);
     } else {
       set({ searchMatches: new Set(), searchAncestors: new Set() });
     }
+  },
+
+  undo: () => {
+    const { undoStack, code } = get();
+    if (undoStack.length === 0) return;
+
+    const previousCode = undoStack[undoStack.length - 1];
+    const newUndoStack = undoStack.slice(0, -1);
+
+    set((state) => ({
+      undoStack: newUndoStack,
+      redoStack: [code, ...state.redoStack].slice(0, 50)
+    }));
+
+    get().setCode(previousCode, true);
+  },
+
+  redo: () => {
+    const { redoStack, code } = get();
+    if (redoStack.length === 0) return;
+
+    const nextCode = redoStack[0];
+    const newRedoStack = redoStack.slice(1);
+
+    set((state) => ({
+      redoStack: newRedoStack,
+      undoStack: [...state.undoStack, code].slice(-50)
+    }));
+
+    get().setCode(nextCode, true);
   },
   setLayoutMode: (mode: LayoutMode) => set({ layoutMode: mode, dragOverrides: {} }),
   setNodeTheme: (theme: NodeTheme) => set({ nodeTheme: theme }),

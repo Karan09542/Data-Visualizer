@@ -241,7 +241,14 @@ export default function GraphVisualizer() {
       const lastKey = parts[parts.length - 1];
       
       if (action === 'edit') {
-         current[lastKey] = finalValue;
+         // Handle Key Renaming for Objects
+         if (newKeyStr && newKeyStr !== lastKey && !Array.isArray(current)) {
+            // Delete old key, set new key
+            delete current[lastKey];
+            current[newKeyStr] = finalValue;
+         } else {
+            current[lastKey] = finalValue;
+         }
       } else if (action === 'delete') {
          if (Array.isArray(current)) {
              current.splice(Number(lastKey), 1);
@@ -431,12 +438,15 @@ export default function GraphVisualizer() {
             className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
             onClick={() => {
                let valToEdit = "";
+               let currentKey = "";
                const { code } = useStore.getState();
                try {
                   const nodePath = contextMenu.node.path;
-                  if (nodePath === 'root') { valToEdit = code; } 
-                  else {
+                  if (nodePath === 'root') { 
+                    valToEdit = code; 
+                  } else {
                     const parts = nodePath.replace(/^root/, '').split(/(?=\[)|(?=\.)/).filter(Boolean).map(p => p.startsWith('.') ? p.substring(1) : p.replace(/[\[\]]/g, ''));
+                    currentKey = parts[parts.length - 1];
                     let current = JSON.parse(code);
                     for (let i = 0; i < parts.length; i++) { current = current[parts[i]]; }
                     valToEdit = typeof current === 'object' ? JSON.stringify(current, null, 2) : String(current);
@@ -445,7 +455,7 @@ export default function GraphVisualizer() {
                  valToEdit = contextMenu.node.value !== undefined ? String(contextMenu.node.value) : "";
                }
                
-               setEditingNode({ node: contextMenu.node, value: valToEdit, action: 'edit', typeOverride: 'auto' });
+               setEditingNode({ node: contextMenu.node, value: valToEdit, action: 'edit', typeOverride: 'auto', newKey: currentKey });
                setContextMenu(null);
             }}
           >
@@ -503,18 +513,21 @@ export default function GraphVisualizer() {
             </div>
 
             <div className="flex gap-3">
-              {editingNode.action === 'add' && editingNode.node.type === 'object' && (
+              {(editingNode.action === 'add' && editingNode.node.type === 'object') || 
+               (editingNode.action === 'edit' && editingNode.node.path !== 'root' && !editingNode.node.path.endsWith(']')) ? (
                 <div className="flex flex-col gap-1 flex-1">
-                   <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">New Key</label>
+                   <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                     {editingNode.action === 'add' ? 'New Key' : 'Key Name'}
+                   </label>
                    <input 
                      type="text"
                      value={editingNode.newKey || ''}
                      onChange={(e) => setEditingNode({ ...editingNode, newKey: e.target.value })}
                      className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-1.5 text-slate-800 dark:text-slate-200 font-mono text-xs focus:border-blue-500 outline-none"
-                     placeholder="e.g. newField"
+                     placeholder={editingNode.action === 'add' ? "e.g. keyName" : "Key name"}
                    />
                 </div>
-              )}
+              ) : null}
 
               <div className="flex flex-col gap-1 flex-1">
                  <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data Type</label>

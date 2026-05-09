@@ -1,5 +1,5 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon } from 'lucide-react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Toolbar() {
@@ -18,7 +18,11 @@ export default function Toolbar() {
     appTheme,
     setAppTheme,
     setCanvasBackgroundColor,
-    setCanvasPatternColor
+    setCanvasPatternColor,
+    undo,
+    redo,
+    undoStack,
+    redoStack
   } = useStore();
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -257,6 +261,25 @@ export default function Toolbar() {
             </div>
 
             <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-2">
+              <button 
+                onClick={undo} 
+                disabled={undoStack.length === 0}
+                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo2 size={16} />
+              </button>
+              <button 
+                onClick={redo} 
+                disabled={redoStack.length === 0}
+                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed" 
+                title="Redo (Ctrl+Y)"
+              >
+                <Redo2 size={16} />
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-2">
               <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Toggle Theme">
                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
@@ -335,6 +358,23 @@ export default function Toolbar() {
               </select>
             </div>
             
+            <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-3">
+               <button 
+                 onClick={undo} 
+                 disabled={undoStack.length === 0}
+                 className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium disabled:opacity-30"
+               >
+                 <Undo2 size={16} /> Undo
+               </button>
+               <button 
+                 onClick={redo} 
+                 disabled={redoStack.length === 0}
+                 className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium disabled:opacity-30"
+               >
+                 <Redo2 size={16} /> Redo
+               </button>
+            </div>
+
             <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-3">
                <button onClick={expandAll} className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
                  <Maximize size={16} /> Expand All
