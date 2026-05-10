@@ -194,10 +194,20 @@ export default function GraphVisualizer() {
 
     const zoom = d3.zoom<HTMLDivElement, unknown>()
       .filter((e) => {
-        const { activeTool } = useAnnotationStore.getState();
-        if (activeTool !== 'select' && e.type !== 'wheel') {
-          return false;
+        const { activeTool, isToolbarVisible } = useAnnotationStore.getState();
+        
+        // If toolbar is visible, standard behavior: don't zoom if tool is active
+        if (isToolbarVisible) {
+          if (activeTool !== 'select' && e.type !== 'wheel') {
+            return false;
+          }
+        } else {
+          // If toolbar is hidden, only prevent zoom if Ctrl is held (drawing mode)
+          if (e.ctrlKey && e.type !== 'wheel') {
+            return false;
+          }
         }
+        
         return (!e.ctrlKey || e.type === 'wheel') && !e.button;
       })
       .scaleExtent([0.1, 4])
@@ -378,9 +388,34 @@ export default function GraphVisualizer() {
   }, [searchQuery, searchMatches, nodes]);
 
   const { isToolbarVisible, activeTool } = useAnnotationStore();
+  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setIsCtrlPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setIsCtrlPressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    // Also reset if window loses focus
+    const handleBlur = () => setIsCtrlPressed(false);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   const getCursorClass = () => {
-    if (!isToolbarVisible) return 'cursor-grab active:cursor-grabbing';
+    // If toolbar is visible, use tool cursor
+    // If toolbar is hidden, use grab cursor UNLESS Ctrl is pressed
+    const isDrawingActive = isToolbarVisible || (isCtrlPressed && activeTool !== 'select');
+
+    if (!isDrawingActive) return 'cursor-grab active:cursor-grabbing';
     
     switch (activeTool) {
       case 'select': return 'cursor-move';

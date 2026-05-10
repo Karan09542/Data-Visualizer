@@ -13,6 +13,7 @@ export default function ShortcutsPopup() {
     { keys: ['Shift', 'H'], desc: 'Highlighter Tool' },
     { keys: ['Shift', 'F'], desc: 'Function Brush' },
     { keys: ['Shift', 'E'], desc: 'Eraser Tool' },
+    { keys: ['Ctrl', 'Drag'], desc: 'Draw when toolbar is hidden' },
     { keys: ['Alt', 'R/O/Y/G/S/B/P/V/W/K'], desc: 'Color Presets' },
     { keys: ['Ctrl', 'Z / Y'], desc: 'Undo / Redo' },
     { keys: ['Double Finger Tap'], desc: 'Undo' },

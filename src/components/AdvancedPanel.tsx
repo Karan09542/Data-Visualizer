@@ -25,7 +25,8 @@ export default function AdvancedPanel() {
     isToolbarVisible, setIsToolbarVisible,
     toolbarOpacity, setToolbarOpacity,
     toolbarOrientation, setToolbarOrientation,
-    toolbarScale, setToolbarScale
+    toolbarScale, setToolbarScale,
+    resetPreferences
   } = useAnnotationStore();
 
   const [showBgPicker, setShowBgPicker] = useState(false);
@@ -506,7 +507,10 @@ export default function AdvancedPanel() {
             Shortcuts
           </button>
           <button
-            onClick={resetAllSettings}
+            onClick={() => {
+              resetAllSettings();
+              resetPreferences();
+            }}
             className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-md transition-colors text-sm font-medium"
           >
             <RotateCcw size={16} />

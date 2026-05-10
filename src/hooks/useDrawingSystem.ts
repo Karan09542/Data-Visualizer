@@ -55,6 +55,11 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
       const el = wrapperRef.current;
       if (!el || e.button !== 0) return;
 
+      // If toolbar is hidden and user is NOT holding Ctrl, only allow 'select' tool
+      if (!state.isToolbarVisible && !e.ctrlKey && state.activeTool !== 'select') {
+        return;
+      }
+
       const pt = getGraphPos(e);
       
       if (state.activeTool === 'select') {

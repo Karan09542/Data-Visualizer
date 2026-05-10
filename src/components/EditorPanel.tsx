@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Play, Code, Loader2, Globe } from 'lucide-react';
 
 export default function EditorPanel() {
-  const { code, setCode, error, parsedData, appTheme } = useStore();
+  const { code, setCode, clearCode, error, parsedData, appTheme } = useStore();
   const monaco = useMonaco();
   const editorRef = useRef<any>(null);
 
@@ -126,7 +126,23 @@ export default function EditorPanel() {
             <Globe size={14} /> Fetch API
           </button>
         </div>
-        <div className="pr-4 flex items-center">
+        <div className="pr-4 flex items-center gap-3">
+          <button
+            id="editor-clear-button"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to clear the editor?')) {
+                clearCode();
+                // Force monaco to update immediately if ref is available
+                if (editorRef.current) {
+                  editorRef.current.setValue('');
+                }
+              }
+            }}
+            className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-red-500 transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/20"
+          >
+            Clear
+          </button>
+          <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-800" />
           {error && activeTab === 'raw' && <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded truncate max-w-[200px]" title={error}>{error}</span>}
           {!error && parsedData && activeTab === 'raw' && <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded">Valid JSON/YAML</span>}
         </div>

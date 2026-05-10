@@ -87,6 +87,7 @@ export interface StoreState {
   
   // Resets
   resetAllSettings: () => void;
+  clearCode: () => void;
 }
 
 const initialCode = `{
@@ -264,6 +265,13 @@ export const useStore = create<StoreState>()(
       }),
       clearDragOverrides: () => set({ dragOverrides: {} }),
       
+      clearCode: () => {
+        const { code: currentCode, setCode } = get();
+        // Use setCode to ensure all derived search states are cleared
+        setCode('', false);
+        set({ dragOverrides: {}, selectedNodeId: null });
+      },
+      
       resetAllSettings: () => set({ ...defaultSettings, dragOverrides: {} })
     }),
     {
@@ -271,7 +279,6 @@ export const useStore = create<StoreState>()(
       partialize: (state) => {
         const persistedKeys = [
           ...Object.keys(defaultSettings),
-          'code',
           'isEditorPanelOpen',
           'isAdvancedPanelOpen'
         ];
