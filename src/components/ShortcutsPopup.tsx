@@ -7,9 +7,10 @@ export default function ShortcutsPopup() {
   if (!isShortcutsOpen) return null;
 
   const shortcuts = [
-    { keys: ['Ctrl', 'Z'], desc: 'Undo' },
-    { keys: ['Ctrl', 'Shift', 'Z'], desc: 'Redo' },
-    { keys: ['Ctrl', 'Y'], desc: 'Redo' },
+    { keys: ['Shift', 'D'], desc: 'Toggle Drawing Toolbar' },
+    { keys: ['Shift', 'V/P/H/F/E'], desc: 'Select/Pen/Highlighter/Function/Eraser' },
+    { keys: ['Alt', 'R/O/Y/G/S/B/P/V/W/K/T'], desc: 'Color Presets (Red, Orange, ...)' },
+    { keys: ['Ctrl', 'Z / Y'], desc: 'Undo / Redo' },
     { keys: ['Double Finger Tap'], desc: 'Undo' },
     { keys: ['Double Finger Tap x2'], desc: 'Redo' },
     { keys: ['Scroll'], desc: 'Zoom In/Out' },

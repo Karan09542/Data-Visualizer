@@ -2,10 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as d3 from 'd3';
 import { useStore } from '../store/useStore';
+import { useAnnotationStore } from '../store/useAnnotationStore';
 import { computeLayout, getEdgePath } from '../utils/layout';
 import { TreeNode } from '../utils/transformer';
 import NodeRenderer from './NodeRenderer';
 import EdgeRenderer from './EdgeRenderer';
+import AnnotationRenderer from './AnnotationRenderer';
+import { useDrawingSystem } from '../hooks/useDrawingSystem';
 import { Copy, Edit2, Trash2, X, Search, Settings } from 'lucide-react';
 
 export default function GraphVisualizer() {
@@ -20,6 +23,8 @@ export default function GraphVisualizer() {
   } = useStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const svgGRef = useRef<SVGGElement>(null);
+
+  useDrawingSystem(wrapperRef);
 
   const { nodes: originalNodes, links: originalLinks } = useMemo(() => {
     return computeLayout(treeData, collapsedNodes, layoutMode, nodeShape, nodeSpread, nodeSize);
@@ -117,19 +122,29 @@ export default function GraphVisualizer() {
 
   const processUndoRedoGesture = () => {
     const now = Date.now();
+    const isDrawingMode = useAnnotationStore.getState().isToolbarVisible;
+
     if (now - lastTwoFingerTap.current < 300) {
       // Double tap => redo
       if (twoFingerTapTimeout.current) {
         clearTimeout(twoFingerTapTimeout.current);
         twoFingerTapTimeout.current = null;
       }
-      useStore.getState().redo();
+      if (isDrawingMode) {
+        useAnnotationStore.getState().redo();
+      } else {
+        useStore.getState().redo();
+      }
       lastTwoFingerTap.current = 0; // reset
     } else {
       // Single tap => maybe undo
       lastTwoFingerTap.current = now;
       twoFingerTapTimeout.current = setTimeout(() => {
-        useStore.getState().undo();
+        if (isDrawingMode) {
+          useAnnotationStore.getState().undo();
+        } else {
+          useStore.getState().undo();
+        }
         twoFingerTapTimeout.current = null;
       }, 300);
     }
@@ -178,6 +193,13 @@ export default function GraphVisualizer() {
     if (!wrapperRef.current || !svgGRef.current) return;
 
     const zoom = d3.zoom<HTMLDivElement, unknown>()
+      .filter((e) => {
+        const { activeTool } = useAnnotationStore.getState();
+        if (activeTool !== 'select' && e.type !== 'wheel') {
+          return false;
+        }
+        return (!e.ctrlKey || e.type === 'wheel') && !e.button;
+      })
       .scaleExtent([0.1, 4])
       .on('zoom', (e) => {
         if (svgGRef.current) {
@@ -355,8 +377,37 @@ export default function GraphVisualizer() {
       .call(zoomRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
   }, [searchQuery, searchMatches, nodes]);
 
+  const { isToolbarVisible, activeTool } = useAnnotationStore();
+
+  const getCursorClass = () => {
+    if (!isToolbarVisible) return 'cursor-grab active:cursor-grabbing';
+    
+    switch (activeTool) {
+      case 'select': return 'cursor-move';
+      case 'eraser': return 'cursor-cell';
+      case 'pen':
+      case 'highlighter':
+      case 'rectangle':
+      case 'circle':
+      case 'ellipse':
+      case 'triangle':
+      case 'square':
+      case 'rounded-rectangle':
+      case 'pentagon':
+      case 'hexagon':
+      case 'heptagon':
+      case 'octagon':
+      case 'polygon':
+      case 'star':
+      case 'diamond':
+      case 'function-brush':
+        return 'cursor-crosshair';
+      default: return 'cursor-crosshair';
+    }
+  };
+
   return (
-    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing outline-none">
+    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className={`relative w-full h-full overflow-hidden outline-none ${getCursorClass()}`}>
       <div 
         className="absolute inset-0 z-0 pointer-events-none" 
         style={{ 
@@ -416,6 +467,7 @@ export default function GraphVisualizer() {
               }}
             />
           ))}
+          <AnnotationRenderer />
         </g>
       </svg>
       

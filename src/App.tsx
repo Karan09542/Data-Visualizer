@@ -2,9 +2,11 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
 import Toolbar from "./components/Toolbar";
+import DrawingToolbar from "./components/DrawingToolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
 import ShortcutsPopup from "./components/ShortcutsPopup";
 import { useStore } from "./store/useStore";
+import { useAnnotationStore } from "./store/useAnnotationStore";
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
@@ -63,19 +65,40 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isDrawingMode = useAnnotationStore.getState().isToolbarVisible;
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         if (e.shiftKey) {
-          useStore.getState().redo();
+          if (isDrawingMode) useAnnotationStore.getState().redo();
+          else useStore.getState().redo();
         } else {
-          useStore.getState().undo();
+          if (isDrawingMode) useAnnotationStore.getState().undo();
+          else useStore.getState().undo();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        useStore.getState().redo();
+        if (isDrawingMode) useAnnotationStore.getState().redo();
+        else useStore.getState().redo();
+      } else if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        const { isToolbarVisible, setIsToolbarVisible } = useAnnotationStore.getState();
+        setIsToolbarVisible(!isToolbarVisible);
+      } else if (isDrawingMode && (e.key === 'Backspace' || e.key === 'Delete')) {
+        const selected = useAnnotationStore.getState().selectedAnnotationIds;
+        if (selected.length > 0) {
+          useAnnotationStore.getState().removeAnnotations(selected);
+          useAnnotationStore.getState().commitAction();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (appTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [appTheme]);
 
   return (
     <div
@@ -120,7 +143,8 @@ export default function App() {
           </>
         )}
 
-        <div className="flex-1 h-full min-w-0">
+        <div className="flex-1 h-full min-w-0 relative">
+          <DrawingToolbar />
           <GraphVisualizer />
         </div>
       </div>

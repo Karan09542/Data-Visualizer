@@ -1,6 +1,7 @@
-import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard } from 'lucide-react';
+import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool } from 'lucide-react';
 import { useStore, CanvasTheme, defaultSettings } from '../store/useStore';
-import { ChromePicker, ColorResult } from 'react-color';
+import { useAnnotationStore } from '../store/useAnnotationStore';
+import { RgbaColorPicker } from 'react-colorful';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -19,6 +20,13 @@ export default function AdvancedPanel() {
     canvasBackgroundBlur, setCanvasBackgroundBlur,
     resetAllSettings, setIsShortcutsOpen
   } = useStore();
+
+  const {
+    isToolbarVisible, setIsToolbarVisible,
+    toolbarOpacity, setToolbarOpacity,
+    toolbarOrientation, setToolbarOrientation,
+    toolbarScale, setToolbarScale
+  } = useAnnotationStore();
 
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [showPatternPicker, setShowPatternPicker] = useState(false);
@@ -110,9 +118,21 @@ export default function AdvancedPanel() {
     };
   }, [showBgPicker, showPatternPicker]);
 
-  const handleColorChange = (color: ColorResult, setter: (val: string) => void) => {
-    const { r, g, b, a } = color.rgb;
-    setter(`rgba(${r}, ${g}, ${b}, ${a})`);
+  const parseRgba = (color: string) => {
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (match) {
+      return {
+        r: parseInt(match[1]),
+        g: parseInt(match[2]),
+        b: parseInt(match[3]),
+        a: match[4] ? parseFloat(match[4]) : 1
+      };
+    }
+    return { r: 255, g: 255, b: 255, a: 1 };
+  };
+
+  const handleColorChange = (rgba: { r: number; g: number; b: number; a: number }, setter: (val: string) => void) => {
+    setter(`rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`);
   };
 
   return (
@@ -125,7 +145,7 @@ export default function AdvancedPanel() {
 
       {/* Panel */}
       <div
-        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-slate-900 border-l border-slate-300 dark:border-slate-800 z-50 transform transition-transform duration-300 ease-out flex flex-col shadow-2xl ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-slate-900 border-l border-slate-300 dark:border-slate-800 z-50 transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-4 border-b border-slate-300 dark:border-slate-800">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Advanced Options</h2>
@@ -138,8 +158,92 @@ export default function AdvancedPanel() {
         </div>
 
         <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
-          {/* Media Preview Toggle */}
-          <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50">
+          {/* Drawing Toolbar Settings */}
+          <div className="flex flex-col gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-purple-500/10 text-purple-500 rounded-md shrink-0">
+                  <PenTool size={18} />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Drawing Toolbar</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Annotations and overlay tools</div>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={isToolbarVisible}
+                  onChange={(e) => setIsToolbarVisible(e.target.checked)}
+                />
+                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-500"></div>
+              </label>
+            </div>
+
+            {isToolbarVisible && (
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700/50 flex flex-col gap-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider uppercase">Opacity</span>
+                    <span className="text-xs text-slate-600 dark:text-slate-300">{Math.round(toolbarOpacity * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    value={toolbarOpacity}
+                    onChange={(e) => setToolbarOpacity(Number(e.target.value))}
+                    className="w-full accent-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider uppercase">Scale</span>
+                    <span className="text-xs text-slate-600 dark:text-slate-300">{toolbarScale.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2"
+                    step="0.1"
+                    value={toolbarScale}
+                    onChange={(e) => setToolbarScale(Number(e.target.value))}
+                    className="w-full accent-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider uppercase block mb-2">Orientation</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setToolbarOrientation('horizontal')}
+                      className={`flex-1 py-1.5 px-3 text-xs font-medium rounded-md border ${
+                        toolbarOrientation === 'horizontal'
+                          ? 'bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400'
+                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+                      }`}
+                    >
+                      Horizontal
+                    </button>
+                    <button
+                      onClick={() => setToolbarOrientation('vertical')}
+                      className={`flex-1 py-1.5 px-3 text-xs font-medium rounded-md border ${
+                        toolbarOrientation === 'vertical'
+                          ? 'bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400'
+                          : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-400'
+                      }`}
+                    >
+                      Vertical
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-blue-500/10 text-blue-400 rounded-md shrink-0">
                 <ImageIcon size={18} />
@@ -161,7 +265,7 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Node Spread Slider */}
-          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-2">
+          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-2 text-slate-900 dark:text-slate-100">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
                 <Expand size={18} />
@@ -197,7 +301,7 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Node Size Slider */}
-          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-2">
+          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-2 text-slate-900 dark:text-slate-100">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-md shrink-0">
                 <Maximize size={18} />
@@ -233,7 +337,7 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Canvas Theme Selector */}
-          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-3">
+          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-3 text-slate-900 dark:text-slate-100">
             <div className="flex items-start gap-3">
               <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md shrink-0">
                 <LayoutTemplate size={18} />
@@ -300,12 +404,14 @@ export default function AdvancedPanel() {
                         style={{ backgroundColor: canvasBackgroundColor }}
                       />
                       {showBgPicker && createPortal(
-                        <div style={bgPickerStyle} ref={bgPickerRef}>
-                          <ChromePicker
-                            color={canvasBackgroundColor}
+                        <div style={bgPickerStyle} ref={bgPickerRef} className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl">
+                          <RgbaColorPicker
+                            color={parseRgba(canvasBackgroundColor)}
                             onChange={(color) => handleColorChange(color, setCanvasBackgroundColor)}
-                            disableAlpha={false}
                           />
+                          <div className="mt-3 flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-mono whitespace-nowrap overflow-hidden">
+                            {canvasBackgroundColor}
+                          </div>
                         </div>,
                         document.body
                       )}
@@ -330,12 +436,14 @@ export default function AdvancedPanel() {
                           style={{ backgroundColor: canvasPatternColor }}
                         />
                         {showPatternPicker && createPortal(
-                          <div style={patternPickerStyle} ref={patternPickerRef}>
-                            <ChromePicker
-                              color={canvasPatternColor}
+                          <div style={patternPickerStyle} ref={patternPickerRef} className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl">
+                            <RgbaColorPicker
+                              color={parseRgba(canvasPatternColor)}
                               onChange={(color) => handleColorChange(color, setCanvasPatternColor)}
-                              disableAlpha={false}
                             />
+                            <div className="mt-3 flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-mono whitespace-nowrap overflow-hidden">
+                              {canvasPatternColor}
+                            </div>
                           </div>,
                           document.body
                         )}
