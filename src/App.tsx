@@ -5,14 +5,45 @@ import Toolbar from "./components/Toolbar";
 import DrawingToolbar from "./components/DrawingToolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
 import ShortcutsPopup from "./components/ShortcutsPopup";
+import ShareDialog from "./components/ShareDialog";
 import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
+import { parseShareUrl } from "./utils/shareUtils";
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme } = useStore();
+  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme, setCode } = useStore();
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+
+  // Restore state from URL on load
+  useEffect(() => {
+    const sharedState = parseShareUrl();
+    if (sharedState) {
+      if (sharedState.code) setCode(sharedState.code);
+      
+      if (sharedState.settings) {
+        const s = sharedState.settings;
+        const store = useStore.getState();
+        if (s.layoutMode) store.setLayoutMode(s.layoutMode);
+        if (s.nodeTheme) store.setNodeTheme(s.nodeTheme);
+        if (s.edgeStyle) store.setEdgeStyle(s.edgeStyle);
+        if (s.nodeShape) store.setNodeShape(s.nodeShape);
+        if (s.appTheme) store.setAppTheme(s.appTheme);
+        if (s.canvasBackgroundColor) store.setCanvasBackgroundColor(s.canvasBackgroundColor);
+        if (s.canvasPatternColor) store.setCanvasPatternColor(s.canvasPatternColor);
+      }
+
+      if (sharedState.annotations) {
+        useAnnotationStore.getState().clearAnnotations();
+        sharedState.annotations.forEach(a => useAnnotationStore.getState().addAnnotation(a));
+        useAnnotationStore.getState().commitAction();
+      }
+      // Clear hash after restore to keep URL clean (optional)
+      // window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, [setCode]);
 
   const startDragging = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -104,7 +135,7 @@ export default function App() {
     <div
       className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors`}
     >
-      <Toolbar />
+      <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
       <div
         ref={containerRef}
         className="flex-1 w-full overflow-hidden flex relative"
@@ -150,6 +181,7 @@ export default function App() {
       </div>
       <AdvancedPanel />
       <ShortcutsPopup />
+      <ShareDialog isOpen={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
     </div>
   );
 }

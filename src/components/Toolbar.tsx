@@ -1,8 +1,10 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { estimateShareSize } from '../utils/shareUtils';
+import { useAnnotationStore } from '../store/useAnnotationStore';
 
-export default function Toolbar() {
+export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const { 
     layoutMode, setLayoutMode, 
     nodeTheme, setNodeTheme, 
@@ -19,11 +21,37 @@ export default function Toolbar() {
     setAppTheme,
     setCanvasBackgroundColor,
     setCanvasPatternColor,
+    canvasBackgroundColor,
+    canvasPatternColor,
     undo,
     redo,
     undoStack,
-    redoStack
+    redoStack,
+    code
   } = useStore();
+
+  const { annotations } = useAnnotationStore();
+
+  const shareSizeInfo = useMemo(() => {
+    return estimateShareSize(code, {
+      layoutMode,
+      nodeTheme,
+      edgeStyle,
+      nodeShape,
+      appTheme,
+      canvasBackgroundColor,
+      canvasPatternColor
+    }, annotations);
+  }, [code, layoutMode, nodeTheme, edgeStyle, nodeShape, appTheme, canvasBackgroundColor, canvasPatternColor, annotations]);
+
+  const shareIndicator = useMemo(() => {
+    switch (shareSizeInfo.status) {
+      case 'safe': return { color: 'bg-green-500', label: 'Small' };
+      case 'moderate': return { color: 'bg-yellow-500', label: 'Medium' };
+      case 'large': return { color: 'bg-orange-500', label: 'Large' };
+      case 'unsafe': return { color: 'bg-red-500', label: 'Too Large' };
+    }
+  }, [shareSizeInfo.status]);
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
 
@@ -279,9 +307,21 @@ export default function Toolbar() {
               </button>
             </div>
 
-            <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-2">
+            <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-4">
               <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Toggle Theme">
                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button 
+                onClick={onOpenShare} 
+                className="flex items-center gap-2 p-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-all shadow-sm shadow-blue-500/20 active:scale-95" 
+                title="Share via URL"
+              >
+                <Share2 size={16} />
+                <span>Share</span>
+                <div className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-black/20 text-[9px] uppercase tracking-tighter">
+                  <div className={`w-1.5 h-1.5 rounded-full ${shareIndicator?.color}`} />
+                  {shareIndicator?.label}
+                </div>
               </button>
             </div>
 
