@@ -156,7 +156,7 @@ export const useAnnotationStore = create<AnnotationState>()(
   fadeOutDuration: 1, // 1 second fade
   fadeEasing: 'cubic-bezier(0, 0, 0, 1.04)',
   autoRemove: false,
-  autoShapeDetection: true,
+  autoShapeDetection: false,
   waveAmplitude: 20,
   waveLength: 40,
   fillEnabled: false,
@@ -349,7 +349,7 @@ export const useAnnotationStore = create<AnnotationState>()(
       fadeOutDuration: 1,
       fadeEasing: 'cubic-bezier(0, 0, 0, 1.04)',
       autoRemove: false,
-      autoShapeDetection: true,
+      autoShapeDetection: false,
       waveAmplitude: 20,
       waveLength: 40,
       fillEnabled: false,

@@ -93,9 +93,9 @@ const initialCode = `{
   "project": "JSON Graph Viewer",
   "version": "1.0.0",
   "features": [
-    "D3 Integration",
-    "React Hooks",
-    "Zustand State"
+    "Many Theme Options",
+    "Different Edges Style",
+    "Media Preview"
   ],
   "settings": {
     "theme": "dark",

@@ -8,8 +8,12 @@ export default function ShortcutsPopup() {
 
   const shortcuts = [
     { keys: ['Shift', 'D'], desc: 'Toggle Drawing Toolbar' },
-    { keys: ['Shift', 'V/P/H/F/E'], desc: 'Select/Pen/Highlighter/Function/Eraser' },
-    { keys: ['Alt', 'R/O/Y/G/S/B/P/V/W/K/T'], desc: 'Color Presets (Red, Orange, ...)' },
+    { keys: ['Shift', 'V'], desc: 'Select Tool' },
+    { keys: ['Shift', 'P'], desc: 'Pen Tool' },
+    { keys: ['Shift', 'H'], desc: 'Highlighter Tool' },
+    { keys: ['Shift', 'F'], desc: 'Function Brush' },
+    { keys: ['Shift', 'E'], desc: 'Eraser Tool' },
+    { keys: ['Alt', 'R/O/Y/G/S/B/P/V/W/K'], desc: 'Color Presets' },
     { keys: ['Ctrl', 'Z / Y'], desc: 'Undo / Redo' },
     { keys: ['Double Finger Tap'], desc: 'Undo' },
     { keys: ['Double Finger Tap x2'], desc: 'Redo' },
@@ -37,7 +41,7 @@ export default function ShortcutsPopup() {
           </button>
         </div>
         
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
           {shortcuts.map((s, i) => (
             <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-1">
               <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{s.desc}</span>
