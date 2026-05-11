@@ -140,13 +140,13 @@ export default function AdvancedPanel() {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isAdvancedPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-[400] transition-opacity duration-300 ${isAdvancedPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsAdvancedPanelOpen(false)}
       />
 
       {/* Panel */}
       <div
-        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-slate-900 border-l border-slate-300 dark:border-slate-800 z-50 transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-slate-900 border-l border-slate-300 dark:border-slate-800 z-[410] transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-4 border-b border-slate-300 dark:border-slate-800">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Advanced Options</h2>

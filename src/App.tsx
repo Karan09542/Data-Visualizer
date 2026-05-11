@@ -138,28 +138,28 @@ export default function App() {
       <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
       <div
         ref={containerRef}
-        className="flex-1 w-full overflow-hidden flex relative"
+        className="flex-1 w-full overflow-hidden flex relative z-0"
       >
         {isEditorPanelOpen && (
           <>
             {/* Desktop Editor */}
             <div
               style={{ width: `${editorWidth}%` }}
-              className="hidden md:block h-full flex-shrink-0"
+              className="hidden md:block h-full flex-shrink-0 relative z-10"
             >
               <EditorPanel />
             </div>
 
             {/* Mobile Editor Overlay */}
             <div
-              className="md:hidden absolute top-0 bottom-0 left-0 w-[85%] z-30 shadow-2xl bg-white dark:bg-[#0d1117]"
+              className="md:hidden absolute top-0 bottom-0 left-0 w-[85%] z-[300] shadow-2xl bg-white dark:bg-[#0d1117]"
             >
               <EditorPanel />
             </div>
 
             {/* Mobile Backdrop */}
             <div 
-              className="md:hidden absolute inset-0 z-20 bg-black/20 dark:bg-black/40 backdrop-blur-sm"
+              className="md:hidden absolute inset-0 z-[290] bg-black/20 dark:bg-black/40 backdrop-blur-sm"
               onClick={() => setIsEditorPanelOpen(false)}
             />
 

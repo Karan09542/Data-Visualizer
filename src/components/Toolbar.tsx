@@ -211,7 +211,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 p-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-40 relative transition-colors">
+      <div className="flex items-center justify-between gap-4 p-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-[500] relative transition-colors">
         <div className="flex items-center gap-3 mr-2 lg:border-r border-slate-300 dark:border-slate-800 lg:pr-4 flex-shrink-0">
           <button 
             onClick={() => setIsEditorPanelOpen(!isEditorPanelOpen)}
@@ -326,17 +326,22 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             </div>
 
             <div className="flex items-center space-x-2 flex-shrink-0">
-              <button onClick={formatCode} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Format JSON/YAML">
-                <Paintbrush size={16} />
-              </button>
-              <button disabled={isExporting} onClick={() => exportHDImage('png')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export High-Res PNG">
-                <Download size={16} />
-                <span className="text-xs font-semibold">{isExporting ? '...' : 'PNG'}</span>
-              </button>
-              <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export Vector SVG">
-                <Download size={16} />
-                <span className="text-xs font-semibold">{isExporting ? '...' : 'SVG'}</span>
-              </button>
+               <div className="flex items-center pr-2 border-r border-slate-300 dark:border-slate-800">
+                 <button onClick={formatCode} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Format JSON/YAML">
+                   <Paintbrush size={16} />
+                 </button>
+               </div>
+               <div className="flex items-center gap-1 pl-1">
+                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mr-1 opacity-50">Exports</span>
+                 <button disabled={isExporting} onClick={() => exportHDImage('png')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export High-Res PNG">
+                   <Download size={16} />
+                   <span className="text-xs font-semibold">{isExporting ? '...' : 'PNG'}</span>
+                 </button>
+                 <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export Vector SVG">
+                   <Download size={16} />
+                   <span className="text-xs font-semibold">{isExporting ? '...' : 'SVG'}</span>
+                 </button>
+               </div>
             </div>
           </div>
         </div>
@@ -354,10 +359,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       {isMobileMenuOpen && (
         <>
           <div 
-            className="lg:hidden fixed inset-0 z-20" 
+            className="lg:hidden fixed inset-0 z-[490]" 
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-30 shadow-xl overflow-y-auto max-h-[80vh]">
+          <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-[495] shadow-xl overflow-y-auto max-h-[80vh] custom-scrollbar">
             <div className="p-4 grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Layout</label>
@@ -438,20 +443,36 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                </button>
             </div>
 
-            <div className="col-span-2 mt-1 -mb-1">
-               <button onClick={toggleTheme} className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
-                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} 
-                 {appTheme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-               </button>
+            <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800">
+               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">Appearance & Sharing</label>
+               <div className="flex flex-col gap-3">
+                  <button onClick={toggleTheme} className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
+                    {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} 
+                    {appTheme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                  </button>
+                  <button 
+                    onClick={() => { setIsMobileMenuOpen(false); onOpenShare(); }} 
+                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium shadow-m shadow-blue-500/20 active:scale-95"
+                  >
+                    <Share2 size={16} /> Share Tool
+                    <div className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-black/20 text-[9px] uppercase tracking-tighter">
+                      <div className={`w-1.5 h-1.5 rounded-full ${shareIndicator?.color}`} />
+                      {shareIndicator?.label}
+                    </div>
+                  </button>
+               </div>
             </div>
             
-            <div className="col-span-2 mt-1 grid grid-cols-2 gap-3">
-               <button disabled={isExporting} onClick={() => exportHDImage('png')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-colors text-sm font-medium">
-                 <Download size={16} /> {isExporting ? '...' : 'PNG (HD)'}
-               </button>
-               <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 rounded-md hover:bg-purple-600/30 transition-colors text-sm font-medium">
-                 <Download size={16} /> {isExporting ? '...' : 'SVG'}
-               </button>
+            <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800">
+               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">Download & Export</label>
+               <div className="grid grid-cols-2 gap-3">
+                 <button disabled={isExporting} onClick={() => exportHDImage('png')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-colors text-sm font-medium">
+                   <Download size={16} /> {isExporting ? '...' : 'PNG (HD)'}
+                 </button>
+                 <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 rounded-md hover:bg-purple-600/30 transition-colors text-sm font-medium">
+                   <Download size={16} /> {isExporting ? '...' : 'SVG'}
+                 </button>
+               </div>
             </div>
           </div>
         </div>

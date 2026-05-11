@@ -63,9 +63,44 @@ const FUNCTION_PRESETS = [
   { label: 'Star (Polar)', expr: 'r = 1 + 0.5*sin(5*theta)' },
 ];
 
+const MORE_FUNCTIONS = [
+  {
+    group: 'Trigonometric',
+    items: [
+      { label: 'sin(x)', expr: 'sin(x)' },
+      { label: 'cos(x)', expr: 'cos(x)' },
+      { label: 'tan(x)', expr: 'tan(x)' },
+      { label: 'asin(x)', expr: 'asin(x)' },
+      { label: 'acos(x)', expr: 'acos(x)' },
+      { label: 'atan(x)', expr: 'atan(x)' },
+    ]
+  },
+  {
+    group: 'Exponential & Log',
+    items: [
+      { label: 'exp(x)', expr: 'exp(x)' },
+      { label: 'log(x)', expr: 'log(x)' },
+      { label: 'log10(x)', expr: 'log10(x)' },
+      { label: 'pow(x, y)', expr: 'pow(x, 2)' },
+    ]
+  },
+  {
+    group: 'General',
+    items: [
+      { label: 'sqrt(x)', expr: 'sqrt(x)' },
+      { label: 'abs(x)', expr: 'abs(x)' },
+      { label: 'ceil(x)', expr: 'ceil(x)' },
+      { label: 'floor(x)', expr: 'floor(x)' },
+      { label: 'round(x)', expr: 'round(x)' },
+      { label: 'mod(x, y)', expr: 'mod(x, 2)' },
+    ]
+  }
+];
+
 function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   const store = useAnnotationStore();
   const [isOpen, setIsOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   
   if (!store.isToolbarVisible) return null;
 
@@ -87,22 +122,22 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2"
         style={{ opacity: store.toolbarOpacity, visibility: store.toolbarOpacity < 0.05 ? 'hidden' : 'visible' }}
       >
-        <div className="flex items-center gap-2 bg-[#0d131f]/90 backdrop-blur border border-slate-800 shadow-2xl rounded-full p-2 origin-bottom transition-all">
+        <div className="flex items-center gap-1.5 bg-[#0d131f]/90 backdrop-blur border border-slate-800 shadow-2xl rounded-full p-2 origin-bottom transition-all">
           <button
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2 pl-3 pr-4 py-2 bg-blue-500/20 text-blue-400 rounded-full font-semibold text-sm transition-transform active:scale-95 border border-blue-500/30"
+            className="flex items-center gap-2 pl-3.5 pr-4 py-2 bg-blue-500/20 text-blue-400 rounded-full font-semibold text-[14px] transition-transform active:scale-95 border border-blue-500/30"
           >
-            {currentToolIcon}
-            <span>{currentToolLabel}</span>
-            <ChevronUp size={16} className="ml-1 opacity-50" />
+            {currentToolIcon && React.cloneElement(currentToolIcon as React.ReactElement<any>, { size: 18 })}
+            <span className="max-md:hidden">{currentToolLabel}</span>
+            <ChevronUp size={16} className="opacity-50" />
           </button>
           
-          <div className="w-[1px] h-6 bg-slate-700 mx-1" />
+          <div className="w-[1px] h-6 bg-slate-700 mx-0.5" />
           
           <button
             disabled={store.historyIndex <= 0}
             onClick={() => store.undo()}
-            className="p-3 text-slate-400 hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
+            className="p-2.5 text-slate-400 hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
           >
             <Undo2 size={18} />
           </button>
@@ -110,14 +145,22 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
           <button
             disabled={store.historyIndex >= store.history.length - 1}
             onClick={() => store.redo()}
-            className="p-3 text-slate-400 hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
+            className="p-2.5 text-slate-400 hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
           >
             <Redo2 size={18} />
           </button>
 
+          <button
+            onClick={handleClear}
+            className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-transform active:scale-95"
+            title="Clear All"
+          >
+            <Trash2 size={18} />
+          </button>
+
           <button 
             onClick={() => store.setIsToolbarVisible(false)}
-            className="p-3 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-950/40 transition-transform active:scale-95 ml-1"
+            className="p-2.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-950/40 transition-transform active:scale-95 ml-0.5"
           >
             <X size={18} />
           </button>
@@ -181,22 +224,24 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                 </div>
 
                 {/* Tools category */}
-                <div className="mb-6">
-                  <div className={`flex gap-3 overflow-x-auto pb-3 pt-1 snap-x ${scrollbarClasses}`}>
+                <div className="mb-4">
+                  <div className={`flex gap-2 overflow-x-auto pb-3 pt-1 snap-x ${scrollbarClasses}`}>
                     {TOOLS.map((t, idx) => {
                       const isActive = store.activeTool === t.id;
                       return (
                         <button
                           key={t.id}
                           onClick={() => store.setActiveTool(t.id)}
-                          className={`flex flex-col items-center justify-center gap-1.5 w-[68px] h-[72px] rounded-2xl transition-all shrink-0 snap-start border ${
+                          className={`flex flex-col items-center justify-center gap-1 w-[60px] h-[64px] rounded-xl transition-all shrink-0 snap-start border ${
                             isActive 
                               ? 'text-blue-500 border-blue-600 bg-[#0F1C3F] shadow-[0_0_15px_rgba(37,99,235,0.15)] scale-100' 
                               : 'text-slate-400 border-slate-800 bg-[#121A2F] hover:bg-[#162038]'
                           }`}
                         >
-                          <div className={`p-1 flex items-center justify-center`}>{t.icon}</div>
-                          <span className="text-[10px] font-medium">{t.label}</span>
+                          <div className={`p-0.5 flex items-center justify-center`}>
+                            {t.icon && React.cloneElement(t.icon as React.ReactElement<any>, { size: 20 })}
+                          </div>
+                          <span className="text-[9px] font-medium">{t.label}</span>
                         </button>
                       );
                     })}
@@ -352,24 +397,44 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                          </div>
                          
                          <div className="flex flex-wrap gap-2">
-                           {[
-                             { label: 'Sine', expr: 'sin(x)' },
-                             { label: 'Cosine', expr: 'cos(x)' },
-                             { label: 'Tan', expr: 'tan(x)' },
-                             { label: 'Parabola', expr: 'x^2' },
-                             { label: 'Circle', expr: 'r=1' },
-                             { label: 'Spiral', expr: 'r=theta' },
-                             { label: 'More', expr: store.functionExpression, isDropdown: true } // just for visual in demo, keeping it simple
-                           ].map((preset) => (
+                           {FUNCTION_PRESETS.map((preset) => (
                              <button
                                key={preset.label}
                                onClick={() => store.setFunctionExpression(preset.expr)}
                                className="px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-[#121A2F] text-slate-300 hover:bg-[#1A2540] border border-slate-800/80 hover:border-slate-700 transition-colors flex items-center gap-1"
                              >
                                {preset.label}
-                               {preset.isDropdown && <ChevronUp size={12} className="rotate-180" />}
                              </button>
                            ))}
+                           
+                           <Popover open={isMoreOpen} onOpenChange={setIsMoreOpen}>
+                             <PopoverTrigger className="px-2 py-1 text-[10px] font-semibold rounded-md bg-[#121A2F] text-blue-400 hover:bg-[#1A2540] border border-blue-500/30 transition-colors flex items-center gap-1">
+                               More <ChevronUp size={12} className="rotate-180" />
+                             </PopoverTrigger>
+                             <PopoverContent className="w-[min(260px,85vw)] p-3 bg-[#0b1120] border-slate-800 rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
+                               <div className="flex flex-col gap-3">
+                                 {MORE_FUNCTIONS.map((group) => (
+                                   <div key={group.group} className="flex flex-col gap-1.5">
+                                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{group.group}</span>
+                                     <div className="grid grid-cols-2 gap-1">
+                                       {group.items.map((item) => (
+                                         <button
+                                           key={item.label}
+                                           onClick={() => {
+                                             store.setFunctionExpression(item.expr);
+                                             setIsMoreOpen(false);
+                                           }}
+                                           className="px-1.5 py-1 text-[9px] text-left rounded bg-[#121A2F] text-slate-300 hover:bg-blue-600/20 hover:text-blue-400 border border-slate-800 hover:border-blue-500/30 transition-all font-mono"
+                                         >
+                                           {item.label}
+                                         </button>
+                                       ))}
+                                     </div>
+                                   </div>
+                                 ))}
+                               </div>
+                             </PopoverContent>
+                           </Popover>
                          </div>
                          
                          {/* Function specific sliders grid */}
@@ -498,6 +563,7 @@ export default function DrawingToolbar() {
   }, [isToolbarVisible]);
 
   const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function'>('none');
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   const handleClear = () => {
     store.clearAnnotations();
@@ -1109,6 +1175,35 @@ export default function DrawingToolbar() {
                   {p.label}
                 </button>
               ))}
+              
+              <Popover open={isMoreOpen} onOpenChange={setIsMoreOpen}>
+                <PopoverTrigger className="px-2 py-1 rounded-md text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/50">
+                  More <ChevronUp size={10} className="rotate-180" />
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
+                  <div className="flex flex-col gap-4">
+                    {MORE_FUNCTIONS.map((group) => (
+                      <div key={group.group} className="flex flex-col gap-2">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{group.group}</span>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {group.items.map((item) => (
+                            <button
+                              key={item.label}
+                              onClick={() => {
+                                store.setFunctionExpression(item.expr);
+                                setIsMoreOpen(false);
+                              }}
+                              className="px-2 py-1.5 text-[10px] text-left rounded bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800 transition-all font-mono"
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
