@@ -150,6 +150,9 @@ export default function GraphVisualizer() {
     }
   };
 
+  const twoFingerTouchInfo = useRef<{ startX1: number, startY1: number, startX2: number, startY2: number, time: number } | null>(null);
+  const isTwoFingerDragging = useRef(false);
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -157,13 +160,62 @@ export default function GraphVisualizer() {
     const onNativeTouchStart = (e: TouchEvent) => {
       // Use capture mode to run before d3 intercepts the event
       if (e.touches.length === 2) {
-        processUndoRedoGesture();
+        const rect = el.getBoundingClientRect();
+        twoFingerTouchInfo.current = {
+          startX1: e.touches[0].clientX - rect.left,
+          startY1: e.touches[0].clientY - rect.top,
+          startX2: e.touches[1].clientX - rect.left,
+          startY2: e.touches[1].clientY - rect.top,
+          time: Date.now()
+        };
+        isTwoFingerDragging.current = false;
+        window.dispatchEvent(new CustomEvent('cancel-drawing'));
+      } else {
+         twoFingerTouchInfo.current = null;
       }
     };
 
-    el.addEventListener('touchstart', onNativeTouchStart, { capture: true });
+    const onNativeTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && twoFingerTouchInfo.current) {
+        const rect = el.getBoundingClientRect();
+        const x1 = e.touches[0].clientX - rect.left;
+        const y1 = e.touches[0].clientY - rect.top;
+        const x2 = e.touches[1].clientX - rect.left;
+        const y2 = e.touches[1].clientY - rect.top;
+
+        const info = twoFingerTouchInfo.current;
+        const dx1 = x1 - info.startX1;
+        const dy1 = y1 - info.startY1;
+        const dx2 = x2 - info.startX2;
+        const dy2 = y2 - info.startY2;
+        
+        // If movement is > 10px, it's a drag/zoom
+        if (Math.hypot(dx1, dy1) > 10 || Math.hypot(dx2, dy2) > 10) {
+           isTwoFingerDragging.current = true;
+        }
+      }
+    };
+
+    const onNativeTouchEnd = (e: TouchEvent) => {
+      if (twoFingerTouchInfo.current && e.touches.length < 2) {
+        const duration = Date.now() - twoFingerTouchInfo.current.time;
+        
+        if (!isTwoFingerDragging.current && duration < 300) {
+          processUndoRedoGesture();
+        }
+        
+        twoFingerTouchInfo.current = null;
+        isTwoFingerDragging.current = false;
+      }
+    };
+
+    el.addEventListener('touchstart', onNativeTouchStart, { capture: true, passive: false });
+    el.addEventListener('touchmove', onNativeTouchMove, { capture: true, passive: false });
+    el.addEventListener('touchend', onNativeTouchEnd, { capture: true, passive: false });
     return () => {
       el.removeEventListener('touchstart', onNativeTouchStart, { capture: true });
+      el.removeEventListener('touchmove', onNativeTouchMove, { capture: true });
+      el.removeEventListener('touchend', onNativeTouchEnd, { capture: true });
     };
   }, []);
 
@@ -194,6 +246,11 @@ export default function GraphVisualizer() {
 
     const zoom = d3.zoom<HTMLDivElement, unknown>()
       .filter((e) => {
+        // Always allow zoom/pan if it's a multi-touch scenario (fingers >= 2)
+        if (e.touches && e.touches.length >= 2) {
+          return true;
+        }
+
         const { activeTool, isToolbarVisible } = useAnnotationStore.getState();
         
         // If toolbar is visible, standard behavior: don't zoom if tool is active
@@ -442,7 +499,7 @@ export default function GraphVisualizer() {
   };
 
   return (
-    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className={`relative w-full h-full overflow-hidden outline-none ${getCursorClass()}`}>
+    <div id="graph-export-wrapper" ref={wrapperRef} onClick={() => setSelectedNodeId(null)} onContextMenu={handleBackgroundContextMenu} className={`relative w-full h-full overflow-hidden outline-none touch-none ${getCursorClass()}`}>
       <div 
         className="absolute inset-0 z-0 pointer-events-none" 
         style={{ 

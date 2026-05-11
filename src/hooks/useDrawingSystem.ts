@@ -51,6 +51,7 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
     };
 
     const handlePointerDown = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
       const state = useAnnotationStore.getState();
       const el = wrapperRef.current;
       if (!el || e.button !== 0) return;
@@ -133,6 +134,7 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
     };
 
     const handlePointerMove = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
       if (!isDrawing.current || !currentAnnotationId.current) return;
       
       const state = useAnnotationStore.getState();
@@ -180,6 +182,7 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
     };
 
     const handlePointerUp = (e: PointerEvent) => {
+      if (!e.isPrimary) return;
       if (!isDrawing.current) return;
       isDrawing.current = false;
       
@@ -288,14 +291,24 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
       }
     };
 
+    const handleCancelDrawing = () => {
+      if (isDrawing.current && currentAnnotationId.current) {
+        useAnnotationStore.getState().removeAnnotations([currentAnnotationId.current]);
+      }
+      isDrawing.current = false;
+      currentAnnotationId.current = null;
+    };
+
     el.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('cancel-drawing', handleCancelDrawing);
 
     return () => {
       el.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('cancel-drawing', handleCancelDrawing);
     };
   }, [addAnnotation, updateAnnotation]);
 }

@@ -293,7 +293,7 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
       // 3. Polar Strategy: r = f(theta)
       if (exprType === 'polar') {
         const generatedPoints: Point[] = [];
-        const res = 150;
+        const res = 500;
         
         let polarExpr = normalizedExpr;
         if (polarExpr.includes('=')) {
@@ -330,8 +330,8 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
       // 4. Parametric Strategy: x(t) = ..., y(t) = ...
       if (exprType === 'parametric') {
         const generatedPoints: Point[] = [];
-        const res = 300;
-        const tRange = Math.PI * 12; // Larger range for complex curves
+        const res = 1000;
+        const tRange = Math.PI * 24; // Larger range for complex curves like butterfly
 
         // Try to find definitions like x(t)=... and y(t)=...
         const parts = rawExpr.split(';');
