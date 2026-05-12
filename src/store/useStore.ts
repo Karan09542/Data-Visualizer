@@ -53,6 +53,7 @@ export interface StoreState {
   isAdvancedPanelOpen: boolean;
   isMobileMenuOpen: boolean;
   isShortcutsOpen: boolean;
+  isMathHelpOpen: boolean;
   showMediaPreview: boolean;
   dragOverrides: Record<string, { x: number, y: number }>;
   undoStack: string[];
@@ -81,6 +82,7 @@ export interface StoreState {
   setIsAdvancedPanelOpen: (isOpen: boolean) => void;
   setIsMobileMenuOpen: (isOpen: boolean) => void;
   setIsShortcutsOpen: (isOpen: boolean) => void;
+  setIsMathHelpOpen: (isOpen: boolean) => void;
   setShowMediaPreview: (show: boolean) => void;
   setDragOverride: (id: string, pos: { x: number, y: number } | null) => void;
   clearDragOverrides: () => void;
@@ -123,6 +125,7 @@ export const useStore = create<StoreState>()(
       isAdvancedPanelOpen: false,
       isMobileMenuOpen: false,
       isShortcutsOpen: false,
+      isMathHelpOpen: false,
       dragOverrides: {},
       undoStack: [],
       redoStack: [],
@@ -251,8 +254,9 @@ export const useStore = create<StoreState>()(
       setSelectedNodeId: (id: string | null) => set({ selectedNodeId: id }),
       setIsEditorPanelOpen: (isOpen: boolean) => set({ isEditorPanelOpen: isOpen }),
       setIsAdvancedPanelOpen: (isOpen: boolean) => set({ isAdvancedPanelOpen: isOpen }),
-      setIsMobileMenuOpen: (isOpen: boolean) => set({ isMobileMenuOpen: isOpen }),
-      setIsShortcutsOpen: (isOpen: boolean) => set({ isShortcutsOpen: isOpen }),
+      setIsMobileMenuOpen: (isOpen: boolean) => void set({ isMobileMenuOpen: isOpen }),
+      setIsShortcutsOpen: (isOpen: boolean) => void set({ isShortcutsOpen: isOpen }),
+      setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
       setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show }),
       setDragOverride: (id, pos) => set((state) => {
         const newOverrides = { ...state.dragOverrides };

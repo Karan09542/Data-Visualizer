@@ -6,12 +6,85 @@ import {
   Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity,
   Settings, Zap, CheckSquare, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
-  Sigma, X, ChevronUp, Palette
+  Sigma, X, ChevronUp, Palette, FunctionSquare, Eye, EyeOff
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HexAlphaColorPicker } from 'react-colorful';
+import katex from 'katex';
+import * as math from 'mathjs';
+
+const LaTeXPreview = ({ expression, className = "", onSelect }: { expression: string, className?: string, onSelect?: () => void }) => {
+  const [tex, setTex] = useState('');
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    if (!expression) {
+      setTex('');
+      return;
+    }
+    try {
+      let cleanExpr = expression;
+      if (cleanExpr.includes('=')) {
+        if (cleanExpr.includes(';')) {
+          const parts = cleanExpr.split(';');
+          const texParts = parts.map(p => {
+            try { return math.parse(p.trim()).toTex(); } catch(e) { return ''; }
+          }).filter(Boolean);
+          setTex(texParts.join(' \\quad '));
+          return;
+        } else {
+          try {
+             setTex(math.parse(cleanExpr).toTex());
+             return;
+          } catch(e) {
+             const parts = cleanExpr.split('=');
+             const right = parts[1] || parts[0];
+             setTex(math.parse(right.trim()).toTex());
+             return;
+          }
+        }
+      }
+      const node = math.parse(cleanExpr.trim());
+      setTex(node.toTex());
+    } catch (e) {
+      setTex('');
+    }
+  }, [expression]);
+
+  if (!tex) return null;
+
+  return (
+    <div className={`group relative p-3 bg-white/5 dark:bg-slate-900/50 border border-slate-200/20 dark:border-slate-800/50 rounded-xl flex flex-col items-center gap-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200 ${className}`}>
+      <div className="w-full flex items-center justify-between mb-1">
+        <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/50">LaTeX Preview</span>
+        <button 
+          onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
+          className="p-1 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-blue-400"
+          title={isVisible ? "Hide Preview" : "Show Preview"}
+        >
+          {isVisible ? <Eye size={10} /> : <EyeOff size={10} />}
+        </button>
+      </div>
+      
+      {isVisible && (
+        <div 
+          onClick={onSelect}
+          className="w-full text-center text-base text-slate-800 dark:text-blue-100 py-1 transition-all cursor-pointer hover:opacity-80 break-words overflow-x-auto custom-scrollbar whitespace-normal min-h-[2em] flex items-center justify-center p-2"
+          dangerouslySetInnerHTML={{ 
+            __html: katex.renderToString(tex, { 
+              throwOnError: false,
+              displayMode: false,
+              strict: false,
+              trust: true
+            }) 
+          }} 
+        />
+      )}
+    </div>
+  );
+};
 
 const TOOLS: { id: DrawingTool; icon: React.ReactNode; label: string }[] = [
   { id: 'select', icon: <MousePointer2 size={16} />, label: 'Select' },
@@ -61,6 +134,7 @@ const FUNCTION_PRESETS = [
   { label: 'Butterfly (Par)', expr: 'x(t)=sin(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5); y(t)=cos(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5)' },
   { label: 'Waves (Field)', expr: 'sin(x*y + t)' },
   { label: 'Star (Polar)', expr: 'r = 1 + 0.5*sin(5*theta)' },
+  { label: 'Damped Sine', expr: 'exp(-0.1*x) * sin(x)' },
 ];
 
 const MORE_FUNCTIONS = [
@@ -89,18 +163,37 @@ const MORE_FUNCTIONS = [
     items: [
       { label: 'sqrt(x)', expr: 'sqrt(x)' },
       { label: 'abs(x)', expr: 'abs(x)' },
+      { label: 'sign(x)', expr: 'sign(x)' },
       { label: 'ceil(x)', expr: 'ceil(x)' },
       { label: 'floor(x)', expr: 'floor(x)' },
       { label: 'round(x)', expr: 'round(x)' },
       { label: 'mod(x, y)', expr: 'mod(x, 2)' },
     ]
+  },
+  {
+    group: 'Damped Functions',
+    items: [
+      { label: 'exp(-0.1x)sin(x)', expr: 'exp(-0.1*x) * sin(x)' },
+      { label: 'exp(-0.2x)cos(x)', expr: 'exp(-0.2*x) * cos(x)' },
+      { label: 'exp(-x/5)', expr: 'exp(-x/5)' },
+      { label: 'Damped Spiral (P)', expr: 'x(t)=t*cos(t)*exp(-0.1*t); y(t)=t*sin(t)*exp(-0.1*t)' },
+    ]
   }
+];
+
+const SUGGESTED_MATH_FUNCTIONS = [
+  'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'sec', 'csc', 'cot',
+  'exp', 'log', 'log10', 'log2', 'pow', 'sqrt', 'cbrt', 'abs', 'ceil', 'floor', 'round', 'fix', 'mod', 'sign',
+  'min', 'max', 'mean', 'median', 'std', 'erf', 'gamma', 'factorial'
 ];
 
 function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   const store = useAnnotationStore();
   const [isOpen, setIsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
+  const mobileMainInputRef = useRef<HTMLInputElement>(null);
   
   if (!store.isToolbarVisible) return null;
 
@@ -183,7 +276,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full bg-[#0b1120] rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-slate-800 pointer-events-auto relative z-10 flex flex-col max-h-[90vh] text-slate-200 font-sans"
+              className="w-full bg-[#0b1120] rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-slate-800 pointer-events-auto relative z-10 flex flex-col max-h-[75vh] text-slate-200 font-sans"
             >
               <div 
                 className="shrink-0 pt-4 pb-2 cursor-pointer flex justify-center"
@@ -387,6 +480,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                             <span className="text-blue-500 font-mono font-bold px-3">{"f(x) ="}</span>
                             <div className="w-[1px] h-6 bg-slate-800"></div>
                             <input 
+                              ref={mobileMainInputRef}
                               type="text" 
                               className="flex-1 bg-transparent px-3 py-2 text-[13px] font-mono focus:outline-none text-slate-200 w-full"
                               placeholder="sin(x)"
@@ -396,42 +490,126 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                             <div className="px-3 text-slate-600"><Sigma size={16} /></div>
                          </div>
                          
+                         <LaTeXPreview 
+                           expression={store.functionExpression} 
+                           className="mb-2" 
+                           onSelect={() => mobileMainInputRef.current?.focus()}
+                         />
+                         
                          <div className="flex flex-wrap gap-2">
-                           {FUNCTION_PRESETS.map((preset) => (
-                             <button
-                               key={preset.label}
-                               onClick={() => store.setFunctionExpression(preset.expr)}
-                               className="px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-[#121A2F] text-slate-300 hover:bg-[#1A2540] border border-slate-800/80 hover:border-slate-700 transition-colors flex items-center gap-1"
-                             >
-                               {preset.label}
-                             </button>
-                           ))}
+                           {FUNCTION_PRESETS.map((preset) => {
+                             const isSelected = store.functionExpression === preset.expr;
+                             return (
+                               <button
+                                 key={preset.label}
+                                 onClick={() => store.setFunctionExpression(preset.expr)}
+                                 className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all flex items-center gap-1 border ${
+                                   isSelected 
+                                     ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20 active:scale-95' 
+                                     : 'bg-[#121A2F] text-slate-300 hover:bg-[#1A2540] border-slate-800/80 hover:border-slate-700'
+                                 }`}
+                               >
+                                 {preset.label}
+                               </button>
+                             );
+                           })}
                            
-                           <Popover open={isMoreOpen} onOpenChange={setIsMoreOpen}>
+                           <Popover open={isMoreOpen} onOpenChange={(open) => { setIsMoreOpen(open); if(!open) setSearchQuery(''); }}>
                              <PopoverTrigger className="px-2 py-1 text-[10px] font-semibold rounded-md bg-[#121A2F] text-blue-400 hover:bg-[#1A2540] border border-blue-500/30 transition-colors flex items-center gap-1">
                                More <ChevronUp size={12} className="rotate-180" />
                              </PopoverTrigger>
                              <PopoverContent className="w-[min(260px,85vw)] p-3 bg-[#0b1120] border-slate-800 rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
                                <div className="flex flex-col gap-3">
-                                 {MORE_FUNCTIONS.map((group) => (
-                                   <div key={group.group} className="flex flex-col gap-1.5">
-                                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{group.group}</span>
-                                     <div className="grid grid-cols-2 gap-1">
-                                       {group.items.map((item) => (
-                                         <button
-                                           key={item.label}
-                                           onClick={() => {
-                                             store.setFunctionExpression(item.expr);
+                                 <div className="flex flex-col gap-1.5">
+                                   <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Search or Custom</span>
+                                   <div className="flex flex-col gap-2">
+                                     <input 
+                                       ref={mobileSearchRef}
+                                       type="text"
+                                       placeholder="Search functions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                                       className="flex-1 px-2.5 py-2 text-[11px] bg-[#121A2F] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600 font-mono ring-offset-slate-900 focus:ring-2 focus:ring-blue-500/20"
+                                       onKeyDown={(e) => {
+                                         if (e.key === 'Enter') {
+                                           const val = searchQuery.trim();
+                                           if (val) {
+                                             store.setFunctionExpression(val);
                                              setIsMoreOpen(false);
-                                           }}
-                                           className="px-1.5 py-1 text-[9px] text-left rounded bg-[#121A2F] text-slate-300 hover:bg-blue-600/20 hover:text-blue-400 border border-slate-800 hover:border-blue-500/30 transition-all font-mono"
-                                         >
-                                           {item.label}
-                                         </button>
-                                       ))}
-                                     </div>
+                                           }
+                                         }
+                                       }}
+                                     />
+                                     <LaTeXPreview 
+                                       expression={searchQuery} 
+                                       onSelect={() => mobileSearchRef.current?.focus()}
+                                     />
                                    </div>
-                                 ))}
+                                 </div>
+
+                                  {MORE_FUNCTIONS.map((group) => {
+                                    const filteredItems = group.items.filter(item => 
+                                      item.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                      item.expr.toLowerCase().includes(searchQuery.toLowerCase())
+                                    );
+                                    if (filteredItems.length === 0) return null;
+                                    
+                                    return (
+                                      <div key={group.group} className="flex flex-col gap-1.5">
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{group.group}</span>
+                                        <div className="grid grid-cols-2 gap-1">
+                                          {filteredItems.map((item) => (
+                                            <button
+                                              key={item.label}
+                                              onClick={() => {
+                                                store.setFunctionExpression(item.expr);
+                                                setIsMoreOpen(false);
+                                              }}
+                                              className="px-1.5 py-1 text-[9px] text-left rounded bg-[#121A2F] text-slate-300 hover:bg-blue-600/20 hover:text-blue-400 border border-slate-800 hover:border-blue-500/30 transition-all font-mono"
+                                            >
+                                              {item.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {/* Dynamic suggestions from a larger list */}
+                                  {searchQuery.length >= 1 && (
+                                    <div className="flex flex-col gap-1.5">
+                                      <span className="text-[9px] font-bold uppercase tracking-widest text-blue-500/70">Suggestions</span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {SUGGESTED_MATH_FUNCTIONS
+                                          .filter(fn => fn.toLowerCase().includes(searchQuery.toLowerCase()))
+                                          .filter(fn => !MORE_FUNCTIONS.some(g => g.items.some(i => i.expr.includes(fn))))
+                                          .slice(0, 10)
+                                          .map(fn => (
+                                            <button
+                                              key={fn}
+                                              onClick={() => {
+                                                store.setFunctionExpression(`${fn}(x)`);
+                                                setIsMoreOpen(false);
+                                              }}
+                                              className="px-2 py-0.5 text-[9px] rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-mono"
+                                            >
+                                              {fn}(x)
+                                            </button>
+                                          ))
+                                        }
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {searchQuery && !MORE_FUNCTIONS.some(g => g.items.some(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))) && (
+                                    <button 
+                                      onClick={() => {
+                                        store.setFunctionExpression(searchQuery);
+                                        setIsMoreOpen(false);
+                                      }}
+                                      className="mt-2 w-full py-2 text-[10px] font-bold bg-blue-600/20 text-blue-400 border border-blue-500/40 rounded-lg hover:bg-blue-600/30 transition-all"
+                                    >
+                                      Use "{searchQuery}"
+                                    </button>
+                                  )}
                                </div>
                              </PopoverContent>
                            </Popover>
@@ -564,6 +742,9 @@ export default function DrawingToolbar() {
 
   const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function'>('none');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const desktopSearchRef = useRef<HTMLInputElement>(null);
+  const desktopMainInputRef = useRef<HTMLInputElement>(null);
 
   const handleClear = () => {
     store.clearAnnotations();
@@ -1149,6 +1330,7 @@ export default function DrawingToolbar() {
             </span>
             <div className="relative group">
               <input 
+                ref={desktopMainInputRef}
                 type="text" 
                 value={store.functionExpression} 
                 onChange={(e) => store.setFunctionExpression(e.target.value)}
@@ -1157,6 +1339,11 @@ export default function DrawingToolbar() {
               />
               <Sigma className="absolute right-2 top-1.5 text-slate-400 group-hover:text-blue-500 transition-colors" size={14} />
             </div>
+            <LaTeXPreview 
+              expression={store.functionExpression} 
+              className="mt-1" 
+              onSelect={() => desktopMainInputRef.current?.focus()}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -1176,31 +1363,104 @@ export default function DrawingToolbar() {
                 </button>
               ))}
               
-              <Popover open={isMoreOpen} onOpenChange={setIsMoreOpen}>
+              <Popover open={isMoreOpen} onOpenChange={(open) => { setIsMoreOpen(open); if(!open) setSearchQuery(''); }}>
                 <PopoverTrigger className="px-2 py-1 rounded-md text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/50">
                   More <ChevronUp size={10} className="rotate-180" />
                 </PopoverTrigger>
                 <PopoverContent className="w-[300px] p-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
                   <div className="flex flex-col gap-4">
-                    {MORE_FUNCTIONS.map((group) => (
-                      <div key={group.group} className="flex flex-col gap-2">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{group.group}</span>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {group.items.map((item) => (
-                            <button
-                              key={item.label}
-                              onClick={() => {
-                                store.setFunctionExpression(item.expr);
+                    <div className="flex flex-col gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Search or Custom</span>
+                      <div className="flex flex-col gap-2">
+                        <input 
+                          ref={desktopSearchRef}
+                          type="text"
+                          placeholder="Search math functions..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="flex-1 px-2.5 py-2 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 font-mono"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const val = searchQuery.trim();
+                              if (val) {
+                                store.setFunctionExpression(val);
                                 setIsMoreOpen(false);
-                              }}
-                              className="px-2 py-1.5 text-[10px] text-left rounded bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800 transition-all font-mono"
-                            >
-                              {item.label}
-                            </button>
-                          ))}
+                              }
+                            }
+                          }}
+                        />
+                        <LaTeXPreview 
+                          expression={searchQuery} 
+                          onSelect={() => desktopSearchRef.current?.focus()}
+                        />
+                      </div>
+                    </div>
+
+                    {MORE_FUNCTIONS.map((group) => {
+                      const filteredItems = group.items.filter(item => 
+                        item.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        item.expr.toLowerCase().includes(searchQuery.toLowerCase())
+                      );
+                      if (filteredItems.length === 0) return null;
+                      
+                      return (
+                        <div key={group.group} className="flex flex-col gap-2">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{group.group}</span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {filteredItems.map((item) => (
+                              <button
+                                key={item.label}
+                                onClick={() => {
+                                  store.setFunctionExpression(item.expr);
+                                  setIsMoreOpen(false);
+                                }}
+                                className="px-2 py-1.5 text-[10px] text-left rounded bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800 transition-all font-mono"
+                              >
+                                {item.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Dynamic suggestions from a larger list for Desktop */}
+                    {searchQuery.length >= 1 && (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/70">Suggestions</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {SUGGESTED_MATH_FUNCTIONS
+                            .filter(fn => fn.toLowerCase().includes(searchQuery.toLowerCase()))
+                            .filter(fn => !MORE_FUNCTIONS.some(g => g.items.some(i => i.expr.includes(fn))))
+                            .slice(0, 12)
+                            .map(fn => (
+                              <button
+                                key={fn}
+                                onClick={() => {
+                                  store.setFunctionExpression(`${fn}(x)`);
+                                  setIsMoreOpen(false);
+                                }}
+                                className="px-2 py-1 text-[10px] rounded-full bg-blue-500/5 text-blue-500 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/10 transition-all font-mono"
+                              >
+                                {fn}(x)
+                              </button>
+                            ))
+                          }
                         </div>
                       </div>
-                    ))}
+                    )}
+
+                    {searchQuery && !MORE_FUNCTIONS.some(g => g.items.some(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))) && (
+                      <button 
+                        onClick={() => {
+                          store.setFunctionExpression(searchQuery);
+                          setIsMoreOpen(false);
+                        }}
+                        className="mt-2 w-full py-2.5 text-[11px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/30 rounded-lg hover:bg-blue-500/20 transition-all"
+                      >
+                        Use Custom: "{searchQuery}"
+                      </button>
+                    )}
                   </div>
                 </PopoverContent>
               </Popover>

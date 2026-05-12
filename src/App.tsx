@@ -5,6 +5,7 @@ import Toolbar from "./components/Toolbar";
 import DrawingToolbar from "./components/DrawingToolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
 import ShortcutsPopup from "./components/ShortcutsPopup";
+import MathHelpPopup from "./components/MathHelpPopup";
 import ShareDialog from "./components/ShareDialog";
 import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
@@ -12,7 +13,7 @@ import { parseShareUrl } from "./utils/shareUtils";
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme, setCode } = useStore();
+  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme, setCode, isMathHelpOpen, setIsMathHelpOpen } = useStore();
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
@@ -181,6 +182,7 @@ export default function App() {
       </div>
       <AdvancedPanel />
       <ShortcutsPopup />
+      <MathHelpPopup isOpen={isMathHelpOpen} onClose={() => setIsMathHelpOpen(false)} />
       <ShareDialog isOpen={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
     </div>
   );

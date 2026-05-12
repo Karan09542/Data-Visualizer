@@ -11,21 +11,41 @@ import {
 } from '../lib/mathEngine';
 
 const math = create(all);
+math.import({
+  signum: math.sign
+}, { override: true });
+
+// Simple cache for compiled math expressions to avoid recompiling on every render
+const compilationCache = new Map<string, any>();
+
+function getCompiledExpression(expr: string) {
+  if (compilationCache.has(expr)) return compilationCache.get(expr);
+  try {
+    const compiled = math.compile(expr);
+    compilationCache.set(expr, compiled);
+    return compiled;
+  } catch (e) {
+    return null;
+  }
+}
 
 const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
-  const lineGenerator = d3.line<Point>()
-    .x(d => d.x)
-    .y(d => d.y);
+  const lineGenerator = useMemo(() => {
+    const lg = d3.line<Point>()
+      .x(d => d.x)
+      .y(d => d.y);
 
-  if (anno.brushStyle === 'smooth-ink' || anno.brushStyle === 'soft-highlighter' || anno.smoothing > 0.5) {
-    lineGenerator.curve(d3.curveCatmullRom.alpha(0.5));
-  } else if (anno.brushStyle === 'rough-handdrawn') {
-    lineGenerator.curve(d3.curveBasis);
-  } else {
-    lineGenerator.curve(d3.curveLinear);
-  }
+    if (anno.brushStyle === 'smooth-ink' || anno.brushStyle === 'soft-highlighter' || anno.smoothing > 0.5) {
+      lg.curve(d3.curveCatmullRom.alpha(0.5));
+    } else if (anno.brushStyle === 'rough-handdrawn') {
+      lg.curve(d3.curveBasis);
+    } else {
+      lg.curve(d3.curveLinear);
+    }
+    return lg;
+  }, [anno.brushStyle, anno.smoothing]);
 
-  const getPathData = () => {
+  const pathData = useMemo(() => {
     if (anno.points.length === 0) return '';
     
     if (['pen', 'highlighter', 'eraser', 'polygon', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'star', 'diamond'].includes(anno.tool)) {
@@ -136,7 +156,6 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
           y = (Math.abs((((i * freq) / Math.PI) % 2) - 1) * 2 - 1) * amp;
         }
         
-        // Rotate and translate
         const rx = p1.x + x * Math.cos(angle) - y * Math.sin(angle);
         const ry = p1.y + x * Math.sin(angle) + y * Math.cos(angle);
         
@@ -153,12 +172,8 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
       const normalizedExpr = normalizeExpression(rawExpr);
       const exprType = detectExpressionType(normalizedExpr);
       
-      let compiled;
-      try {
-        compiled = math.compile(normalizedExpr);
-      } catch (e) {
-        return ''; 
-      }
+      const compiled = getCompiledExpression(normalizedExpr);
+      if (!compiled) return '';
 
       const amp = anno.functionAmplitude ?? 20;
       const freq = anno.functionFrequency ?? 0.1;
@@ -167,11 +182,14 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
       const frames = computeFrames(anno.points);
       if (frames.length < 2) return '';
       const totalDist = frames[frames.length - 1].arcLength;
+      
+      // Update: use static time or specific interval for performance instead of Date.now() on every render if possible
+      // But for animations we need time. Let's use a stable time for now or assume rerender handles it.
+      const timeOffset = (Date.now() - anno.createdAt) / 1000;
 
-      // 1. Explicit Strategy: y = f(x)
       if (exprType === 'explicit') {
         const generatedPoints: Point[][] = [];
-        const strands = 3; // multiple strands for a "brush" feel
+        const strands = 3;
         
         for (let strand = 0; strand < strands; strand++) {
           const strandPoints: Point[] = [];
@@ -184,7 +202,7 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
             try {
               offset = compiled.evaluate({ 
                 x: s * freq,
-                t: (Date.now() - anno.createdAt) / 1000, 
+                t: timeOffset, 
                 p: phase + strand * 0.2,
                 q: freq,
                 r: amp,
@@ -207,7 +225,6 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
           .curve(d3.curveCatmullRom.alpha(0.5));
           
         if (anno.fillEnabled) {
-          // Add backbone points in reverse to close the shape
           const fillPoints = [...generatedPoints[0], ...frames.map(f => f.origin).reverse()];
           return funcLineGen(fillPoints) + ' Z';
         }
@@ -215,27 +232,24 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         return generatedPoints.map(pts => funcLineGen(pts)).join(' ');
       }
 
-      // 2. Implicit / Field Strategy: f(x, y) = 0
       if (exprType === 'implicit' || exprType === 'field') {
-        // Create a local grid around the path
-        // We define local x as arc-length s, and local y as normal offset n
-        // Domain: s in [0, totalDist], n in [-amp*2, amp*2]
         const sRes = Math.ceil(totalDist / Math.max(smoothness * 0.5, 1));
-        const nRes = 50; // Increased normal resolution for better quality
+        const nRes = 50;
         const nRange = amp * 1.5;
         
+        // Caching inner compiled parts if useful
         let leftCompiled = compiled;
         let rightCompiled: any = null;
 
         if (normalizedExpr.includes('=')) {
           const parts = normalizedExpr.split(/={1,2}/);
-          try {
-            leftCompiled = math.compile(parts[0]);
-            if (parts[1] && parts[1].trim()) {
-              rightCompiled = math.compile(parts[1]);
-            }
-          } catch(e) {}
+          leftCompiled = getCompiledExpression(parts[0]);
+          if (parts[1] && parts[1].trim()) {
+            rightCompiled = getCompiledExpression(parts[1]);
+          }
         }
+
+        if (!leftCompiled) return '';
 
         const grid: number[][] = [];
         for (let j = 0; j <= nRes; j++) {
@@ -248,8 +262,8 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
             try {
               const scope = {
                 x: s * freq,
-                y: n / amp, // normalized normal offset
-                t: (Date.now() - anno.createdAt) / 1000,
+                y: n / amp,
+                t: timeOffset,
                 s, n,
                 p: phase
               };
@@ -263,18 +277,16 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
           grid.push(row);
         }
 
-        // Extract contours at level 0 (for implicit) or multiple levels (for fields)
         const levels = exprType === 'implicit' ? [0] : [-0.5, 0, 0.5];
         let fullPath = '';
         
         for (const level of levels) {
-          const isolineSegments = marchingSquares(grid, level, 1, 0, 0); // local indices
+          const isolineSegments = marchingSquares(grid, level, 1, 0, 0);
           
           isolineSegments.forEach(seg => {
-            // Map local indices back to world space
             const worldSeg = seg.map(p => {
               const s = (p.x / sRes) * totalDist;
-              const nIdx = p.y; // 0 to nRes
+              const nIdx = p.y;
               const n = -nRange + (nIdx / nRes) * 2 * nRange;
               const frame = interpolateFrame(frames, s);
               return {
@@ -286,11 +298,9 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
             fullPath += `M ${worldSeg[0].x},${worldSeg[0].y} L ${worldSeg[1].x},${worldSeg[1].y} `;
           });
         }
-        
         return fullPath;
       }
 
-      // 3. Polar Strategy: r = f(theta)
       if (exprType === 'polar') {
         const generatedPoints: Point[] = [];
         const res = 500;
@@ -298,23 +308,21 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         let polarExpr = normalizedExpr;
         if (polarExpr.includes('=')) {
           const parts = polarExpr.split(/={1,2}/);
-          // If it's r = ..., take the RHS. Otherwise take the more complex looking part?
-          // Usually r = something(theta)
           if (parts[0].trim() === 'r') polarExpr = parts[1];
           else if (parts[1].trim() === 'r') polarExpr = parts[0];
-          else polarExpr = parts[0]; // Fallback
+          else polarExpr = parts[0];
         }
 
         try {
-          const polarCompiled = math.compile(polarExpr);
+          const polarCompiled = getCompiledExpression(polarExpr);
+          if (!polarCompiled) return '';
           const start = anno.points[0];
-          const time = (Date.now() - anno.createdAt) / 1000;
 
           for (let i = 0; i <= res; i++) {
             const theta = (i / res) * Math.PI * 2; 
             let rValue = 0;
             try {
-              rValue = polarCompiled.evaluate({ theta, t: time, p: phase }) * amp;
+              rValue = polarCompiled.evaluate({ theta, t: timeOffset, p: phase }) * amp;
             } catch(e) {}
             
             generatedPoints.push({
@@ -327,13 +335,11 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         return d3.line<Point>().x(d => d.x).y(d => d.y).curve(d3.curveBasisClosed)(generatedPoints) || '';
       }
 
-      // 4. Parametric Strategy: x(t) = ..., y(t) = ...
       if (exprType === 'parametric') {
         const generatedPoints: Point[] = [];
         const res = 1000;
-        const tRange = Math.PI * 24; // Larger range for complex curves like butterfly
+        const tRange = Math.PI * 24;
 
-        // Try to find definitions like x(t)=... and y(t)=...
         const parts = rawExpr.split(';');
         let xExpr = normalizedExpr;
         let yExpr = normalizedExpr;
@@ -344,14 +350,14 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         }
 
         try {
-          const xCompiled = math.compile(xExpr);
-          const yCompiled = math.compile(yExpr);
+          const xCompiled = getCompiledExpression(xExpr);
+          const yCompiled = getCompiledExpression(yExpr);
+          if (!xCompiled || !yCompiled) return '';
           const start = anno.points[0];
-          const time = (Date.now() - anno.createdAt) / 1000;
 
           for (let i = 0; i <= res; i++) {
             const t = (i / res) * tRange;
-            const scope = { t, x: t, y: t, p: phase, time };
+            const scope = { t, x: t, y: t, p: phase, time: timeOffset };
             const vx = xCompiled.evaluate(scope) * amp;
             const vy = yCompiled.evaluate(scope) * amp;
             
@@ -366,9 +372,7 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
     }
 
     return '';
-  };
-
-  const pathData = getPathData();
+  }, [anno, lineGenerator]);
 
   let strokeDasharray = 'none';
   if (anno.brushStyle === 'dashed') strokeDasharray = '10, 10';

@@ -1,4 +1,4 @@
-import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool } from 'lucide-react';
+import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool, HelpCircle } from 'lucide-react';
 import { useStore, CanvasTheme, defaultSettings } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { RgbaColorPicker } from 'react-colorful';
@@ -18,7 +18,8 @@ export default function AdvancedPanel() {
     canvasPatternColor, setCanvasPatternColor,
     canvasBackgroundImage, setCanvasBackgroundImage,
     canvasBackgroundBlur, setCanvasBackgroundBlur,
-    resetAllSettings, setIsShortcutsOpen
+    resetAllSettings, setIsShortcutsOpen,
+    isMathHelpOpen, setIsMathHelpOpen
   } = useStore();
 
   const {
@@ -171,15 +172,24 @@ export default function AdvancedPanel() {
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Annotations and overlay tools</div>
                 </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={isToolbarVisible}
-                  onChange={(e) => setIsToolbarVisible(e.target.checked)}
-                />
-                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-500"></div>
-              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsMathHelpOpen(true)}
+                  title="How to use Math Canvas"
+                  className="p-1.5 text-blue-500 hover:bg-blue-500/10 rounded-md transition-all active:scale-90"
+                >
+                  <HelpCircle size={16} />
+                </button>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={isToolbarVisible}
+                    onChange={(e) => setIsToolbarVisible(e.target.checked)}
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-blue-500"></div>
+                </label>
+              </div>
             </div>
 
             {isToolbarVisible && (

@@ -19,6 +19,7 @@ export default function ShortcutsPopup() {
     { keys: ['Double Finger Tap'], desc: 'Undo' },
     { keys: ['Double Finger Tap x2'], desc: 'Redo' },
     { keys: ['Scroll'], desc: 'Zoom In/Out' },
+    { keys: ['Two Fingers Pinch'], desc: 'Zoom Graph (when tool active)' },
     { keys: ['Click & Drag'], desc: 'Pan Graph' },
     { keys: ['Right Click'], desc: 'Node Actions Options' },
   ];
