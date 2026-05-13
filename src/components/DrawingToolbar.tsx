@@ -146,13 +146,14 @@ const COLORS = [
 
 const FUNCTION_PRESETS = [
   { label: 'Sine', expr: 'sin(x)' },
-  { label: 'Lissajous (Par)', expr: 'x(t)=sin(3*t+p); y(t)=sin(2*t)' },
+  { label: 'Fourier Heart', expr: 'r = -2 + 2*sin(theta) - sin(theta)*sqrt(abs(cos(theta))) / (sin(theta) + 1.4)' },
+  { label: 'Cardioid', expr: 'r = 1 + sin(theta)' },
+  { label: 'Rectifier', expr: 'sin(x) > 0 ? 5*sin(x) : 0' },
+  { label: 'Dot Modulator', expr: 'dot([sin(x), cos(x)], [cos(x/2), sin(x/2)])' },
   { label: 'Spiral (Par)', expr: 'x(t)=t/5*cos(t); y(t)=t/5*sin(t)' },
   { label: 'Butterfly (Par)', expr: 'x(t)=sin(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5); y(t)=cos(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5)' },
   { label: 'Waves (Field)', expr: 'sin(x*y + t)' },
-  { label: 'Circle Wave', expr: 'r = 1 + 0.2*sign(sin(5*theta))' },
   { label: 'Star (Polar)', expr: 'r = 1 + 0.5*sin(5*theta)' },
-  { label: 'Damped Sine', expr: 'exp(-0.1*x) * sin(x)' },
 ];
 
 const MORE_FUNCTIONS = [
@@ -195,6 +196,17 @@ const MORE_FUNCTIONS = [
       { label: 'exp(-0.2x)cos(x)', expr: 'exp(-0.2*x) * cos(x)' },
       { label: 'exp(-x/5)', expr: 'exp(-x/5)' },
       { label: 'Damped Spiral (P)', expr: 'x(t)=t*cos(t)*exp(-0.1*t); y(t)=t*sin(t)*exp(-0.1*t)' },
+    ]
+  },
+  {
+    group: 'Functional & Advanced',
+    items: [
+      { label: 'Fourier Square (Sum)', expr: 'y = sum(map(1:5, f(n)=sin((2n-1)*x)/(2n-1)))' },
+      { label: 'Staircase (Filter)', expr: 'y = length(filter(0:10, f(i)=x>i))' },
+      { label: 'Harmonic Product', expr: 'y = product(map(1:3, f(k)=sin(k*x)))' },
+      { label: 'Dot Modulator', expr: 'dot([sin(x), cos(x)], [cos(x/2), sin(x/2)])' },
+      { label: 'Fourier Heart (R)', expr: 'r = -2 + 2*sin(theta) - sin(theta)*sqrt(abs(cos(theta))) / (sin(theta) + 1.4)' },
+      { label: 'Rectifier (Y)', expr: 'y = sin(x) > 0 ? 5*sin(x) : 0' },
     ]
   }
 ];

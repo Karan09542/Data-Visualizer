@@ -85,6 +85,55 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose }) => {
               </div>
 
               <div className="mt-8 space-y-6">
+                <div className="p-4 bg-purple-500/5 border border-purple-500/10 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="text-purple-500" size={16} />
+                    <h4 className="text-[13px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">Functional Operations</h4>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Fourier Heart (Polar)</span>
+                        <code className="text-[10px] font-mono text-purple-500 italic">r = 2 - 2*sin(theta) + sin(theta)*sqrt(abs(cos(theta))) / (sin(theta) + 1.4)</code>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">Complex polar shapes using standard functions.</p>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Summation Wave (Explicit)</span>
+                        <code className="text-[10px] font-mono text-purple-500 italic">y = sum(map(1:5, f(n)=sin((2n-1)*x)/(2n-1)))</code>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">Square wave approximation using Fourier series.</p>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Staircase (Filter)</span>
+                        <code className="text-[10px] font-mono text-purple-500 italic">y = length(filter(0:10, f(i)=x&gt;i))</code>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">Draw a staircase using filter and length logic.</p>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Harmonic Product</span>
+                        <code className="text-[10px] font-mono text-purple-500 italic">y = product(map(1:3, f(k)=sin(k*x)))</code>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">Create complex interference patterns using products.</p>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">Dot Modulator</span>
+                        <code className="text-[10px] font-mono text-purple-500 italic">dot([sin(x), cos(x)], [cos(x/2), sin(x/2)])</code>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400">Vector operations used as scalar modulators.</p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl">
                   <div className="flex items-center gap-2 mb-2">
                     <Waves className="text-blue-500" size={16} />

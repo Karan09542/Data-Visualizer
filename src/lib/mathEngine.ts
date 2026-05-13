@@ -1,4 +1,3 @@
-import * as d3 from 'd3';
 import { Point } from '../store/useAnnotationStore';
 
 export interface Frame {
@@ -220,13 +219,30 @@ export function detectExpressionType(expr: string): 'explicit' | 'parametric' | 
   const clean = expr.toLowerCase().replace(/\s/g, '');
   
   // Parametric: x(t)=...; y(t)=... or just containing semicolon
-  if (clean.includes('x(') || clean.includes('y(') || clean.includes(';')) return 'parametric';
+  if ((clean.includes('x(') && clean.includes('y(')) || clean.includes(';')) return 'parametric';
   
   // Polar: r=... or contains theta
   if (clean.startsWith('r=') || clean.includes('=r') || clean.includes('theta') || clean.includes('phi')) return 'polar';
   
   // Implicit: contains equals sign but not caught by above
-  if (clean.includes('=') || clean.includes('==')) return 'implicit';
+  if (clean.includes('=') || clean.includes('==')) {
+    // Heuristic: If it contains words like 'sum', 'map', 'filter' it is likely a functional expression
+    // using internal function definitions, not an implicit contour equation.
+    if (clean.includes('sum(') || clean.includes('map(') || clean.includes('filter(') || clean.includes('reduce(') || clean.includes('dot(')) {
+      return 'explicit';
+    }
+    
+    // If the equals sign is part of a function definition like f(x)=... but not the whole thing?
+    // Actually, if it's an assignment, mathjs handles it in explicit mode.
+    // We only want implicit if it's meant to be solved for f(x,y)=0.
+    // If it has 'y' AND '=', it's likely implicit.
+    if (clean.includes('y') && (clean.includes('=') || clean.includes('=='))) {
+      return 'implicit';
+    }
+
+    // Default for '=' if no 'y' is involved is often an assignment/definition which works in explicit mode.
+    return 'explicit';
+  }
   
   // Field: contains y as a variable or noise
   if (/\by\b/.test(expr) || clean.includes('noise')) return 'field';
