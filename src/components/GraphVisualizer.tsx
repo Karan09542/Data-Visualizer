@@ -13,7 +13,7 @@ import { Copy, Edit2, Trash2, X, Search, Settings } from 'lucide-react';
 
 export default function GraphVisualizer() {
   const { 
-    treeData, collapsedNodes, layoutMode, edgeStyle, 
+    treeData, collapsedNodes, layoutMode, edgeStyle, nodeTheme,
     searchQuery, searchMatches, searchAncestors,
     selectedNodeId, setSelectedNodeId, dragOverrides,
     nodeShape, nodeSpread, nodeSize, 
@@ -530,6 +530,12 @@ export default function GraphVisualizer() {
           <pattern id="theme-lines" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
             <path d="M 0 40 L 40 0" fill="none" stroke={canvasPatternColor} strokeWidth="1" />
           </pattern>
+
+          <linearGradient id="abstract-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="50%" stopColor="#d946ef" />
+            <stop offset="100%" stopColor="#f43f5e" />
+          </linearGradient>
         </defs>
 
         <g ref={svgGRef} className="pointer-events-auto graph-g">
@@ -543,7 +549,7 @@ export default function GraphVisualizer() {
             const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
             const isDimmedPath = !!searchQuery && !isMatchPath;
             const isSelectedEdge = selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
-            return <EdgeRenderer key={`link-${link.source.data.id}-${link.target.data.id}`} d={d} style={edgeStyle} isHighlighted={isMatchPath} isDimmed={isDimmedPath} isSelected={isSelectedEdge} />;
+            return <EdgeRenderer key={`link-${link.source.data.id}-${link.target.data.id}`} d={d} style={edgeStyle} nodeTheme={nodeTheme} isHighlighted={isMatchPath} isDimmed={isDimmedPath} isSelected={isSelectedEdge} />;
           })}
           {nodes.map(node => (
             <NodeRenderer 

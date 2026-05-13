@@ -4,11 +4,12 @@ import { parseInput } from '../utils/parser';
 import { transformToTree } from '../utils/transformer';
 
 export type LayoutMode = 'vertical' | 'horizontal' | 'radial' | 'force' | 'compact' | 'mindmap';
-export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook';
+export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook' | 'custom' | 'nature' | 'circuit' | 'galaxy' | 'glass' | 'neon' | 'math' | 'neural' | 'river' | 'tree' | 'pixel' | 'hacker' | 'cloud' | 'dna' | 'lava' | 'ocean' | 'rhythm' | 'rune' | 'zen' | 'abstract' | 'architect';
 export type EdgeStyle = 'curved' | 'bezier' | 'straight' | 'step' | 'animated' | 'dashed' | 'neon' | 'double' | 'pipe' | 'thin' | 'orgChart' | 'circuit' | 'glow' | 'zigzag' | 'pulse';
 export type NodeShape = 'default' | 'circle' | 'rectangle' | 'triangle' | 'hexagon' | 'pill' | 'diamond' | 'parallelogram';
 export type CanvasTheme = 'none' | 'dots' | 'grid' | 'lines';
 export type AppTheme = 'dark' | 'light';
+export type GradientType = 'linear' | 'radial';
 
 // Default settings
 export const defaultSettings = {
@@ -25,6 +26,13 @@ export const defaultSettings = {
   nodeSpread: 1.0,
   nodeSize: 1.0,
   showMediaPreview: false,
+  nodeColor: 'rgba(30, 41, 59, 1)',
+  nodeTextColor: 'rgba(255, 255, 255, 1)',
+  nodeGradientColor1: 'rgba(79, 70, 229, 1)',
+  nodeGradientColor2: 'rgba(147, 51, 234, 1)',
+  useNodeGradient: false,
+  nodeGradientAngle: 45,
+  nodeGradientType: 'linear' as GradientType,
 };
 
 export interface StoreState {
@@ -44,6 +52,13 @@ export interface StoreState {
   canvasBackgroundBlur: number;
   nodeSpread: number;
   nodeSize: number;
+  nodeColor: string;
+  nodeTextColor: string;
+  nodeGradientColor1: string;
+  nodeGradientColor2: string;
+  useNodeGradient: boolean;
+  nodeGradientAngle: number;
+  nodeGradientType: GradientType;
   searchQuery: string;
   collapsedNodes: Set<string>;
   searchMatches: Set<string>;
@@ -74,6 +89,13 @@ export interface StoreState {
   setCanvasBackgroundBlur: (blur: number) => void;
   setNodeSpread: (spread: number) => void;
   setNodeSize: (size: number) => void;
+  setNodeColor: (color: string) => void;
+  setNodeTextColor: (color: string) => void;
+  setNodeGradientColor1: (color: string) => void;
+  setNodeGradientColor2: (color: string) => void;
+  setUseNodeGradient: (use: boolean) => void;
+  setNodeGradientAngle: (angle: number) => void;
+  setNodeGradientType: (type: GradientType) => void;
   setSearchQuery: (query: string) => void;
   toggleNodeCollapse: (id: string) => void;
   setCollapsedNodes: (nodes: Set<string>) => void;
@@ -194,6 +216,13 @@ export const useStore = create<StoreState>()(
       setCanvasBackgroundBlur: (blur: number) => set({ canvasBackgroundBlur: blur }),
       setNodeSpread: (spread: number) => set({ nodeSpread: spread, dragOverrides: {} }),
       setNodeSize: (size: number) => set({ nodeSize: size, dragOverrides: {} }),
+      setNodeColor: (color: string) => set({ nodeColor: color }),
+      setNodeTextColor: (color: string) => set({ nodeTextColor: color }),
+      setNodeGradientColor1: (color: string) => set({ nodeGradientColor1: color }),
+      setNodeGradientColor2: (color: string) => set({ nodeGradientColor2: color }),
+      setUseNodeGradient: (use: boolean) => set({ useNodeGradient: use }),
+      setNodeGradientAngle: (angle: number) => set({ nodeGradientAngle: angle }),
+      setNodeGradientType: (type: GradientType) => set({ nodeGradientType: type }),
       setSearchQuery: (query: string) => {
         set((state) => {
           const q = query.toLowerCase();

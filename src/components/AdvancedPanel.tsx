@@ -1,11 +1,14 @@
-import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool, HelpCircle } from 'lucide-react';
-import { useStore, CanvasTheme, defaultSettings } from '../store/useStore';
+import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, Share2, MousePointer2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useStore, CanvasTheme, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { RgbaColorPicker } from 'react-colorful';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
 
 const canvasThemes: CanvasTheme[] = ['none', 'dots', 'grid', 'lines'];
+const nodeThemes: NodeTheme[] = ['vscode', 'github', 'glassmorphism', 'cyberpunk', 'minimal', 'gradient', 'pastel', 'terminal', 'material', 'blueprint', 'retro', 'holographic', 'notebook', 'custom', 'nature', 'circuit', 'galaxy', 'glass', 'neon', 'math', 'neural', 'river', 'tree', 'pixel', 'hacker', 'cloud', 'dna', 'lava', 'ocean', 'rhythm', 'rune', 'zen', 'abstract', 'architect'];
+const edgeStyles: EdgeStyle[] = ['curved', 'bezier', 'straight', 'step', 'animated', 'dashed', 'neon', 'double', 'pipe', 'thin', 'orgChart', 'circuit', 'glow', 'zigzag', 'pulse'];
 
 export default function AdvancedPanel() {
   const {
@@ -13,6 +16,16 @@ export default function AdvancedPanel() {
     showMediaPreview, setShowMediaPreview,
     nodeSpread, setNodeSpread,
     nodeSize, setNodeSize,
+    nodeTheme, setNodeTheme,
+    edgeStyle, setEdgeStyle,
+    nodeShape, setNodeShape,
+    nodeColor, setNodeColor,
+    nodeTextColor, setNodeTextColor,
+    nodeGradientColor1, setNodeGradientColor1,
+    nodeGradientColor2, setNodeGradientColor2,
+    useNodeGradient, setUseNodeGradient,
+    nodeGradientAngle, setNodeGradientAngle,
+    nodeGradientType, setNodeGradientType,
     canvasTheme, setCanvasTheme,
     canvasBackgroundColor, setCanvasBackgroundColor,
     canvasPatternColor, setCanvasPatternColor,
@@ -32,31 +45,66 @@ export default function AdvancedPanel() {
 
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [showPatternPicker, setShowPatternPicker] = useState(false);
+  const [showNodeColorPicker, setShowNodeColorPicker] = useState(false);
+  const [showNodeTextColorPicker, setShowNodeTextColorPicker] = useState(false);
+  const [showNodeGradient1Picker, setShowNodeGradient1Picker] = useState(false);
+  const [showNodeGradient2Picker, setShowNodeGradient2Picker] = useState(false);
 
   const bgPickerRef = useRef<HTMLDivElement>(null);
   const patternPickerRef = useRef<HTMLDivElement>(null);
+  const nodeColorPickerRef = useRef<HTMLDivElement>(null);
+  const nodeTextColorPickerRef = useRef<HTMLDivElement>(null);
+  const nodeGradient1PickerRef = useRef<HTMLDivElement>(null);
+  const nodeGradient2PickerRef = useRef<HTMLDivElement>(null);
+
   const bgButtonRef = useRef<HTMLButtonElement>(null);
   const patternButtonRef = useRef<HTMLButtonElement>(null);
+  const nodeColorButtonRef = useRef<HTMLButtonElement>(null);
+  const nodeTextColorButtonRef = useRef<HTMLButtonElement>(null);
+  const nodeGradient1ButtonRef = useRef<HTMLButtonElement>(null);
+  const nodeGradient2ButtonRef = useRef<HTMLButtonElement>(null);
 
   const [bgPickerStyle, setBgPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
   const [patternPickerStyle, setPatternPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+  const [nodeColorPickerStyle, setNodeColorPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+  const [nodeTextColorPickerStyle, setNodeTextColorPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+  const [nodeGradient1PickerStyle, setNodeGradient1PickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+  const [nodeGradient2PickerStyle, setNodeGradient2PickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+
+  const [isThemeExpanded, setIsThemeExpanded] = useState(false);
+  const [isLinkStyleExpanded, setIsLinkStyleExpanded] = useState(false);
+
+  const togglePicker = (picker: string) => {
+    setShowBgPicker(picker === 'bg' ? !showBgPicker : false);
+    setShowPatternPicker(picker === 'pattern' ? !showPatternPicker : false);
+    setShowNodeColorPicker(picker === 'node' ? !showNodeColorPicker : false);
+    setShowNodeTextColorPicker(picker === 'text' ? !showNodeTextColorPicker : false);
+    setShowNodeGradient1Picker(picker === 'g1' ? !showNodeGradient1Picker : false);
+    setShowNodeGradient2Picker(picker === 'g2' ? !showNodeGradient2Picker : false);
+
+    // Reset styles for those being closed
+    if (picker !== 'bg') setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+    if (picker !== 'pattern') setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+    if (picker !== 'node') setNodeColorPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+    if (picker !== 'text') setNodeTextColorPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+    if (picker !== 'g1') setNodeGradient1PickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+    if (picker !== 'g2') setNodeGradient2PickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+  };
 
   useLayoutEffect(() => {
     const updatePosition = (buttonRef: React.RefObject<HTMLButtonElement>, setStyle: React.Dispatch<React.SetStateAction<React.CSSProperties>>) => {
       if (!buttonRef.current) return;
       const rect = buttonRef.current.getBoundingClientRect();
-      const pickerWidth = 225; // Approximate ChromePicker width
-      const pickerHeight = 250; // Approximate ChromePicker height
+      const pickerWidth = 240; 
+      const pickerHeight = 280; 
       
       let top = rect.bottom + 8;
       let left = rect.right - pickerWidth;
       
-      // Auto-adjust vertical if overflowing bottom
       if (top + pickerHeight > window.innerHeight) {
         top = rect.top - pickerHeight - 8;
       }
       
-      // Auto-adjust horizontal if overflowing left
       if (left < 10) {
         left = 10;
       }
@@ -72,17 +120,22 @@ export default function AdvancedPanel() {
 
     if (showBgPicker) updatePosition(bgButtonRef, setBgPickerStyle);
     if (showPatternPicker) updatePosition(patternButtonRef, setPatternPickerStyle);
+    if (showNodeColorPicker) updatePosition(nodeColorButtonRef, setNodeColorPickerStyle);
+    if (showNodeTextColorPicker) updatePosition(nodeTextColorButtonRef, setNodeTextColorPickerStyle);
+    if (showNodeGradient1Picker) updatePosition(nodeGradient1ButtonRef, setNodeGradient1PickerStyle);
+    if (showNodeGradient2Picker) updatePosition(nodeGradient2ButtonRef, setNodeGradient2PickerStyle);
     
-    // Auto-update position on window resize
     const handleResize = () => {
       if (showBgPicker) updatePosition(bgButtonRef, setBgPickerStyle);
       if (showPatternPicker) updatePosition(patternButtonRef, setPatternPickerStyle);
+      if (showNodeColorPicker) updatePosition(nodeColorButtonRef, setNodeColorPickerStyle);
+      if (showNodeTextColorPicker) updatePosition(nodeTextColorButtonRef, setNodeTextColorPickerStyle);
+      if (showNodeGradient1Picker) updatePosition(nodeGradient1ButtonRef, setNodeGradient1PickerStyle);
+      if (showNodeGradient2Picker) updatePosition(nodeGradient2ButtonRef, setNodeGradient2PickerStyle);
     };
     
     window.addEventListener('resize', handleResize);
     
-    // Adding scroll listener to the panel container would be ideal, but window resize is usually enough.
-    // For a fixed element, we might want to update position when scrolling the advanced panel.
     const panelNode = bgButtonRef.current?.closest('.overflow-y-auto');
     if (panelNode) {
       panelNode.addEventListener('scroll', handleResize);
@@ -94,31 +147,44 @@ export default function AdvancedPanel() {
         panelNode.removeEventListener('scroll', handleResize);
       }
     };
-  }, [showBgPicker, showPatternPicker]);
+  }, [showBgPicker, showPatternPicker, showNodeColorPicker, showNodeTextColorPicker, showNodeGradient1Picker, showNodeGradient2Picker]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // Don't close if clicking the toggle button itself
-      if (bgButtonRef.current?.contains(event.target as Node) || 
-          patternButtonRef.current?.contains(event.target as Node)) {
-        return;
-      }
-      if (bgPickerRef.current && !bgPickerRef.current.contains(event.target as Node)) {
-        setShowBgPicker(false);
-        setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
-      }
-      if (patternPickerRef.current && !patternPickerRef.current.contains(event.target as Node)) {
-        setShowPatternPicker(false);
-        setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
-      }
+      const isPickerClick = [
+        bgPickerRef, patternPickerRef, 
+        nodeColorPickerRef, nodeTextColorPickerRef, nodeGradient1PickerRef, nodeGradient2PickerRef
+      ].some(ref => ref.current?.contains(event.target as Node));
+
+      const isButtonClick = [
+        bgButtonRef, patternButtonRef, 
+        nodeColorButtonRef, nodeTextColorButtonRef, nodeGradient1ButtonRef, nodeGradient2ButtonRef
+      ].some(ref => ref.current?.contains(event.target as Node));
+
+      if (isPickerClick || isButtonClick) return;
+
+      setShowBgPicker(false);
+      setShowPatternPicker(false);
+      setShowNodeColorPicker(false);
+      setShowNodeTextColorPicker(false);
+      setShowNodeGradient1Picker(false);
+      setShowNodeGradient2Picker(false);
+      
+      setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+      setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+      setNodeColorPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+      setNodeTextColorPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+      setNodeGradient1PickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+      setNodeGradient2PickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
     };
-    if (showBgPicker || showPatternPicker) {
+
+    if (showBgPicker || showPatternPicker || showNodeColorPicker || showNodeTextColorPicker || showNodeGradient1Picker || showNodeGradient2Picker) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showBgPicker, showPatternPicker]);
+  }, [showBgPicker, showPatternPicker, showNodeColorPicker, showNodeTextColorPicker, showNodeGradient1Picker, showNodeGradient2Picker]);
 
   const parseRgba = (color: string) => {
     const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
@@ -160,6 +226,324 @@ export default function AdvancedPanel() {
         </div>
 
         <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
+          {/* Node Appearance Section */}
+          <div className="flex flex-col gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-500/10 text-blue-500 rounded-md shrink-0">
+                <Layers size={18} />
+              </div>
+              <div className="w-full">
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Node Appearance</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Themes, shapes, and custom colors</div>
+              </div>
+            </div>
+
+            {/* Theme Selection */}
+            <div className="mt-1 border-t border-slate-200 dark:border-slate-700/30 pt-2">
+              <button 
+                onClick={() => setIsThemeExpanded(!isThemeExpanded)}
+                className="flex items-center justify-between w-full text-[10px] font-bold tracking-wider text-slate-500 dark:text-slate-500 uppercase mb-1 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+              >
+                <span>Theme</span>
+                {isThemeExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+              
+              <AnimatePresence>
+                {isThemeExpanded && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid grid-cols-3 gap-1.5 min-h-0 pt-1 pb-2">
+                      {nodeThemes.map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setNodeTheme(t)}
+                          title={t}
+                          className={`px-1 py-1 rounded-sm text-[9px] font-medium capitalize truncate transition-all duration-200 border ${
+                            nodeTheme === t
+                              ? 'bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/10'
+                              : 'bg-slate-100/50 dark:bg-slate-900/50 border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Edge Style Selection */}
+            <div className="mt-1 border-t border-slate-200 dark:border-slate-700/30 pt-2">
+              <button 
+                onClick={() => setIsLinkStyleExpanded(!isLinkStyleExpanded)}
+                className="flex items-center justify-between w-full text-[10px] font-bold tracking-wider text-slate-500 dark:text-slate-500 uppercase mb-1 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+              >
+                <span>Link Style</span>
+                {isLinkStyleExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+
+              <AnimatePresence>
+                {isLinkStyleExpanded && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid grid-cols-3 gap-1.5 pt-1 pb-2">
+                      {edgeStyles.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setEdgeStyle(s)}
+                          title={s}
+                          className={`px-1 py-1 rounded-sm text-[9px] font-medium capitalize truncate transition-all duration-200 border ${
+                            edgeStyle === s
+                              ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-500/10'
+                              : 'bg-slate-100/50 dark:bg-slate-900/50 border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Custom Design Section */}
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">Custom Override</span>
+                <div className="flex bg-slate-100 dark:bg-slate-900 rounded-lg p-0.5 border border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => { setUseNodeGradient(false); setNodeTheme('custom'); }}
+                    className={`px-3 py-1 rounded-md text-[9px] font-bold transition-all ${!useNodeGradient ? 'bg-white dark:bg-slate-800 text-blue-500 shadow-sm border border-slate-200 dark:border-slate-700' : 'text-slate-400 hover:text-slate-500'}`}
+                  >
+                    SOLID
+                  </button>
+                  <button
+                    onClick={() => { setUseNodeGradient(true); setNodeTheme('custom'); }}
+                    className={`px-3 py-1 rounded-md text-[9px] font-bold transition-all ${useNodeGradient ? 'bg-white dark:bg-slate-800 text-purple-500 shadow-sm border border-slate-200 dark:border-slate-700' : 'text-slate-400 hover:text-slate-500'}`}
+                  >
+                    GRADIENT
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* Fill Picker(s) */}
+                <div className="flex flex-col gap-1.5 p-2 bg-slate-100/30 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                  <span className="text-[9px] font-bold text-slate-500 dark:text-slate-500 uppercase px-1">Background</span>
+                  <div className="flex items-center gap-2">
+                    {!useNodeGradient ? (
+                      <button
+                        ref={nodeColorButtonRef}
+                        onClick={() => togglePicker('node')}
+                        className="w-full h-8 rounded-lg border border-white dark:border-slate-800 shadow-sm cursor-pointer transition-transform active:scale-95 ring-1 ring-slate-200 dark:ring-slate-700"
+                        style={{ backgroundColor: nodeColor }}
+                      />
+                    ) : (
+                      <div className="flex gap-1 w-full">
+                        <button
+                          ref={nodeGradient1ButtonRef}
+                          onClick={() => togglePicker('g1')}
+                          className="flex-1 h-8 rounded-lg border border-white dark:border-slate-800 shadow-sm cursor-pointer transition-transform active:scale-95 ring-1 ring-slate-200 dark:ring-slate-700"
+                          style={{ backgroundColor: nodeGradientColor1 }}
+                        />
+                        <button
+                          ref={nodeGradient2ButtonRef}
+                          onClick={() => togglePicker('g2')}
+                          className="flex-1 h-8 rounded-lg border border-white dark:border-slate-800 shadow-sm cursor-pointer transition-transform active:scale-95 ring-1 ring-slate-200 dark:ring-slate-700"
+                          style={{ backgroundColor: nodeGradientColor2 }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Text Picker */}
+                <div className="flex flex-col gap-1.5 p-2 bg-slate-100/30 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                  <span className="text-[9px] font-bold text-slate-500 dark:text-slate-500 uppercase px-1">Foreground</span>
+                  <button
+                    ref={nodeTextColorButtonRef}
+                    onClick={() => togglePicker('text')}
+                    className="w-full h-8 rounded-lg border border-white dark:border-slate-800 shadow-sm cursor-pointer transition-transform active:scale-95 ring-1 ring-slate-200 dark:ring-slate-700"
+                    style={{ backgroundColor: nodeTextColor }}
+                  />
+                </div>
+              </div>
+
+              {useNodeGradient && (
+                <div className="mt-2 space-y-2">
+                   {/* Direction & Type Row */}
+                   <div className="grid grid-cols-2 gap-2">
+                     <div className="flex flex-col gap-1 px-1">
+                       <div className="flex justify-between items-center">
+                         <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Angle</span>
+                         <span className="text-[9px] font-mono text-slate-400">{nodeGradientAngle}°</span>
+                       </div>
+                       <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        step="45"
+                        value={nodeGradientAngle}
+                        onChange={(e) => { 
+                          setNodeGradientAngle(parseInt(e.target.value)); 
+                          setNodeTheme('custom');
+                        }}
+                        className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-purple-500"
+                       />
+                     </div>
+
+                     <div className="flex flex-col gap-1 px-1">
+                       <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Style</span>
+                       <div className="flex bg-slate-200 dark:bg-slate-900 rounded-md p-0.5">
+                         {(['linear', 'radial'] as const).map((type) => (
+                           <button
+                             key={type}
+                             onClick={() => {
+                               setNodeGradientType(type);
+                               setNodeTheme('custom');
+                             }}
+                             className={`flex-1 text-[8px] py-0.5 font-bold uppercase transition-all rounded ${nodeGradientType === type ? 'bg-white dark:bg-slate-800 text-purple-500 shadow-sm' : 'text-slate-500 hover:text-slate-400'}`}
+                           >
+                             {type}
+                           </button>
+                         ))}
+                       </div>
+                     </div>
+                   </div>
+
+                   <div className="px-1">
+                      <div className="h-1 w-full rounded-full overflow-hidden shadow-inner bg-slate-200 dark:bg-slate-800">
+                        <div 
+                          className="h-full w-full" 
+                          style={{ 
+                            background: nodeGradientType === 'linear' 
+                              ? `linear-gradient(${nodeGradientAngle}deg, ${nodeGradientColor1}, ${nodeGradientColor2})`
+                              : `radial-gradient(circle at center, ${nodeGradientColor1}, ${nodeGradientColor2})`
+                          }} 
+                        />
+                      </div>
+                   </div>
+                </div>
+              )}
+            </div>
+
+
+            {/* Portals for Pickers */}
+            {showNodeColorPicker && createPortal(
+              <div style={nodeColorPickerStyle} ref={nodeColorPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-2xl z-[10000]">
+                <RgbaColorPicker
+                  color={parseRgba(nodeColor)}
+                  onChange={(color) => {
+                    handleColorChange(color, setNodeColor);
+                    setNodeTheme('custom');
+                  }}
+                />
+                <div className="mt-4 grid grid-cols-5 gap-1.5">
+                   {['rgba(59, 130, 246, 1)', 'rgba(16, 185, 129, 1)', 'rgba(245, 158, 11, 1)', 'rgba(239, 68, 68, 1)', 'rgba(139, 92, 246, 1)', 'rgba(236, 72, 153, 1)', 'rgba(20, 184, 166, 1)', 'rgba(100, 116, 139, 1)', 'rgba(255, 255, 255, 1)', 'rgba(0, 0, 0, 1)'].map(c => (
+                     <button key={c} onClick={() => { setNodeColor(c); setNodeTheme('custom'); }} className="w-8 h-8 rounded-md border border-white/10 hover:scale-110 transition-transform" style={{ backgroundColor: c }} />
+                   ))}
+                </div>
+              </div>,
+              document.body
+            )}
+
+            {showNodeTextColorPicker && createPortal(
+              <div style={nodeTextColorPickerStyle} ref={nodeTextColorPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-2xl z-[10000]">
+                <RgbaColorPicker
+                  color={parseRgba(nodeTextColor)}
+                  onChange={(color) => {
+                    handleColorChange(color, setNodeTextColor);
+                    setNodeTheme('custom');
+                  }}
+                />
+                <div className="mt-4 grid grid-cols-5 gap-1.5">
+                   {['rgba(255, 255, 255, 1)', 'rgba(241, 245, 249, 1)', 'rgba(148, 163, 184, 1)', 'rgba(71, 85, 105, 1)', 'rgba(15, 23, 42, 1)', 'rgba(59, 130, 246, 1)', 'rgba(239, 68, 68, 1)', 'rgba(245, 158, 11, 1)', 'rgba(16, 185, 129, 1)', 'rgba(236, 72, 153, 1)'].map(c => (
+                     <button key={c} onClick={() => { setNodeTextColor(c); setNodeTheme('custom'); }} className="w-8 h-8 rounded-md border border-white/10 hover:scale-110 transition-transform" style={{ backgroundColor: c }} />
+                   ))}
+                </div>
+              </div>,
+              document.body
+            )}
+
+            {showNodeGradient1Picker && createPortal(
+              <div style={nodeGradient1PickerStyle} ref={nodeGradient1PickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-2xl z-[10000]">
+                <RgbaColorPicker
+                  color={parseRgba(nodeGradientColor1)}
+                  onChange={(color) => {
+                    handleColorChange(color, setNodeGradientColor1);
+                    setNodeTheme('custom');
+                  }}
+                />
+              </div>,
+              document.body
+            )}
+
+            {showNodeGradient2Picker && createPortal(
+              <div style={nodeGradient2PickerStyle} ref={nodeGradient2PickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-2xl z-[10000]">
+                <RgbaColorPicker
+                  color={parseRgba(nodeGradientColor2)}
+                  onChange={(color) => {
+                    handleColorChange(color, setNodeGradientColor2);
+                    setNodeTheme('custom');
+                  }}
+                />
+              </div>,
+              document.body
+            )}
+
+            
+            {/* Global Theme Swatches */}
+             <div className="mt-4 border-t border-slate-200 dark:border-slate-700/50 pt-3">
+               <span className="text-[10px] font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase mb-2 block text-center">Presets</span>
+               <div className="flex flex-wrap justify-center gap-2">
+                 {[
+                   'rgba(30, 41, 59, 1)',   // Slate
+                   'rgba(59, 130, 246, 1)', // Blue
+                   'rgba(16, 185, 129, 1)', // Emerald
+                   'rgba(79, 70, 229, 1)', // Indigo
+                   'rgba(147, 51, 234, 1)', // Violet
+                   'rgba(236, 72, 153, 1)', // Pink
+                   'rgba(244, 63, 94, 1)',  // Rose
+                   'rgba(245, 158, 11, 1)', // Amber
+                   'rgba(20, 184, 166, 1)', // Teal
+                   'rgba(255, 255, 255, 1)', // White
+                   'rgba(10, 10, 10, 1)'    // Black
+                 ].map(c => (
+                   <button 
+                    key={c} 
+                    onClick={() => {
+                      setNodeTheme('custom');
+                      if (useNodeGradient) {
+                        setNodeGradientColor1(c);
+                      } else {
+                        setNodeColor(c);
+                      }
+                    }} 
+                    title="Apply to node fill"
+                    className={`w-6 h-6 rounded-md border transition-all cursor-pointer hover:scale-110 active:scale-95 ${
+                      (useNodeGradient ? nodeGradientColor1 === c : nodeColor === c) 
+                        ? 'border-blue-500 ring-2 ring-blue-500/20' 
+                        : 'border-slate-300 dark:border-slate-800'
+                    } shadow-sm`} 
+                    style={{ backgroundColor: c }} 
+                  />
+                 ))}
+               </div>
+          </div>
+        </div>
+
           {/* Drawing Toolbar Settings */}
           <div className="flex flex-col gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
             <div className="flex items-center justify-between">
@@ -347,182 +731,144 @@ export default function AdvancedPanel() {
             </div>
           </div>
 
-          {/* Canvas Theme Selector */}
-          <div className="flex flex-col p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 gap-3 text-slate-900 dark:text-slate-100">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md shrink-0">
-                <LayoutTemplate size={18} />
-              </div>
-              <div className="w-full">
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                  <span>Canvas Background</span>
-                  <button onClick={() => setCanvasTheme(defaultSettings.canvasTheme)} title="Reset" className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-                    <RotateCcw size={12} />
-                  </button>
+          {/* Canvas Design Section */}
+          <div className="flex flex-col gap-3 p-3 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-pink-500/10 text-pink-500 rounded-xl border border-pink-500/10">
+                  <Palette size={18} />
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Choose a background pattern for the canvas.</div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold tracking-tight">Canvas Design</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 -mt-0.5">Colors and pattern styles</span>
+                </div>
               </div>
+              <button 
+                onClick={() => {
+                  setCanvasTheme(defaultSettings.canvasTheme);
+                  setCanvasBackgroundColor(defaultSettings.canvasBackgroundColor);
+                  setCanvasPatternColor(defaultSettings.canvasPatternColor);
+                }} 
+                title="Reset All" 
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <RotateCcw size={14} />
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              {canvasThemes.map((theme) => (
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1.5 p-2 bg-slate-100/30 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                <span className="text-[9px] font-bold text-slate-500 uppercase px-1">Backdrop</span>
                 <button
-                  key={theme}
-                  onClick={() => setCanvasTheme(theme)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${canvasTheme === theme
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 border border-slate-300 dark:border-slate-700'
-                    }`}
-                >
-                  {theme}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-4 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800/80">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-pink-500/10 text-pink-500 dark:text-pink-400 rounded-xl border border-pink-500/10">
-                    <Palette size={20} />
-                  </div>
-                  <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-200 tracking-tight">Canvas Colors</span>
-                </div>
-                <button 
-                  onClick={() => {
-                    setCanvasBackgroundColor(defaultSettings.canvasBackgroundColor);
-                    setCanvasPatternColor(defaultSettings.canvasPatternColor);
-                  }} 
-                  title="Reset Colors" 
-                  className="p-1.5 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  <RotateCcw size={16} />
-                </button>
-              </div>
-
-              <div className="space-y-4 pt-1">
-                <div className="flex items-center justify-between group">
-                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Background</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      ref={bgButtonRef}
-                      onClick={() => {
-                        if (showBgPicker) {
-                          setShowBgPicker(false);
-                          setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
-                        } else {
-                          setShowBgPicker(true); 
-                          setShowPatternPicker(false);
-                        }
-                      }}
-                      className="w-10 h-8 rounded-lg border border-slate-700 bg-slate-900/50 shadow-sm transition-all hover:border-slate-500 cursor-pointer overflow-hidden"
-                      style={{ backgroundColor: canvasBackgroundColor }}
+                  ref={bgButtonRef}
+                  onClick={() => togglePicker('bg')}
+                  className="w-full h-8 rounded-lg border border-white dark:border-slate-800 shadow-sm transition-transform active:scale-95 cursor-pointer ring-1 ring-slate-200 dark:ring-slate-700"
+                  style={{ backgroundColor: canvasBackgroundColor }}
+                />
+                {showBgPicker && createPortal(
+                  <div style={bgPickerStyle} ref={bgPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-2xl z-[10000]">
+                    <RgbaColorPicker
+                      color={parseRgba(canvasBackgroundColor)}
+                      onChange={(color) => handleColorChange(color, setCanvasBackgroundColor)}
                     />
-                    {showBgPicker && createPortal(
-                      <div style={bgPickerStyle} ref={bgPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[10000]">
-                        <RgbaColorPicker
-                          color={parseRgba(canvasBackgroundColor)}
-                          onChange={(color) => handleColorChange(color, setCanvasBackgroundColor)}
-                        />
-                        <div className="mt-4 flex items-center gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[10px] font-mono text-slate-300">
-                          <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: canvasBackgroundColor }} />
-                          {canvasBackgroundColor}
-                        </div>
-                      </div>,
-                      document.body
-                    )}
-                  </div>
-                </div>
-
-                {canvasTheme !== 'none' && (
-                  <div className="flex items-center justify-between group">
-                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Pattern Shape</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        ref={patternButtonRef}
-                        onClick={() => {
-                          if (showPatternPicker) {
-                            setShowPatternPicker(false);
-                            setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
-                          } else {
-                            setShowPatternPicker(true);
-                            setShowBgPicker(false);
-                          }
-                        }}
-                        className="w-10 h-8 rounded-lg border border-slate-700 bg-slate-900/50 shadow-sm transition-all hover:border-slate-500 cursor-pointer overflow-hidden"
-                        style={{ backgroundColor: canvasPatternColor }}
-                      />
-                      {showPatternPicker && createPortal(
-                        <div style={patternPickerStyle} ref={patternPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[10000]">
-                          <RgbaColorPicker
-                            color={parseRgba(canvasPatternColor)}
-                            onChange={(color) => handleColorChange(color, setCanvasPatternColor)}
-                          />
-                          <div className="mt-4 flex items-center gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[10px] font-mono text-slate-300">
-                            <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: canvasPatternColor }} />
-                            {canvasPatternColor}
-                          </div>
-                        </div>,
-                        document.body
-                      )}
-                    </div>
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
 
-              {/* Background Image Sub-section */}
-              <div className="mt-6 pt-6 border-t border-slate-300 dark:border-slate-800/80 space-y-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-500/10 text-blue-500 dark:text-blue-400 rounded-xl border border-blue-500/10">
-                      <ImageIcon size={20} />
-                    </div>
-                    <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-200 tracking-tight">Background Image Settings</span>
+              <div className="flex flex-col gap-1.5 p-2 bg-slate-100/30 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                <span className="text-[9px] font-bold text-slate-500 uppercase px-1">Overlay</span>
+                <button
+                  ref={patternButtonRef}
+                  onClick={() => togglePicker('pattern')}
+                  className="w-full h-8 rounded-lg border border-white dark:border-slate-800 shadow-sm transition-transform active:scale-95 cursor-pointer ring-1 ring-slate-200 dark:ring-slate-700 disabled:opacity-30"
+                  disabled={canvasTheme === 'none'}
+                  style={{ backgroundColor: canvasPatternColor }}
+                />
+                {showPatternPicker && createPortal(
+                  <div style={patternPickerStyle} ref={patternPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-2xl z-[10000]">
+                    <RgbaColorPicker
+                      color={parseRgba(canvasPatternColor)}
+                      onChange={(color) => handleColorChange(color, setCanvasPatternColor)}
+                    />
+                  </div>,
+                  document.body
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 custom-scrollbar px-1">
+              {(['none', 'dots', 'grid', 'lines'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setCanvasTheme(t)}
+                  className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all border shrink-0 ${
+                    canvasTheme === t
+                      ? 'bg-pink-500/10 border-pink-500/40 text-pink-600 dark:text-pink-400 ring-1 ring-pink-500/10'
+                      : 'bg-slate-100/50 dark:bg-slate-900/50 border-transparent text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+
+
+
+
+
+            <div className="mt-2 pt-4 border-t border-slate-200 dark:border-slate-800/50 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-500/10 text-blue-500 dark:text-blue-400 rounded-xl border border-blue-500/10">
+                    <ImageIcon size={18} />
                   </div>
-                  <button 
-                    onClick={() => {
-                      setCanvasBackgroundImage(defaultSettings.canvasBackgroundImage);
-                      setCanvasBackgroundBlur(defaultSettings.canvasBackgroundBlur);
-                    }} 
-                    title="Reset Background Image" 
-                    className="p-1.5 text-slate-400 hover:text-slate-200 transition-colors"
-                  >
-                    <RotateCcw size={16} />
-                  </button>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-200">Backdrop Image</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 -mt-0.5">Use a custom image URL</span>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => {
+                    setCanvasBackgroundImage(defaultSettings.canvasBackgroundImage);
+                    setCanvasBackgroundBlur(defaultSettings.canvasBackgroundBlur);
+                  }} 
+                  title="Reset Image" 
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              </div>
+              
+              <div className="space-y-3 px-1">
+                <input 
+                  type="text" 
+                  value={canvasBackgroundImage}
+                  onChange={(e) => setCanvasBackgroundImage(e.target.value)}
+                  placeholder="https://example.com/image.png"
+                  className="w-full bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/20 dark:focus:ring-purple-500/40 transition-all font-mono"
+                />
                 
                 <div className="space-y-2">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-[0.05em] uppercase">Image URL</span>
-                  <input 
-                    type="text" 
-                    value={canvasBackgroundImage}
-                    onChange={(e) => setCanvasBackgroundImage(e.target.value)}
-                    placeholder="https://example.com/image.png"
-                    className="w-full bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/40 transition-all font-mono"
-                  />
-                </div>
-                
-                <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-[0.05em] uppercase">Image Blur</span>
-                    <div className="bg-slate-200 dark:bg-slate-900/80 px-3 py-1.5 rounded-lg text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-800 min-w-[40px] text-center">
-                      {canvasBackgroundBlur}px
-                    </div>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter px-1">Blur Intensity</span>
+                    <span className="text-[10px] font-mono text-slate-400">{canvasBackgroundBlur}px</span>
                   </div>
-                  <div className="px-1">
-                    <input 
-                      type="range" 
-                      min="0" max="20" step="1"
-                      value={canvasBackgroundBlur}
-                      onChange={(e) => setCanvasBackgroundBlur(parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
-                  </div>
+                  <input 
+                    type="range" 
+                    min="0" max="20" step="1"
+                    value={canvasBackgroundBlur}
+                    onChange={(e) => setCanvasBackgroundBlur(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-full appearance-none cursor-pointer accent-purple-500"
+                  />
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Global Reset and Shortcuts */}
+          {/* Global Reset and Shortcuts */}
         <div className="p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-[#0b1120] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex gap-2">
           <button
             onClick={() => setIsShortcutsOpen(true)}

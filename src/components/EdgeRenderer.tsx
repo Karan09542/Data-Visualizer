@@ -4,6 +4,7 @@ interface EdgeProps {
   key?: React.Key;
   d: string;
   style: string;
+  nodeTheme?: string;
   isHighlighted?: boolean;
   isDimmed?: boolean;
   isSelected?: boolean;
@@ -12,7 +13,7 @@ interface EdgeProps {
   layoutMode?: string;
 }
 
-export default function EdgeRenderer({ d, style, isHighlighted, isDimmed, isSelected, source, target, layoutMode }: EdgeProps) {
+export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected, source, target, layoutMode }: EdgeProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   let stroke = "#334155";
@@ -24,6 +25,7 @@ export default function EdgeRenderer({ d, style, isHighlighted, isDimmed, isSele
     filter: 'none'
   };
 
+  // Base style logic
   if (style === 'dashed') {
     strokeDasharray = "5,5";
   } else if (style === 'neon') {
@@ -36,9 +38,8 @@ export default function EdgeRenderer({ d, style, isHighlighted, isDimmed, isSele
   } else if (style === 'pulse') {
     strokeDasharray = "4,4";
     strokeWidth = 2;
-    // Animation might not export, but filter will
     inlines.filter = "drop-shadow(0 0 4px " + stroke + ")";
-    inlines.animation = "pulse 1.5s ease-in-out infinite"; // Not easily exported but fine
+    inlines.animation = "pulse 1.5s ease-in-out infinite";
   } else if (style === 'circuit') {
     stroke = "#10b981";
     strokeWidth = 1.2;
@@ -55,6 +56,49 @@ export default function EdgeRenderer({ d, style, isHighlighted, isDimmed, isSele
   } else if (style === 'animated') {
     strokeDasharray = "8,8";
     inlines.animation = "dash 20s linear infinite"; 
+  }
+
+  // Theme-specific overrides if style is default or specifically requested
+  if (nodeTheme === 'nature') {
+    stroke = "#6b8e23";
+    strokeWidth = 2;
+    // Living branches logic: more organic feel
+  } else if (nodeTheme === 'circuit') {
+    stroke = "#00f3ff";
+    strokeWidth = 1;
+    strokeDasharray = "50,10,5,10";
+    inlines.filter = "drop-shadow(0 0 2px rgba(0,243,255,0.5))";
+  } else if (nodeTheme === 'galaxy') {
+    stroke = "rgba(168, 85, 247, 0.4)";
+    strokeWidth = 1;
+    inlines.filter = "drop-shadow(0 0 5px rgba(168, 85, 247, 0.3))";
+  } else if (nodeTheme === 'neon') {
+    stroke = "#ff00ff";
+    inlines.filter = "drop-shadow(0 0 8px #ff00ff)";
+  } else if (nodeTheme === 'lava') {
+    stroke = "#ff4500";
+    strokeWidth = 2.5;
+    inlines.filter = "drop-shadow(0 0 10px #ff4500)";
+  } else if (nodeTheme === 'ocean') {
+    stroke = "#005f73";
+    strokeWidth = 1.5;
+    inlines.filter = "drop-shadow(0 0 8px rgba(0,95,115,0.4))";
+  } else if (nodeTheme === 'hacker') {
+    stroke = "#00ff41";
+    strokeWidth = 0.8;
+  } else if (nodeTheme === 'neural') {
+    stroke = "rgba(96, 165, 250, 0.5)";
+    strokeDasharray = "2,4";
+    inlines.animation = "dash 5s linear infinite";
+  } else if (nodeTheme === 'river') {
+    stroke = "#00b4d8";
+    strokeWidth = 3;
+    inlines.opacity = 0.6;
+    strokeDasharray = "10,5";
+    inlines.animation = "flow 2s linear infinite";
+  } else if (nodeTheme === 'abstract') {
+    stroke = "url(#abstract-gradient)"; // Need to define this in GraphVisualizer
+    strokeWidth = 2;
   }
 
   if (isSelected) {
