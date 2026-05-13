@@ -6,6 +6,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @layer utilities {
+  .custom-scrollbar {
+    scrollbar-gutter: stable both-edges;
+  }
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;

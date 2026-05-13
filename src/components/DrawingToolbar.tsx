@@ -6,7 +6,7 @@ import {
   Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity,
   Settings, Zap, CheckSquare, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
-  Sigma, X, ChevronUp, Palette, FunctionSquare, Eye, EyeOff
+  Sigma, X, ChevronUp, Palette, FunctionSquare, Eye, EyeOff, Copy, Check, Plus
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
@@ -15,9 +15,17 @@ import { HexAlphaColorPicker } from 'react-colorful';
 import katex from 'katex';
 import * as math from 'mathjs';
 
-const LaTeXPreview = ({ expression, className = "", onSelect }: { expression: string, className?: string, onSelect?: () => void }) => {
+const LaTeXPreview = React.memo(({ expression, className = "", onSelect }: { expression: string, className?: string, onSelect?: () => void }) => {
   const [tex, setTex] = useState('');
   const [isVisible, setIsVisible] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(tex);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   useEffect(() => {
     if (!expression) {
@@ -56,16 +64,25 @@ const LaTeXPreview = ({ expression, className = "", onSelect }: { expression: st
   if (!tex) return null;
 
   return (
-    <div className={`group relative p-3 bg-white/5 dark:bg-slate-900/50 border border-slate-200/20 dark:border-slate-800/50 rounded-xl flex flex-col items-center gap-1.5 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200 ${className}`}>
+    <div className={`group relative p-3 bg-slate-50 dark:bg-[#121A2F]/80 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col items-center gap-1.5 backdrop-blur-md shadow-sm dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] animate-in fade-in zoom-in-95 duration-200 ${className}`}>
       <div className="w-full flex items-center justify-between mb-1">
-        <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/50">LaTeX Preview</span>
-        <button 
-          onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
-          className="p-1 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-blue-400"
-          title={isVisible ? "Hide Preview" : "Show Preview"}
-        >
-          {isVisible ? <Eye size={10} /> : <EyeOff size={10} />}
-        </button>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-600/70 dark:text-blue-500/50">LaTeX Preview</span>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={handleCopy}
+            className="p-1 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-blue-400"
+            title="Copy LaTeX"
+          >
+            {copied ? <Check size={8} className="text-green-500" /> : <Copy size={8} />}
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
+            className="p-1 hover:bg-white/10 rounded transition-colors text-slate-500 hover:text-blue-400"
+            title={isVisible ? "Hide Preview" : "Show Preview"}
+          >
+            {isVisible ? <Eye size={8} /> : <EyeOff size={8} />}
+          </button>
+        </div>
       </div>
       
       {isVisible && (
@@ -84,22 +101,22 @@ const LaTeXPreview = ({ expression, className = "", onSelect }: { expression: st
       )}
     </div>
   );
-};
+});
 
 const TOOLS: { id: DrawingTool; icon: React.ReactNode; label: string }[] = [
-  { id: 'select', icon: <MousePointer2 size={16} />, label: 'Select' },
-  { id: 'pen', icon: <PenTool size={16} />, label: 'Pen' },
-  { id: 'highlighter', icon: <Highlighter size={16} />, label: 'Highlighter' },
-  { id: 'straight-line', icon: <Minus size={16} />, label: 'Line' },
-  { id: 'arrow', icon: <ArrowRight size={16} />, label: 'Arrow' },
-  { id: 'rectangle', icon: <Square size={16} />, label: 'Rectangle' },
-  { id: 'circle', icon: <Circle size={16} />, label: 'Circle' },
-  { id: 'triangle', icon: <Triangle size={16} />, label: 'Triangle' },
-  { id: 'sine-wave', icon: <Waves size={16} />, label: 'Sine Wave' },
-  { id: 'function-brush', icon: <Sigma size={16} />, label: 'Function Brush' },
-  { id: 'square-wave', icon: <Activity size={16} />, label: 'Square Wave' },
-  { id: 'triangle-wave', icon: <Activity size={16} className="rotate-90" />, label: 'Triangle Wave' },
-  { id: 'eraser', icon: <Eraser size={16} />, label: 'Eraser' },
+  { id: 'select', icon: <MousePointer2 size={14} />, label: 'Select' },
+  { id: 'pen', icon: <PenTool size={14} />, label: 'Pen' },
+  { id: 'highlighter', icon: <Highlighter size={14} />, label: 'Highlighter' },
+  { id: 'straight-line', icon: <Minus size={14} />, label: 'Line' },
+  { id: 'arrow', icon: <ArrowRight size={14} />, label: 'Arrow' },
+  { id: 'rectangle', icon: <Square size={14} />, label: 'Rectangle' },
+  { id: 'circle', icon: <Circle size={14} />, label: 'Circle' },
+  { id: 'triangle', icon: <Triangle size={14} />, label: 'Triangle' },
+  { id: 'sine-wave', icon: <Waves size={14} />, label: 'Sine Wave' },
+  { id: 'function-brush', icon: <Sigma size={14} />, label: 'Function Brush' },
+  { id: 'square-wave', icon: <Activity size={14} />, label: 'Square Wave' },
+  { id: 'triangle-wave', icon: <Activity size={14} className="rotate-90" />, label: 'Triangle Wave' },
+  { id: 'eraser', icon: <Eraser size={14} />, label: 'Eraser' },
 ];
 
 const BRUSHES: { id: BrushStyle; label: string }[] = [
@@ -133,6 +150,7 @@ const FUNCTION_PRESETS = [
   { label: 'Spiral (Par)', expr: 'x(t)=t/5*cos(t); y(t)=t/5*sin(t)' },
   { label: 'Butterfly (Par)', expr: 'x(t)=sin(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5); y(t)=cos(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5)' },
   { label: 'Waves (Field)', expr: 'sin(x*y + t)' },
+  { label: 'Circle Wave', expr: 'r = 1 + 0.2*sign(sin(5*theta))' },
   { label: 'Star (Polar)', expr: 'r = 1 + 0.5*sin(5*theta)' },
   { label: 'Damped Sine', expr: 'exp(-0.1*x) * sin(x)' },
 ];
@@ -192,15 +210,22 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expressionCopied, setExpressionCopied] = useState(false);
   const mobileSearchRef = useRef<HTMLInputElement>(null);
   const mobileMainInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCopyExpression = () => {
+    navigator.clipboard.writeText(store.functionExpression);
+    setExpressionCopied(true);
+    setTimeout(() => setExpressionCopied(false), 2000);
+  };
   
   if (!store.isToolbarVisible) return null;
 
   const currentToolLabel = TOOLS.find(t => t.id === store.activeTool)?.label || 'Tool';
   const currentToolIcon = TOOLS.find(t => t.id === store.activeTool)?.icon;
 
-  const scrollbarClasses = "scrollbar-none [&::-webkit-scrollbar]:hidden";
+  const scrollbarClasses = "custom-scrollbar";
 
   const handleClear = () => {
     store.clearAnnotations();
@@ -215,47 +240,47 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2"
         style={{ opacity: store.toolbarOpacity, visibility: store.toolbarOpacity < 0.05 ? 'hidden' : 'visible' }}
       >
-        <div className="flex items-center gap-1.5 bg-[#0d131f]/90 backdrop-blur border border-slate-800 shadow-2xl rounded-full p-2 origin-bottom transition-all">
+        <div className="flex items-center gap-1.5 bg-white/90 dark:bg-[#0d131f]/90 backdrop-blur border border-slate-200 dark:border-slate-800 shadow-2xl rounded-full p-2 origin-bottom transition-all">
           <button
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2 pl-3.5 pr-4 py-2 bg-blue-500/20 text-blue-400 rounded-full font-semibold text-[14px] transition-transform active:scale-95 border border-blue-500/30"
+            className="flex items-center gap-2 pl-3.5 pr-4 py-2 bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-full font-semibold text-[14px] transition-transform active:scale-95 border border-blue-100 dark:border-blue-500/30"
           >
-            {currentToolIcon && React.cloneElement(currentToolIcon as React.ReactElement<any>, { size: 18 })}
+            {currentToolIcon && React.cloneElement(currentToolIcon as React.ReactElement<any>, { size: 16 })}
             <span className="max-md:hidden">{currentToolLabel}</span>
-            <ChevronUp size={16} className="opacity-50" />
+            <ChevronUp size={14} className="opacity-50" />
           </button>
           
-          <div className="w-[1px] h-6 bg-slate-700 mx-0.5" />
+          <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-700 mx-0.5" />
           
           <button
             disabled={store.historyIndex <= 0}
             onClick={() => store.undo()}
-            className="p-2.5 text-slate-400 hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
+            className="p-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
           >
-            <Undo2 size={18} />
+            <Undo2 size={16} />
           </button>
           
           <button
             disabled={store.historyIndex >= store.history.length - 1}
             onClick={() => store.redo()}
-            className="p-2.5 text-slate-400 hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
+            className="p-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 rounded-full transition-transform active:scale-95"
           >
-            <Redo2 size={18} />
+            <Redo2 size={16} />
           </button>
 
           <button
             onClick={handleClear}
-            className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-transform active:scale-95"
+            className="p-2.5 text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-transform active:scale-95"
             title="Clear All"
           >
-            <Trash2 size={18} />
+            <Trash2 size={16} />
           </button>
 
           <button 
             onClick={() => store.setIsToolbarVisible(false)}
-            className="p-2.5 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-950/40 transition-transform active:scale-95 ml-0.5"
+            className="p-2.5 rounded-full text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-transform active:scale-95 ml-0.5"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
       </div>
@@ -276,7 +301,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full bg-[#0b1120] rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-slate-800 pointer-events-auto relative z-10 flex flex-col max-h-[75vh] text-slate-200 font-sans"
+              className="w-full bg-white dark:bg-[#0b1120] rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-slate-200 dark:border-slate-800 pointer-events-auto relative z-10 flex flex-col max-h-[75vh] text-slate-800 dark:text-slate-200 font-sans"
             >
               <div 
                 className="shrink-0 pt-4 pb-2 cursor-pointer flex justify-center"
@@ -289,28 +314,28 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                 
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6 mt-2">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-[#E2E8F0]">Drawing Tools</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-800 dark:text-[#E2E8F0]">Drawing Tools</h3>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => store.undo()}
                       disabled={store.historyIndex <= 0}
                       className="text-slate-400 hover:text-slate-200 disabled:opacity-30 transition-colors"
                     >
-                      <Undo2 size={18} />
+                      <Undo2 size={16} />
                     </button>
                     <button
                       onClick={() => store.redo()}
                       disabled={store.historyIndex >= store.history.length - 1}
                       className="text-slate-400 hover:text-slate-200 disabled:opacity-30 transition-colors"
                     >
-                      <Redo2 size={18} />
+                      <Redo2 size={16} />
                     </button>
                     <div className="w-[1px] h-5 bg-slate-700 mx-1"></div>
                     <button
                       onClick={handleClear}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] uppercase font-bold tracking-wider text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-full transition-colors border border-red-500/30"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={12} />
                       Clear
                     </button>
                   </div>
@@ -322,17 +347,17 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                     {TOOLS.map((t, idx) => {
                       const isActive = store.activeTool === t.id;
                       return (
-                        <button
-                          key={t.id}
-                          onClick={() => store.setActiveTool(t.id)}
-                          className={`flex flex-col items-center justify-center gap-1 w-[60px] h-[64px] rounded-xl transition-all shrink-0 snap-start border ${
-                            isActive 
-                              ? 'text-blue-500 border-blue-600 bg-[#0F1C3F] shadow-[0_0_15px_rgba(37,99,235,0.15)] scale-100' 
-                              : 'text-slate-400 border-slate-800 bg-[#121A2F] hover:bg-[#162038]'
-                          }`}
-                        >
+                          <button
+                            key={t.id}
+                            onClick={() => store.setActiveTool(t.id)}
+                            className={`flex flex-col items-center justify-center gap-1 w-[60px] h-[64px] rounded-xl transition-all shrink-0 snap-start border ${
+                              isActive 
+                                ? 'text-blue-500 border-blue-600 bg-blue-50 dark:bg-[#0F1C3F] shadow-[0_0_15px_rgba(37,99,235,0.15)] scale-100' 
+                                : 'text-slate-400 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#121A2F] hover:bg-slate-100 dark:hover:bg-[#162038]'
+                            }`}
+                          >
                           <div className={`p-0.5 flex items-center justify-center`}>
-                            {t.icon && React.cloneElement(t.icon as React.ReactElement<any>, { size: 20 })}
+                            {t.icon && React.cloneElement(t.icon as React.ReactElement<any>, { size: 18 })}
                           </div>
                           <span className="text-[9px] font-medium">{t.label}</span>
                         </button>
@@ -375,11 +400,11 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                      </div>
                     
                     {/* Values grouping */}
-                    <div className="flex flex-col gap-6 bg-[#121A2F] p-5 rounded-[24px] border border-slate-800/80">
+                    <div className="flex flex-col gap-6 bg-slate-50 dark:bg-[#121A2F] p-5 rounded-[24px] border border-slate-200 dark:border-slate-800/80">
                       <div className="flex flex-col gap-4">
                          <div className="flex items-center justify-between">
-                           <span className="text-[11px] font-semibold tracking-wider text-slate-300 uppercase">Stroke Width</span>
-                           <span className="text-[11px] text-slate-100 font-mono font-medium bg-slate-800/80 px-2 py-0.5 rounded-md">{store.width}px</span>
+                           <span className="text-[11px] font-semibold tracking-wider text-slate-500 dark:text-slate-300 uppercase">Stroke Width</span>
+                           <span className="text-[11px] text-slate-800 dark:text-slate-100 font-mono font-medium bg-slate-200 dark:bg-slate-800/80 px-2 py-0.5 rounded-md">{store.width}px</span>
                          </div>
                          <Slider min={1} max={50} value={store.width} onValueChange={v => store.setWidth(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
                       </div>
@@ -474,7 +499,29 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                     {/* Function Brush special settings inside drawer */}
                     {store.activeTool === 'function-brush' && (
                       <div className="flex flex-col gap-4 mb-4">
-                         <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#3B82F6]">Function Math</h3>
+                         <div className="flex items-center justify-between">
+                            <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#3B82F6]">Function Math</h3>
+                            {store.functionExpression && (
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={handleCopyExpression}
+                                  className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 rounded-md transition-colors border border-blue-500/20"
+                                  title="Copy Expression"
+                                >
+                                  {expressionCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                                  {expressionCopied ? 'Copied' : 'Copy'}
+                                </button>
+                                <button 
+                                  onClick={() => store.setFunctionExpression('')}
+                                  className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors border border-red-500/20"
+                                  title="Clear"
+                                >
+                                  <Trash2 size={12} />
+                                  Clear
+                                </button>
+                              </div>
+                            )}
+                         </div>
                          
                          <div className="flex items-center bg-[#121A2F] border border-slate-800 rounded-xl overflow-hidden p-1 shadow-inner">
                             <span className="text-blue-500 font-mono font-bold px-3">{"f(x) ="}</span>
@@ -487,7 +534,9 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                               value={store.functionExpression}
                               onChange={(e) => store.setFunctionExpression(e.target.value)}
                             />
-                            <div className="px-3 text-slate-600"><Sigma size={16} /></div>
+                            <div className="flex items-center gap-1 px-2">
+                               <div className="text-slate-600 ml-1 pr-2"><Sigma size={14} /></div>
+                            </div>
                          </div>
                          
                          <LaTeXPreview 
@@ -563,7 +612,11 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                                                 store.setFunctionExpression(item.expr);
                                                 setIsMoreOpen(false);
                                               }}
-                                              className="px-1.5 py-1 text-[9px] text-left rounded bg-[#121A2F] text-slate-300 hover:bg-blue-600/20 hover:text-blue-400 border border-slate-800 hover:border-blue-500/30 transition-all font-mono"
+                                              className={`px-1.5 py-1 text-[9px] text-left rounded transition-all font-mono border ${
+                                                 store.functionExpression === item.expr
+                                                   ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                                   : 'bg-[#121A2F] text-slate-300 hover:bg-blue-600/20 hover:text-blue-400 border-slate-800 hover:border-blue-500/30'
+                                               }`}
                                             >
                                               {item.label}
                                             </button>
@@ -703,6 +756,51 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   );
 }
 
+function InternalScaleSlider({ 
+  initialScale, 
+  toolbarRef, 
+  popoverContentRef, 
+  onScaleCommitted,
+  onAdjusting
+}: { 
+  initialScale: number;
+  toolbarRef: React.RefObject<HTMLDivElement>;
+  popoverContentRef: React.RefObject<HTMLDivElement>;
+  onScaleCommitted: (val: number) => void;
+  onAdjusting: (adjusting: boolean) => void;
+}) {
+  const [val, setVal] = useState(initialScale);
+  
+  useEffect(() => {
+    setVal(initialScale);
+  }, [initialScale]);
+
+  return (
+    <Slider 
+      min={0.5} 
+      max={2} 
+      step={0.01} 
+      value={[val]} 
+      onValueChange={(v) => {
+        const n = Array.isArray(v) ? v[0] : (v as number);
+        setVal(n);
+        onAdjusting(true);
+        if (toolbarRef.current) {
+          toolbarRef.current.style.setProperty('--toolbar-scale', n.toString());
+        }
+        if (popoverContentRef.current) {
+          popoverContentRef.current.style.transform = `scale(${n})`;
+        }
+      }} 
+      onValueCommitted={(v) => {
+        const n = Array.isArray(v) ? v[0] : (v as number);
+        onScaleCommitted(n);
+        onAdjusting(false);
+      }} 
+    />
+  );
+}
+
 export default function DrawingToolbar() {
   const store = useAnnotationStore();
 
@@ -743,8 +841,15 @@ export default function DrawingToolbar() {
   const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function'>('none');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [expressionCopied, setExpressionCopied] = useState(false);
   const desktopSearchRef = useRef<HTMLInputElement>(null);
   const desktopMainInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCopyExpression = () => {
+    navigator.clipboard.writeText(store.functionExpression);
+    setExpressionCopied(true);
+    setTimeout(() => setExpressionCopied(false), 2000);
+  };
 
   const handleClear = () => {
     store.clearAnnotations();
@@ -793,9 +898,112 @@ export default function DrawingToolbar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isToolbarVisible, store]);
 
+  const [localOptionsSize, setLocalOptionsSize] = useState({ w: store.optionsPanelWidth, h: store.optionsPanelHeight });
+  const [localFunctionSize, setLocalFunctionSize] = useState({ w: store.functionPanelWidth, h: store.functionPanelHeight });
+  const [localScale, setLocalScale] = useState(store.toolbarScale);
+  const [isAdjustingScale, setIsAdjustingScale] = useState(false);
+
+  const scaleRef = useRef(localScale);
+  const popoverContentRef = useRef<HTMLDivElement>(null);
+  const optionsSizeRef = useRef(localOptionsSize);
+  const functionSizeRef = useRef(localFunctionSize);
+
+  useLayoutEffect(() => {
+    scaleRef.current = localScale;
+  }, [localScale]);
+
+  useLayoutEffect(() => {
+    optionsSizeRef.current = localOptionsSize;
+  }, [localOptionsSize]);
+
+  useLayoutEffect(() => {
+    functionSizeRef.current = localFunctionSize;
+  }, [localFunctionSize]);
+
+  // Sync store -> local only when NOT interacting
+  useEffect(() => {
+    if (resizingMode === 'none' && !isDragging) {
+      setLocalScale(store.toolbarScale);
+      if (toolbarRef.current) {
+        toolbarRef.current.style.setProperty('--toolbar-scale', store.toolbarScale.toString());
+      }
+    }
+  }, [store.toolbarScale, resizingMode, isDragging]);
+
+  useEffect(() => {
+    if (resizingMode === 'none' && !isDragging) {
+      setLocalOptionsSize({ w: store.optionsPanelWidth, h: store.optionsPanelHeight });
+      if (toolbarRef.current) {
+        toolbarRef.current.style.setProperty('--options-w', `${store.optionsPanelWidth}px`);
+        toolbarRef.current.style.setProperty('--options-h', `${store.optionsPanelHeight}px`);
+      }
+    }
+  }, [store.optionsPanelWidth, store.optionsPanelHeight, resizingMode, isDragging]);
+
+  useEffect(() => {
+    if (resizingMode === 'none' && !isDragging) {
+      setLocalFunctionSize({ w: store.functionPanelWidth, h: store.functionPanelHeight });
+      if (toolbarRef.current) {
+        toolbarRef.current.style.setProperty('--function-w', `${store.functionPanelWidth}px`);
+        toolbarRef.current.style.setProperty('--function-h', `${store.functionPanelHeight}px`);
+      }
+    }
+  }, [store.functionPanelWidth, store.functionPanelHeight, resizingMode, isDragging]);
+
   useLayoutEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
-      if (dragRef.current.isDragging) {
+      // Use the stable scaleRef to avoid re-binding this listener on every scale change
+      const currentScale = scaleRef.current;
+
+      if (resizingMode === 'options') {
+        const dx = e.clientX - dragRef.current.startX;
+        const dy = e.clientY - dragRef.current.startY;
+        const newW = Math.max(200, Math.min(1200, dragRef.current.initX + dx / currentScale));
+        const newH = Math.max(150, Math.min(800, dragRef.current.initY + dy / currentScale));
+        
+        optionsSizeRef.current = { w: newW, h: newH };
+        if (toolbarRef.current) {
+          toolbarRef.current.style.setProperty('--options-w', `${newW}px`);
+          toolbarRef.current.style.setProperty('--options-h', `${newH}px`);
+        }
+        
+        if (document.body.style.cursor !== 'nwse-resize') {
+          document.body.style.cursor = 'nwse-resize';
+        }
+      } else if (resizingMode === 'function') {
+        const dx = e.clientX - dragRef.current.startX;
+        const dy = e.clientY - dragRef.current.startY;
+        const newW = Math.max(240, Math.min(1200, dragRef.current.initX + dx / currentScale));
+        const newH = Math.max(200, Math.min(1000, dragRef.current.initY + dy / currentScale));
+        
+        functionSizeRef.current = { w: newW, h: newH };
+        if (toolbarRef.current) {
+          toolbarRef.current.style.setProperty('--function-w', `${newW}px`);
+          toolbarRef.current.style.setProperty('--function-h', `${newH}px`);
+        }
+        
+        if (document.body.style.cursor !== 'nwse-resize') {
+          document.body.style.cursor = 'nwse-resize';
+        }
+      } else if (resizingMode === 'scale') {
+        // We use the start position to calculate distance instead of rect to avoid jumping
+        const dx = e.clientX - dragRef.current.startX;
+        const dy = e.clientY - dragRef.current.startY;
+        
+        // Use diagonal delta for more natural scaling feel
+        const sensitivity = 0.004;
+        const diagonalDelta = (dx + dy) / 1.414;
+        const newScale = Math.max(0.4, Math.min(2.5, dragRef.current.initX + (diagonalDelta * sensitivity)));
+        
+        scaleRef.current = newScale;
+        if (toolbarRef.current) {
+          toolbarRef.current.style.setProperty('--toolbar-scale', newScale.toString());
+        }
+        
+        if (document.body.style.cursor !== 'nwse-resize') {
+          document.body.style.cursor = 'nwse-resize';
+        }
+      } else if (dragRef.current.isDragging) {
         const dx = e.clientX - dragRef.current.startX;
         const dy = e.clientY - dragRef.current.startY;
         
@@ -811,44 +1019,48 @@ export default function DrawingToolbar() {
         newY = Math.max(0, Math.min(window.innerHeight - h, newY));
         
         setToolbarPosition({ x: newX, y: newY });
-      } else if (resizingMode === 'scale') {
-        const rect = toolbarRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        
-        const dx = e.clientX - rect.left;
-        const dy = e.clientY - rect.top;
-        
-        const baseSize = (isVert ? 350 : 500) * toolbarScale;
-        const newScale = Math.max(0.5, Math.min(2, Math.max(dx, dy) / (baseSize / toolbarScale)));
-        setToolbarScale(newScale);
-      } else if (resizingMode === 'options' || resizingMode === 'function') {
-        const dx = e.clientX - dragRef.current.startX;
-        const dy = e.clientY - dragRef.current.startY;
-        
-        if (resizingMode === 'options') {
-          store.setOptionsPanelWidth(Math.max(200, Math.min(800, dragRef.current.initX + dx)));
-          store.setOptionsPanelHeight(Math.max(150, Math.min(600, dragRef.current.initY + dy)));
-        } else {
-          store.setFunctionPanelWidth(Math.max(200, Math.min(800, dragRef.current.initX + dx)));
-          store.setFunctionPanelHeight(Math.max(200, Math.min(800, dragRef.current.initY + dy)));
+        if (document.body.style.cursor !== 'move') {
+          document.body.style.cursor = 'move';
         }
       }
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (e: PointerEvent) => {
+      // Sync everything back to store and local state on release
+      if (resizingMode === 'scale') {
+        setToolbarScale(scaleRef.current);
+        setLocalScale(scaleRef.current);
+      } else if (resizingMode === 'options') {
+        store.setOptionsPanelWidth(optionsSizeRef.current.w);
+        store.setOptionsPanelHeight(optionsSizeRef.current.h);
+        setLocalOptionsSize(optionsSizeRef.current);
+      } else if (resizingMode === 'function') {
+        store.setFunctionPanelWidth(functionSizeRef.current.w);
+        store.setFunctionPanelHeight(functionSizeRef.current.h);
+        setLocalFunctionSize(functionSizeRef.current);
+      }
+      
+      // Cleanup
+      document.body.style.cursor = '';
+      document.body.classList.remove('select-none');
       dragRef.current.isDragging = false;
       setIsDragging(false);
       setResizingMode('none');
     };
 
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    if (resizingMode !== 'none' || isDragging) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    }
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [store, resizingMode, isVert, setToolbarPosition, setToolbarScale]);
+  }, [resizingMode, isDragging, isVert, setToolbarPosition, setToolbarScale]);
+
+  // The effects above handle bidirectional synchronization correctly by checking interaction state.
+  // We don't need a separate effect that might trigger infinite loops.
 
   if (!isToolbarVisible) return null;
 
@@ -856,15 +1068,15 @@ export default function DrawingToolbar() {
   let placementStyle = {};
   if (toolbarPlacement === 'drag') {
     placementStyle = { left: toolbarPosition.x, top: toolbarPosition.y };
-    placementClass = isVert ? 'flex-row items-start' : 'flex-col items-center';
+    placementClass = 'flex-row items-start';
   } else {
     switch (toolbarPlacement) {
-      case 'top-left': placementClass = isVert ? 'top-4 left-4 flex-row items-start' : 'top-4 left-4 flex-col items-center'; break;
+      case 'top-left': placementClass = isVert ? 'top-4 left-4 flex-row items-start' : 'top-4 left-4 flex-col items-start'; break;
       case 'top-center': placementClass = isVert ? 'top-4 left-1/2 -translate-x-1/2 flex-row items-start' : 'top-4 left-1/2 -translate-x-1/2 flex-col items-center'; break;
-      case 'top-right': placementClass = isVert ? 'top-4 right-4 flex-row-reverse items-start' : 'top-4 right-4 flex-col items-center'; break;
-      case 'bottom-left': placementClass = isVert ? 'bottom-4 left-4 flex-row items-end' : 'bottom-4 left-4 flex-col-reverse items-center'; break;
-      case 'bottom-center': placementClass = isVert ? 'bottom-4 left-1/2 -translate-x-1/2 flex-row items-end' : 'bottom-4 left-1/2 -translate-x-1/2 flex-col-reverse items-center'; break;
-      case 'bottom-right': placementClass = isVert ? 'bottom-4 right-4 flex-row-reverse items-end' : 'bottom-4 right-4 flex-col-reverse items-center'; break;
+      case 'top-right': placementClass = isVert ? 'top-4 right-4 flex-row-reverse items-start' : 'top-4 right-4 flex-col items-end'; break;
+      case 'bottom-left': placementClass = isVert ? 'bottom-4 left-4 flex-row items-start' : 'bottom-4 left-4 flex-col-reverse items-start'; break;
+      case 'bottom-center': placementClass = isVert ? 'bottom-4 left-1/2 -translate-x-1/2 flex-row items-start' : 'bottom-4 left-1/2 -translate-x-1/2 flex-col-reverse items-center'; break;
+      case 'bottom-right': placementClass = isVert ? 'bottom-4 right-4 flex-row-reverse items-start' : 'bottom-4 right-4 flex-col-reverse items-end'; break;
     }
   }
 
@@ -873,6 +1085,17 @@ export default function DrawingToolbar() {
     setShowConfig(false);
   };
 
+  const transformOrigin = (() => {
+    if (toolbarPlacement === 'drag') return 'center center';
+    const parts = toolbarPlacement.split('-');
+    if (parts.length === 2) {
+      const vert = parts[0] === 'top' ? 'top' : (parts[0] === 'bottom' ? 'bottom' : 'center');
+      const horiz = parts[1] === 'left' ? 'left' : (parts[1] === 'right' ? 'right' : 'center');
+      return `${vert} ${horiz}`;
+    }
+    return 'center center';
+  })();
+
   if (isMobile) {
     return <MobileDrawingToolbar isInitialLoad={isInitialLoad} />;
   }
@@ -880,25 +1103,31 @@ export default function DrawingToolbar() {
   return (
     <div 
       ref={toolbarRef}
-      className={`absolute flex z-[100] gap-2 ${isInitialLoad ? 'animate-in fade-in zoom-in-95 duration-200' : ''} ${placementClass} pointer-events-none transition-none`}
+      className={`absolute flex z-[100] gap-2 ${isInitialLoad ? 'animate-in fade-in zoom-in-95 duration-200' : ''} ${placementClass} pointer-events-none`}
       style={{ 
         ...placementStyle, 
         opacity: toolbarOpacity, 
         visibility: toolbarOpacity < 0.05 ? 'hidden' : 'visible',
-        transform: `scale(${toolbarScale})`,
-        transformOrigin: 'top left',
-        transition: 'none'
-      }}
+        '--toolbar-scale': store.toolbarScale.toString(),
+        '--options-w': `${localOptionsSize.w}px`,
+        '--options-h': `${localOptionsSize.h}px`,
+        '--function-w': `${localFunctionSize.w}px`,
+        '--function-h': `${localFunctionSize.h}px`,
+        transform: `scale(var(--toolbar-scale))`,
+        transformOrigin: transformOrigin,
+        transition: isDragging || resizingMode !== 'none' || isAdjustingScale ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        willChange: (resizingMode !== 'none' || isDragging || isAdjustingScale) ? 'transform' : 'auto'
+      } as React.CSSProperties}
     >
       {/* Main Toolbelt */}
-      <div className={`pointer-events-auto flex ${isVert ? 'flex-col' : 'flex-row'} items-center gap-1.5 p-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-700/50 relative group`}>
+      <div className={`pointer-events-auto flex ${isVert ? 'flex-col' : 'flex-row'} items-center gap-1.5 p-1 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-800/80 relative group ${isDragging || resizingMode !== 'none' ? 'cursor-grabbing transition-none' : 'transition-all duration-300'}`}>
         <div className="flex gap-1 p-1">
            <button 
              onClick={() => store.setIsToolbarVisible(false)}
              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
              title="Close Toolbar"
            >
-             <X size={14} />
+             <X size={12} />
            </button>
            {toolbarPlacement === 'drag' && (
              <div 
@@ -921,7 +1150,7 @@ export default function DrawingToolbar() {
                  dragRef.current.isDragging = false;
                }}
              >
-               {isVert ? <GripHorizontal size={14} /> : <GripVertical size={14} />}
+               {isVert ? <GripHorizontal size={12} /> : <GripVertical size={12} />}
              </div>
            )}
            <Popover open={showConfig} onOpenChange={setShowConfig}>
@@ -929,7 +1158,7 @@ export default function DrawingToolbar() {
                className={`p-1.5 rounded-lg transition-colors ${showConfig ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
                title="Toolbar Configuration"
              >
-               <MoreHorizontal size={14} />
+               <MoreHorizontal size={12} />
              </PopoverTrigger>
              <PopoverContent 
                className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[110] pointer-events-none" 
@@ -937,9 +1166,9 @@ export default function DrawingToolbar() {
                sideOffset={10}
              >
                <div 
-                 className="w-[180px] p-3 text-xs flex flex-col gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-slate-900 dark:text-slate-200 transition-transform origin-top-left pointer-events-auto"
+                 className="w-[180px] p-3 text-xs flex flex-col gap-2 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-slate-900 dark:text-slate-200 transition-transform origin-top-left pointer-events-auto"
                  style={{ 
-                   transform: `scale(${toolbarScale})`
+                   transform: `scale(${localScale})`
                  }}
                >
                 <div className="flex items-center justify-between px-2 py-0.5">
@@ -949,30 +1178,33 @@ export default function DrawingToolbar() {
                     className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-blue-500 transition-colors"
                     title="Reset Scale"
                   >
-                    <RotateCcw size={10} />
+                    <RotateCcw size={8} />
                   </button>
                 </div>
                 <div className="px-2 pb-2">
-                  <Slider 
-                    min={0.5} 
-                    max={2} 
-                    step={0.1} 
-                    value={toolbarScale} 
-                    onValueChange={(v) => setToolbarScale(Array.isArray(v) ? v[0] : (v as number))} 
+                  <InternalScaleSlider 
+                    initialScale={store.toolbarScale}
+                    toolbarRef={toolbarRef}
+                    popoverContentRef={popoverContentRef}
+                    onScaleCommitted={(val) => {
+                      setToolbarScale(val);
+                      setLocalScale(val);
+                    }}
+                    onAdjusting={setIsAdjustingScale}
                   />
                 </div>
                 <div className="h-[1px] bg-slate-200 dark:bg-slate-700 my-0.5" />
                 <span className="text-[10px] uppercase font-bold text-slate-500 px-2 py-0.5">Position</span>
                 <div className="grid grid-cols-3 gap-1 px-1">
-                  <button onClick={() => onPlacementChange('top-left')} title="Top Left" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-left' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUpLeft size={14} /></button>
-                  <button onClick={() => onPlacementChange('top-center')} title="Top Center" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-center' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUp size={14} /></button>
-                  <button onClick={() => onPlacementChange('top-right')} title="Top Right" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-right' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUpRight size={14} /></button>
-                  <button onClick={() => onPlacementChange('bottom-left')} title="Bottom Left" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-left' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDownLeft size={14} /></button>
-                  <button onClick={() => onPlacementChange('bottom-center')} title="Bottom Center" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-center' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDown size={14} /></button>
-                  <button onClick={() => onPlacementChange('bottom-right')} title="Bottom Right" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-right' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDownRight size={14} /></button>
+                  <button onClick={() => onPlacementChange('top-left')} title="Top Left" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-left' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUpLeft size={12} /></button>
+                  <button onClick={() => onPlacementChange('top-center')} title="Top Center" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-center' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUp size={12} /></button>
+                  <button onClick={() => onPlacementChange('top-right')} title="Top Right" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-right' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUpRight size={12} /></button>
+                  <button onClick={() => onPlacementChange('bottom-left')} title="Bottom Left" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-left' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDownLeft size={12} /></button>
+                  <button onClick={() => onPlacementChange('bottom-center')} title="Bottom Center" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-center' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDown size={12} /></button>
+                  <button onClick={() => onPlacementChange('bottom-right')} title="Bottom Right" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-right' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDownRight size={12} /></button>
                 </div>
                 <button onClick={() => onPlacementChange('drag')} className={`flex items-center gap-2 px-2 py-1.5 mx-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'drag' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}>
-                  <Move size={12} />
+                  <Move size={10} />
                   <span className="text-[10px]">Free Drag</span>
                 </button>
                  <div className="h-[1px] bg-slate-200 dark:bg-slate-700 my-1" />
@@ -988,7 +1220,7 @@ export default function DrawingToolbar() {
                    }} 
                    className="flex items-center gap-2 px-2 py-2 mx-1 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                  >
-                   <RotateCcw size={12} />
+                   <RotateCcw size={10} />
                    <span className="text-[10px] font-bold uppercase tracking-wider">Reset Defaults</span>
                  </button>
                </div>
@@ -1023,7 +1255,7 @@ export default function DrawingToolbar() {
             className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors"
             title="Undo (Ctrl+Z)"
           >
-            <Undo2 size={16} />
+            <Undo2 size={14} />
           </button>
           <button
             disabled={store.historyIndex >= store.history.length - 1}
@@ -1031,7 +1263,7 @@ export default function DrawingToolbar() {
             className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors"
             title="Redo (Ctrl+Y)"
           >
-            <Redo2 size={16} />
+            <Redo2 size={14} />
           </button>
         </div>
 
@@ -1042,37 +1274,63 @@ export default function DrawingToolbar() {
           className="p-2 m-0.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors"
           title="Clear All"
         >
-          <Trash2 size={16} />
+          <Trash2 size={14} />
         </button>
 
         {/* Resize Handle */}
         <div 
-          className="absolute -bottom-1 -right-1 w-4 h-4 cursor-se-resize opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-1"
+          className="absolute bottom-1 right-1 w-6 h-6 cursor-nwse-resize opacity-0 group-hover:opacity-100 transition-all flex items-end justify-end p-1 z-20 touch-none active:scale-90"
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
             setResizingMode('scale');
+            dragRef.current = {
+              isDragging: false,
+              startX: e.clientX,
+              startY: e.clientY,
+              initX: scaleRef.current,
+              initY: scaleRef.current
+            };
+            document.body.style.cursor = 'nwse-resize';
+            document.body.classList.add('select-none');
             e.stopPropagation();
             e.preventDefault();
           }}
         >
-          <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-slate-400 dark:border-slate-500" />
+          <div className="flex flex-col gap-[3px] items-end pr-1 pb-1 opacity-20 group-hover:opacity-40 transition-opacity">
+            <div className="w-1 h-1 rounded-full bg-slate-500" />
+            <div className="flex gap-[3px]">
+              <div className="w-1 h-1 rounded-full bg-slate-500" />
+              <div className="w-1 h-1 rounded-full bg-slate-500" />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Options Panel depending on tool */}
       {store.activeTool !== 'eraser' && (store.activeTool !== 'select' || store.selectedAnnotationIds.length > 0) && (
         <div 
-          className={`pointer-events-auto flex ${isVert ? 'flex-col' : 'gap-4 w-full max-w-2xl px-5'} p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 text-slate-900 dark:text-slate-100 relative group/options`}
+          className={`pointer-events-auto flex flex-col p-0 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 relative group/options will-change-[width,height] overflow-hidden animate-in fade-in duration-300 ${resizingMode !== 'none' ? 'select-none transition-none shadow-2xl ring-2 ring-blue-500/10' : ''}`}
           style={{ 
-            width: isVert ? store.optionsPanelWidth : 'auto',
-            height: isVert ? 'auto' : store.optionsPanelHeight,
-            minWidth: isVert ? '200px' : 'auto',
-            minHeight: isVert ? 'auto' : '150px'
-          }}
+            width: 'var(--options-w)',
+            height: 'var(--options-h)',
+            minWidth: '200px',
+            minHeight: '150px',
+            maxHeight: 'min(90vh, 800px)'
+          } as React.CSSProperties}
         >
+          {/* Top Notch Decor */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-b-full pointer-events-none" />
+          
+          {/* Bottom Notch Decor */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-t-full pointer-events-none" />
+
           {/* Resize Handle for Options Panel */}
           <div 
-            className="absolute -bottom-1 -right-1 w-4 h-4 cursor-se-resize opacity-0 group-hover/options:opacity-100 transition-opacity flex items-center justify-center p-1 z-10"
+            className="absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize opacity-40 hover:opacity-100 transition-all flex items-end justify-end p-2 z-50 touch-none active:scale-90"
+            style={{ 
+              transform: `scale(${1 / localScale})`,
+              transformOrigin: 'bottom right'
+            }}
             onPointerDown={(e) => {
               e.currentTarget.setPointerCapture(e.pointerId);
               setResizingMode('options');
@@ -1080,172 +1338,248 @@ export default function DrawingToolbar() {
                 isDragging: false,
                 startX: e.clientX,
                 startY: e.clientY,
-                initX: isVert ? store.optionsPanelWidth : 0,
-                initY: isVert ? 0 : store.optionsPanelHeight
+                initX: localOptionsSize.w,
+                initY: localOptionsSize.h
               };
+              document.body.style.cursor = 'nwse-resize';
+              document.body.classList.add('select-none');
               e.stopPropagation();
               e.preventDefault();
             }}
           >
-            <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-slate-400 dark:border-slate-500" />
+            <div className="flex flex-col gap-[3px] items-end pr-1.5 pb-1.5 opacity-20 hover:opacity-40 transition-opacity">
+              <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              <div className="flex gap-[3px]">
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              </div>
+            </div>
           </div>
 
-          <div className={`flex flex-col gap-1 ${isVert ? 'pb-3 border-b border-slate-200 dark:border-slate-800' : 'pr-4 border-r border-slate-200 dark:border-slate-800'}`}>
-            <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Colors</span>
-            <div className={`grid ${isVert ? 'grid-cols-4' : 'grid-cols-2'} gap-1.5 w-full relative`}>
-              {COLORS.map(c => (
-                <button
-                  key={c}
-                  onClick={() => store.setColor(c)}
-                  className={`w-5 h-5 rounded-full border-2 transition-transform ${store.color === c ? 'scale-125 border-white dark:border-slate-800 shadow-sm' : 'border-transparent hover:scale-110'} justify-self-center`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-              <Popover>
-                <PopoverTrigger 
-                  className="w-5 h-5 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer hover:border-slate-500 transition-colors justify-self-center"
-                  title="Custom Color"
-                >
-                  <span className="w-3.5 h-3.5 rounded-full shadow-sm" style={{ backgroundColor: Object.values(COLORS).includes(store.color) ? 'transparent' : store.color }} />
-                </PopoverTrigger>
-                <PopoverContent 
-                  className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" 
-                  align="center" 
-                  side="top" 
-                  sideOffset={10}
-                >
-                  <div 
-                    className="flex flex-col gap-3 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl rounded-xl transition-transform origin-bottom-center pointer-events-auto"
-                    style={{ 
-                      transform: `scale(${toolbarScale})`
-                    }}
-                  >
-                    <HexAlphaColorPicker
-                      color={store.color}
-                      onChange={(c) => store.setColor(c)}
-                      className="!w-full"
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pr-5 scroll-smooth min-h-0 bg-white dark:bg-[#0b1120]">
+            <div className={`flex ${isVert ? 'flex-col gap-6' : 'flex-wrap gap-x-8 gap-y-6 w-full'}`}>
+              {/* Colors Section */}
+              <div className={`flex flex-col gap-3 ${isVert ? 'pb-6 border-b border-slate-800' : 'pr-8 border-r border-slate-800/50'}`}>
+                <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase mb-1">Colors</span>
+                <div className={`grid ${isVert ? 'grid-cols-4' : 'grid-cols-2 md:grid-cols-3'} gap-3 w-fit relative`}>
+                  {COLORS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => store.setColor(c)}
+                      className={`w-7 h-7 rounded-full transition-all ${store.color === c ? 'scale-110 ring-2 ring-white/50 ring-offset-2 ring-offset-[#0b1120] shadow-lg' : 'hover:scale-105 opacity-90 hover:opacity-100'}`}
+                      style={{ backgroundColor: c }}
                     />
-                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
-                      <div className="w-6 h-6 rounded border border-slate-300 dark:border-slate-600 shadow-sm" style={{ backgroundColor: store.color }} />
-                      <input 
-                        type="text" 
-                        value={store.color}
-                        onChange={(e) => store.setColor(e.target.value)}
-                        className="bg-transparent border-none outline-none text-xs font-mono w-full uppercase"
-                      />
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          <div className={`flex-1 flex ${isVert ? 'flex-col gap-3 pt-3' : 'gap-6 px-2'}`}>
-            <div className="flex flex-col gap-2 flex-1">
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-                Width <span>{store.width}px</span>
-              </span>
-              <Slider min={1} max={50} value={store.width} onValueChange={v => store.setWidth(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
-
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between mt-1">
-                Opacity <span>{Math.round(store.opacity * 100)}%</span>
-              </span>
-              <Slider min={0.1} max={1} step={0.05} value={store.opacity} onValueChange={v => store.setOpacity(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
-            </div>
-
-            <div className="flex flex-col gap-2 flex-1">
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-                Glow <span>{store.glowIntensity}</span>
-              </span>
-              <Slider min={0} max={20} value={store.glowIntensity} onValueChange={v => store.setGlowIntensity(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
-
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between mt-1">
-                Smoothing <span>{Math.round(store.smoothing * 100)}%</span>
-              </span>
-              <Slider min={0} max={1} step={0.1} value={store.smoothing} onValueChange={v => store.setSmoothing(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
-            </div>
-          </div>
-
-          <div className={`flex flex-col gap-1 ${isVert ? 'pt-3 border-t border-slate-200 dark:border-slate-800' : 'pl-4 border-l border-slate-200 dark:border-slate-800'}`}>
-            <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Style</span>
-            <select 
-              value={store.brushStyle} 
-              onChange={e => store.setBrushStyle(e.target.value as BrushStyle)}
-              className="mt-1 bg-slate-100 dark:bg-slate-800 border-none outline-none text-xs rounded-md px-2 py-1.5 min-w-[120px] text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              {BRUSHES.map(b => (
-                <option key={b.id} value={b.id}>{b.label}</option>
-              ))}
-            </select>
-            
-            <div className="flex items-center gap-2 mt-2 group">
-              <Checkbox 
-                id="auto-shape"
-                checked={store.autoShapeDetection} 
-                onCheckedChange={(checked) => store.setAutoShapeDetection(checked === true)} 
-              />
-              <label 
-                htmlFor="auto-shape" 
-                className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors"
-              >
-                Auto Shape
-              </label>
-            </div>
-
-            <div className={`flex flex-col gap-1 mt-3 ${isVert ? 'pt-3 border-t border-slate-200 dark:border-slate-800' : 'pl-4 border-l border-slate-200 dark:border-slate-800'}`}>
-              <div className="flex items-center justify-between group mb-1">
-                <div className="flex items-center gap-2">
-                  <Checkbox 
-                    id="fill-enabled"
-                    checked={store.fillEnabled} 
-                    onCheckedChange={(checked) => store.setFillEnabled(checked === true)} 
-                  />
-                  <label 
-                    htmlFor="fill-enabled" 
-                    className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors"
-                  >
-                    Fill Shape
-                  </label>
-                </div>
-                {store.fillEnabled && (
+                  ))}
                   <Popover>
-                    <PopoverTrigger className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 shadow-sm transition-transform hover:scale-110" style={{ backgroundColor: store.fillColor }} />
-                    <PopoverContent className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" align="end" side="top" sideOffset={10}>
+                    <PopoverTrigger 
+                      className="w-7 h-7 rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center cursor-pointer hover:border-slate-500 transition-colors"
+                      title="Custom Color"
+                    >
+                      <Plus size={14} className="text-slate-500" />
+                    </PopoverTrigger>
+                    <PopoverContent 
+                      className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" 
+                      align="center" 
+                      side="top" 
+                      sideOffset={10}
+                    >
                       <div 
-                        className="flex flex-col gap-3 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl rounded-xl transition-transform origin-bottom-right pointer-events-auto"
-                        style={{ transform: `scale(${toolbarScale})` }}
+                        className="flex flex-col gap-3 p-4 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl transition-transform origin-bottom-center pointer-events-auto"
+                        style={{ transform: `scale(${localScale})` }}
                       >
-                        <HexAlphaColorPicker color={store.fillColor} onChange={(c) => store.setFillColor(c)} className="!w-full" />
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {COLORS.map(c => (
-                            <button key={c} onClick={() => store.setFillColor(c)} className="w-4 h-4 rounded-full border border-transparent hover:border-white shadow-sm" style={{ backgroundColor: c }} />
-                          ))}
+                        <HexAlphaColorPicker color={store.color} onChange={(c) => store.setColor(c)} className="!w-full" />
+                        <div className="flex items-center gap-2 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
+                          <div className="w-6 h-6 rounded-md shadow-inner" style={{ backgroundColor: store.color }} />
+                          <input 
+                            type="text" 
+                            value={store.color}
+                            onChange={(e) => store.setColor(e.target.value)}
+                            className="bg-transparent border-none outline-none text-xs font-mono w-24 uppercase text-slate-200"
+                          />
                         </div>
                       </div>
                     </PopoverContent>
                   </Popover>
-                )}
-              </div>
-              {store.fillEnabled && (
-                <div className="flex flex-col gap-1.5 animate-in slide-in-from-top-1 duration-200">
-                  <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      Fill Opacity <span>{Math.round(store.fillOpacity * 100)}%</span>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        store.setFillColor(store.color);
-                        store.setFillOpacity(0.3);
-                      }}
-                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-blue-500 transition-colors"
-                      title="Reset Fill to Ink Color & 30%"
-                    >
-                      <RotateCcw size={10} />
-                    </button>
-                  </span>
-                  <Slider min={0.05} max={1} step={0.05} value={store.fillOpacity} onValueChange={v => store.setFillOpacity(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
                 </div>
-              )}
+              </div>
+
+              {/* Sliders Section 1: Width & Opacity */}
+              <div className={`flex flex-col gap-6 ${isVert ? 'pb-6 border-b border-slate-800' : 'flex-1 pr-8 border-r border-slate-800/50'}`}>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between group">
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Width</span>
+                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
+                      {store.width}px
+                    </div>
+                  </div>
+                  <Slider 
+                    min={1} 
+                    max={50} 
+                    value={store.width} 
+                    onValueChange={v => store.setWidth(Array.isArray(v) ? v[0] : (v as number))} 
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between group">
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Opacity</span>
+                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
+                      {Math.round(store.opacity * 100)}%
+                    </div>
+                  </div>
+                  <Slider 
+                    min={0.1} 
+                    max={1} 
+                    step={0.05} 
+                    value={store.opacity} 
+                    onValueChange={v => store.setOpacity(Array.isArray(v) ? v[0] : (v as number))} 
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Sliders Section 2: Glow & Smoothing */}
+              <div className={`flex flex-col gap-6 ${isVert ? 'pb-6 border-b border-slate-800' : 'flex-1 pr-8 border-r border-slate-800/50'}`}>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between group">
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Glow</span>
+                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
+                      {store.glowIntensity}
+                    </div>
+                  </div>
+                  <Slider 
+                    min={0} 
+                    max={20} 
+                    value={store.glowIntensity} 
+                    onValueChange={v => store.setGlowIntensity(Array.isArray(v) ? v[0] : (v as number))} 
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between group">
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Smoothing</span>
+                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
+                      {Math.round(store.smoothing * 100)}%
+                    </div>
+                  </div>
+                  <Slider 
+                    min={0} 
+                    max={1} 
+                    step={0.1} 
+                    value={store.smoothing} 
+                    onValueChange={v => store.setSmoothing(Array.isArray(v) ? v[0] : (v as number))} 
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              {/* Options Section */}
+              <div className={`flex flex-col gap-4 min-w-[140px] ${isVert ? 'pt-2' : ''}`}>
+                <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Style</span>
+                <select 
+                  value={store.brushStyle} 
+                  onChange={e => store.setBrushStyle(e.target.value as BrushStyle)}
+                  className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 outline-none text-xs rounded-lg px-3 py-2 text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%2364748b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%205%203%203%203-3%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_10px_center] bg-no-repeat pr-8"
+                >
+                  {BRUSHES.map(b => (
+                    <option key={b.id} value={b.id} className="bg-white dark:bg-[#0b1120] text-slate-900 dark:text-slate-100">{b.label}</option>
+                  ))}
+                </select>
+                
+                <div className="flex items-center gap-3 mt-2 group cursor-pointer" onClick={() => store.setAutoShapeDetection(!store.autoShapeDetection)}>
+                  <Checkbox 
+                    id="auto-shape"
+                    checked={store.autoShapeDetection} 
+                    onCheckedChange={(checked) => store.setAutoShapeDetection(checked === true)}
+                    className="border-slate-700 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 rounded"
+                  />
+                  <label 
+                    htmlFor="auto-shape" 
+                    className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer group-hover:text-slate-300 transition-colors"
+                  >
+                    Auto Shape
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between group cursor-pointer" onClick={() => store.setFillEnabled(!store.fillEnabled)}>
+                    <div className="flex items-center gap-3">
+                      <Checkbox 
+                        id="fill-enabled"
+                        checked={store.fillEnabled} 
+                        onCheckedChange={(checked) => store.setFillEnabled(checked === true)}
+                        className="border-slate-700 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 rounded"
+                      />
+                      <label 
+                        htmlFor="fill-enabled" 
+                        className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer group-hover:text-slate-300 transition-colors"
+                      >
+                        Fill Shape
+                      </label>
+                    </div>
+                    {store.fillEnabled && (
+                      <Popover>
+                        <PopoverTrigger 
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-5 h-5 rounded-full border border-slate-700 shadow-inner group-hover:border-slate-500 transition-all" 
+                          style={{ backgroundColor: store.fillColor }} 
+                        />
+                        <PopoverContent className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" align="end" side="top" sideOffset={10}>
+                          <div 
+                            className="flex flex-col gap-3 p-4 bg-[#0b1120] border border-slate-700 shadow-2xl rounded-2xl transition-transform origin-bottom-right pointer-events-auto"
+                            style={{ transform: `scale(${localScale})` }}
+                          >
+                            <HexAlphaColorPicker color={store.fillColor} onChange={(c) => store.setFillColor(c)} className="!w-full" />
+                            <div className="flex items-center gap-2 flex-wrap max-w-[200px]">
+                              {COLORS.map(c => (
+                                <button 
+                                  key={c} 
+                                  onClick={() => store.setFillColor(c)} 
+                                  className={`w-5 h-5 rounded-full border-2 transition-all ${store.fillColor === c ? 'border-white' : 'border-transparent hover:scale-110'}`} 
+                                  style={{ backgroundColor: c }} 
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
+                  {store.fillEnabled && (
+                    <div className="flex flex-col gap-2 animate-in slide-in-from-top-1 duration-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase pr-1">Fill Opacity</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[9px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
+                            {Math.round(store.fillOpacity * 100)}%
+                          </div>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              store.setFillColor(store.color);
+                              store.setFillOpacity(0.3);
+                            }}
+                            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                            title="Reset"
+                          >
+                            <RotateCcw size={8} />
+                          </button>
+                        </div>
+                      </div>
+                      <Slider 
+                        min={0.05} 
+                        max={1} 
+                        step={0.05} 
+                        value={store.fillOpacity} 
+                        onValueChange={v => store.setFillOpacity(Array.isArray(v) ? v[0] : (v as number))} 
+                        className="w-full" 
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1255,7 +1589,7 @@ export default function DrawingToolbar() {
       {/* Highlighter Settings */}
       {store.activeTool === 'highlighter' && (
         <div 
-          className={`pointer-events-auto flex ${isVert ? 'flex-col items-start gap-1.5' : 'items-center gap-2'} p-1.5 px-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50 text-slate-900 dark:text-slate-100`}
+          className={`pointer-events-auto flex ${isVert ? 'flex-col items-start gap-1.5' : 'items-center gap-2'} p-1.5 px-2 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-800 text-slate-900 dark:text-slate-100`}
           style={{ transitionTimingFunction: 'cubic-bezier(0, 0, 0, 1.04)' }}
         >
           <div className={`flex ${isVert ? 'flex-col' : 'flex-wrap items-center'} gap-1.5 text-[10px] w-full text-slate-600 dark:text-slate-400`}>
@@ -1277,7 +1611,7 @@ export default function DrawingToolbar() {
 
       {/* Waves Settings */}
       {(store.activeTool === 'sine-wave' || store.activeTool === 'square-wave' || store.activeTool === 'triangle-wave') && (
-        <div className={`pointer-events-auto flex ${isVert ? 'flex-col gap-3 min-w-[150px]' : 'items-center gap-4'} p-2.5 px-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-700/50 text-slate-900 dark:text-slate-100`}>
+        <div className={`pointer-events-auto flex ${isVert ? 'flex-col gap-3 min-w-[150px]' : 'items-center gap-4'} p-2.5 px-4 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-800 text-slate-900 dark:text-slate-100`}>
           <div className="flex flex-col gap-2 w-full">
             <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between gap-4">
               Amplitude <span>{store.waveAmplitude}px</span>
@@ -1296,17 +1630,28 @@ export default function DrawingToolbar() {
       {/* Function Brush Settings */}
       {store.activeTool === 'function-brush' && (
         <div 
-          className={`pointer-events-auto flex flex-col gap-3 p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-700/50 text-slate-900 dark:text-slate-100 animate-in slide-in-from-left-2 duration-300 relative group/func`}
+          className={`pointer-events-auto flex flex-col p-0 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 animate-in fade-in duration-300 relative group/func will-change-[width,height] overflow-hidden ${resizingMode !== 'none' ? 'select-none transition-none shadow-2xl ring-2 ring-blue-500/10' : ''}`}
           style={{ 
-            width: store.functionPanelWidth,
-            height: store.functionPanelHeight,
+            width: 'var(--function-w)',
+            height: 'var(--function-h)',
             minWidth: '240px',
-            minHeight: '200px'
-          }}
+            minHeight: '200px',
+            maxHeight: 'min(90vh, 800px)'
+          } as React.CSSProperties}
         >
+          {/* Top Notch Decor */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-b-full pointer-events-none" />
+          
+          {/* Bottom Notch Decor */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-t-full pointer-events-none" />
+
           {/* Resize Handle for Function Panel */}
           <div 
-            className="absolute -bottom-1 -right-1 w-4 h-4 cursor-se-resize opacity-0 group-hover/func:opacity-100 transition-opacity flex items-center justify-center p-1 z-10"
+            className="absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize opacity-40 hover:opacity-100 transition-all flex items-end justify-end p-2 z-50 touch-none active:scale-90"
+            style={{ 
+              transform: `scale(${1 / localScale})`,
+              transformOrigin: 'bottom right'
+            }}
             onPointerDown={(e) => {
               e.currentTarget.setPointerCapture(e.pointerId);
               setResizingMode('function');
@@ -1314,183 +1659,227 @@ export default function DrawingToolbar() {
                 isDragging: false,
                 startX: e.clientX,
                 startY: e.clientY,
-                initX: store.functionPanelWidth,
-                initY: store.functionPanelHeight
+                initX: localFunctionSize.w,
+                initY: localFunctionSize.h
               };
+              document.body.style.cursor = 'nwse-resize';
+              document.body.classList.add('select-none');
               e.stopPropagation();
               e.preventDefault();
             }}
           >
-            <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-slate-400 dark:border-slate-500" />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-              Expression
-            </span>
-            <div className="relative group">
-              <input 
-                ref={desktopMainInputRef}
-                type="text" 
-                value={store.functionExpression} 
-                onChange={(e) => store.setFunctionExpression(e.target.value)}
-                className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                placeholder="e.g. sin(x) + cos(x/2)"
-              />
-              <Sigma className="absolute right-2 top-1.5 text-slate-400 group-hover:text-blue-500 transition-colors" size={14} />
+            <div className="flex flex-col gap-[3px] items-end pr-1.5 pb-1.5 opacity-20 hover:opacity-40 transition-opacity">
+              <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              <div className="flex gap-[3px]">
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              </div>
             </div>
-            <LaTeXPreview 
-              expression={store.functionExpression} 
-              className="mt-1" 
-              onSelect={() => desktopMainInputRef.current?.focus()}
-            />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Presets</span>
-            <div className="flex flex-wrap gap-1.5">
-              {FUNCTION_PRESETS.map(p => (
-                <button 
-                  key={p.label}
-                  onClick={() => store.setFunctionExpression(p.expr)}
-                  className={`px-2 py-1 rounded-md text-[10px] transition-all ${
-                    store.functionExpression === p.expr 
-                      ? 'bg-blue-500 text-white shadow-sm' 
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-              
-              <Popover open={isMoreOpen} onOpenChange={(open) => { setIsMoreOpen(open); if(!open) setSearchQuery(''); }}>
-                <PopoverTrigger className="px-2 py-1 rounded-md text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/50">
-                  More <ChevronUp size={10} className="rotate-180" />
-                </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Search or Custom</span>
-                      <div className="flex flex-col gap-2">
-                        <input 
-                          ref={desktopSearchRef}
-                          type="text"
-                          placeholder="Search math functions..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="flex-1 px-2.5 py-2 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 font-mono"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              const val = searchQuery.trim();
-                              if (val) {
-                                store.setFunctionExpression(val);
-                                setIsMoreOpen(false);
-                              }
-                            }
-                          }}
-                        />
-                        <LaTeXPreview 
-                          expression={searchQuery} 
-                          onSelect={() => desktopSearchRef.current?.focus()}
-                        />
-                      </div>
-                    </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pr-5 scroll-smooth flex flex-col gap-4 min-h-0 bg-white dark:bg-[#0b1120]">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+                  Expression
+                </span>
+                {store.functionExpression && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleCopyExpression}
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-500 bg-blue-500/5 hover:bg-blue-500/10 rounded border border-blue-500/20 transition-colors"
+                      title="Copy Expression"
+                    >
+                      {expressionCopied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+                      <span className="ml-1">{expressionCopied ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <button 
+                      onClick={() => store.setFunctionExpression('')}
+                      className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-red-500 bg-red-500/5 hover:bg-red-500/10 rounded border border-red-500/20 transition-colors"
+                      title="Clear"
+                    >
+                      <Trash2 size={10} />
+                      <span className="ml-1">Clear</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="relative group">
+                <input 
+                  ref={desktopMainInputRef}
+                  type="text" 
+                  value={store.functionExpression} 
+                  onChange={(e) => store.setFunctionExpression(e.target.value)}
+                  className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-lg pl-3 pr-10 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  placeholder="e.g. sin(x) + cos(x/2)"
+                />
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                  <div className="p-1 px-1.5 text-slate-400 group-hover:text-blue-500 transition-colors">
+                    <Sigma size={12} />
+                  </div>
+                </div>
+              </div>
+              <LaTeXPreview 
+                expression={store.functionExpression} 
+                className="mt-1" 
+                onSelect={() => desktopMainInputRef.current?.focus()}
+              />
+            </div>
 
-                    {MORE_FUNCTIONS.map((group) => {
-                      const filteredItems = group.items.filter(item => 
-                        item.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                        item.expr.toLowerCase().includes(searchQuery.toLowerCase())
-                      );
-                      if (filteredItems.length === 0) return null;
-                      
-                      return (
-                        <div key={group.group} className="flex flex-col gap-2">
-                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{group.group}</span>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {filteredItems.map((item) => (
-                              <button
-                                key={item.label}
-                                onClick={() => {
-                                  store.setFunctionExpression(item.expr);
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Presets</span>
+              <div className="flex flex-wrap gap-1.5">
+                {FUNCTION_PRESETS.map(p => {
+                  const isSelected = store.functionExpression === p.expr;
+                  return (
+                    <button 
+                      key={p.label}
+                      onClick={() => store.setFunctionExpression(p.expr)}
+                      className={`px-2.5 py-1.5 rounded-md text-[10px] transition-all flex items-center gap-1.5 ${
+                        isSelected 
+                          ? 'bg-blue-500 text-white shadow-md ring-2 ring-blue-500/20' 
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {isSelected && <Check size={10} />}
+                      {p.label}
+                    </button>
+                  );
+                })}
+                
+                <Popover open={isMoreOpen} onOpenChange={(open) => { setIsMoreOpen(open); if(!open) setSearchQuery(''); }}>
+                  <PopoverTrigger className="px-2 py-1 rounded-md text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/50">
+                    More <ChevronUp size={10} className="rotate-180" />
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-4 bg-white dark:bg-[#0b1120] border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Search or Custom</span>
+                        <div className="flex flex-col gap-2">
+                          <input 
+                            ref={desktopSearchRef}
+                            type="text"
+                            placeholder="Search math functions..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="flex-1 px-2.5 py-2 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 font-mono"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const val = searchQuery.trim();
+                                if (val) {
+                                  store.setFunctionExpression(val);
                                   setIsMoreOpen(false);
-                                }}
-                                className="px-2 py-1.5 text-[10px] text-left rounded bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800 transition-all font-mono"
-                              >
-                                {item.label}
-                              </button>
-                            ))}
+                                }
+                              }
+                            }}
+                          />
+                          <LaTeXPreview 
+                            expression={searchQuery} 
+                            onSelect={() => desktopSearchRef.current?.focus()}
+                          />
+                        </div>
+                      </div>
+
+                      {MORE_FUNCTIONS.map((group) => {
+                        const filteredItems = group.items.filter(item => 
+                          item.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          item.expr.toLowerCase().includes(searchQuery.toLowerCase())
+                        );
+                        if (filteredItems.length === 0) return null;
+                        
+                        return (
+                          <div key={group.group} className="flex flex-col gap-2">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{group.group}</span>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {filteredItems.map((item) => (
+                                <button
+                                  key={item.label}
+                                  onClick={() => {
+                                    store.setFunctionExpression(item.expr);
+                                    setIsMoreOpen(false);
+                                  }}
+                                  className={`px-2 py-1.5 text-[10px] text-left rounded transition-all font-mono border ${
+                                     store.functionExpression === item.expr
+                                       ? 'bg-blue-500 text-white border-blue-400 shadow-md ring-2 ring-blue-500/20'
+                                       : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400 border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800'
+                                   }`}
+                                >
+                                  {item.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Dynamic suggestions from a larger list for Desktop */}
+                      {searchQuery.length >= 1 && (
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/70">Suggestions</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {SUGGESTED_MATH_FUNCTIONS
+                              .filter(fn => fn.toLowerCase().includes(searchQuery.toLowerCase()))
+                              .filter(fn => !MORE_FUNCTIONS.some(g => g.items.some(i => i.expr.includes(fn))))
+                              .slice(0, 12)
+                              .map(fn => (
+                                <button
+                                  key={fn}
+                                  onClick={() => {
+                                    store.setFunctionExpression(`${fn}(x)`);
+                                    setIsMoreOpen(false);
+                                  }}
+                                  className="px-2 py-1 text-[10px] rounded-full bg-blue-500/5 text-blue-500 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/10 transition-all font-mono"
+                                >
+                                  {fn}(x)
+                                </button>
+                              ))
+                            }
                           </div>
                         </div>
-                      );
-                    })}
+                      )}
 
-                    {/* Dynamic suggestions from a larger list for Desktop */}
-                    {searchQuery.length >= 1 && (
-                      <div className="flex flex-col gap-2">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/70">Suggestions</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {SUGGESTED_MATH_FUNCTIONS
-                            .filter(fn => fn.toLowerCase().includes(searchQuery.toLowerCase()))
-                            .filter(fn => !MORE_FUNCTIONS.some(g => g.items.some(i => i.expr.includes(fn))))
-                            .slice(0, 12)
-                            .map(fn => (
-                              <button
-                                key={fn}
-                                onClick={() => {
-                                  store.setFunctionExpression(`${fn}(x)`);
-                                  setIsMoreOpen(false);
-                                }}
-                                className="px-2 py-1 text-[10px] rounded-full bg-blue-500/5 text-blue-500 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/10 transition-all font-mono"
-                              >
-                                {fn}(x)
-                              </button>
-                            ))
-                          }
-                        </div>
-                      </div>
-                    )}
+                      {searchQuery && !MORE_FUNCTIONS.some(g => g.items.some(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))) && (
+                        <button 
+                          onClick={() => {
+                            store.setFunctionExpression(searchQuery);
+                            setIsMoreOpen(false);
+                          }}
+                          className="mt-2 w-full py-2.5 text-[11px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/30 rounded-lg hover:bg-blue-500/20 transition-all"
+                        >
+                          Use Custom: "{searchQuery}"
+                        </button>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
 
-                    {searchQuery && !MORE_FUNCTIONS.some(g => g.items.some(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))) && (
-                      <button 
-                        onClick={() => {
-                          store.setFunctionExpression(searchQuery);
-                          setIsMoreOpen(false);
-                        }}
-                        className="mt-2 w-full py-2.5 text-[11px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/30 rounded-lg hover:bg-blue-500/20 transition-all"
-                      >
-                        Use Custom: "{searchQuery}"
-                      </button>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-                Amplitude <span>{store.functionAmplitude}</span>
-              </span>
-              <Slider min={0} max={200} value={store.functionAmplitude} onValueChange={v => store.setFunctionAmplitude(Array.isArray(v) ? v[0] : (v as number))} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-                Frequency <span>{store.functionFrequency.toFixed(2)}</span>
-              </span>
-              <Slider min={0.01} max={1} step={0.01} value={store.functionFrequency} onValueChange={v => store.setFunctionFrequency(Array.isArray(v) ? v[0] : (v as number))} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-                Phase <span>{store.functionPhase.toFixed(2)}</span>
-              </span>
-              <Slider min={0} max={Math.PI * 2} step={0.1} value={store.functionPhase} onValueChange={v => store.setFunctionPhase(Array.isArray(v) ? v[0] : (v as number))} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
-                Smoothness <span>{store.functionSmoothness}</span>
-              </span>
-              <Slider min={0.5} max={20} step={0.5} value={store.functionSmoothness} onValueChange={v => store.setFunctionSmoothness(Array.isArray(v) ? v[0] : (v as number))} />
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
+                  Amplitude <span>{store.functionAmplitude}</span>
+                </span>
+                <Slider min={0} max={200} value={store.functionAmplitude} onValueChange={v => store.setFunctionAmplitude(Array.isArray(v) ? v[0] : (v as number))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
+                  Frequency <span>{store.functionFrequency.toFixed(2)}</span>
+                </span>
+                <Slider min={0.01} max={1} step={0.01} value={store.functionFrequency} onValueChange={v => store.setFunctionFrequency(Array.isArray(v) ? v[0] : (v as number))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
+                  Phase <span>{store.functionPhase.toFixed(2)}</span>
+                </span>
+                <Slider min={0} max={Math.PI * 2} step={0.1} value={store.functionPhase} onValueChange={v => store.setFunctionPhase(Array.isArray(v) ? v[0] : (v as number))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between">
+                  Smoothness <span>{store.functionSmoothness}</span>
+                </span>
+                <Slider min={0.5} max={20} step={0.5} value={store.functionSmoothness} onValueChange={v => store.setFunctionSmoothness(Array.isArray(v) ? v[0] : (v as number))} />
+              </div>
             </div>
           </div>
         </div>

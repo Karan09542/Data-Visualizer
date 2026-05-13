@@ -308,9 +308,12 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         let polarExpr = normalizedExpr;
         if (polarExpr.includes('=')) {
           const parts = polarExpr.split(/={1,2}/);
-          if (parts[0].trim() === 'r') polarExpr = parts[1];
-          else if (parts[1].trim() === 'r') polarExpr = parts[0];
-          else polarExpr = parts[0];
+          // If expression was "r = ...", we take the second part
+          if (parts[0].trim().toLowerCase() === 'r') polarExpr = parts[1];
+          // If expression was "... = r", we take the first part
+          else if (parts[1].trim().toLowerCase() === 'r') polarExpr = parts[0];
+          // Otherwise take the first part after the equals sign just in case
+          else polarExpr = parts[1] || parts[0];
         }
 
         try {
@@ -319,15 +322,26 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
           const start = anno.points[0];
 
           for (let i = 0; i <= res; i++) {
-            const theta = (i / res) * Math.PI * 2; 
+            const thetaValue = (i / res) * Math.PI * 2; 
             let rValue = 0;
             try {
-              rValue = polarCompiled.evaluate({ theta, t: timeOffset, p: phase }) * amp;
-            } catch(e) {}
+              // Provide multiple aliases for the angle to be user-friendly
+              rValue = polarCompiled.evaluate({ 
+                theta: thetaValue, 
+                th: thetaValue,
+                t: thetaValue, 
+                angle: thetaValue,
+                time: timeOffset,
+                p: phase 
+              }) * amp;
+            } catch(e) {
+              if (i === 0) console.warn("Math evaluate error:", e);
+              rValue = 0;
+            }
             
             generatedPoints.push({
-              x: start.x + rValue * Math.cos(theta),
-              y: start.y + rValue * Math.sin(theta)
+              x: start.x + rValue * Math.cos(thetaValue),
+              y: start.y + rValue * Math.sin(thetaValue)
             });
           }
         } catch (e) { return ''; }
@@ -340,13 +354,19 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         const res = 1000;
         const tRange = Math.PI * 24;
 
+        // Correctly split multiple parametric equations separated by semicolon
         const parts = rawExpr.split(';');
         let xExpr = normalizedExpr;
         let yExpr = normalizedExpr;
 
         if (parts.length >= 2) {
-          xExpr = normalizeExpression(parts[0].includes('=') ? parts[0].split('=')[1] : parts[0]);
-          yExpr = normalizeExpression(parts[1].includes('=') ? parts[1].split('=')[1] : parts[1]);
+          // Normalize individual parts while preserving identity
+          const extractExpr = (s: string) => {
+            const p = s.split('=');
+            return normalizeExpression(p[1] || p[0]);
+          };
+          xExpr = extractExpr(parts[0]);
+          yExpr = extractExpr(parts[1]);
         }
 
         try {
@@ -357,9 +377,13 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
 
           for (let i = 0; i <= res; i++) {
             const t = (i / res) * tRange;
-            const scope = { t, x: t, y: t, p: phase, time: timeOffset };
-            const vx = xCompiled.evaluate(scope) * amp;
-            const vy = yCompiled.evaluate(scope) * amp;
+            const scope = { t, x: t, y: t, theta: t, p: phase, time: timeOffset };
+            let vx = 0;
+            let vy = 0;
+            try {
+              vx = xCompiled.evaluate(scope) * amp;
+              vy = yCompiled.evaluate(scope) * amp;
+            } catch(e) {}
             
             generatedPoints.push({ x: start.x + vx, y: start.y + vy });
           }

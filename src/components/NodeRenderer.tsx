@@ -193,7 +193,7 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
     >
       <div className={`flex flex-col items-center justify-center w-full h-full transition-transform duration-300 ${(isMatch || isSelected) ? 'scale-105' : ''}`}>
         <div
-          className={`pointer-events-auto relative flex ${isMedia ? 'flex-col' : 'items-center'} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
+          className={`pointer-events-auto select-none relative flex ${isMedia ? 'flex-col' : 'items-center'} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
           style={{ ...shapeStyle, transform: `scale(${nodeSize})`, transformOrigin: 'center' }}
           onClick={(e) => {
             e.stopPropagation();

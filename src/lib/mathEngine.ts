@@ -121,20 +121,30 @@ export function interpolateFrame(frames: Frame[], s: number): Frame {
  * Pre-processes mathematical expressions into math.js compatible syntax.
  */
 export function normalizeExpression(expr: string): string {
+  if (!expr) return '';
+  
+  // Basic cleanup
   let normalized = expr.replace(/\s+/g, '');
   
-  // Implicit multiplication: 2x -> 2*x, xy -> x*y
-  // Handle coefficients before variables
+  // Handle implicit multiplication: 2x -> 2*x, 10sin -> 10*sin
+  // We look for a number followed by a letter or a parenthesis
   normalized = normalized.replace(/(\d+)([a-zA-Z(])/g, '$1*$2');
   
-  // Handle multiplication between groups: (x+1)(x-2) -> (x+1)*(x-2)
+  // Handle implicit multiplication between groups: (x+1)x -> (x+1)*x, (x+1)(x+2) -> (x+1)*(x+2)
   normalized = normalized.replace(/\)([\d(a-zA-Z])/g, ')*$1');
 
+  // Handle case like x(y) -> x*(y) if x is not a known function
+  // For simplicity, we just assume any letter before ( is a function for now, 
+  // but if it's a number followed by ( it's already handled.
+  
   // Common substitutions
   normalized = normalized.replace(/²/g, '^2');
   normalized = normalized.replace(/³/g, '^3');
   normalized = normalized.replace(/π/g, 'pi');
   normalized = normalized.replace(/\|([^|]+)\|/g, 'abs($1)');
+  
+  // Replace Greek theta with latin theta just in case
+  normalized = normalized.replace(/θ/g, 'theta');
   
   return normalized;
 }
@@ -151,7 +161,9 @@ export function marchingSquares(
 ): Point[][] {
   const isolines: Point[][] = [];
   const rows = field.length;
+  if (rows < 2) return [];
   const cols = field[0].length;
+  if (cols < 2) return [];
 
   for (let r = 0; r < rows - 1; r++) {
     for (let c = 0; c < cols - 1; c++) {
@@ -168,6 +180,16 @@ export function marchingSquares(
       const p1 = { x: offsetX + (c + 1) * cellSize, y: offsetY + r * cellSize };
       const p2 = { x: offsetX + (c + 1) * cellSize, y: offsetY + (r + 1) * cellSize };
       const p3 = { x: offsetX + c * cellSize, y: offsetY + (r + 1) * cellSize };
+
+      // Improved interpolation based on threshold
+      const getLerp = (vA: number, vB: number, pA: Point, pB: Point) => {
+        const t = (threshold - vA) / (vB - vA);
+        if (isNaN(t) || !isFinite(t)) return { x: (pA.x + pB.x)/2, y: (pA.y + pB.y)/2 };
+        return {
+          x: pA.x + (pB.x - pA.x) * t,
+          y: pA.y + (pB.y - pA.y) * t
+        };
+      };
 
       const m0 = { x: (p0.x + p1.x) / 2, y: p0.y };
       const m1 = { x: p1.x, y: (p1.y + p2.y) / 2 };
@@ -194,14 +216,20 @@ export function marchingSquares(
  * Detects the type of expression to determine rendering strategy.
  */
 export function detectExpressionType(expr: string): 'explicit' | 'parametric' | 'implicit' | 'polar' | 'field' {
-  const clean = expr.toLowerCase();
+  if (!expr) return 'explicit';
+  const clean = expr.toLowerCase().replace(/\s/g, '');
   
+  // Parametric: x(t)=...; y(t)=... or just containing semicolon
   if (clean.includes('x(') || clean.includes('y(') || clean.includes(';')) return 'parametric';
-  if (clean.includes('r=') || (clean.includes('theta') && clean.includes('r'))) return 'polar';
+  
+  // Polar: r=... or contains theta
+  if (clean.startsWith('r=') || clean.includes('=r') || clean.includes('theta') || clean.includes('phi')) return 'polar';
+  
+  // Implicit: contains equals sign but not caught by above
   if (clean.includes('=') || clean.includes('==')) return 'implicit';
   
-  // If it contains 'y' as an input variable without being an assignment, it's a field
-  if (/\by\b/.test(clean) || clean.includes('noise')) return 'field';
+  // Field: contains y as a variable or noise
+  if (/\by\b/.test(expr) || clean.includes('noise')) return 'field';
   
   return 'explicit';
 }

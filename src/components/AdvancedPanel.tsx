@@ -147,9 +147,9 @@ export default function AdvancedPanel() {
 
       {/* Panel */}
       <div
-        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-slate-900 border-l border-slate-300 dark:border-slate-800 z-[410] transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-[#0b1120] border-l border-slate-300 dark:border-slate-800 z-[410] transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
-        <div className="flex items-center justify-between p-4 border-b border-slate-300 dark:border-slate-800">
+        <div className="flex items-center justify-between p-4 border-b border-slate-300 dark:border-slate-800 bg-white dark:bg-[#0b1120]">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Advanced Options</h2>
           <button
             onClick={() => setIsAdvancedPanelOpen(false)}
@@ -206,7 +206,7 @@ export default function AdvancedPanel() {
                     step="0.05"
                     value={toolbarOpacity}
                     onChange={(e) => setToolbarOpacity(Number(e.target.value))}
-                    className="w-full accent-blue-500"
+                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
                 </div>
 
@@ -222,7 +222,7 @@ export default function AdvancedPanel() {
                     step="0.1"
                     value={toolbarScale}
                     onChange={(e) => setToolbarScale(Number(e.target.value))}
-                    className="w-full accent-blue-500"
+                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
                 </div>
                 
@@ -302,7 +302,7 @@ export default function AdvancedPanel() {
                 step="0.1"
                 value={nodeSpread}
                 onChange={(e) => setNodeSpread(parseFloat(e.target.value))}
-                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
               <div className="flex justify-between text-[10px] text-slate-500 mt-1">
                 <span>0.5x</span>
@@ -338,7 +338,7 @@ export default function AdvancedPanel() {
                 step="0.1"
                 value={nodeSize}
                 onChange={(e) => setNodeSize(parseFloat(e.target.value))}
-                className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
               />
               <div className="flex justify-between text-[10px] text-slate-500 mt-1">
                 <span>0.5x</span>
@@ -378,127 +378,142 @@ export default function AdvancedPanel() {
               ))}
             </div>
 
-            <div className="flex items-start gap-3 mt-2 pt-3 border-t border-slate-300 dark:border-slate-700/50">
-              <div className="p-2 bg-pink-500/10 text-pink-500 dark:text-pink-400 rounded-md shrink-0">
-                <Palette size={18} />
-              </div>
-              <div className="w-full">
-                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 flex justify-between items-center">
-                  <span>Canvas Colors</span>
-                  <button 
-                    onClick={() => {
-                      setCanvasBackgroundColor(defaultSettings.canvasBackgroundColor);
-                      setCanvasPatternColor(defaultSettings.canvasPatternColor);
-                    }} 
-                    title="Reset Colors" 
-                    className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  >
-                    <RotateCcw size={12} />
-                  </button>
+            <div className="flex flex-col gap-4 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-pink-500/10 text-pink-500 dark:text-pink-400 rounded-xl border border-pink-500/10">
+                    <Palette size={20} />
+                  </div>
+                  <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-200 tracking-tight">Canvas Colors</span>
                 </div>
-                <div className="flex flex-col gap-3 mt-3 w-full">
-                  <div className="flex items-center justify-between relative">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Background</span>
+                <button 
+                  onClick={() => {
+                    setCanvasBackgroundColor(defaultSettings.canvasBackgroundColor);
+                    setCanvasPatternColor(defaultSettings.canvasPatternColor);
+                  }} 
+                  title="Reset Colors" 
+                  className="p-1.5 text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  <RotateCcw size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4 pt-1">
+                <div className="flex items-center justify-between group">
+                  <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Background</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      ref={bgButtonRef}
+                      onClick={() => {
+                        if (showBgPicker) {
+                          setShowBgPicker(false);
+                          setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+                        } else {
+                          setShowBgPicker(true); 
+                          setShowPatternPicker(false);
+                        }
+                      }}
+                      className="w-10 h-8 rounded-lg border border-slate-700 bg-slate-900/50 shadow-sm transition-all hover:border-slate-500 cursor-pointer overflow-hidden"
+                      style={{ backgroundColor: canvasBackgroundColor }}
+                    />
+                    {showBgPicker && createPortal(
+                      <div style={bgPickerStyle} ref={bgPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[10000]">
+                        <RgbaColorPicker
+                          color={parseRgba(canvasBackgroundColor)}
+                          onChange={(color) => handleColorChange(color, setCanvasBackgroundColor)}
+                        />
+                        <div className="mt-4 flex items-center gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[10px] font-mono text-slate-300">
+                          <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: canvasBackgroundColor }} />
+                          {canvasBackgroundColor}
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+                </div>
+
+                {canvasTheme !== 'none' && (
+                  <div className="flex items-center justify-between group">
+                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Pattern Shape</span>
                     <div className="flex items-center gap-2">
                       <button
-                        ref={bgButtonRef}
+                        ref={patternButtonRef}
                         onClick={() => {
-                          if (showBgPicker) {
-                            setShowBgPicker(false);
-                            setBgPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
-                          } else {
-                            setShowBgPicker(true); 
+                          if (showPatternPicker) {
                             setShowPatternPicker(false);
+                            setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+                          } else {
+                            setShowPatternPicker(true);
+                            setShowBgPicker(false);
                           }
                         }}
-                        className="w-8 h-8 rounded border border-slate-300 dark:border-slate-600 shadow-sm transition-transform cursor-pointer"
-                        style={{ backgroundColor: canvasBackgroundColor }}
+                        className="w-10 h-8 rounded-lg border border-slate-700 bg-slate-900/50 shadow-sm transition-all hover:border-slate-500 cursor-pointer overflow-hidden"
+                        style={{ backgroundColor: canvasPatternColor }}
                       />
-                      {showBgPicker && createPortal(
-                        <div style={bgPickerStyle} ref={bgPickerRef} className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl">
+                      {showPatternPicker && createPortal(
+                        <div style={patternPickerStyle} ref={patternPickerRef} className="bg-[#121A2F] p-4 rounded-2xl border border-slate-800 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[10000]">
                           <RgbaColorPicker
-                            color={parseRgba(canvasBackgroundColor)}
-                            onChange={(color) => handleColorChange(color, setCanvasBackgroundColor)}
+                            color={parseRgba(canvasPatternColor)}
+                            onChange={(color) => handleColorChange(color, setCanvasPatternColor)}
                           />
-                          <div className="mt-3 flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-mono whitespace-nowrap overflow-hidden">
-                            {canvasBackgroundColor}
+                          <div className="mt-4 flex items-center gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[10px] font-mono text-slate-300">
+                            <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: canvasPatternColor }} />
+                            {canvasPatternColor}
                           </div>
                         </div>,
                         document.body
                       )}
                     </div>
                   </div>
-                  {canvasTheme !== 'none' && (
-                    <div className="flex items-center justify-between relative mt-2">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Pattern Shape</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          ref={patternButtonRef}
-                          onClick={() => {
-                            if (showPatternPicker) {
-                              setShowPatternPicker(false);
-                              setPatternPickerStyle({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
-                            } else {
-                              setShowPatternPicker(true);
-                              setShowBgPicker(false);
-                            }
-                          }}
-                          className="w-8 h-8 rounded border border-slate-300 dark:border-slate-600 shadow-sm transition-transform cursor-pointer"
-                          style={{ backgroundColor: canvasPatternColor }}
-                        />
-                        {showPatternPicker && createPortal(
-                          <div style={patternPickerStyle} ref={patternPickerRef} className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl">
-                            <RgbaColorPicker
-                              color={parseRgba(canvasPatternColor)}
-                              onChange={(color) => handleColorChange(color, setCanvasPatternColor)}
-                            />
-                            <div className="mt-3 flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-mono whitespace-nowrap overflow-hidden">
-                              {canvasPatternColor}
-                            </div>
-                          </div>,
-                          document.body
-                        )}
-                      </div>
-                    </div>
-                  )}
+                )}
+              </div>
 
-                  {/* Background Image Sub-section */}
-                  <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/50">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Background Image Settings</span>
-                      <button 
-                        onClick={() => {
-                          setCanvasBackgroundImage(defaultSettings.canvasBackgroundImage);
-                          setCanvasBackgroundBlur(defaultSettings.canvasBackgroundBlur);
-                        }} 
-                        title="Reset Background Image" 
-                        className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                      >
-                        <RotateCcw size={12} />
-                      </button>
+              {/* Background Image Sub-section */}
+              <div className="mt-6 pt-6 border-t border-slate-300 dark:border-slate-800/80 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/10 text-blue-500 dark:text-blue-400 rounded-xl border border-blue-500/10">
+                      <ImageIcon size={20} />
                     </div>
-                    
-                    <div className="flex flex-col gap-2 relative">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Image URL</span>
-                      <input 
-                        type="text" 
-                        value={canvasBackgroundImage}
-                        onChange={(e) => setCanvasBackgroundImage(e.target.value)}
-                        placeholder="https://example.com/image.png"
-                        className="w-full bg-slate-100 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700 rounded-md px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
+                    <span className="text-[15px] font-semibold text-slate-800 dark:text-slate-200 tracking-tight">Background Image Settings</span>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setCanvasBackgroundImage(defaultSettings.canvasBackgroundImage);
+                      setCanvasBackgroundBlur(defaultSettings.canvasBackgroundBlur);
+                    }} 
+                    title="Reset Background Image" 
+                    className="p-1.5 text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                </div>
+                
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-[0.05em] uppercase">Image URL</span>
+                  <input 
+                    type="text" 
+                    value={canvasBackgroundImage}
+                    onChange={(e) => setCanvasBackgroundImage(e.target.value)}
+                    placeholder="https://example.com/image.png"
+                    className="w-full bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/80 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-blue-500/40 transition-all font-mono"
+                  />
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-[0.05em] uppercase">Image Blur</span>
+                    <div className="bg-slate-200 dark:bg-slate-900/80 px-3 py-1.5 rounded-lg text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-800 min-w-[40px] text-center">
+                      {canvasBackgroundBlur}px
                     </div>
-                    
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Image Blur</span>
-                      <span className="text-xs text-slate-700 dark:text-slate-300">{canvasBackgroundBlur}px</span>
-                    </div>
+                  </div>
+                  <div className="px-1">
                     <input 
                       type="range" 
                       min="0" max="20" step="1"
                       value={canvasBackgroundBlur}
                       onChange={(e) => setCanvasBackgroundBlur(parseFloat(e.target.value))}
-                      className="w-full mt-1 accent-indigo-500"
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
                   </div>
                 </div>
@@ -508,10 +523,10 @@ export default function AdvancedPanel() {
         </div>
 
         {/* Global Reset and Shortcuts */}
-        <div className="p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex gap-2">
+        <div className="p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-[#0b1120] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex gap-2">
           <button
             onClick={() => setIsShortcutsOpen(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded-md transition-colors text-sm font-medium"
+            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded-xl transition-colors text-sm font-medium border border-blue-500/10"
           >
             <Keyboard size={16} />
             Shortcuts
@@ -521,7 +536,7 @@ export default function AdvancedPanel() {
               resetAllSettings();
               resetPreferences();
             }}
-            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-md transition-colors text-sm font-medium"
+            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-xl transition-colors text-sm font-medium border border-slate-700/50"
           >
             <RotateCcw size={16} />
             Reset All
