@@ -65,6 +65,11 @@ export default function EditorPanel() {
       setApiError('URL is required');
       return;
     }
+
+    if (apiUrl.startsWith('http://') || (apiUrl && !apiUrl.includes('://'))) {
+      setApiError('Secure Connection Required: To protect your data, only HTTPS sources are supported. Please use a secure (https://) URL.');
+      return;
+    }
     
     setIsLoading(true);
     setApiError('');
@@ -252,18 +257,36 @@ export default function EditorPanel() {
               </div>
             )}
 
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex-1 pr-4">
-                {apiError && <span className="text-xs text-red-500 font-medium">{apiError}</span>}
+            <div className="flex flex-col gap-3 pt-2">
+              {apiError && (
+                <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-500/5 p-2.5 rounded-lg border border-amber-500/10 flex items-start gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="mt-0.5 min-w-[14px]">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                  </div>
+                  <div>
+                    {apiError}
+                    <a 
+                      href="https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block mt-1 font-bold underline hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                    >
+                      Learn more about secure connections
+                    </a>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex justify-end">
+                <button 
+                  onClick={handleFetch}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-70 text-white rounded-md text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                >
+                  {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  Send Request
+                </button>
               </div>
-              <button 
-                onClick={handleFetch}
-                disabled={isLoading}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-70 text-white rounded-md text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
-              >
-                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                Send Request
-              </button>
             </div>
           </div>
         )}
