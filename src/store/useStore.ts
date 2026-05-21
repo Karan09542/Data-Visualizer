@@ -70,11 +70,22 @@ export interface StoreState {
   isShortcutsOpen: boolean;
   isMathHelpOpen: boolean;
   showMediaPreview: boolean;
+  apiMethod: string;
+  apiUrl: string;
+  apiHeaders: string;
+  apiBody: string;
+  activeTab: 'raw' | 'api';
   dragOverrides: Record<string, { x: number, y: number }>;
   undoStack: string[];
   redoStack: string[];
   
   setCode: (code: string, skipHistory?: boolean) => void;
+  setApiMethod: (method: string) => void;
+  setApiUrl: (url: string) => void;
+  setApiHeaders: (headers: string) => void;
+  setApiBody: (body: string) => void;
+  setActiveTab: (tab: 'raw' | 'api') => void;
+  resetApiConfig: () => void;
   undo: () => void;
   redo: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
@@ -148,6 +159,11 @@ export const useStore = create<StoreState>()(
       isMobileMenuOpen: false,
       isShortcutsOpen: false,
       isMathHelpOpen: false,
+      apiMethod: 'GET',
+      apiUrl: 'https://jsonplaceholder.typicode.com/todos/1',
+      apiHeaders: '{\n  "Accept": "application/json"\n}',
+      apiBody: '',
+      activeTab: 'raw',
       dragOverrides: {},
       undoStack: [],
       redoStack: [],
@@ -281,6 +297,17 @@ export const useStore = create<StoreState>()(
       },
       setCollapsedNodes: (nodes: Set<string>) => set({ collapsedNodes: nodes }),
       setSelectedNodeId: (id: string | null) => set({ selectedNodeId: id }),
+      setApiMethod: (method: string) => set({ apiMethod: method }),
+      setApiUrl: (url: string) => set({ apiUrl: url }),
+      setApiHeaders: (headers: string) => set({ apiHeaders: headers }),
+      setApiBody: (body: string) => set({ apiBody: body }),
+      setActiveTab: (tab: 'raw' | 'api') => set({ activeTab: tab }),
+      resetApiConfig: () => set({ 
+        apiMethod: 'GET',
+        apiUrl: 'https://jsonplaceholder.typicode.com/todos/1',
+        apiHeaders: '{\n  "Accept": "application/json"\n}',
+        apiBody: ''
+      }),
       setIsEditorPanelOpen: (isOpen: boolean) => set({ isEditorPanelOpen: isOpen }),
       setIsAdvancedPanelOpen: (isOpen: boolean) => set({ isAdvancedPanelOpen: isOpen }),
       setIsMobileMenuOpen: (isOpen: boolean) => void set({ isMobileMenuOpen: isOpen }),
@@ -313,7 +340,12 @@ export const useStore = create<StoreState>()(
         const persistedKeys = [
           ...Object.keys(defaultSettings),
           'isEditorPanelOpen',
-          'isAdvancedPanelOpen'
+          'isAdvancedPanelOpen',
+          'apiMethod',
+          'apiUrl',
+          'apiHeaders',
+          'apiBody',
+          'activeTab'
         ];
         return Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key))

@@ -1,18 +1,21 @@
 import { useStore } from '../store/useStore';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import { useEffect, useRef, useState } from 'react';
-import { Play, Code, Loader2, Globe } from 'lucide-react';
+import { Play, Code, Loader2, Globe, CheckCircle2 } from 'lucide-react';
 
 export default function EditorPanel() {
-  const { code, setCode, clearCode, error, parsedData, appTheme } = useStore();
+  const { 
+    code, setCode, clearCode, error, parsedData, appTheme,
+    apiMethod, setApiMethod,
+    apiUrl, setApiUrl,
+    apiHeaders, setApiHeaders,
+    apiBody, setApiBody,
+    activeTab, setActiveTab,
+    resetApiConfig
+  } = useStore();
   const monaco = useMonaco();
   const editorRef = useRef<any>(null);
 
-  const [activeTab, setActiveTab] = useState<'raw' | 'api'>('raw');
-  const [apiUrl, setApiUrl] = useState('https://jsonplaceholder.typicode.com/todos/1');
-  const [apiMethod, setApiMethod] = useState('GET');
-  const [apiHeaders, setApiHeaders] = useState('{\n  "Accept": "application/json"\n}');
-  const [apiBody, setApiBody] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
@@ -121,17 +124,19 @@ export default function EditorPanel() {
           <button 
             onClick={() => setActiveTab('raw')}
             className={`flex items-center gap-2 px-4 py-2 border-r border-slate-300 dark:border-slate-800 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'raw' ? 'bg-blue-100/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+            title="Editor"
           >
-            <Code size={14} /> Editor
+            <Code size={14} /> <span className="hidden sm:inline">Editor</span>
           </button>
           <button 
             onClick={() => setActiveTab('api')}
             className={`flex items-center gap-2 px-4 py-2 border-r border-slate-300 dark:border-slate-800 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === 'api' ? 'bg-blue-100/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+            title="Fetch API"
           >
-            <Globe size={14} /> Fetch API
+            <Globe size={14} /> <span className="hidden sm:inline">Fetch API</span>
           </button>
         </div>
-        <div className="pr-4 flex items-center gap-3">
+        <div className="pr-4 flex items-center gap-2 sm:gap-3">
           <button
             id="editor-clear-button"
             onClick={() => {
@@ -143,13 +148,13 @@ export default function EditorPanel() {
                 }
               }
             }}
-            className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-red-500 transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/20"
+            className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-red-500 transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/20"
           >
             Clear
           </button>
           <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-800" />
-          {error && activeTab === 'raw' && <span className="text-xs text-red-400 bg-red-400/10 px-2 py-0.5 rounded truncate max-w-[200px]" title={error}>{error}</span>}
-          {!error && parsedData && activeTab === 'raw' && <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded">Valid JSON/YAML</span>}
+          {error && activeTab === 'raw' && <span className="text-[10px] sm:text-xs text-red-400 bg-red-400/10 px-1.5 sm:px-2 py-0.5 rounded truncate max-w-[120px] sm:max-w-[200px]" title={error}>{error}</span>}
+          {!error && parsedData && activeTab === 'raw' && <span className="text-[10px] sm:text-xs flex items-center gap-1 sm:gap-1.5 text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-400/10 px-1.5 sm:px-2 border border-green-200 dark:border-green-400/20 py-0.5 rounded font-mono"><CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" /><span className="hidden sm:inline">Valid </span>JSON/YAML</span>}
         </div>
       </div>
       
@@ -277,7 +282,15 @@ export default function EditorPanel() {
                 </div>
               )}
               
-              <div className="flex justify-end">
+              <div className="flex justify-between items-center mt-2">
+                <button
+                  onClick={() => {
+                    resetApiConfig();
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 uppercase tracking-widest font-semibold transition-colors focus:outline-none"
+                >
+                  Reset Config
+                </button>
                 <button 
                   onClick={handleFetch}
                   disabled={isLoading}

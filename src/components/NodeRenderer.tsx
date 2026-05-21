@@ -4,6 +4,7 @@ import { HierarchyPointNode } from 'd3';
 import { TreeNode } from '../utils/transformer';
 import { useStore, NodeTheme } from '../store/useStore';
 import { ChevronRight, ChevronDown, Type, Hash, Braces, AlignLeft, ToggleLeft, HelpCircle, MoreVertical } from 'lucide-react';
+import SmartMediaRenderer from './SmartMediaRenderer';
 
 interface NodeProps {
   key?: React.Key;
@@ -19,17 +20,10 @@ const getMediaType = (val: string) => {
   val = val.trim();
   if (val.startsWith('data:image/') || val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)) return 'image';
   if (val.startsWith('data:audio/') || val.match(/\.(mp3|wav|ogg|aac)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac)/i)) return 'audio';
-  if (val.startsWith('data:video/') || val.match(/\.(mp4|webm|ogg)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp4|webm|ogg)/i) || val.includes("youtube.com")) return 'video';
-  return null;
-}
-
-const VideoComponent = ({ src }: { src: string }) => {
-  if (src.startsWith("https://www.youtube.com") || src.startsWith("https://youtube.com")) {
-    return <iframe width="560" height="315" src={src} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen></iframe>
-  }
-  if (src.trim()) {
-    return <video src={src} controls className="max-w-full max-h-[160px] rounded focus:outline-none" />
-  }
+  if (val.startsWith('data:video/') || val.match(/\.(mp4|webm|ogg)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp4|webm|ogg)/i)) return 'video';
+  // Use inspector for youtube, vimoe, spotfiy, or any http url
+  // Just treat any http/https link as potential smart media if we didn't natively catch it
+  if (val.startsWith('http://') || val.startsWith('https://')) return 'smart';
   return null;
 }
 
@@ -62,15 +56,24 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
     d3.select(foreignRef.current).call(drag);
   }, [setDragOverride]);
 
+  const [smartMediaFailed, setSmartMediaFailed] = React.useState(false);
+
   const data = node.data;
   const isCollapsed = collapsedNodes.has(data.id);
   const hasChildren = !!data.children && data.children.length > 0;
 
-  // Search highlighting
   const hasQuery = !!searchQuery;
   const isMatch = searchMatches.has(data.id);
   const isAncestor = searchAncestors.has(data.id);
   const isDimmed = (hasQuery && !isMatch && !isAncestor) || (!hasQuery && !isSelected && !isSelectedPath && useStore.getState().selectedNodeId != null);
+  
+  const strVal = data.value !== undefined ? String(data.value) : '';
+  const mediaType = showMediaPreview && data.type === 'string' && !smartMediaFailed ? getMediaType(strVal) : null;
+  const isMedia = !!mediaType;
+
+  // reset smartMediaFailed if value changes
+  React.useEffect(() => { setSmartMediaFailed(false); }, [strVal]);
+
 
   const getThemeClasses = (theme: NodeTheme) => {
     switch (theme) {
@@ -187,9 +190,7 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
     highlightClasses = 'ring-1 ring-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.4)]';
   }
 
-  const strVal = data.value !== undefined ? String(data.value) : '';
-  const mediaType = showMediaPreview && data.type === 'string' ? getMediaType(strVal) : null;
-  const isMedia = !!mediaType;
+
 
   let fWidth = isMedia ? 320 : 260;
   let fHeight = isMedia ? 240 : 120; 
@@ -419,10 +420,11 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
           </div>
 
           {isMedia && (
-            <div className="w-full rounded bg-black/20 p-1 flex justify-center items-center overflow-hidden border border-white/5">
+            <div className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === 'smart' ? 'flex flex-1 items-stretch' : 'p-1 flex justify-center items-center'}`}>
               {mediaType === 'image' && <img src={strVal} alt={data.name} className="max-w-full max-h-[160px] object-contain rounded" />}
               {mediaType === 'audio' && <audio src={strVal} controls className="w-full h-8 outline-none" />}
-              {mediaType === 'video' && <VideoComponent src={strVal} />}
+              {mediaType === 'video' && <video src={strVal} controls className="max-w-full max-h-[160px] rounded focus:outline-none" />}
+              {mediaType === 'smart' && <SmartMediaRenderer key={strVal} url={strVal} onMediaFailed={() => setSmartMediaFailed(true)} />}
             </div>
           )}
         </div>
