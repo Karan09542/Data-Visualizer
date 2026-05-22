@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAnnotationStore, Annotation, Point } from '../store/useAnnotationStore';
+import { getAnnotationBounds, TransformBox } from './TransformBox';
+import { AnnotationContextMenu, ManualResizeModal } from './AnnotationControls';
 import * as d3 from 'd3';
 import { create, all } from 'mathjs';
 import { 
@@ -48,10 +50,7 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
   const pathData = useMemo(() => {
     if (anno.points.length === 0) return '';
     
-    if (['pen', 'highlighter', 'eraser', 'polygon', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'star', 'diamond'].includes(anno.tool)) {
-      if (!['pen', 'highlighter', 'eraser'].includes(anno.tool)) {
-        return lineGenerator([...anno.points, anno.points[0]]) || '';
-      }
+    if (['pen', 'highlighter', 'eraser'].includes(anno.tool)) {
       return lineGenerator(anno.points) || '';
     }
     
@@ -66,16 +65,122 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
       const p1 = anno.points[0];
       const p2 = anno.points[anno.points.length - 1];
       if (!p1 || !p2) return '';
-      // Calculate arrowhead
+      
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
       const angle = Math.atan2(dy, dx);
-      const headlen = 15;
-      const x3 = p2.x - headlen * Math.cos(angle - Math.PI / 6);
-      const y3 = p2.y - headlen * Math.sin(angle - Math.PI / 6);
-      const x4 = p2.x - headlen * Math.cos(angle + Math.PI / 6);
-      const y4 = p2.y - headlen * Math.sin(angle + Math.PI / 6);
-      return `M ${p1.x},${p1.y} L ${p2.x},${p2.y} M ${x3},${y3} L ${p2.x},${p2.y} L ${x4},${y4}`;
+      
+      const headlen = anno.arrowTipSize || 15;
+      const tipStyle = anno.arrowTipStyle || 'triangle';
+      const lineStyle = anno.arrowLineStyle || 'solid';
+
+      let linePath = '';
+      if (lineStyle === 'custom-math') {
+        const segments = Math.max(10, Math.floor(dist / 5));
+        linePath = `M ${p1.x},${p1.y}`;
+        try {
+          const node = math.parse(anno.customArrowLineEquation || '0');
+          const compiled = node.compile();
+          for (let i = 1; i <= segments; i++) {
+            const t = i / segments;
+            const px = p1.x + dx * t;
+            const py = p1.y + dy * t;
+            let offset = 0;
+            try {
+              offset = compiled.evaluate({ t, dist }) as number;
+            } catch (e) {}
+            const perpX = -Math.sin(angle) * offset;
+            const perpY = Math.cos(angle) * offset;
+            linePath += ` L ${px + perpX},${py + perpY}`;
+          }
+        } catch (e) {
+          linePath = `M ${p1.x},${p1.y} L ${p2.x},${p2.y}`;
+        }
+      } else if (lineStyle === 'curly') {
+        const segments = Math.max(1, Math.floor(dist / 20));
+        const segDist = dist / segments;
+        linePath = `M ${p1.x},${p1.y}`;
+        for (let i = 1; i <= segments; i++) {
+          const t = i / segments;
+          const px = p1.x + dx * t;
+          const py = p1.y + dy * t;
+          const midT = (i - 0.5) / segments;
+          const midX = p1.x + dx * midT;
+          const midY = p1.y + dy * midT;
+          
+          const perpX = -Math.sin(angle) * 10;
+          const perpY = Math.cos(angle) * 10;
+          
+          linePath += ` Q ${midX + perpX},${midY + perpY} ${px},${py}`;
+        }
+      } else {
+        linePath = `M ${p1.x},${p1.y} L ${p2.x},${p2.y}`;
+      }
+
+      let tipPath = '';
+      if (tipStyle === 'custom-math') {
+        try {
+          const segments = 30;
+          const node = math.parse(anno.customArrowTipEquation || 'size');
+          const compiled = node.compile();
+          
+          let path = '';
+          for (let i = 0; i <= segments; i++) {
+            const theta = (i / segments) * Math.PI * 2;
+            let r = headlen;
+            try {
+              r = compiled.evaluate({ theta, size: headlen }) as number;
+            } catch(e) {}
+            
+            const px = p2.x + r * Math.cos(angle + Math.PI + theta);
+            const py = p2.y + r * Math.sin(angle + Math.PI + theta);
+            
+            if (i === 0) path += ` M ${px},${py}`;
+            else path += ` L ${px},${py}`;
+          }
+          path += ' Z';
+          tipPath = path;
+        } catch(e) {}
+      } else if (tipStyle === 'none') {
+         // no tip
+      } else if (tipStyle === 'default') {
+        const x3 = p2.x - headlen * Math.cos(angle - Math.PI / 6);
+        const y3 = p2.y - headlen * Math.sin(angle - Math.PI / 6);
+        const x4 = p2.x - headlen * Math.cos(angle + Math.PI / 6);
+        const y4 = p2.y - headlen * Math.sin(angle + Math.PI / 6);
+        tipPath = ` M ${x3},${y3} L ${p2.x},${p2.y} L ${x4},${y4}`;
+      } else if (tipStyle === 'triangle') {
+        const x3 = p2.x - headlen * Math.cos(angle - Math.PI / 6);
+        const y3 = p2.y - headlen * Math.sin(angle - Math.PI / 6);
+        const x4 = p2.x - headlen * Math.cos(angle + Math.PI / 6);
+        const y4 = p2.y - headlen * Math.sin(angle + Math.PI / 6);
+        tipPath = ` M ${p2.x},${p2.y} L ${x3},${y3} L ${x4},${y4} Z`;
+      } else if (tipStyle === 'stealth') {
+        const x3 = p2.x - headlen * Math.cos(angle - Math.PI / 6);
+        const y3 = p2.y - headlen * Math.sin(angle - Math.PI / 6);
+        const x4 = p2.x - headlen * Math.cos(angle + Math.PI / 6);
+        const y4 = p2.y - headlen * Math.sin(angle + Math.PI / 6);
+        const invHead = headlen * 0.5;
+        const x5 = p2.x - invHead * Math.cos(angle);
+        const y5 = p2.y - invHead * Math.sin(angle);
+        tipPath = ` M ${p2.x},${p2.y} L ${x3},${y3} L ${x5},${y5} L ${x4},${y4} Z`;
+      } else if (tipStyle === 'diamond') {
+        const x3 = p2.x - (headlen/2) * Math.cos(angle - Math.PI / 4);
+        const y3 = p2.y - (headlen/2) * Math.sin(angle - Math.PI / 4);
+        const x4 = p2.x - headlen * Math.cos(angle);
+        const y4 = p2.y - headlen * Math.sin(angle);
+        const x5 = p2.x - (headlen/2) * Math.cos(angle + Math.PI / 4);
+        const y5 = p2.y - (headlen/2) * Math.sin(angle + Math.PI / 4);
+        tipPath = ` M ${p2.x},${p2.y} L ${x3},${y3} L ${x4},${y4} L ${x5},${y5} Z`;
+      } else if (tipStyle === 'circle') {
+        const cx = p2.x - (headlen/2) * Math.cos(angle);
+        const cy = p2.y - (headlen/2) * Math.sin(angle);
+        const r = headlen / 2;
+        tipPath = ` M ${cx},${cy - r} A ${r},${r} 0 1,1 ${cx},${cy + r} A ${r},${r} 0 1,1 ${cx},${cy - r}`;
+      }
+      
+      return linePath + tipPath;
     }
 
     if (['rectangle', 'square', 'rounded-rectangle'].includes(anno.tool)) {
@@ -114,16 +219,56 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
       return `M ${p1.x},${p1.y - r} A ${r},${r} 0 1,1 ${p1.x},${p1.y + r} A ${r},${r} 0 1,1 ${p1.x},${p1.y - r}`;
     }
 
-    if (anno.tool === 'triangle') {
+    if (['triangle', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'polygon', 'star', 'diamond'].includes(anno.tool)) {
       const p1 = anno.points[0];
       const p2 = anno.points[anno.points.length - 1];
       if (!p1 || !p2) return '';
-      const topY = Math.min(p1.y, p2.y);
-      const bottomY = Math.max(p1.y, p2.y);
+      
       const leftX = Math.min(p1.x, p2.x);
       const rightX = Math.max(p1.x, p2.x);
+      const topY = Math.min(p1.y, p2.y);
+      const bottomY = Math.max(p1.y, p2.y);
       const cx = (leftX + rightX) / 2;
-      return `M ${cx},${topY} L ${rightX},${bottomY} L ${leftX},${bottomY} Z`;
+      const cy = (topY + bottomY) / 2;
+      const rx = (rightX - leftX) / 2;
+      const ry = (bottomY - topY) / 2;
+      
+      let sides = 3;
+      if (anno.tool === 'triangle') sides = 3;
+      else if (anno.tool === 'diamond') sides = 4;
+      else if (anno.tool === 'pentagon') sides = 5;
+      else if (anno.tool === 'hexagon') sides = 6;
+      else if (anno.tool === 'heptagon') sides = 7;
+      else if (anno.tool === 'octagon') sides = 8;
+      else if (anno.tool === 'polygon') sides = anno.polygonSides || 5;
+
+      if (anno.tool === 'star') {
+        let path = '';
+        const points = 5;
+        const innerRadiusRatio = 0.4;
+        for (let i = 0; i < points * 2; i++) {
+          const r = i % 2 === 0 ? 1 : innerRadiusRatio;
+          const angle = -Math.PI / 2 + (i * Math.PI) / points;
+          const x = cx + Math.cos(angle) * (rx * r);
+          const y = cy + Math.sin(angle) * (ry * r);
+          if (i === 0) path += `M ${x},${y} `;
+          else path += `L ${x},${y} `;
+        }
+        return path + ' Z';
+      }
+
+      // For standard regular polygons
+      let path = '';
+      for (let i = 0; i < sides; i++) {
+        // Start from top center (like triangle pointing up)
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / sides;
+        // Distort by rx and ry to fit within bounds
+        const x = cx + rx * Math.cos(angle);
+        const y = cy + ry * Math.sin(angle);
+        if (i === 0) path += `M ${x},${y} `;
+        else path += `L ${x},${y} `;
+      }
+      return path + ' Z';
     }
 
     if (['sine-wave', 'square-wave', 'triangle-wave', 'sawtooth-wave', 'pulse-wave', 'zigzag-wave'].includes(anno.tool)) {
@@ -399,7 +544,8 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
   }, [anno, lineGenerator]);
 
   let strokeDasharray = 'none';
-  if (anno.brushStyle === 'dashed') strokeDasharray = '10, 10';
+  if (anno.brushStyle === 'dashed' || anno.arrowLineStyle === 'dashed') strokeDasharray = '10, 10';
+  if (anno.arrowLineStyle === 'dotted') strokeDasharray = '2, 6';
   
   let className = 'transition-opacity';
   if (anno.isFading) {
@@ -439,9 +585,24 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
   const strokeLinecap = (anno.brushStyle === 'marker' || anno.brushStyle === 'calligraphy') ? 'butt' : 'round';
   const strokeLinejoin = (anno.brushStyle === 'marker' || anno.brushStyle === 'calligraphy') ? 'miter' : 'round';
 
+  const b = getAnnotationBounds(anno);
+  const cx = anno.centerX ?? b.cx;
+  const cy = anno.centerY ?? b.cy;
+  const tx = anno.translateX ?? 0;
+  const ty = anno.translateY ?? 0;
+  const rot = anno.rotation ?? 0;
+  const sx = anno.scaleX ?? 1;
+  const sy = anno.scaleY ?? 1;
+
+  if (anno.translateX !== undefined || anno.translateY !== undefined || anno.rotation !== undefined || anno.scaleX !== undefined || anno.scaleY !== undefined) {
+    groupStyle.transformOrigin = `${cx}px ${cy}px`;
+    groupStyle.transform = `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
+  }
+
   return (
     <g className={className} style={groupStyle}>
       {(anno.glowIntensity > 0 || anno.brushStyle === 'neon-glow') && (
+
         <path
           d={pathData}
           fill="none"
@@ -507,6 +668,17 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
 
 export default function AnnotationRenderer() {
   const annotations = useAnnotationStore(state => state.annotations);
+  const activeTool = useAnnotationStore(state => state.activeTool);
+  const selectedAnnotationIds = useAnnotationStore(state => state.selectedAnnotationIds);
+
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, anno: Annotation } | null>(null);
+  const [manualResizeAnno, setManualResizeAnno] = useState<Annotation | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setContextMenu(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
 
   return (
     <g className="annotation-layer">
@@ -532,8 +704,66 @@ export default function AnnotationRenderer() {
         </filter>
       </defs>
       {annotations.map(anno => (
-        <BaseAnnotationShape key={anno.id} anno={anno} />
+        <g 
+          key={anno.id} 
+          onContextMenu={(e) => {
+            if (activeTool === 'select') {
+              e.preventDefault(); // Always prevent browser menu in select mode
+              e.stopPropagation(); // Always stop propagation on shapes to prevent global gestures
+              // Only allow menu if already selected (as per user request)
+              if (selectedAnnotationIds.includes(anno.id)) {
+                setContextMenu({ x: e.clientX, y: e.clientY, anno });
+              } else {
+                // If not selected, we just select it
+                useAnnotationStore.getState().setSelectedAnnotations([anno.id]);
+              }
+            }
+          }}
+          onClick={(e) => {
+            if (activeTool === 'select' && selectedAnnotationIds.includes(anno.id)) {
+              e.stopPropagation(); // Prevent bubbling if already selected
+            }
+          }}
+          onTouchStart={(e) => {
+            if (activeTool === 'select' && selectedAnnotationIds.includes(anno.id)) {
+              // Don't preventDefault here as it might break some things, but stop propagation
+              // to avoid global gestures if possible (though gestures often on container)
+              e.stopPropagation();
+            }
+          }}
+        >
+          <BaseAnnotationShape anno={anno} />
+        </g>
       ))}
+      {activeTool === 'select' && annotations
+        .filter(anno => selectedAnnotationIds.includes(anno.id))
+        .map(anno => (
+          <TransformBox 
+            key={`tb-${anno.id}`} 
+            anno={anno} 
+            onOpenContextMenu={(x, y) => setContextMenu({ x, y, anno })}
+            onInteractionStart={() => setContextMenu(null)}
+          />
+        ))}
+
+      {contextMenu && (
+        <AnnotationContextMenu 
+          anno={contextMenu.anno} 
+          x={contextMenu.x} 
+          y={contextMenu.y} 
+          onClose={() => setContextMenu(null)}
+          onShowManualResize={() => setManualResizeAnno(contextMenu.anno)}
+        />
+      )}
+
+      {manualResizeAnno && (
+        <ManualResizeModal 
+          anno={manualResizeAnno} 
+          baseWidth={getAnnotationBounds(manualResizeAnno).w}
+          baseHeight={getAnnotationBounds(manualResizeAnno).h}
+          onClose={() => setManualResizeAnno(null)}
+        />
+      )}
     </g>
   );
 }

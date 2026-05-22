@@ -12,6 +12,9 @@ export type BrushStyle =
   | 'smooth-ink' | 'marker' | 'neon-glow' | 'pencil' 
   | 'dashed' | 'rough-handdrawn' | 'calligraphy' | 'soft-highlighter';
 
+export type ArrowTipStyle = 'default' | 'none' | 'stealth' | 'triangle' | 'circle' | 'diamond' | 'custom-math';
+export type ArrowLineStyle = 'solid' | 'dashed' | 'dotted' | 'curly' | 'custom-math';
+
 export interface Point {
   x: number;
   y: number;
@@ -35,6 +38,7 @@ export interface Annotation {
   createdAt: number;
   waveAmplitude?: number; // Only for waves
   waveLength?: number; // Only for waves
+  polygonSides?: number; // Only for polygons
   isFading?: boolean;
   isHighlighter?: boolean;
   fillEnabled?: boolean;
@@ -45,6 +49,18 @@ export interface Annotation {
   functionFrequency?: number;
   functionPhase?: number;
   functionSmoothness?: number;
+  arrowTipStyle?: ArrowTipStyle;
+  arrowTipSize?: number;
+  arrowLineStyle?: ArrowLineStyle;
+  customArrowLineEquation?: string;
+  customArrowTipEquation?: string;
+  rotation?: number;
+  scaleX?: number;
+  scaleY?: number;
+  translateX?: number;
+  translateY?: number;
+  centerX?: number;
+  centerY?: number;
 }
 
 interface AnnotationState {
@@ -67,11 +83,17 @@ interface AnnotationState {
   fillEnabled: boolean;
   fillOpacity: number;
   fillColor: string;
+  polygonSides: number;
   functionExpression: string;
   functionAmplitude: number;
   functionFrequency: number;
   functionPhase: number;
   functionSmoothness: number;
+  arrowTipStyle: ArrowTipStyle;
+  arrowTipSize: number;
+  arrowLineStyle: ArrowLineStyle;
+  customArrowLineEquation: string;
+  customArrowTipEquation: string;
   selectedAnnotationIds: string[];
   
   // UI Settings
@@ -85,6 +107,8 @@ interface AnnotationState {
   optionsPanelHeight: number;
   functionPanelWidth: number;
   functionPanelHeight: number;
+  arrowPanelWidth: number;
+  arrowPanelHeight: number;
 
   // Data
   annotations: Annotation[];
@@ -109,6 +133,7 @@ interface AnnotationState {
   setAutoShapeDetection: (auto: boolean) => void;
   setWaveAmplitude: (amp: number) => void;
   setWaveLength: (len: number) => void;
+  setPolygonSides: (sides: number) => void;
   setFillEnabled: (enabled: boolean) => void;
   setFillOpacity: (opacity: number) => void;
   setFillColor: (color: string) => void;
@@ -117,6 +142,11 @@ interface AnnotationState {
   setFunctionFrequency: (freq: number) => void;
   setFunctionPhase: (phase: number) => void;
   setFunctionSmoothness: (smoothness: number) => void;
+  setArrowTipStyle: (style: ArrowTipStyle) => void;
+  setArrowTipSize: (size: number) => void;
+  setArrowLineStyle: (style: ArrowLineStyle) => void;
+  setCustomArrowLineEquation: (equation: string) => void;
+  setCustomArrowTipEquation: (equation: string) => void;
 
   // UI Actions
   setIsToolbarVisible: (visible: boolean) => void;
@@ -129,9 +159,12 @@ interface AnnotationState {
   setOptionsPanelHeight: (h: number) => void;
   setFunctionPanelWidth: (w: number) => void;
   setFunctionPanelHeight: (h: number) => void;
+  setArrowPanelWidth: (w: number) => void;
+  setArrowPanelHeight: (h: number) => void;
 
   addAnnotation: (annotation: Annotation) => void;
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void;
+  reorderAnnotation: (id: string, action: 'forward' | 'backward' | 'front' | 'back') => void;
   removeAnnotations: (ids: string[]) => void;
   clearAnnotations: () => void;
   setSelectedAnnotations: (ids: string[]) => void;
@@ -162,11 +195,17 @@ export const useAnnotationStore = create<AnnotationState>()(
   fillEnabled: false,
   fillOpacity: 0.3,
   fillColor: '#eab308',
+  polygonSides: 5,
   functionExpression: 'sin(x)',
   functionAmplitude: 20,
   functionFrequency: 0.1,
   functionPhase: 0,
   functionSmoothness: 2,
+  arrowTipStyle: 'triangle',
+  arrowTipSize: 15,
+  arrowLineStyle: 'solid',
+  customArrowLineEquation: 'sin(t * dist * 0.05) * 10',
+  customArrowTipEquation: 'size * (0.5 + 0.5 * cos(theta * 3))',
   selectedAnnotationIds: [],
   isToolbarVisible: false,
   toolbarOpacity: 1,
@@ -178,6 +217,8 @@ export const useAnnotationStore = create<AnnotationState>()(
   optionsPanelHeight: 380,
   functionPanelWidth: 260,
   functionPanelHeight: 450,
+  arrowPanelWidth: 260,
+  arrowPanelHeight: 320,
   annotations: [],
   history: [[]],
   historyIndex: 0,
@@ -235,6 +276,7 @@ export const useAnnotationStore = create<AnnotationState>()(
   setAutoShapeDetection: (autoShapeDetection) => set({ autoShapeDetection }),
   setWaveAmplitude: (waveAmplitude) => set({ waveAmplitude }),
   setWaveLength: (waveLength) => set({ waveLength }),
+  setPolygonSides: (polygonSides) => set({ polygonSides }),
   setFillEnabled: (fillEnabled) => {
     set({ fillEnabled });
     const { selectedAnnotationIds, annotations } = get();
@@ -261,6 +303,41 @@ export const useAnnotationStore = create<AnnotationState>()(
   setFunctionFrequency: (functionFrequency) => set({ functionFrequency }),
   setFunctionPhase: (functionPhase) => set({ functionPhase }),
   setFunctionSmoothness: (functionSmoothness) => set({ functionSmoothness }),
+  setArrowTipStyle: (arrowTipStyle) => {
+    set({ arrowTipStyle });
+    const { selectedAnnotationIds, annotations } = get();
+    if (selectedAnnotationIds.length > 0) {
+      set({ annotations: annotations.map(a => selectedAnnotationIds.includes(a.id) ? { ...a, arrowTipStyle } : a) });
+    }
+  },
+  setArrowTipSize: (arrowTipSize) => {
+    set({ arrowTipSize });
+    const { selectedAnnotationIds, annotations } = get();
+    if (selectedAnnotationIds.length > 0) {
+      set({ annotations: annotations.map(a => selectedAnnotationIds.includes(a.id) ? { ...a, arrowTipSize } : a) });
+    }
+  },
+  setArrowLineStyle: (arrowLineStyle) => {
+    set({ arrowLineStyle });
+    const { selectedAnnotationIds, annotations } = get();
+    if (selectedAnnotationIds.length > 0) {
+      set({ annotations: annotations.map(a => selectedAnnotationIds.includes(a.id) ? { ...a, arrowLineStyle } : a) });
+    }
+  },
+  setCustomArrowLineEquation: (customArrowLineEquation) => {
+    set({ customArrowLineEquation });
+    const { selectedAnnotationIds, annotations } = get();
+    if (selectedAnnotationIds.length > 0) {
+      set({ annotations: annotations.map(a => selectedAnnotationIds.includes(a.id) ? { ...a, customArrowLineEquation } : a) });
+    }
+  },
+  setCustomArrowTipEquation: (customArrowTipEquation) => {
+    set({ customArrowTipEquation });
+    const { selectedAnnotationIds, annotations } = get();
+    if (selectedAnnotationIds.length > 0) {
+      set({ annotations: annotations.map(a => selectedAnnotationIds.includes(a.id) ? { ...a, customArrowTipEquation } : a) });
+    }
+  },
 
   setIsToolbarVisible: (isToolbarVisible) => set({ isToolbarVisible }),
   setToolbarOpacity: (toolbarOpacity) => set({ toolbarOpacity }),
@@ -272,11 +349,32 @@ export const useAnnotationStore = create<AnnotationState>()(
   setOptionsPanelHeight: (optionsPanelHeight) => set({ optionsPanelHeight }),
   setFunctionPanelWidth: (functionPanelWidth) => set({ functionPanelWidth }),
   setFunctionPanelHeight: (functionPanelHeight) => set({ functionPanelHeight }),
+  setArrowPanelWidth: (arrowPanelWidth) => set({ arrowPanelWidth }),
+  setArrowPanelHeight: (arrowPanelHeight) => set({ arrowPanelHeight }),
 
   addAnnotation: (annotation) => set((state) => ({ annotations: [...state.annotations, annotation] })),
   updateAnnotation: (id, updates) => set((state) => ({
     annotations: state.annotations.map(a => a.id === id ? { ...a, ...updates } : a)
   })),
+  reorderAnnotation: (id, action) => set((state) => {
+    const annotations = [...state.annotations];
+    const index = annotations.findIndex(a => a.id === id);
+    if (index === -1) return state;
+
+    const [item] = annotations.splice(index, 1);
+
+    if (action === 'forward') {
+      annotations.splice(Math.min(index + 1, annotations.length), 0, item);
+    } else if (action === 'backward') {
+      annotations.splice(Math.max(index - 1, 0), 0, item);
+    } else if (action === 'front') {
+      annotations.push(item);
+    } else if (action === 'back') {
+      annotations.unshift(item);
+    }
+
+    return { annotations };
+  }),
   removeAnnotations: (ids) => set((state) => ({
     annotations: state.annotations.filter(a => !ids.includes(a.id)),
     selectedAnnotationIds: state.selectedAnnotationIds.filter(id => !ids.includes(id))
@@ -355,6 +453,7 @@ export const useAnnotationStore = create<AnnotationState>()(
       fillEnabled: false,
       fillOpacity: 0.3,
       fillColor: '#eab308',
+      polygonSides: 5,
       functionExpression: 'sin(x)',
       functionAmplitude: 20,
       functionFrequency: 0.1,
@@ -367,6 +466,8 @@ export const useAnnotationStore = create<AnnotationState>()(
       optionsPanelHeight: 380,
       functionPanelWidth: 260,
       functionPanelHeight: 450,
+      arrowPanelWidth: 260,
+      arrowPanelHeight: 320,
       toolbarPlacement: 'top-left',
     });
   },

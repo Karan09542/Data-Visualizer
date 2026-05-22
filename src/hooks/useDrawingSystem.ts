@@ -66,15 +66,18 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
       if (state.activeTool === 'select') {
         const target = e.target as SVGElement;
         const idMatch = target.id?.match(/^anno-(.+)$/);
+        const isTransformBox = target.closest('.transform-box');
         
-        if (idMatch) {
-          const id = idMatch[1];
-          // Start dragging the annotation
-          isDrawing.current = true;
-          currentAnnotationId.current = id;
-          currentPoints.current = [pt]; // Store starting drag point
-          if (!state.selectedAnnotationIds.includes(id)) {
-            state.setSelectedAnnotations([id]);
+        if (idMatch || isTransformBox) {
+          if (idMatch) {
+            const id = idMatch[1];
+            // Start dragging the annotation
+            isDrawing.current = true;
+            currentAnnotationId.current = id;
+            currentPoints.current = [pt]; // Store starting drag point
+            if (!state.selectedAnnotationIds.includes(id)) {
+              state.setSelectedAnnotations([id]);
+            }
           }
           e.stopPropagation(); // prevent background click
         } else {
@@ -120,6 +123,7 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
         createdAt: Date.now(),
         waveAmplitude: state.waveAmplitude,
         waveLength: state.waveLength,
+        polygonSides: state.polygonSides,
         fillEnabled: state.fillEnabled,
         fillOpacity: state.fillOpacity,
         fillColor: state.fillColor,
@@ -128,6 +132,11 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
         functionFrequency: state.functionFrequency,
         functionPhase: state.functionPhase,
         functionSmoothness: state.functionSmoothness,
+        arrowTipStyle: state.arrowTipStyle,
+        arrowTipSize: state.arrowTipSize,
+        arrowLineStyle: state.arrowLineStyle,
+        customArrowLineEquation: state.customArrowLineEquation,
+        customArrowTipEquation: state.customArrowTipEquation,
       };
 
       addAnnotation(newAnno);
@@ -299,16 +308,53 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
       currentAnnotationId.current = null;
     };
 
+    const handleDrawingKeyDown = (e: KeyboardEvent) => {
+      if (isDrawing.current && currentAnnotationId.current && e.key === 'Tab') {
+        e.preventDefault();
+        const state = useAnnotationStore.getState();
+        const anno = state.annotations.find(a => a.id === currentAnnotationId.current);
+        if (anno) {
+          if (['triangle', 'rectangle', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'polygon'].includes(anno.tool)) {
+            let currentSides = 3;
+            if (anno.tool === 'triangle') currentSides = 3;
+            else if (anno.tool === 'rectangle') currentSides = 4;
+            else if (anno.tool === 'pentagon') currentSides = 5;
+            else if (anno.tool === 'hexagon') currentSides = 6;
+            else if (anno.tool === 'heptagon') currentSides = 7;
+            else if (anno.tool === 'octagon') currentSides = 8;
+            else if (anno.tool === 'polygon') currentSides = anno.polygonSides || 9;
+
+            let nextSides = currentSides + (e.shiftKey ? -1 : 1);
+            if (nextSides < 3) nextSides = 3;
+
+            let newTool: import('../store/useAnnotationStore').DrawingTool = 'polygon';
+            if (nextSides === 3) newTool = 'triangle';
+            else if (nextSides === 4) newTool = 'rectangle';
+            else if (nextSides === 5) newTool = 'pentagon';
+            else if (nextSides === 6) newTool = 'hexagon';
+            else if (nextSides === 7) newTool = 'heptagon';
+            else if (nextSides === 8) newTool = 'octagon';
+
+            state.setActiveTool(newTool); // Updates UI toolbar
+            state.setPolygonSides(nextSides); // Keep setting synced
+            updateAnnotation(currentAnnotationId.current, { tool: newTool, polygonSides: nextSides }); // Updates active drawing
+          }
+        }
+      }
+    };
+
     el.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
     window.addEventListener('cancel-drawing', handleCancelDrawing);
+    window.addEventListener('keydown', handleDrawingKeyDown);
 
     return () => {
       el.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('cancel-drawing', handleCancelDrawing);
+      window.removeEventListener('keydown', handleDrawingKeyDown);
     };
   }, [addAnnotation, updateAnnotation]);
 }

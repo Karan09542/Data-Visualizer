@@ -182,6 +182,43 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose }) => {
                     Use the <span className="font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1 rounded">p</span> variable to create variation between multiple shapes using the same function. It provides a unique seed for every stroke.
                   </div>
                 </div>
+
+                <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Variable className="text-emerald-500" size={16} />
+                    <h4 className="text-[13px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">Custom Arrows</h4>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      You can use math equations to design custom arrow lines and tips when the <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded text-emerald-600">Custom Math</code> option is selected in the Arrow tool settings.
+                    </p>
+
+                    <div className="grid grid-cols-[100px_1fr] gap-4">
+                      <span className="text-[10px] font-black text-slate-400 uppercase">Arrow Tips</span>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                        Equation defines the radius <code className="font-mono text-emerald-500">r</code> given variables:
+                        <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                          <li><code className="text-emerald-500">theta</code>: Angle from 0 to 2π around the tip</li>
+                          <li><code className="text-emerald-500">size</code>: The selected tip size</li>
+                        </ul>
+                        <div className="mt-1 font-mono text-slate-400 italic">Example: size * abs(sin(theta * 3))</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[100px_1fr] gap-4">
+                      <span className="text-[10px] font-black text-slate-400 uppercase">Arrow Lines</span>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                        Equation defines perpendicular displacement given variables:
+                        <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                          <li><code className="text-emerald-500">t</code>: Progress along line from 0.0 to 1.0</li>
+                          <li><code className="text-emerald-500">dist</code>: Total length of the line in pixels</li>
+                        </ul>
+                        <div className="mt-1 font-mono text-slate-400 italic">Example: sin(t * dist * 0.1) * 10</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

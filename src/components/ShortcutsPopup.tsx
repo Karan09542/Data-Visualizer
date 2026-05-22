@@ -16,6 +16,7 @@ export default function ShortcutsPopup() {
     { keys: ['Ctrl', 'Drag'], desc: 'Draw when toolbar is hidden' },
     { keys: ['Alt', 'R/O/Y/G/S/B/P/V/W/K'], desc: 'Color Presets' },
     { keys: ['Ctrl', 'Z / Y'], desc: 'Undo / Redo' },
+    { keys: ['Tab / Shift+Tab'], desc: 'Change Shape While Drawing' },
     { keys: ['Double Finger Tap'], desc: 'Undo' },
     { keys: ['Double Finger Tap x2'], desc: 'Redo' },
     { keys: ['Scroll'], desc: 'Zoom In/Out' },

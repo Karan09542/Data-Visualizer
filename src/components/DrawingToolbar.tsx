@@ -3,7 +3,7 @@ import { useAnnotationStore, DrawingTool, BrushStyle } from '../store/useAnnotat
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   PenTool, Highlighter, Type, Square, Circle, Triangle,
-  Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity,
+  Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity, Pentagon, Hexagon,
   Settings, Zap, CheckSquare, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
   Sigma, X, ChevronUp, Palette, FunctionSquare, Eye, EyeOff, Copy, Check, Plus
@@ -142,6 +142,20 @@ const COLORS = [
   '#ffffff', // White
   '#000000', // Black
   'transparent', // Transparent
+];
+
+const ARROW_TIP_PRESETS = [
+  { label: 'Leaf', expr: 'size * cos(theta * 2.5)' },
+  { label: 'Flower', expr: 'size * abs(sin(theta * 3))' },
+  { label: 'Shield', expr: 'size * (0.5 + 0.5 * cos(theta))' },
+  { label: 'Spike', expr: 'size * (0.8 + 0.5 * cos(theta * 5))' }
+];
+
+const ARROW_LINE_PRESETS = [
+  { label: 'Sine Wave', expr: 'sin(t * dist * 0.05) * 10' },
+  { label: 'Beads', expr: 'abs(sin(t * dist * 0.1)) * 8' },
+  { label: 'ZigZag', expr: '(t * dist % 20 < 10 ? 1 : -1) * 5' },
+  { label: 'Decay', expr: 'sin(t * dist * 0.1) * 10 * (1 - t)' }
 ];
 
 const FUNCTION_PRESETS = [
@@ -357,7 +371,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                 <div className="mb-4">
                   <div className={`flex gap-2 overflow-x-auto pb-3 pt-1 snap-x ${scrollbarClasses}`}>
                     {TOOLS.map((t, idx) => {
-                      const isActive = store.activeTool === t.id;
+                      const isActive = store.activeTool === t.id || (t.id === 'triangle' && ['pentagon', 'hexagon', 'heptagon', 'octagon', 'polygon'].includes(store.activeTool));
                       return (
                           <button
                             key={t.id}
@@ -369,9 +383,19 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                             }`}
                           >
                           <div className={`p-0.5 flex items-center justify-center`}>
-                            {t.icon && React.cloneElement(t.icon as React.ReactElement<any>, { size: 18 })}
+                            {t.id === 'triangle' && isActive && !['triangle', 'rectangle', 'square'].includes(store.activeTool) ? (
+                              store.activeTool === 'pentagon' ? <Pentagon size={18} /> : 
+                              store.activeTool === 'hexagon' ? <Hexagon size={18} /> : 
+                              <div className="flex items-center justify-center w-[18px] h-[18px] font-bold text-[10px] rounded border border-current">{store.polygonSides}</div>
+                            ) : (
+                              t.icon && React.cloneElement(t.icon as React.ReactElement<any>, { size: 18 })
+                            )}
                           </div>
-                          <span className="text-[9px] font-medium">{t.label}</span>
+                          <span className="text-[9px] font-medium">
+                            {t.id === 'triangle' && isActive && !['triangle', 'rectangle', 'square'].includes(store.activeTool) 
+                               ? (store.activeTool === 'polygon' ? 'Polygon' : store.activeTool.charAt(0).toUpperCase() + store.activeTool.slice(1)) 
+                               : t.label}
+                          </span>
                         </button>
                       );
                     })}
@@ -717,6 +741,115 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                       </div>
                     )}
 
+                    {/* Arrow specifics */}
+                    {store.activeTool === 'arrow' && (
+                      <div className="flex flex-col gap-6 bg-slate-50 dark:bg-[#121A2F] p-5 rounded-[24px] border border-slate-200 dark:border-slate-800/80 mt-4">
+                        <div className="flex flex-col gap-2 w-full">
+                          <span className="text-[11px] font-semibold tracking-wider text-slate-500 dark:text-slate-300 uppercase flex justify-between gap-4">
+                            Tip Shape 
+                          </span>
+                           <select 
+                             value={store.arrowTipStyle} 
+                             onChange={e => store.setArrowTipStyle(e.target.value as any)}
+                             className="bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 outline-none text-xs rounded-lg px-2 py-2 text-slate-700 dark:text-slate-300 w-full font-medium"
+                           >
+                              <option value="triangle">Triangle</option>
+                              <option value="default">Open</option>
+                              <option value="stealth">Stealth</option>
+                              <option value="diamond">Diamond</option>
+                              <option value="circle">Circle</option>
+                              <option value="none">None</option>
+                              <option value="custom-math">Custom Math</option>
+                           </select>
+                           {store.arrowTipStyle === 'custom-math' && (
+                             <div className="flex flex-col gap-2 w-full mt-2">
+                               <div className="relative group">
+                                 <input
+                                   type="text"
+                                   value={store.customArrowTipEquation}
+                                   onChange={e => store.setCustomArrowTipEquation(e.target.value)}
+                                   className="w-full bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 rounded-lg pl-3 pr-8 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-800 dark:text-slate-200"
+                                   placeholder="e.g. size * cos(theta)"
+                                 />
+                               </div>
+                               <LaTeXPreview expression={store.customArrowTipEquation} className="!p-1.5 !rounded-lg bg-white dark:bg-[#0b1120]" />
+                               
+                               <div className="flex flex-wrap gap-1 mt-1">
+                                 {ARROW_TIP_PRESETS.map((preset) => (
+                                   <button
+                                     key={preset.label}
+                                     onClick={() => store.setCustomArrowTipEquation(preset.expr)}
+                                     className={`px-2 py-1 text-[10px] font-semibold rounded-md transition-all border ${
+                                       store.customArrowTipEquation === preset.expr 
+                                         ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                                         : 'bg-white dark:bg-[#0b1120] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                     }`}
+                                   >
+                                     {preset.label}
+                                   </button>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                        </div>
+
+                        <div className="flex flex-col gap-2 w-full">
+                          <span className="text-[11px] font-semibold tracking-wider text-slate-500 dark:text-slate-300 uppercase flex justify-between gap-4">
+                            Line Style 
+                          </span>
+                           <select 
+                             value={store.arrowLineStyle} 
+                             onChange={e => store.setArrowLineStyle(e.target.value as any)}
+                             className="bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 outline-none text-xs rounded-lg px-2 py-2 text-slate-700 dark:text-slate-300 w-full font-medium"
+                           >
+                              <option value="solid">Solid</option>
+                              <option value="dashed">Dashed</option>
+                              <option value="dotted">Dotted</option>
+                              <option value="curly">Curly</option>
+                              <option value="custom-math">Custom Math</option>
+                           </select>
+                           {store.arrowLineStyle === 'custom-math' && (
+                             <div className="flex flex-col gap-2 w-full mt-2">
+                               <div className="relative group">
+                                 <input
+                                   type="text"
+                                   value={store.customArrowLineEquation}
+                                   onChange={e => store.setCustomArrowLineEquation(e.target.value)}
+                                   className="w-full bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 rounded-lg pl-3 pr-8 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-800 dark:text-slate-200"
+                                   placeholder="e.g. sin(t * dist)"
+                                 />
+                               </div>
+                               <LaTeXPreview expression={store.customArrowLineEquation} className="!p-1.5 !rounded-lg bg-white dark:bg-[#0b1120]" />
+                               
+                               <div className="flex flex-wrap gap-1 mt-1">
+                                 {ARROW_LINE_PRESETS.map((preset) => (
+                                   <button
+                                     key={preset.label}
+                                     onClick={() => store.setCustomArrowLineEquation(preset.expr)}
+                                     className={`px-2 py-1 text-[10px] font-semibold rounded-md transition-all border ${
+                                       store.customArrowLineEquation === preset.expr 
+                                         ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                                         : 'bg-white dark:bg-[#0b1120] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                     }`}
+                                   >
+                                     {preset.label}
+                                   </button>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                        </div>
+
+                        <div className="flex flex-col gap-4">
+                           <div className="flex items-center justify-between">
+                             <span className="text-[11px] font-semibold tracking-wider text-slate-500 dark:text-slate-300 uppercase">Tip Size</span>
+                             <span className="text-[10px] font-mono bg-slate-200 dark:bg-slate-800/80 px-2 py-0.5 rounded-md text-slate-700 dark:text-slate-200">{store.arrowTipSize}px</span>
+                           </div>
+                           <Slider min={5} max={50} value={store.arrowTipSize} onValueChange={v => store.setArrowTipSize(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-col gap-4 mt-2">
                        <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#3B82F6]">Brush Style</h3>
                        <div className={`flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 snap-x ${scrollbarClasses}`}>
@@ -850,7 +983,7 @@ export default function DrawingToolbar() {
     }
   }, [isToolbarVisible]);
 
-  const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function'>('none');
+  const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function' | 'arrow'>('none');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [expressionCopied, setExpressionCopied] = useState(false);
@@ -912,6 +1045,7 @@ export default function DrawingToolbar() {
 
   const [localOptionsSize, setLocalOptionsSize] = useState({ w: store.optionsPanelWidth, h: store.optionsPanelHeight });
   const [localFunctionSize, setLocalFunctionSize] = useState({ w: store.functionPanelWidth, h: store.functionPanelHeight });
+  const [localArrowSize, setLocalArrowSize] = useState({ w: store.arrowPanelWidth, h: store.arrowPanelHeight });
   const [localScale, setLocalScale] = useState(store.toolbarScale);
   const [isAdjustingScale, setIsAdjustingScale] = useState(false);
 
@@ -919,6 +1053,7 @@ export default function DrawingToolbar() {
   const popoverContentRef = useRef<HTMLDivElement>(null);
   const optionsSizeRef = useRef(localOptionsSize);
   const functionSizeRef = useRef(localFunctionSize);
+  const arrowSizeRef = useRef(localArrowSize);
 
   useLayoutEffect(() => {
     scaleRef.current = localScale;
@@ -931,6 +1066,10 @@ export default function DrawingToolbar() {
   useLayoutEffect(() => {
     functionSizeRef.current = localFunctionSize;
   }, [localFunctionSize]);
+
+  useLayoutEffect(() => {
+    arrowSizeRef.current = localArrowSize;
+  }, [localArrowSize]);
 
   // Sync store -> local only when NOT interacting
   useEffect(() => {
@@ -962,6 +1101,16 @@ export default function DrawingToolbar() {
     }
   }, [store.functionPanelWidth, store.functionPanelHeight, resizingMode, isDragging]);
 
+  useEffect(() => {
+    if (resizingMode === 'none' && !isDragging) {
+      setLocalArrowSize({ w: store.arrowPanelWidth, h: store.arrowPanelHeight });
+      if (toolbarRef.current) {
+        toolbarRef.current.style.setProperty('--arrow-w', `${store.arrowPanelWidth}px`);
+        toolbarRef.current.style.setProperty('--arrow-h', `${store.arrowPanelHeight}px`);
+      }
+    }
+  }, [store.arrowPanelWidth, store.arrowPanelHeight, resizingMode, isDragging]);
+
   useLayoutEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
       // Use the stable scaleRef to avoid re-binding this listener on every scale change
@@ -992,6 +1141,21 @@ export default function DrawingToolbar() {
         if (toolbarRef.current) {
           toolbarRef.current.style.setProperty('--function-w', `${newW}px`);
           toolbarRef.current.style.setProperty('--function-h', `${newH}px`);
+        }
+        
+        if (document.body.style.cursor !== 'nwse-resize') {
+          document.body.style.cursor = 'nwse-resize';
+        }
+      } else if (resizingMode === 'arrow') {
+        const dx = e.clientX - dragRef.current.startX;
+        const dy = e.clientY - dragRef.current.startY;
+        const newW = Math.max(240, Math.min(1200, dragRef.current.initX + dx / currentScale));
+        const newH = Math.max(200, Math.min(1000, dragRef.current.initY + dy / currentScale));
+        
+        arrowSizeRef.current = { w: newW, h: newH };
+        if (toolbarRef.current) {
+          toolbarRef.current.style.setProperty('--arrow-w', `${newW}px`);
+          toolbarRef.current.style.setProperty('--arrow-h', `${newH}px`);
         }
         
         if (document.body.style.cursor !== 'nwse-resize') {
@@ -1050,6 +1214,10 @@ export default function DrawingToolbar() {
         store.setFunctionPanelWidth(functionSizeRef.current.w);
         store.setFunctionPanelHeight(functionSizeRef.current.h);
         setLocalFunctionSize(functionSizeRef.current);
+      } else if (resizingMode === 'arrow') {
+        store.setArrowPanelWidth(arrowSizeRef.current.w);
+        store.setArrowPanelHeight(arrowSizeRef.current.h);
+        setLocalArrowSize(arrowSizeRef.current);
       }
       
       // Cleanup
@@ -1125,6 +1293,8 @@ export default function DrawingToolbar() {
         '--options-h': `${localOptionsSize.h}px`,
         '--function-w': `${localFunctionSize.w}px`,
         '--function-h': `${localFunctionSize.h}px`,
+        '--arrow-w': `${localArrowSize.w}px`,
+        '--arrow-h': `${localArrowSize.h}px`,
         transform: `scale(var(--toolbar-scale))`,
         transformOrigin: transformOrigin,
         transition: isDragging || resizingMode !== 'none' || isAdjustingScale ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1242,20 +1412,29 @@ export default function DrawingToolbar() {
         <div className={isVert ? "w-8 h-[1px] bg-slate-200 dark:bg-slate-700" : "w-[1px] h-8 bg-slate-200 dark:bg-slate-700"} />
         
         <div className={`grid ${isVert ? 'grid-cols-2' : 'grid-rows-2 grid-flow-col'} gap-1 p-0.5`}>
-          {TOOLS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => store.setActiveTool(t.id)}
-              title={t.label}
-              className={`p-2 rounded-xl transition-all ${
-                store.activeTool === t.id 
-                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm' 
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              {t.icon}
-            </button>
-          ))}
+          {TOOLS.map(t => {
+            const isActive = store.activeTool === t.id || (t.id === 'triangle' && ['pentagon', 'hexagon', 'heptagon', 'octagon', 'polygon'].includes(store.activeTool));
+            return (
+              <button
+                key={t.id}
+                onClick={() => store.setActiveTool(t.id)}
+                title={t.id === 'triangle' && isActive && !['triangle', 'rectangle', 'square'].includes(store.activeTool) ? (store.activeTool === 'polygon' ? 'Polygon' : store.activeTool.charAt(0).toUpperCase() + store.activeTool.slice(1)) : t.label}
+                className={`p-2 rounded-xl transition-all flex items-center justify-center ${
+                  isActive 
+                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm' 
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {t.id === 'triangle' && isActive && !['triangle', 'rectangle', 'square'].includes(store.activeTool) ? (
+                  store.activeTool === 'pentagon' ? <Pentagon size={14} /> : 
+                  store.activeTool === 'hexagon' ? <Hexagon size={14} /> :
+                  <div className="flex items-center justify-center w-[14px] h-[14px] font-bold text-[8px] rounded-sm border border-current">{store.polygonSides}</div>
+                ) : (
+                  t.icon
+                )}
+              </button>
+            );
+          })}
         </div>
         
         <div className={isVert ? "w-8 h-[1px] bg-slate-200 dark:bg-slate-700" : "w-[1px] h-8 bg-slate-200 dark:bg-slate-700"} />
@@ -1617,6 +1796,189 @@ export default function DrawingToolbar() {
               <span>Fade (s):</span>
               <input type="number" min="0" step="0.5" value={store.fadeOutDuration} onChange={e => store.setFadeOutDuration(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="Duration of disappear transition" />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Arrow Settings */}
+      {store.activeTool === 'arrow' && (
+        <div 
+          className={`pointer-events-auto flex flex-col p-0 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 animate-in fade-in duration-300 relative group/func will-change-[width,height] overflow-hidden ${resizingMode !== 'none' ? 'select-none transition-none shadow-2xl ring-2 ring-blue-500/10' : ''}`}
+          style={{ 
+            width: 'var(--arrow-w)',
+            height: 'var(--arrow-h)',
+            minWidth: '240px',
+            minHeight: '220px',
+            maxHeight: 'min(90vh, 800px)'
+          } as React.CSSProperties}
+        >
+          {/* Top Notch Decor */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-b-full pointer-events-none" />
+          
+          {/* Bottom Notch Decor */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-t-full pointer-events-none" />
+
+          {/* Resize Handle for Arrow Panel */}
+          <div 
+            className="absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize opacity-40 hover:opacity-100 transition-all flex items-end justify-end p-2 z-50 touch-none active:scale-90"
+            style={{ 
+              transform: `scale(${1 / localScale})`,
+              transformOrigin: 'bottom right'
+            }}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              setResizingMode('arrow');
+              dragRef.current = {
+                isDragging: false,
+                startX: e.clientX,
+                startY: e.clientY,
+                initX: localArrowSize.w,
+                initY: localArrowSize.h
+              };
+              document.body.style.cursor = 'nwse-resize';
+              document.body.classList.add('select-none');
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+          >
+            <div className="flex flex-col gap-[3px] items-end pr-1.5 pb-1.5 opacity-20 hover:opacity-40 transition-opacity">
+              <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              <div className="flex gap-[3px]">
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pr-5 scroll-smooth flex flex-col gap-5 min-h-0 bg-white dark:bg-[#0b1120]">
+
+            <div className="flex flex-col gap-2 w-full">
+              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between gap-4">
+                Tip Shape 
+              </span>
+               <select 
+                 value={store.arrowTipStyle} 
+                 onChange={e => store.setArrowTipStyle(e.target.value as any)}
+                 className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 outline-none text-xs rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-300 w-full"
+               >
+                  <option value="triangle">Triangle</option>
+                  <option value="default">Open</option>
+                  <option value="stealth">Stealth</option>
+                  <option value="diamond">Diamond</option>
+                  <option value="circle">Circle</option>
+                  <option value="none">None</option>
+                  <option value="custom-math">Custom Math</option>
+               </select>
+               {store.arrowTipStyle === 'custom-math' && (
+                 <div className="flex flex-col gap-1 w-full mt-1">
+                   <div className="relative group">
+                     <input
+                       type="text"
+                       value={store.customArrowTipEquation}
+                       onChange={e => store.setCustomArrowTipEquation(e.target.value)}
+                       className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-lg pl-3 pr-8 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                       placeholder="e.g. size * cos(theta)"
+                       title="Variables: size, theta"
+                     />
+                     <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 pointer-events-none">
+                       <div className="p-1 px-1.5 text-slate-400 group-hover:text-blue-500 transition-colors">
+                         <Sigma size={12} />
+                       </div>
+                     </div>
+                   </div>
+                   <LaTeXPreview expression={store.customArrowTipEquation} className="!p-1.5 !rounded-lg" />
+                   
+                   <div className="flex flex-wrap gap-1 mt-1">
+                     {ARROW_TIP_PRESETS.map((preset) => (
+                       <button
+                         key={preset.label}
+                         onClick={() => store.setCustomArrowTipEquation(preset.expr)}
+                         className={`px-1.5 py-1 text-[9px] font-semibold rounded-md transition-all border ${
+                           store.customArrowTipEquation === preset.expr 
+                             ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+                         }`}
+                       >
+                         {preset.label}
+                       </button>
+                     ))}
+                   </div>
+                   <div className="text-[9px] text-slate-500 dark:text-slate-400 mt-1.5 bg-slate-100 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                     <p className="font-semibold mb-1">Variables:</p>
+                     <ul className="list-disc pl-3 mt-0.5 space-y-0.5 opacity-80">
+                       <li><code>theta</code> (0 to 2π)</li>
+                       <li><code>size</code> (px)</li>
+                     </ul>
+                   </div>
+                 </div>
+               )}
+            </div>
+            <div className="flex flex-col gap-2 w-full">
+              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between gap-4">
+                Line Style 
+              </span>
+               <select 
+                 value={store.arrowLineStyle} 
+                 onChange={e => store.setArrowLineStyle(e.target.value as any)}
+                 className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 outline-none text-xs rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-300 w-full"
+               >
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                  <option value="curly">Curly</option>
+                  <option value="custom-math">Custom Math</option>
+               </select>
+               {store.arrowLineStyle === 'custom-math' && (
+                 <div className="flex flex-col gap-1 w-full mt-1">
+                   <div className="relative group">
+                     <input
+                       type="text"
+                       value={store.customArrowLineEquation}
+                       onChange={e => store.setCustomArrowLineEquation(e.target.value)}
+                       className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-lg pl-3 pr-8 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                       placeholder="e.g. sin(t * dist)"
+                       title="Variables: t, dist"
+                     />
+                     <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 pointer-events-none">
+                       <div className="p-1 px-1.5 text-slate-400 group-hover:text-blue-500 transition-colors">
+                         <Sigma size={12} />
+                       </div>
+                     </div>
+                   </div>
+                   <LaTeXPreview expression={store.customArrowLineEquation} className="!p-1.5 !rounded-lg" />
+                   
+                   <div className="flex flex-wrap gap-1 mt-1">
+                     {ARROW_LINE_PRESETS.map((preset) => (
+                       <button
+                         key={preset.label}
+                         onClick={() => store.setCustomArrowLineEquation(preset.expr)}
+                         className={`px-1.5 py-1 text-[9px] font-semibold rounded-md transition-all border ${
+                           store.customArrowLineEquation === preset.expr 
+                             ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+                         }`}
+                       >
+                         {preset.label}
+                       </button>
+                     ))}
+                   </div>
+                   <div className="text-[9px] text-slate-500 dark:text-slate-400 mt-1.5 bg-slate-100 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                     <p className="font-semibold mb-1">Variables:</p>
+                     <ul className="list-disc pl-3 mt-0.5 space-y-0.5 opacity-80">
+                       <li><code>t</code> (0.0 to 1.0 along line)</li>
+                       <li><code>dist</code> (total length px)</li>
+                     </ul>
+                   </div>
+                 </div>
+               )}
+            </div>
+            <div className="flex flex-col gap-2 w-full pt-3 border-t border-slate-200 dark:border-slate-800">
+              <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between gap-4">
+                Tip Size <span>{store.arrowTipSize}px</span>
+              </span>
+              <Slider min={5} max={50} value={store.arrowTipSize} onValueChange={v => store.setArrowTipSize(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
+            </div>
+
           </div>
         </div>
       )}

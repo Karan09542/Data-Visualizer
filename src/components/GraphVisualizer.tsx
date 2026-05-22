@@ -253,6 +253,11 @@ export default function GraphVisualizer() {
 
         const { activeTool, isToolbarVisible } = useAnnotationStore.getState();
         
+        // If clicking on transform handles, block zoom
+        if (e.target && (e.target as Element).closest('.transform-box')) {
+          return false;
+        }
+
         // If toolbar is visible, standard behavior: don't zoom if tool is active
         if (isToolbarVisible) {
           if (activeTool !== 'select' && e.type !== 'wheel') {
