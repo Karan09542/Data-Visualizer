@@ -31,7 +31,7 @@ function getCompiledExpression(expr: string) {
   }
 }
 
-const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
+const BaseAnnotationShape = ({ anno, activeTool }: { anno: Annotation, activeTool: string }) => {
   const lineGenerator = useMemo(() => {
     const lg = d3.line<Point>()
       .x(d => d.x)
@@ -562,6 +562,7 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
   const pathStyle: React.CSSProperties = {
     opacity: anno.opacity,
     color: anno.color,
+    touchAction: 'none',
   };
 
   if (anno.brushStyle === 'marker') {
@@ -641,6 +642,33 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         </>
       )}
       
+      {/* Hit Area for Selection (Larger invisible stroke) */}
+      <path
+        d={pathData}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={Math.max(20, anno.width + 10)}
+        strokeLinecap={strokeLinecap}
+        strokeLinejoin={strokeLinejoin}
+        pointerEvents={anno.tool === 'eraser' ? 'none' : 'visibleStroke'}
+        style={{ cursor: activeTool === 'select' ? 'pointer' : 'default', touchAction: 'none' }}
+        onClick={(e) => {
+          if (activeTool === 'eraser') {
+            useAnnotationStore.getState().removeAnnotations([anno.id]);
+          } else if (activeTool === 'select') {
+            useAnnotationStore.getState().setSelectedAnnotations([anno.id]);
+            e.stopPropagation();
+          }
+        }}
+        onTouchStart={(e) => {
+          if (activeTool === 'select') {
+             // Basic touch selection helper
+             useAnnotationStore.getState().setSelectedAnnotations([anno.id]);
+             e.stopPropagation();
+          }
+        }}
+      />
+
       <path
         id={`anno-${anno.id}`}
         d={pathData}
@@ -652,15 +680,7 @@ const BaseAnnotationShape = ({ anno }: { anno: Annotation }) => {
         strokeLinejoin={strokeLinejoin}
         strokeDasharray={strokeDasharray}
         style={pathStyle}
-        pointerEvents={anno.tool === 'eraser' ? 'none' : 'visibleStroke'}
-        onClick={(e) => {
-          if (useAnnotationStore.getState().activeTool === 'eraser') {
-            useAnnotationStore.getState().removeAnnotations([anno.id]);
-          } else if (useAnnotationStore.getState().activeTool === 'select') {
-            useAnnotationStore.getState().setSelectedAnnotations([anno.id]);
-            e.stopPropagation();
-          }
-        }}
+        pointerEvents="none"
       />
     </g>
   );
@@ -732,7 +752,7 @@ export default function AnnotationRenderer() {
             }
           }}
         >
-          <BaseAnnotationShape anno={anno} />
+          <BaseAnnotationShape anno={anno} activeTool={activeTool} />
         </g>
       ))}
       {activeTool === 'select' && annotations

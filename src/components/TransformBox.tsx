@@ -135,7 +135,7 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
     // 2. Drag to rotate
     let initialAngle = 0;
     let dragStartRot = 0;
-    const dragRotate = d3.drag<SVGCircleElement, unknown>()
+    const dragRotate = d3.drag<SVGGElement, unknown>()
       .on('start', (e) => {
         e.sourceEvent?.stopPropagation();
         onInteractionStart?.();
@@ -171,12 +171,14 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
         setTooltipAngle(Math.round(displayAngle));
         updateAnnotation(currentAnno.id, { rotation: finalRot, centerX: cx, centerY: cy });
       })
+      .on('drag.rotate-end', () => { // Using specific namespace just in case
+      })
       .on('end', () => { 
         setTooltipAngle(null);
         commitAction(); 
       });
 
-    g.select<SVGCircleElement>('.tb-rotate').call(dragRotate);
+    g.select<SVGGElement>('.tb-rotate').call(dragRotate);
 
     // 3. Scale draggers
     const createDragger = (selector: string, xDir: number, yDir: number) => {
@@ -184,8 +186,8 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
       let startSy = 1;
       let startPointer: [number, number] = [0, 0];
 
-      g.select<SVGRectElement>(selector).call(
-        d3.drag<SVGRectElement, unknown>()
+      g.select<SVGGElement>(selector).call(
+        d3.drag<SVGGElement, unknown>()
           .on('start', (e) => {
             e.sourceEvent?.stopPropagation();
             onInteractionStart?.();
@@ -274,12 +276,10 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
       {/* Rotation line */}
       <line x1={0} y1={-Math.abs(h)/2} x2={0} y2={-Math.abs(h)/2 - rotateHandleDist} stroke="#3b82f6" strokeWidth={1} />
       {/* Rotation handle */}
-      <circle 
-        className="tb-rotate pointer-events-auto"
-        cx={0} cy={-Math.abs(h)/2 - rotateHandleDist} r={5}
-        fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5}
-        style={{ cursor: 'grab', touchAction: 'none' }}
-      />
+      <g className="tb-rotate pointer-events-auto" style={{ cursor: 'grab', touchAction: 'none' }}>
+        <circle cx={0} cy={-Math.abs(h)/2 - rotateHandleDist} r={15} fill="transparent" />
+        <circle cx={0} cy={-Math.abs(h)/2 - rotateHandleDist} r={5} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
 
       {tooltipAngle !== null && (
         <g transform={`translate(0, ${-Math.abs(h)/2 - rotateHandleDist - 40})`}>
@@ -305,7 +305,7 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
             dominantBaseline="middle" 
             fill="white" 
             fontSize="16" 
-            fontWeight="bold"
+            fontWeight="bold" 
             pointerEvents="none"
           >
             {Math.round(resizingSize.w)} × {Math.round(resizingSize.h)} px
@@ -314,16 +314,40 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
       )}
       
       {/* Scale Handles */}
-      <rect className="tb-handle-tl pointer-events-auto" x={-w/2 - handleSize/2} y={-h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'nwse-resize', touchAction: 'none' }} />
-      <rect className="tb-handle-tr pointer-events-auto" x={w/2 - handleSize/2} y={-h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'nesw-resize', touchAction: 'none' }} />
-      <rect className="tb-handle-bl pointer-events-auto" x={-w/2 - handleSize/2} y={h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'nesw-resize', touchAction: 'none' }} />
-      <rect className="tb-handle-br pointer-events-auto" x={w/2 - handleSize/2} y={h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'nwse-resize', touchAction: 'none' }} />
+      <g className="tb-handle-tl pointer-events-auto" style={{ cursor: 'nwse-resize', touchAction: 'none' }}>
+        <rect x={-w/2 - 12} y={-h/2 - 12} width={24} height={24} fill="transparent" />
+        <rect x={-w/2 - handleSize/2} y={-h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
+      <g className="tb-handle-tr pointer-events-auto" style={{ cursor: 'nesw-resize', touchAction: 'none' }}>
+        <rect x={w/2 - 12} y={-h/2 - 12} width={24} height={24} fill="transparent" />
+        <rect x={w/2 - handleSize/2} y={-h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
+      <g className="tb-handle-bl pointer-events-auto" style={{ cursor: 'nesw-resize', touchAction: 'none' }}>
+        <rect x={-w/2 - 12} y={h/2 - 12} width={24} height={24} fill="transparent" />
+        <rect x={-w/2 - handleSize/2} y={h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
+      <g className="tb-handle-br pointer-events-auto" style={{ cursor: 'nwse-resize', touchAction: 'none' }}>
+        <rect x={w/2 - 12} y={h/2 - 12} width={24} height={24} fill="transparent" />
+        <rect x={w/2 - handleSize/2} y={h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
       
       {/* Edge Handles */}
-      <rect className="tb-handle-t pointer-events-auto" x={-handleSize/2} y={-h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'ns-resize', touchAction: 'none' }} />
-      <rect className="tb-handle-b pointer-events-auto" x={-handleSize/2} y={h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'ns-resize', touchAction: 'none' }} />
-      <rect className="tb-handle-l pointer-events-auto" x={-w/2 - handleSize/2} y={-handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'ew-resize', touchAction: 'none' }} />
-      <rect className="tb-handle-r pointer-events-auto" x={w/2 - handleSize/2} y={-handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} style={{ cursor: 'ew-resize', touchAction: 'none' }} />
+      <g className="tb-handle-t pointer-events-auto" style={{ cursor: 'ns-resize', touchAction: 'none' }}>
+        <rect x={-12} y={-h/2 - 12} width={24} height={24} fill="transparent" />
+        <rect x={-handleSize/2} y={-h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
+      <g className="tb-handle-b pointer-events-auto" style={{ cursor: 'ns-resize', touchAction: 'none' }}>
+        <rect x={-12} y={h/2 - 12} width={24} height={24} fill="transparent" />
+        <rect x={-handleSize/2} y={h/2 - handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
+      <g className="tb-handle-l pointer-events-auto" style={{ cursor: 'ew-resize', touchAction: 'none' }}>
+        <rect x={-w/2 - 12} y={-12} width={24} height={24} fill="transparent" />
+        <rect x={-w/2 - handleSize/2} y={-handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
+      <g className="tb-handle-r pointer-events-auto" style={{ cursor: 'ew-resize', touchAction: 'none' }}>
+        <rect x={w/2 - 12} y={-12} width={24} height={24} fill="transparent" />
+        <rect x={w/2 - handleSize/2} y={-handleSize/2} width={handleSize} height={handleSize} fill="#ffffff" stroke="#3b82f6" strokeWidth={1.5} />
+      </g>
 
       {/* Mobile Menu Toggle (Three dots) */}
       <g 

@@ -347,7 +347,7 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
       width={fWidth}
       height={fHeight}
       className={`transition-all duration-500 ease-out origin-center ${isDimmed ? 'opacity-30 grayscale scale-95' : 'opacity-100'} ${(isMatch || isSelected) ? 'z-20' : (isAncestor || isSelectedPath) ? 'z-10' : 'z-0'}`}
-      style={{ overflow: 'visible' }}
+      style={{ overflow: 'visible', touchAction: 'none' }}
     >
       <div className={`flex flex-col items-center justify-center w-full h-full transition-transform duration-300 ${(isMatch || isSelected) ? 'scale-105' : ''}`}>
         <div
