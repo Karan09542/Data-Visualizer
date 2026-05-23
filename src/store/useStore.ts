@@ -26,6 +26,10 @@ export const defaultSettings = {
   nodeSpread: 1.0,
   nodeSize: 1.0,
   showMediaPreview: false,
+  globalTextExpanded: false,
+  activePreviewText: null,
+  activePreviewPath: null,
+  activePreviewMedia: null,
   nodeColor: 'rgba(30, 41, 59, 1)',
   nodeTextColor: 'rgba(255, 255, 255, 1)',
   nodeGradientColor1: 'rgba(79, 70, 229, 1)',
@@ -70,6 +74,10 @@ export interface StoreState {
   isShortcutsOpen: boolean;
   isMathHelpOpen: boolean;
   showMediaPreview: boolean;
+  globalTextExpanded: boolean;
+  activePreviewText: string | null;
+  activePreviewPath: string | null;
+  activePreviewMedia: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' } | null;
   apiMethod: string;
   apiUrl: string;
   apiHeaders: string;
@@ -117,6 +125,10 @@ export interface StoreState {
   setIsShortcutsOpen: (isOpen: boolean) => void;
   setIsMathHelpOpen: (isOpen: boolean) => void;
   setShowMediaPreview: (show: boolean) => void;
+  setGlobalTextExpanded: (expanded: boolean) => void;
+  setActivePreviewText: (text: string | null, path?: string | null) => void;
+  setActivePreviewMedia: (media: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' } | null) => void;
+  updateNodeValue: (path: string, newValue: any) => Promise<void>;
   setDragOverride: (id: string, pos: { x: number, y: number } | null) => void;
   clearDragOverrides: () => void;
   
@@ -314,6 +326,67 @@ export const useStore = create<StoreState>()(
       setIsShortcutsOpen: (isOpen: boolean) => void set({ isShortcutsOpen: isOpen }),
       setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
       setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show }),
+      setGlobalTextExpanded: (expanded: boolean) => set({ globalTextExpanded: expanded }),
+      setActivePreviewText: (text, path = null) => set({ activePreviewText: text, activePreviewPath: path }),
+      setActivePreviewMedia: (media) => set({ activePreviewMedia: media }),
+      
+      updateNodeValue: async (path, newValue) => {
+        const { parsedData, code, setCode } = get();
+        if (!parsedData) return;
+
+        // Clone parsedData
+        const newData = JSON.parse(JSON.stringify(parsedData));
+        
+        // Path is like 'root.key.subkey' or 'root[0].key'
+        const parts = path.replace(/root\.?/, '').split(/\.|(?=\[)/).filter(Boolean);
+        
+        let current = newData;
+        for (let i = 0; i < parts.length - 1; i++) {
+          let part = parts[i];
+          if (part.startsWith('[')) {
+            part = part.slice(1, -1);
+          }
+          current = current[part];
+        }
+        
+        if (parts.length > 0) {
+          let lastPart = parts[parts.length - 1];
+          if (lastPart.startsWith('[')) {
+            lastPart = lastPart.slice(1, -1);
+          }
+          
+          // Try to cast to number/boolean if applicable
+          let finalVal = newValue;
+          if (newValue === 'true') finalVal = true;
+          else if (newValue === 'false') finalVal = false;
+          else if (newValue === 'null') finalVal = null;
+          else if (!isNaN(Number(newValue)) && newValue.trim() !== '') {
+            finalVal = Number(newValue);
+          }
+
+          current[lastPart] = finalVal;
+        } else {
+          // It's the root itself being edited? (Unlikely with this transformer)
+        }
+
+        // Detect format
+        const isYaml = code.trim().startsWith('{') === false && code.trim().startsWith('[') === false;
+
+        let newCode = '';
+        if (isYaml) {
+          try {
+            const yaml = (await import('js-yaml')).default;
+            newCode = yaml.dump(newData);
+          } catch {
+            newCode = JSON.stringify(newData, null, 2);
+          }
+        } else {
+          newCode = JSON.stringify(newData, null, 2);
+        }
+
+        setCode(newCode);
+      },
+
       setDragOverride: (id, pos) => set((state) => {
         const newOverrides = { ...state.dragOverrides };
         if (pos) {
@@ -345,7 +418,9 @@ export const useStore = create<StoreState>()(
           'apiUrl',
           'apiHeaders',
           'apiBody',
-          'activeTab'
+          'activeTab',
+          'globalTextExpanded',
+          'activePreviewPath'
         ];
         return Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key))

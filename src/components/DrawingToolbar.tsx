@@ -507,6 +507,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                                 <PopoverContent className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" align="end" side="top" sideOffset={10}>
                                   <div 
                                     className="flex flex-col gap-3 p-4 bg-[#121A2F] border border-slate-700 shadow-xl rounded-2xl transition-transform origin-bottom-right pointer-events-auto"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
                                     <HexAlphaColorPicker color={store.fillColor} onChange={(c) => store.setFillColor(c)} className="!w-full" />
                                     <div className="flex items-center gap-1.5 flex-wrap max-w-[200px]">
@@ -1577,6 +1578,7 @@ export default function DrawingToolbar() {
                       <div 
                         className="flex flex-col gap-3 p-4 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl transition-transform origin-bottom-center pointer-events-auto"
                         style={{ transform: `scale(${localScale})` }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <HexAlphaColorPicker color={store.color} onChange={(c) => store.setColor(c)} className="!w-full" />
                         <div className="flex items-center gap-2 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
@@ -1721,6 +1723,7 @@ export default function DrawingToolbar() {
                           <div 
                             className="flex flex-col gap-3 p-4 bg-[#0b1120] border border-slate-700 shadow-2xl rounded-2xl transition-transform origin-bottom-right pointer-events-auto"
                             style={{ transform: `scale(${localScale})` }}
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <HexAlphaColorPicker color={store.fillColor} onChange={(c) => store.setFillColor(c)} className="!w-full" />
                             <div className="flex items-center gap-2 flex-wrap max-w-[200px]">

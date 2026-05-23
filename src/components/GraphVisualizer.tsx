@@ -8,8 +8,9 @@ import { TreeNode } from '../utils/transformer';
 import NodeRenderer from './NodeRenderer';
 import EdgeRenderer from './EdgeRenderer';
 import AnnotationRenderer from './AnnotationRenderer';
+import { mediaCache } from './SmartMediaRenderer';
 import { useDrawingSystem } from '../hooks/useDrawingSystem';
-import { Copy, Edit2, Trash2, X, Search, Settings } from 'lucide-react';
+import { Copy, Edit2, Trash2, X, Search, Settings, Eye } from 'lucide-react';
 
 export default function GraphVisualizer() {
   const { 
@@ -19,7 +20,7 @@ export default function GraphVisualizer() {
     nodeShape, nodeSpread, nodeSize, 
     canvasTheme, canvasBackgroundColor, canvasPatternColor,
     canvasBackgroundImage, canvasBackgroundBlur,
-    appTheme
+    appTheme, setActivePreviewText, setActivePreviewMedia
   } = useStore();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const svgGRef = useRef<SVGGElement>(null);
@@ -668,8 +669,61 @@ export default function GraphVisualizer() {
             <Copy size={16} className="text-slate-400" />
             Copy Key
           </button>
+
+          {(contextMenu.node.type === 'string' || contextMenu.node.type === 'number') && (
+            <button 
+              className="w-full text-left px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+              onClick={() => {
+                const val = contextMenu.node.value !== undefined ? String(contextMenu.node.value) : "";
+                
+                if (contextMenu.node.type === 'string') {
+                  const isImage = val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i);
+                  const isVideo = val.match(/\.(mp4|webm|ogv|mov)(\?.*)?$/i);
+                  const isAudio = val.match(/\.(mp3|wav|flac|aac|ogg)(\?.*)?$/i);
+                  const isPdf = val.match(/\.pdf(\?.*)?$/i);
+                  
+                  const isMediaEnabled = useStore.getState().showMediaPreview;
+                  const isHttpUrl = val.match(/^https?:\/\//i);
+
+                  let detectedType: string | null = null;
+                  let detectedUrl = val;
+
+                  if (isImage) detectedType = 'image';
+                  else if (isVideo) detectedType = 'video';
+                  else if (isAudio) detectedType = 'audio';
+                  else if (isPdf) detectedType = 'pdf';
+                  else if (isMediaEnabled && isHttpUrl) {
+                     detectedType = 'smart';
+                     const cached = mediaCache.get(val);
+                     if (cached && cached !== 'failed') {
+                        const srcMatch = cached.match(/src="([^"]+)"/);
+                        if (srcMatch && srcMatch[1]) detectedUrl = srcMatch[1];
+                        
+                        if (cached.startsWith('<img') || cached.includes('<img')) detectedType = 'image';
+                        else if (cached.startsWith('<video') || cached.includes('<video')) detectedType = 'video';
+                        else if (cached.startsWith('<audio') || cached.includes('<audio')) detectedType = 'audio';
+                        else detectedType = 'iframe';
+                     }
+                  }
+
+                  if (detectedType) {
+                    setActivePreviewMedia({ url: detectedUrl, type: detectedType as any });
+                    setContextMenu(null);
+                    return;
+                  }
+                }
+                
+                setActivePreviewText(val, contextMenu.node.path);
+                setContextMenu(null);
+              }}
+            >
+              <Eye size={16} />
+              Preview
+            </button>
+          )}
+
           <button 
-            className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+            className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-700/50"
             onClick={() => {
                let valToEdit = "";
                let currentKey = "";

@@ -7,6 +7,8 @@ import AdvancedPanel from "./components/AdvancedPanel";
 import ShortcutsPopup from "./components/ShortcutsPopup";
 import MathHelpPopup from "./components/MathHelpPopup";
 import ShareDialog from "./components/ShareDialog";
+import TextPreviewPopup from "./components/TextPreviewPopup";
+import MediaPreviewPopup from "./components/MediaPreviewPopup";
 import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
@@ -197,6 +199,8 @@ export default function App() {
       <ShortcutsPopup />
       <MathHelpPopup isOpen={isMathHelpOpen} onClose={() => setIsMathHelpOpen(false)} />
       <ShareDialog isOpen={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
+      <TextPreviewPopup />
+      <MediaPreviewPopup />
     </div>
   );
 }

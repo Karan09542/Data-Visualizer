@@ -1,4 +1,4 @@
-import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, Share2, MousePointer2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, Share2, MousePointer2, ChevronDown, ChevronUp, AlignLeft } from 'lucide-react';
 import { useStore, CanvasTheme, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { RgbaColorPicker } from 'react-colorful';
@@ -14,6 +14,7 @@ export default function AdvancedPanel() {
   const {
     isAdvancedPanelOpen, setIsAdvancedPanelOpen,
     showMediaPreview, setShowMediaPreview,
+    globalTextExpanded, setGlobalTextExpanded,
     nodeSpread, setNodeSpread,
     nodeSize, setNodeSize,
     nodeTheme, setNodeTheme,
@@ -654,6 +655,27 @@ export default function AdvancedPanel() {
                 className="sr-only peer"
                 checked={showMediaPreview}
                 onChange={(e) => setShowMediaPreview(e.target.checked)}
+              />
+              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-200 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
+                <AlignLeft size={18} />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Expand All Text</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Force all multiline text nodes to show full content</div>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={globalTextExpanded}
+                onChange={(e) => setGlobalTextExpanded(e.target.checked)}
               />
               <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-200 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
             </label>

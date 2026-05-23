@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { HierarchyPointNode } from 'd3';
 import { TreeNode } from '../utils/transformer';
 import { useStore, NodeTheme } from '../store/useStore';
-import { ChevronRight, ChevronDown, Type, Hash, Braces, AlignLeft, ToggleLeft, HelpCircle, MoreVertical } from 'lucide-react';
+import { ChevronRight, ChevronDown, Type, Hash, Braces, AlignLeft, ToggleLeft, HelpCircle, MoreVertical, Maximize2, Minimize2, Eye } from 'lucide-react';
 import SmartMediaRenderer from './SmartMediaRenderer';
 
 interface NodeProps {
@@ -19,8 +19,8 @@ const getMediaType = (val: string) => {
   if (!val || typeof val !== 'string') return null;
   val = val.trim();
   if (val.startsWith('data:image/') || val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)) return 'image';
-  if (val.startsWith('data:audio/') || val.match(/\.(mp3|wav|ogg|aac)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac)/i)) return 'audio';
-  if (val.startsWith('data:video/') || val.match(/\.(mp4|webm|ogg)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp4|webm|ogg)/i)) return 'video';
+  if (val.startsWith('data:audio/') || val.match(/\.(mp3|wav|ogg|aac|flac)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac|flac)/i)) return 'audio';
+  if (val.startsWith('data:video/') || val.match(/\.(mp4|webm|ogv|mov)(\?.*)?$/i) || val.match(/^https?:\/\/.*\.(mp4|webm|ogv|mov)/i)) return 'video';
   // Use inspector for youtube, vimoe, spotfiy, or any http url
   // Just treat any http/https link as potential smart media if we didn't natively catch it
   if (val.startsWith('http://') || val.startsWith('https://')) return 'smart';
@@ -33,7 +33,8 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
     nodeColor, nodeTextColor, nodeGradientColor1, nodeGradientColor2, 
     useNodeGradient, nodeGradientAngle, nodeGradientType,
     toggleNodeCollapse, collapsedNodes, searchQuery, searchMatches, searchAncestors, 
-    setSelectedNodeId, showMediaPreview, setDragOverride 
+    setSelectedNodeId, showMediaPreview, setDragOverride, globalTextExpanded, setActivePreviewText,
+    setActivePreviewMedia
   } = useStore();
   const foreignRef = useRef<SVGForeignObjectElement>(null);
   
@@ -57,6 +58,12 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
   }, [setDragOverride]);
 
   const [smartMediaFailed, setSmartMediaFailed] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(globalTextExpanded);
+
+  // Synchronize local state with global master toggle
+  React.useEffect(() => {
+    setIsExpanded(globalTextExpanded);
+  }, [globalTextExpanded]);
 
   const data = node.data;
   const isCollapsed = collapsedNodes.has(data.id);
@@ -193,7 +200,7 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
 
 
   let fWidth = isMedia ? 320 : 260;
-  let fHeight = isMedia ? 240 : 120; 
+  let fHeight = isMedia ? (mediaType === 'audio' ? 140 : 240) : (isExpanded ? 220 : 120); 
 
   const isDefaultShape = nodeShape === 'default';
 
@@ -397,9 +404,40 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
                 )}
               </div>
               {data.value !== undefined && !isMedia && (
-                <span className={`pointer-events-none text-[11px] font-mono truncate mt-0.5 ${valText}`} title={String(data.value)} style={isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}}>
-                  {String(data.value)}
-                </span>
+                <div className="flex flex-col mt-0.5 relative group/val">
+                  <span 
+                    className={`text-[11px] font-mono leading-normal ${isExpanded ? 'whitespace-pre-wrap break-words' : 'truncate'} ${valText}`} 
+                    title={!isExpanded ? String(data.value) : undefined} 
+                    style={isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}}
+                  >
+                    {String(data.value)}
+                  </span>
+                  
+                  {strVal.length > 50 && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <button
+                        className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter px-1.5 py-0.5 rounded transition-all bg-black/10 hover:bg-black/20 ${mutedText} z-20`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsExpanded(!isExpanded);
+                        }}
+                        title={isExpanded ? "Show Less" : "Show More"}
+                      >
+                        {isExpanded ? (
+                          <>
+                            <Minimize2 size={10} />
+                            <span>LESS</span>
+                          </>
+                        ) : (
+                          <>
+                            <Maximize2 size={10} />
+                            <span>MORE</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               {hasChildren && isCollapsed && (
                 <span className={`pointer-events-none text-[10px] mt-0.5 italic ${mutedText}`} style={isCustom ? { color: nodeTextColor, opacity: 0.6 } : {}}>
@@ -420,11 +458,28 @@ export default function NodeRenderer({ node, layoutMode, isSelectedPath, isSelec
           </div>
 
           {isMedia && (
-            <div className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === 'smart' ? 'flex flex-1 items-stretch' : 'p-1 flex justify-center items-center'}`}>
-              {mediaType === 'image' && <img src={strVal} alt={data.name} className="max-w-full max-h-[160px] object-contain rounded" />}
-              {mediaType === 'audio' && <audio src={strVal} controls className="w-full h-8 outline-none" />}
-              {mediaType === 'video' && <video src={strVal} controls className="max-w-full max-h-[160px] rounded focus:outline-none" />}
-              {mediaType === 'smart' && <SmartMediaRenderer key={strVal} url={strVal} onMediaFailed={() => setSmartMediaFailed(true)} />}
+            <div className="flex flex-col w-full mt-2 relative group/media-container">
+              <div className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === 'smart' ? 'flex flex-1 items-stretch' : 'p-1 flex justify-center items-center'}`}>
+                {mediaType === 'image' && <img src={strVal} alt={data.name} className="max-w-full max-h-[160px] object-contain rounded" />}
+                {mediaType === 'audio' && <audio src={strVal} controls className="w-full h-11 outline-none py-1" />}
+                {mediaType === 'video' && <video src={strVal} controls className="max-w-full max-h-[160px] rounded focus:outline-none" />}
+                {mediaType === 'smart' && <SmartMediaRenderer key={strVal} url={strVal} onMediaFailed={() => setSmartMediaFailed(true)} />}
+              </div>
+
+              <button
+                className={`absolute ${mediaType === 'audio' ? 'top-1 right-1' : 'bottom-1.5 left-1/2 -translate-x-1/2'} flex items-center gap-1.5 px-2 py-1 bg-black/60 hover:bg-indigo-600 backdrop-blur-md text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-white/10 z-20 whitespace-nowrap`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePreviewMedia({ 
+                    url: strVal, 
+                    type: mediaType === 'smart' ? 'smart' : 
+                          (strVal.match(/\.pdf(\?.*)?$/i) ? 'pdf' : (mediaType as any))
+                  });
+                }}
+              >
+                <Eye size={10} />
+                FULL PREVIEW
+              </button>
             </div>
           )}
         </div>
