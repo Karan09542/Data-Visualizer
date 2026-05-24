@@ -19,8 +19,22 @@ if (typeof window !== 'undefined') {
         resizeObserverDelegate.style.display = 'none';
       }
       e.stopImmediatePropagation();
+      e.preventDefault();
     }
   });
+
+  // Also patch ResizeObserver to debounce slightly if possible, or just ignore
+  const _ResizeObserver = window.ResizeObserver;
+  window.ResizeObserver = class ResizeObserver extends _ResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      super((entries, observer) => {
+        window.requestAnimationFrame(() => {
+          if (!Array.isArray(entries) || !entries.length) return;
+          callback(entries, observer);
+        });
+      });
+    }
+  };
 }
 
 createRoot(document.getElementById('root')!).render(

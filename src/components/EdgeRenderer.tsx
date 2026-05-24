@@ -99,6 +99,50 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
   } else if (nodeTheme === 'abstract') {
     stroke = "url(#abstract-gradient)"; // Need to define this in GraphVisualizer
     strokeWidth = 2;
+  } else if (nodeTheme === 'nature2') {
+    const vineColors = ['#95b876', '#4a7c59', '#3d5a40', '#6c8f5c', '#839e6a', '#a67c52', '#417b7a'];
+    const idx = target ? (Math.floor(target.x) + Math.floor(target.y)) % vineColors.length : 0;
+    stroke = vineColors[Math.abs(idx)];
+    strokeWidth = 3;
+    inlines.strokeLinecap = 'round';
+    inlines.filter = "drop-shadow(0 2px 3px rgba(0,0,0,0.1))";
+  } else if (style === 'hydrogen' || nodeTheme === 'hydrogen') {
+    stroke = '#93c5fd'; // blue-300
+    strokeWidth = 1.5;
+    strokeDasharray = "3, 8";
+    inlines.strokeLinecap = 'round';
+    inlines.animation = "flow 3s linear infinite";
+    inlines.filter = "drop-shadow(0 0 4px rgba(147,197,253,0.6))";
+  } else if (style === 'seed' || nodeTheme === 'seed') {
+    const vineColors = ['#5a8c33', '#71a044', '#467c26', '#699938'];
+    const idx = target ? (Math.floor(target.x) + Math.floor(target.y)) % vineColors.length : 0;
+    stroke = vineColors[Math.abs(idx)];
+    strokeWidth = 2.5;
+    inlines.strokeLinecap = 'round';
+    inlines.filter = "drop-shadow(0 2px 3px rgba(90,140,51,0.2))";
+  }
+
+  if (style === 'ludo' || nodeTheme === 'ludo') {
+    const ludoColors = ['#ff4d4d', '#2ecc71', '#f1c40f', '#3498db'];
+    // Try to get a consistent color based on target data if source is not available enough
+    // For now we'll use a neutral slate or a random-but-deterministic color if we can
+    stroke = '#94a3b8'; // default
+    strokeWidth = 14;
+    inlines.strokeLinecap = 'butt';
+  }
+
+  if (style === 'chess' || nodeTheme === 'chess') {
+    stroke = '#d4af37'; // gold
+    strokeWidth = 1.5;
+    inlines.opacity = 0.6;
+    inlines.filter = "drop-shadow(0 0 4px rgba(212,175,55,0.4))";
+  }
+
+  if (style === 'octopus' || nodeTheme === 'octopus') {
+    stroke = '#4f46e5'; // Deep Indigo glow base
+    strokeWidth = 8;
+    inlines.strokeLinecap = 'round';
+    inlines.filter = "drop-shadow(0 0 6px rgba(79,70,229,0.5))";
   }
 
   if (isSelected) {
@@ -148,6 +192,49 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
         strokeDasharray={strokeDasharray}
         style={{ ...inlines, pointerEvents: 'none' }}
       />
+      {(style === 'ludo' || nodeTheme === 'ludo') && (
+        <>
+           {/* White middle track */}
+           <path
+             d={d}
+             fill="none"
+             stroke="white"
+             strokeWidth={strokeWidth * 0.4}
+             style={{ ...inlines, pointerEvents: 'none', opacity: 0.8 }}
+           />
+           {/* Ladder steps */}
+           <path
+             d={d}
+             fill="none"
+             stroke="#000"
+             strokeWidth={strokeWidth}
+             strokeDasharray={`1, 10`}
+             style={{ ...inlines, pointerEvents: 'none', opacity: 0.2 }}
+           />
+        </>
+      )}
+      {(style === 'octopus' || nodeTheme === 'octopus') && (
+        <>
+           {/* Tentacle texture / suction cups */}
+           <path
+             d={d}
+             fill="none"
+             stroke="#c7d2fe"
+             strokeWidth={strokeWidth * 0.4}
+             strokeDasharray="0, 10"
+             strokeLinecap="round"
+             style={{ ...inlines, pointerEvents: 'none', filter: "drop-shadow(0 0 4px #818cf8)", opacity: 0.8 }}
+           />
+           {/* Inner luminescent core */}
+           <path
+             d={d}
+             fill="none"
+             stroke="#a5b4fc"
+             strokeWidth={strokeWidth * 0.15}
+             style={{ opacity: 0.9, pointerEvents: 'none', filter: "drop-shadow(0 0 3px #6366f1)" }}
+           />
+        </>
+      )}
       {style === 'orgChart' && source && target && (
         <>
           <circle 
@@ -169,6 +256,47 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
             style={{ ...inlines, pointerEvents: 'none' }}
           />
         </>
+      )}
+      {(style === 'nature2' || nodeTheme === 'nature2') && source && target && (
+        <>
+           <path 
+             d={`M ${(source.x + target.x)/2} ${(source.y + target.y)/2} Q ${(source.x + target.x)/2 - 12} ${(source.y + target.y)/2 - 12} ${(source.x + target.x)/2 + 2} ${(source.y + target.y)/2 - 15} Q ${(source.x + target.x)/2 + 10} ${(source.y + target.y)/2} ${(source.x + target.x)/2} ${(source.y + target.y)/2}`}
+             fill={stroke}
+             opacity={0.85}
+             style={{pointerEvents: 'none'}}
+           />
+        </>
+      )}
+      {(style === 'hydrogen' || nodeTheme === 'hydrogen') && source && target && (
+        <>
+           <circle
+             cx={(source.x + target.x) / 2}
+             cy={(source.y + target.y) / 2}
+             r={2.5}
+             fill="#bfdbfe"
+             style={{ filter: "drop-shadow(0 0 6px rgba(191,219,254,1))", pointerEvents: 'none' }}
+           >
+             <animate attributeName="cx" values={`${source.x};${target.x}`} dur="4s" repeatCount="indefinite" />
+             <animate attributeName="cy" values={`${source.y};${target.y}`} dur="4s" repeatCount="indefinite" />
+           </circle>
+           <circle
+             cx={target.x}
+             cy={target.y}
+             r={3.5}
+             fill="#93c5fd"
+             style={{ filter: "drop-shadow(0 0 5px rgba(147,197,253,0.8))", pointerEvents: 'none' }}
+           />
+        </>
+      )}    
+      {(style === 'seed' || nodeTheme === 'seed') && source && target && (
+        <g style={{pointerEvents: 'none'}}>
+           <circle cx={target.x} cy={target.y} r={4} fill="#f4f7f0" stroke={stroke} strokeWidth={2} />
+           {/* Draw a little leaf near the target */}
+           <path 
+             d={`M ${target.x} ${target.y} Q ${target.x - 12} ${target.y - 18}, ${target.x - 18} ${target.y - 6} Q ${target.x - 6} ${target.y}, ${target.x} ${target.y}`}
+             fill={stroke} opacity={0.9}
+           />
+        </g>
       )}
     </g>
   );
