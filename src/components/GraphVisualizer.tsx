@@ -291,6 +291,11 @@ export default function GraphVisualizer() {
   const zoomRef = useRef<d3.ZoomBehavior<HTMLDivElement, unknown> | null>(null);
   const lastSearchQuery = useRef<string>("");
 
+  const nodesRef = useRef(nodes);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
   useEffect(() => {
     if (!wrapperRef.current || !svgGRef.current) return;
 
@@ -337,13 +342,13 @@ export default function GraphVisualizer() {
     selection.call(zoom);
 
     // Initial centering only once
-    if (nodes.length > 0 && !hasCentered.current) {
+    if (nodesRef.current.length > 0 && !hasCentered.current) {
       if (wrapperRef.current) {
-        const xExtent = d3.extent(nodes, (d) => (d as any).x) as [
+        const xExtent = d3.extent(nodesRef.current, (d) => (d as any).x) as [
           number,
           number,
         ];
-        const yExtent = d3.extent(nodes, (d) => (d as any).y) as [
+        const yExtent = d3.extent(nodesRef.current, (d) => (d as any).y) as [
           number,
           number,
         ];
@@ -364,9 +369,10 @@ export default function GraphVisualizer() {
     // Bind fit trigger
     const fitBtn = document.getElementById("fit-graph-btn");
     const onFit = () => {
-      if (nodes.length === 0) return;
-      const xExtent = d3.extent(nodes, (d) => (d as any).x) as [number, number];
-      const yExtent = d3.extent(nodes, (d) => (d as any).y) as [number, number];
+      const currentNodes = nodesRef.current;
+      if (currentNodes.length === 0) return;
+      const xExtent = d3.extent(currentNodes, (d) => (d as any).x) as [number, number];
+      const yExtent = d3.extent(currentNodes, (d) => (d as any).y) as [number, number];
       const width = xExtent[1] - xExtent[0];
       const height = yExtent[1] - yExtent[0];
       const cw = wrapperRef.current!.clientWidth;
