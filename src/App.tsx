@@ -7,6 +7,7 @@ import AdvancedPanel from "./components/AdvancedPanel";
 import ShortcutsPopup from "./components/ShortcutsPopup";
 import MathHelpPopup from "./components/MathHelpPopup";
 import ShareDialog from "./components/ShareDialog";
+import SavedDocumentsModal from "./components/SavedDocumentsModal";
 import TextPreviewPopup from "./components/TextPreviewPopup";
 import MediaPreviewPopup from "./components/MediaPreviewPopup";
 import { useStore } from "./store/useStore";
@@ -15,7 +16,7 @@ import { parseShareUrl } from "./utils/shareUtils";
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme, setCode, isMathHelpOpen, setIsMathHelpOpen } = useStore();
+  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme, setCode, isMathHelpOpen, setIsMathHelpOpen, isSavedDocsOpen, setIsSavedDocsOpen } = useStore();
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
@@ -198,6 +199,7 @@ export default function App() {
       <AdvancedPanel />
       <ShortcutsPopup />
       <MathHelpPopup isOpen={isMathHelpOpen} onClose={() => setIsMathHelpOpen(false)} />
+      <SavedDocumentsModal isOpen={isSavedDocsOpen} onClose={() => setIsSavedDocsOpen(false)} />
       <ShareDialog isOpen={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
       <TextPreviewPopup />
       <MediaPreviewPopup />

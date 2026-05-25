@@ -12,6 +12,8 @@ import { mediaCache } from "./SmartMediaRenderer";
 import { useDrawingSystem } from "../hooks/useDrawingSystem";
 import { Copy, Edit2, Trash2, X, Search, Settings, Eye } from "lucide-react";
 
+import NodeQueryEngine from './NodeQueryEngine';
+
 export default function GraphVisualizer() {
   const {
     treeData,
@@ -995,32 +997,7 @@ export default function GraphVisualizer() {
       )}
 
       {/* Floating Search & Settings */}
-      <div
-        onContextMenu={(e) => e.stopPropagation()}
-        className="no-export absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10 bg-white/80 dark:bg-[#0d1117]/80 backdrop-blur-md p-1.5 rounded-full border border-slate-300 dark:border-slate-700/50 shadow-lg pointer-events-auto"
-      >
-        <div className="relative flex items-center">
-          <Search
-            size={16}
-            className="absolute left-3 text-slate-500 top-1/2 -translate-y-1/2"
-          />
-          <input
-            type="text"
-            placeholder="Search nodes..."
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            className="bg-transparent border-none pl-9 pr-4 py-1.5 text-sm outline-none w-48 lg:w-64 focus:ring-0 text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500"
-          />
-        </div>
-        <div className="w-[1px] h-6 bg-slate-300 dark:bg-slate-700/50"></div>
-        <button
-          onClick={() => useStore.getState().setIsAdvancedPanelOpen(true)}
-          className="p-1.5 bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-full transition-colors mr-1"
-          title="Advanced Options"
-        >
-          <Settings size={18} />
-        </button>
-      </div>
+      <NodeQueryEngine />
 
       {/* Context Menu */}
       {contextMenu &&

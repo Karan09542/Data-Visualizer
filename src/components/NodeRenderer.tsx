@@ -609,7 +609,7 @@ export default function NodeRenderer({
       ? 140
       : 240
     : isExpanded
-      ? 220
+      ? 300
       : 120;
 
   const isDefaultShape = nodeShape === "default";
@@ -763,6 +763,10 @@ export default function NodeRenderer({
         shapeStyle.outline = "1px solid #94a3b8";
         shapeStyle.outlineOffset = "4px";
         break;
+    }
+    
+    if (!shapeStyle.maxWidth) {
+      shapeStyle.maxWidth = isMedia ? "320px" : "260px";
     }
   }
 
@@ -964,7 +968,7 @@ export default function NodeRenderer({
             </div>
           )}
           <div
-            className={`flex w-full ${isMedia ? "items-start mb-2" : "items-center"}`}
+            className={`flex w-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"}`}
           >
             <div className="flex-shrink-0 mr-2 flex items-center">
               {hasChildren && (
@@ -986,12 +990,12 @@ export default function NodeRenderer({
             </div>
 
             <div
-              className="flex flex-col overflow-hidden w-full leading-tight py-0.5"
+              className="flex flex-col overflow-hidden w-full max-w-full px-1 min-w-0 leading-tight py-0.5"
               style={isCustom ? { color: nodeTextColor } : {}}
             >
-              <div className="flex items-baseline space-x-1.5">
+              <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                 <span
-                  className={`pointer-events-none font-mono text-xs font-semibold truncate ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
+                  className={`pointer-events-none font-mono text-xs font-semibold truncate max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
                   title={data.name}
                 >
                   {data.name}
@@ -1008,21 +1012,22 @@ export default function NodeRenderer({
                 )}
               </div>
               {data.value !== undefined && !isMedia && (
-                <div className="flex flex-col mt-0.5 relative group/val">
-                  <span
-                    className={`text-[11px] font-mono leading-normal ${isExpanded ? "whitespace-pre-wrap break-words" : "truncate"} ${valText}`}
-                    title={!isExpanded ? String(data.value) : undefined}
-                    style={
-                      isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}
-                    }
-                  >
-                    {String(data.value)}
-                  </span>
-
+                <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
+                  <div className={`flex-1 min-w-0 ${isExpanded ? 'overflow-y-auto max-h-[180px] custom-scrollbar pr-1' : 'overflow-hidden'}`}>
+                    <span
+                      className={`text-[11px] font-mono leading-normal ${isExpanded ? "whitespace-pre-wrap break-all" : "truncate w-full max-w-full block"} ${valText}`}
+                      title={!isExpanded ? String(data.value) : undefined}
+                      style={
+                        isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}
+                      }
+                    >
+                      {String(data.value)}
+                    </span>
+                  </div>
                   {strVal.length > 50 && (
-                    <div className="flex items-center gap-1.5 mt-1">
+                    <div className="flex items-center gap-1.5 mt-1 shrink-0">
                       <button
-                        className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter px-1.5 py-0.5 rounded transition-all bg-black/10 hover:bg-black/20 ${mutedText} z-20`}
+                        className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter px-1.5 py-0.5 rounded transition-all bg-black/10 hover:bg-black/20 ${mutedText} z-20 cursor-pointer`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setIsExpanded(!isExpanded);

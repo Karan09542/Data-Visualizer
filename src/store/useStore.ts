@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { parseInput } from '../utils/parser';
 import { transformToTree } from '../utils/transformer';
+import { parseSearchQuery, buildSearchContext, evaluateQuery } from '../utils/searchEngine';
 
 export type LayoutMode = 'vertical' | 'horizontal' | 'radial' | 'force' | 'compact' | 'mindmap';
 export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook' | 'custom' | 'nature' | 'circuit' | 'galaxy' | 'glass' | 'neon' | 'math' | 'neural' | 'river' | 'tree' | 'pixel' | 'hacker' | 'cloud' | 'dna' | 'lava' | 'ocean' | 'rhythm' | 'rune' | 'zen' | 'abstract' | 'architect' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed';
@@ -10,6 +11,8 @@ export type NodeShape = 'default' | 'circle' | 'rectangle' | 'triangle' | 'hexag
 export type CanvasTheme = 'none' | 'dots' | 'grid' | 'lines';
 export type AppTheme = 'dark' | 'light';
 export type GradientType = 'linear' | 'radial';
+
+export type SearchEngineMode = 'strict' | 'permissive';
 
 // Default settings
 export const defaultSettings = {
@@ -37,9 +40,13 @@ export const defaultSettings = {
   useNodeGradient: false,
   nodeGradientAngle: 45,
   nodeGradientType: 'linear' as GradientType,
+  searchEngineMode: 'permissive' as SearchEngineMode,
 };
 
 export interface StoreState {
+  searchEngineMode: SearchEngineMode;
+  globalSearchErrors: string[];
+  globalSearchSuggestions: string[];
   code: string;
   parsedData: any | null;
   treeData: any | null;
@@ -115,6 +122,7 @@ export interface StoreState {
   setUseNodeGradient: (use: boolean) => void;
   setNodeGradientAngle: (angle: number) => void;
   setNodeGradientType: (type: GradientType) => void;
+  setSearchEngineMode: (mode: SearchEngineMode) => void;
   setSearchQuery: (query: string) => void;
   toggleNodeCollapse: (id: string) => void;
   setCollapsedNodes: (nodes: Set<string>) => void;
@@ -132,6 +140,8 @@ export interface StoreState {
   setDragOverride: (id: string, pos: { x: number, y: number } | null) => void;
   clearDragOverrides: () => void;
   
+  isSavedDocsOpen: boolean;
+  setIsSavedDocsOpen: (isOpen: boolean) => void;
   // Resets
   resetAllSettings: () => void;
   clearCode: () => void;
@@ -158,6 +168,8 @@ export const useStore = create<StoreState>()(
     (set, get) => ({
       ...defaultSettings,
       code: initialCode,
+      globalSearchErrors: [],
+      globalSearchSuggestions: [],
       parsedData: null,
       treeData: null,
       error: null,
@@ -171,6 +183,7 @@ export const useStore = create<StoreState>()(
       isMobileMenuOpen: false,
       isShortcutsOpen: false,
       isMathHelpOpen: false,
+      isSavedDocsOpen: false,
       apiMethod: 'GET',
       apiUrl: 'https://jsonplaceholder.typicode.com/todos/1',
       apiHeaders: '{\n  "Accept": "application/json"\n}',
@@ -251,27 +264,53 @@ export const useStore = create<StoreState>()(
       setUseNodeGradient: (use: boolean) => set({ useNodeGradient: use }),
       setNodeGradientAngle: (angle: number) => set({ nodeGradientAngle: angle }),
       setNodeGradientType: (type: GradientType) => set({ nodeGradientType: type }),
+      setSearchEngineMode: (mode: SearchEngineMode) => {
+        set({ searchEngineMode: mode });
+        get().setSearchQuery(get().searchQuery); // trigger re-evaluation
+      },
       setSearchQuery: (query: string) => {
         set((state) => {
-          const q = query.toLowerCase();
+          const q = query.trim();
           const newCollapsed = new Set(state.collapsedNodes);
           const matches = new Set<string>();
           const ancestors = new Set<string>();
           
           if (!q || !state.treeData) {
-            return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors };
+            return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [], globalSearchSuggestions: [] };
           }
           
-          const checkNode = (node: any, currentAncestors: string[]): boolean => {
-            const matchName = node.name.toLowerCase().includes(q);
-            const matchVal = node.value !== undefined && String(node.value).toLowerCase().includes(q);
-            const isMatch = matchName || matchVal;
+          const parseRes = parseSearchQuery(q);
+          if (parseRes.syntaxError) {
+             return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [parseRes.syntaxError], globalSearchSuggestions: [] };
+          }
+          
+          const globalErrors = new Set<string>();
+          const globalSuggestions = new Set<string>();
+          
+          const checkNode = (node: any, currentAncestors: string[], depth: number): boolean => {
+            let isMatch = false;
+            
+            if (parseRes.ast) {
+               const context = buildSearchContext(node, depth);
+               context.mode = get().searchEngineMode;
+               const evalRes = evaluateQuery(parseRes.ast, context);
+               isMatch = evalRes.isMatch;
+               
+               for (const err of evalRes.errors) globalErrors.add(err);
+               for (const sug of evalRes.suggestions) globalSuggestions.add(sug);
+            } else {
+               // Fallback basic exact
+               const qLower = q.toLowerCase();
+               const matchName = node.name.toLowerCase().includes(qLower);
+               const matchVal = node.value !== undefined && String(node.value).toLowerCase().includes(qLower);
+               isMatch = matchName || matchVal;
+            }
             
             let hasMatchingDescendant = false;
             
             if (node.children) {
                for (const child of node.children) {
-                  if (checkNode(child, [...currentAncestors, node.id])) {
+                  if (checkNode(child, [...currentAncestors, node.id], depth + 1)) {
                      hasMatchingDescendant = true;
                   }
                }
@@ -285,15 +324,22 @@ export const useStore = create<StoreState>()(
                }
             } else if (hasMatchingDescendant) {
                ancestors.add(node.id);
-               newCollapsed.delete(node.id);
+               newCollapsed.delete(node.id); // ensure path is open
             }
             
             return isMatch || hasMatchingDescendant;
           };
           
-          checkNode(state.treeData, []);
+          checkNode(state.treeData, [], 0);
           
-          return { searchQuery: query, collapsedNodes: newCollapsed, searchMatches: matches, searchAncestors: ancestors };
+          return { 
+             searchQuery: query, 
+             collapsedNodes: newCollapsed, 
+             searchMatches: matches, 
+             searchAncestors: ancestors,
+             globalSearchErrors: Array.from(globalErrors),
+             globalSearchSuggestions: Array.from(globalSuggestions)
+          };
         });
       },
       toggleNodeCollapse: (id: string) => {
@@ -325,6 +371,7 @@ export const useStore = create<StoreState>()(
       setIsMobileMenuOpen: (isOpen: boolean) => void set({ isMobileMenuOpen: isOpen }),
       setIsShortcutsOpen: (isOpen: boolean) => void set({ isShortcutsOpen: isOpen }),
       setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
+      setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
       setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show }),
       setGlobalTextExpanded: (expanded: boolean) => set({ globalTextExpanded: expanded }),
       setActivePreviewText: (text, path = null) => set({ activePreviewText: text, activePreviewPath: path }),

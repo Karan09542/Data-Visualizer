@@ -1,5 +1,5 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2 } from 'lucide-react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { estimateShareSize } from '../utils/shareUtils';
 import { useAnnotationStore } from '../store/useAnnotationStore';
@@ -27,7 +27,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     redo,
     undoStack,
     redoStack,
-    code
+    code,
+    setIsSavedDocsOpen
   } = useStore();
 
   const { annotations } = useAnnotationStore();
@@ -308,6 +309,14 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             </div>
 
             <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-4">
+              <button 
+                onClick={() => setIsSavedDocsOpen(true)}
+                className="flex items-center gap-2 p-1.5 px-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-md text-xs font-semibold transition-all shadow-sm active:scale-95 mr-2" 
+                title="Saved Documents"
+              >
+                <FolderOpen size={16} />
+                <span>Saved</span>
+              </button>
               <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Toggle Theme">
                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
@@ -440,6 +449,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                </button>
                <button onClick={formatCode} className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium">
                  <Paintbrush size={16} /> Format
+               </button>
+            </div>
+
+            <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800">
+               <button 
+                 onClick={() => { setIsMobileMenuOpen(false); setIsSavedDocsOpen(true); }} 
+                 className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
+               >
+                 <FolderOpen size={16} /> Saved Documents
                </button>
             </div>
 
