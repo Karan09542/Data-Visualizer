@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
-import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, X, Info } from 'lucide-react';
+import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, X, Info, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseSearchQuery } from '../utils/searchEngine';
 
@@ -90,19 +90,17 @@ export default function NodeQueryEngine() {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setShowHelp(true)}
-                        className="p-1 px-2 flex items-center gap-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-xs text-slate-600 dark:text-slate-300 font-medium"
+                        className="p-1.5 flex items-center justify-center rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"
                         title="Search Help"
                     >
-                        <Info size={12} />
-                        <span className="hidden sm:inline">Help</span>
+                        <Info size={14} />
                     </button>
                     <button
                         onClick={() => setIsAdvancedPanelOpen(true)}
-                        className="p-1 px-2 flex items-center gap-1.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-xs text-slate-600 dark:text-slate-300 font-medium"
+                        className="p-1.5 flex items-center justify-center rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"
                         title="Open Details & Settings"
                     >
-                        <Database size={12} />
-                        <span className="hidden sm:inline">Settings</span>
+                        <Settings size={14} />
                     </button>
                 </div>
             </div>
