@@ -289,6 +289,7 @@ export const useStore = create<StoreState>()(
           
           const checkNode = (node: any, currentAncestors: string[], depth: number): boolean => {
             let isMatch = false;
+            let handledMatches = false;
             
             if (parseRes.ast) {
                const context = buildSearchContext(node, depth);
@@ -296,7 +297,34 @@ export const useStore = create<StoreState>()(
                const evalRes = evaluateQuery(parseRes.ast, context);
                isMatch = evalRes.isMatch;
                
-               for (const err of evalRes.errors) globalErrors.add(err);
+               if (isMatch && evalRes.matchedPaths && evalRes.matchedPaths.length > 0) {
+                   handledMatches = true;
+                   for (const p of evalRes.matchedPaths) {
+                       matches.add(p);
+                       
+                       const parts = p.match(/root|\[\d+\]|[^.\[]+/g) || [];
+                       let temp = '';
+                       for (let i = 0; i < parts.length; i++) {
+                           let part = parts[i];
+                           if (i > 0 && part !== 'root' && !part.startsWith('[')) {
+                               temp += '.' + part;
+                           } else {
+                               temp += part;
+                           }
+                           ancestors.add(temp);
+                           newCollapsed.delete(temp);
+                       }
+                   }
+                   for (const c of currentAncestors) {
+                       ancestors.add(c);
+                       newCollapsed.delete(c);
+                   }
+                   ancestors.add(node.id);
+                   newCollapsed.delete(node.id);
+               }
+               
+               // Only collect suggestions from AST evaluation, not strict traversal errors
+               // Strict traversal errors on partial structural mismatches are too noisy for global search
                for (const sug of evalRes.suggestions) globalSuggestions.add(sug);
             } else {
                // Fallback basic exact
@@ -316,7 +344,7 @@ export const useStore = create<StoreState>()(
                }
             }
             
-            if (isMatch) {
+            if (isMatch && !handledMatches) {
                matches.add(node.id);
                for (const id of currentAncestors) {
                   ancestors.add(id);

@@ -311,8 +311,8 @@ export default function GraphVisualizer() {
 
         const { activeTool, isToolbarVisible } = useAnnotationStore.getState();
 
-        // If clicking on transform handles, block zoom
-        if (e.target && (e.target as Element).closest(".transform-box")) {
+        // If clicking on transform handles or no-drag areas, block zoom
+        if (e.target && (e.target as Element).closest(".transform-box, .nodrag, .node-query-engine")) {
           return false;
         }
 

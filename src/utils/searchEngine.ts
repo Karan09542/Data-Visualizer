@@ -38,6 +38,7 @@ export interface EvalResult {
   isMatch: boolean;
   errors: string[];
   suggestions: string[];
+  matchedPaths?: string[];
 }
 
 export interface ParseResult {
@@ -48,7 +49,7 @@ export interface ParseResult {
 type TokenType = 
   | 'IDENTIFIER' | 'STRING' | 'NUMBER' | 'REGEX' 
   | 'OPERATOR' | 'DOT' | 'BRACKET_OPEN' | 'BRACKET_CLOSE' 
-  | 'PAREN_OPEN' | 'PAREN_CLOSE' | 'AND' | 'OR' | 'EOF';
+  | 'PAREN_OPEN' | 'PAREN_CLOSE' | 'AND' | 'OR' | 'COMMA' | 'EOF';
 
 export interface Token {
   type: TokenType;
@@ -71,6 +72,7 @@ export function tokenize(input: string): Token[] {
     if (char === ']') { tokens.push({ type: 'BRACKET_CLOSE', value: ']', start: cursor, end: cursor + 1 }); cursor++; continue; }
     if (char === '(') { tokens.push({ type: 'PAREN_OPEN', value: '(', start: cursor, end: cursor + 1 }); cursor++; continue; }
     if (char === ')') { tokens.push({ type: 'PAREN_CLOSE', value: ')', start: cursor, end: cursor + 1 }); cursor++; continue; }
+    if (char === ',') { tokens.push({ type: 'COMMA', value: ',', start: cursor, end: cursor + 1 }); cursor++; continue; }
     
     // Regex literal e.g. /^auth/i or any other literal
     if (char === '/') {
@@ -156,6 +158,7 @@ export function tokenize(input: string): Token[] {
        
        if (upper === 'AND') { tokens.push({ type: 'AND', value: val, start: cursor, end: cursor + val.length }); }
        else if (upper === 'OR') { tokens.push({ type: 'OR', value: val, start: cursor, end: cursor + val.length }); }
+       else if (upper === 'IN') { tokens.push({ type: 'OPERATOR', value: 'IN', start: cursor, end: cursor + val.length }); }
        else { tokens.push({ type: 'IDENTIFIER', value: val, start: cursor, end: cursor + val.length }); }
        
        cursor += val.length;
@@ -172,12 +175,13 @@ export function tokenize(input: string): Token[] {
 
 export type Expr = 
   | { type: 'LogicalExpr', op: 'AND' | 'OR', left: Expr, right: Expr }
-  | { type: 'CompareExpr', path: PathAST, op: string, value: any, valueType: 'regex' | 'string' | 'number' | 'boolean' }
+  | { type: 'CompareExpr', path: PathAST, op: string, value: any, valueType: 'regex' | 'string' | 'number' | 'boolean' | 'array' }
   | { type: 'FuzzyMatchExpr', value: string }
   | { type: 'GroupExpr', expr: Expr };
 
 export type PathNode = 
   | { type: 'property', key: string }
+  | { type: 'property-regex', regex: string }
   | { type: 'array-wildcard' }
   | { type: 'array-index', index: number };
 
@@ -310,6 +314,34 @@ export function parseAST(input: string): ParseResult {
       
       let t = peek();
       
+      if (t.type === 'BRACKET_OPEN') {
+           advance();
+           let arr: any[] = [];
+           while (peek().type !== 'BRACKET_CLOSE' && peek().type !== 'EOF') {
+               let valTok = advance();
+               if (valTok.type === 'STRING') arr.push(valTok.value);
+               else if (valTok.type === 'NUMBER') arr.push(Number(valTok.value));
+               else if (valTok.value === 'true') arr.push(true);
+               else if (valTok.value === 'false') arr.push(false);
+               else arr.push(valTok.value);
+               
+               if (peek().type === 'COMMA') advance();
+           }
+           if (peek().type === 'BRACKET_CLOSE') advance();
+           
+           let next = peek();
+           if (next.type === 'OPERATOR' && next.value.toUpperCase() === 'IN') {
+               advance();
+               if (peek().type === 'IDENTIFIER') {
+                   let path = parsePath();
+                   return { type: 'CompareExpr', path, op: 'IN_REVERSE', value: arr, valueType: 'array' };
+               } else {
+                   throw new Error("Expected path after 'IN'");
+               }
+           }
+           throw new Error("Expected 'IN <path>' after array literal");
+      }
+      
       if (t.type === 'STRING') {
           advance();
           return { type: 'FuzzyMatchExpr', value: t.value };
@@ -322,35 +354,60 @@ export function parseAST(input: string): ParseResult {
           if (next.type === 'OPERATOR') {
              advance();
              let op = next.value;
-             let rightToken = advance();
+             let val: any;
+             let valType: any;
              
-             if (rightToken.type === 'EOF') {
-                 throw new Error(`Expected value after operator '${op}'`);
-             }
-             
-             let val: any = rightToken.value;
-             let valType: any = 'string';
-             
-             if (rightToken.type === 'NUMBER') {
-                 val = Number(val);
-                 valType = 'number';
-             }
-             else if (rightToken.type === 'REGEX') {
-                 valType = 'regex';
-             }
-             else if (val === 'true') {
-                 val = true;
-                 valType = 'boolean';
-             }
-             else if (val === 'false') {
-                 val = false;
-                 valType = 'boolean';
+             if (peek().type === 'BRACKET_OPEN') {
+                 advance();
+                 let arr: any[] = [];
+                 while (peek().type !== 'BRACKET_CLOSE' && peek().type !== 'EOF') {
+                     let valTok = advance();
+                     if (valTok.type === 'STRING') arr.push(valTok.value);
+                     else if (valTok.type === 'NUMBER') arr.push(Number(valTok.value));
+                     else if (valTok.value === 'true') arr.push(true);
+                     else if (valTok.value === 'false') arr.push(false);
+                     else arr.push(valTok.value);
+                     
+                     if (peek().type === 'COMMA') advance();
+                 }
+                 if (peek().type === 'BRACKET_CLOSE') advance();
+                 val = arr;
+                 valType = 'array';
+             } else {
+                 let rightToken = advance();
+                 if (rightToken.type === 'EOF') {
+                     throw new Error(`Expected value after operator '${op}'`);
+                 }
+                 
+                 val = rightToken.value;
+                 valType = 'string';
+                 
+                 if (rightToken.type === 'NUMBER') {
+                     val = Number(val);
+                     valType = 'number';
+                 }
+                 else if (rightToken.type === 'REGEX') {
+                     valType = 'regex';
+                 }
+                 else if (val === 'true') {
+                     val = true;
+                     valType = 'boolean';
+                 }
+                 else if (val === 'false') {
+                     val = false;
+                     valType = 'boolean';
+                 }
              }
              
              return { type: 'CompareExpr', path, op, value: val, valueType: valType };
           }
           
-          return { type: 'FuzzyMatchExpr', value: pathToString(path) };
+          return {
+              type: 'LogicalExpr', 
+              op: 'OR', 
+              left: { type: 'FuzzyMatchExpr', value: pathToString(path) }, 
+              right: { type: 'CompareExpr', path, op: 'EXISTS', value: true, valueType: 'boolean' }
+          };
       }
       
       let tok = advance();
@@ -360,14 +417,28 @@ export function parseAST(input: string): ParseResult {
   
   function parsePath(): PathAST {
       let path: PathAST = [];
+      
+      function consumePathNode(tok: Token) {
+          if (tok.value === 'name' && !isAtEnd() && peek().type === 'OPERATOR' && peek().value === '/=') {
+              advance(); // consume /=
+              let patTok = advance();
+              if (patTok && (patTok.type === 'STRING' || patTok.type === 'REGEX')) {
+                  path.push({ type: 'property-regex', regex: patTok.value });
+                  return;
+              }
+              throw new Error("Expected string/regex after '/='");
+          }
+          path.push({ type: 'property', key: tok.value });
+      }
+
       let tok = advance();
-      path.push({ type: 'property', key: tok.value });
+      consumePathNode(tok);
       
       while (!isAtEnd()) {
           if (peek().type === 'DOT') {
               advance();
               if (peek().type === 'IDENTIFIER') {
-                  path.push({ type: 'property', key: advance().value });
+                  consumePathNode(advance());
               } else {
                   throw new Error("Expected property name after '.'");
               }
@@ -399,6 +470,8 @@ function pathToString(path: PathAST): string {
         let p = path[i];
         if (p.type === 'property') {
             s += (i > 0 ? '.' : '') + p.key;
+        } else if (p.type === 'property-regex') {
+            s += (i > 0 ? '.' : '') + `name/="${p.regex}"`;
         } else if (p.type === 'array-wildcard') {
             s += '[]';
         } else if (p.type === 'array-index') {
@@ -423,7 +496,7 @@ export function buildSearchContext(node: any, depth = 0): QueryContext {
       depth: node.depth !== undefined ? node.depth : depth,
       childrenCount: node.children ? node.children.length : (rawNode.children?.length || 0),
     },
-    node: rawNode,
+    node: rawNode.rawValue !== undefined ? rawNode.rawValue : rawNode.value,
     mode: 'permissive',
     errors: [],
     suggestions: []
@@ -439,8 +512,27 @@ export function evaluateQuery(expr: Expr | null, ctx: QueryContext): EvalResult 
     const matchedResults = evalInternal(expr, ctx);
     const isMatch = matchedResults.length > 0;
     
+    let matchedPaths: string[] = [];
+    if (isMatch) {
+       matchedPaths = matchedResults.map(r => {
+           let absPath = r.path;
+           if (absPath) {
+               if (absPath.startsWith('[')) {
+                   return ctx.meta.path + absPath;
+               } else {
+                   return ctx.meta.path + (ctx.meta.path ? '.' : '') + absPath;
+               }
+           } else {
+               return ctx.meta.path;
+           }
+       });
+       // Deduplicate
+       matchedPaths = Array.from(new Set(matchedPaths));
+    }
+    
     return {
         isMatch,
+        matchedPaths,
         errors: ctx.errors,
         suggestions: ctx.suggestions
     };
@@ -506,7 +598,7 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
             if (String(value).toLowerCase().includes(query)) {
                 results.push({
                     value,
-                    path: `meta.${key}`,
+                    path: '', // highlights the node itself
                     parent: ctx.meta,
                     key,
                     arrayIndex: null,
@@ -522,7 +614,7 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
            if (ctx.node.toLowerCase().includes(query)) {
                results.push({
                    value: ctx.node,
-                   path: 'root',
+                   path: '', // highlights the node itself
                    parent: null,
                    key: null,
                    arrayIndex: null,
@@ -535,7 +627,7 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
            if (String(ctx.node).includes(query)) {
                results.push({
                    value: ctx.node,
-                   path: 'root',
+                   path: '', // highlights the node itself
                    parent: null,
                    key: null,
                    arrayIndex: null,
@@ -544,6 +636,21 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
                    nodeType: 'primitive'
                });
            }
+        }
+        
+        let metaPathClean = (ctx.meta.path || '').replace(/\[\d+\]/g, '');
+        let qClean = query.replace(/\[\]/g, '');
+        if (metaPathClean.toLowerCase().includes(qClean)) {
+               results.push({
+                   value: ctx.node,
+                   path: '',
+                   parent: null,
+                   key: null,
+                   arrayIndex: null,
+                   source: ctx.node,
+                   scopeId: 'root',
+                   nodeType: typeof ctx.node === 'object' ? (Array.isArray(ctx.node) ? 'array' : 'object') : 'primitive'
+               });
         } else if (typeof ctx.node === 'object' && ctx.node !== null) {
            for (const [k, v] of Object.entries(ctx.node)) {
                 if (v === null || v === undefined) continue;
@@ -588,26 +695,52 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
         
         if (isMeta && expr.path.length === 1) {
             const actual = (ctx.meta as any)[firstKey];
-            resolved = [{
+            resolved.push({
                 value: actual,
-                path: firstKey,
+                path: '', // highlights the node itself
                 parent: ctx.meta,
                 key: firstKey,
                 arrayIndex: null,
                 source: ctx.node,
                 scopeId: 'root',
                 nodeType: 'primitive'
-            }];
-        } else {
-            resolved = traversePath(ctx.node, expr.path, ctx.mode, ctx);
+            });
         }
+        
+        // Always try to traverse the actual node data as well, so real payload fields like "id" or "name" are matched.
+        resolved.push(...traversePath(ctx.node, expr.path, ctx.mode, ctx));
         
         let op = expr.op;
         let cValue = expr.value;
         
-        const matched = resolved.filter(res => 
-            compareValues(res.value, op, cValue, expr.valueType)
-        );
+        const matched: TraversalResult[] = [];
+        
+        for (const res of resolved) {
+            if ((op.toUpperCase() === 'IN_REVERSE' || op.toUpperCase() === 'IN') && expr.valueType === 'array' && Array.isArray(res.value)) {
+                // Return the specific array elements that matched, rather than the parent array node
+                const cArray = Array.isArray(cValue) ? cValue : [cValue];
+                for (let i = 0; i < res.value.length; i++) {
+                    // case-insensitive fuzzy check just in case, or strict includes
+                    // actually, better to check with compareValues iteratively or use strict inclusion
+                    if (cArray.includes(res.value[i])) {
+                        matched.push({
+                            value: res.value[i],
+                            path: res.path ? `${res.path}[${i}]` : `[${i}]`,
+                            parent: res.value,
+                            key: null,
+                            arrayIndex: i,
+                            source: ctx.node,
+                            scopeId: res.scopeId ? `${res.scopeId}.${i}` : `${i}`,
+                            nodeType: typeof res.value[i] === 'object' && res.value[i] !== null ? (Array.isArray(res.value[i]) ? 'array' : 'object') : 'primitive'
+                        });
+                    }
+                }
+            } else {
+                if (compareValues(res.value, op, cValue, expr.valueType)) {
+                    matched.push(res);
+                }
+            }
+        }
         
         return matched;
     }
@@ -620,7 +753,35 @@ function normalizeSemantic(val: any): string {
     return String(val).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function compareValues(actual: any, op: string, cValue: any, cType: 'string'|'number'|'boolean'|'regex'): boolean {
+function compareValues(actual: any, op: string, cValue: any, cType: 'string'|'number'|'boolean'|'regex'|'array'): boolean {
+    if (op.toUpperCase() === 'IN_REVERSE' && cType === 'array') {
+        // e.g., ["Media Preview", "Other"] IN features
+        // This means we are checking if actual exists in our cValue array.
+        // Or if actual is an array itself, any overlap between actual array and cValue array.
+        const cArray = Array.isArray(cValue) ? cValue : [cValue];
+        if (Array.isArray(actual)) {
+            return cArray.some(item => actual.includes(item));
+        }
+        return cArray.includes(actual);
+    }
+    
+    if (op.toUpperCase() === 'IN') {
+        // path IN [val1, val2]
+        if (cType === 'array') {
+             const cArray = Array.isArray(cValue) ? cValue : [cValue];
+             if (Array.isArray(actual)) {
+                 return cArray.some((item: any) => actual.includes(item));
+             }
+             return cArray.includes(actual);
+        } else {
+             // fallback for string containment if used strangely
+             return Array.isArray(actual) ? actual.includes(cValue) : false;
+        }
+    }
+    
+    if (op === 'EXISTS') {
+        return actual !== undefined;
+    }
     if (op === ':') {
         // strict semantic equality (case-insensitive, trimmed whitespace)
         const normActual = typeof actual === 'string' ? normalizeSemantic(actual) : actual;
@@ -718,6 +879,20 @@ function traversePath(node: any, path: PathAST, mode: 'strict' | 'permissive', c
             let nextPath = currentPath ? `${currentPath}.${pNode.key}` : pNode.key;
             return dig(current[pNode.key], pIdx + 1, nextPath, currentScopeId, current, pNode.key, null);
         }
+        else if (pNode.type === 'property-regex') {
+            if (Array.isArray(current) || typeof current !== 'object') {
+                return [];
+            }
+            let results: TraversalResult[] = [];
+            let regex = new RegExp(pNode.regex, 'i');
+            for (let key in current) {
+                if (regex.test(key)) {
+                    let nextPath = currentPath ? `${currentPath}.${key}` : key;
+                    results.push(...dig(current[key], pIdx + 1, nextPath, currentScopeId, current, key, null));
+                }
+            }
+            return results;
+        }
         else if (pNode.type === 'array-wildcard') {
             if (!Array.isArray(current)) {
                  if (mode === 'strict') {
@@ -744,7 +919,9 @@ function traversePath(node: any, path: PathAST, mode: 'strict' | 'permissive', c
                  }
                  return [];
             }
-            return dig(current[pNode.index], pIdx + 1, `${currentPath}[${pNode.index}]`, currentScopeId, current, null, pNode.index);
+            let targetIndex = pNode.index < 0 ? current.length + pNode.index : pNode.index;
+            if (targetIndex < 0 || targetIndex >= current.length) return [];
+            return dig(current[targetIndex], pIdx + 1, `${currentPath}[${targetIndex}]`, currentScopeId, current, null, targetIndex);
         }
         
         return [];

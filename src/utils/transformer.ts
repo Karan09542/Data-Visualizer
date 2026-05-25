@@ -3,6 +3,7 @@ export type TreeNode = {
   name: string;
   type: string;
   value?: any;
+  rawValue?: any;
   children?: TreeNode[];
   path: string;
 };
@@ -10,7 +11,7 @@ export type TreeNode = {
 export const transformToTree = (data: any, name: string = 'root', path: string = 'root'): TreeNode => {
   const type = Array.isArray(data) ? 'array' : data === null ? 'null' : typeof data;
   
-  const node: TreeNode = { id: path, name, type, path };
+  const node: TreeNode = { id: path, name, type, path, rawValue: data };
   
   if (type === 'object' && data !== null) {
     node.children = Object.entries(data).map(([key, val]) => 

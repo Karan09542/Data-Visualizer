@@ -42,19 +42,24 @@ export default function NodeQueryEngine() {
 
   return (
     <>
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[90%] max-w-xl">
+      <div 
+        className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[90%] max-w-xl node-query-engine"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
           <motion.div
               layout
               initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className={`shadow-2xl rounded-2xl overflow-hidden backdrop-blur-xl border transition-all duration-300 ${
+            className={`shadow-md rounded-lg overflow-hidden backdrop-blur-md border transition-all duration-300 ${
                 isFocused 
-                    ? appTheme === 'dark' ? 'bg-[#0d1117]/95 border-indigo-500/50 shadow-indigo-500/20' : 'bg-white/95 border-indigo-400 shadow-indigo-500/20'
-                    : appTheme === 'dark' ? 'bg-[#161b22]/80 border-slate-700' : 'bg-white/80 border-slate-300'
+                    ? appTheme === 'dark' ? 'bg-[#0d1117] border-blue-500/50 shadow-blue-500/10' : 'bg-white border-blue-400 shadow-blue-500/10'
+                    : appTheme === 'dark' ? 'bg-[#0d1117]/90 border-slate-800' : 'bg-white/90 border-slate-300'
             }`}
         >
-            <div className="flex items-center px-4 py-3 gap-3">
-                <Search size={18} className={isFocused ? 'text-indigo-500' : 'text-slate-400'} />
+            <div className="flex items-center px-3 py-2 gap-2.5">
+                <Search size={16} className={isFocused ? 'text-blue-500' : 'text-slate-400'} />
                 
                 <input
                     ref={inputRef}
@@ -87,20 +92,20 @@ export default function NodeQueryEngine() {
 
                 <div className="h-5 w-[1px] bg-slate-300 dark:bg-slate-700"></div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                     <button
                         onClick={() => setShowHelp(true)}
-                        className="p-1.5 flex items-center justify-center rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"
+                        className="p-1.5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
                         title="Search Help"
                     >
-                        <Info size={14} />
+                        <Info size={16} />
                     </button>
                     <button
                         onClick={() => setIsAdvancedPanelOpen(true)}
-                        className="p-1.5 flex items-center justify-center rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"
+                        className="p-1.5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
                         title="Open Details & Settings"
                     >
-                        <Settings size={14} />
+                        <Settings size={16} />
                     </button>
                 </div>
             </div>
@@ -173,8 +178,8 @@ export default function NodeQueryEngine() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -5 }}
                     transition={{ duration: 0.15 }}
-                    className={`mt-2 rounded-xl shadow-2xl border overflow-hidden absolute w-full ${
-                        appTheme === 'dark' ? 'bg-[#161b22]/95 backdrop-blur-xl border-slate-700 text-slate-300' : 'bg-white/95 backdrop-blur-xl border-slate-200 text-slate-700'
+                    className={`mt-2 rounded-lg shadow-lg border overflow-hidden absolute w-full ${
+                        appTheme === 'dark' ? 'bg-[#0d1117]/95 backdrop-blur-md border-slate-800 text-slate-300' : 'bg-white/95 backdrop-blur-md border-slate-300 text-slate-700'
                     }`}
                 >
                     <div className="px-3 py-2 text-[10px] font-bold tracking-wider uppercase opacity-50 border-b border-inherit">
@@ -246,77 +251,103 @@ export default function NodeQueryEngine() {
                             initial={{ opacity: 0, scale: 0.95, y: 15 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                            className={`relative w-full max-w-md md:max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] ${
+                            className={`relative w-full max-w-xl md:max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] ${
                                 appTheme === 'dark' ? 'bg-[#0d1117] border border-slate-800' : 'bg-white border border-slate-200'
                             }`}
                         >
-                            <div className={`px-4 py-3 border-b flex justify-between items-center ${appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'}`}>
-                                <h2 className={`font-semibold text-sm flex items-center gap-2 ${appTheme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
-                                    <Command size={16} className="text-indigo-500" />
+                            <div className={`px-6 py-4 border-b flex justify-between items-center ${appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'}`}>
+                                <h2 className={`font-semibold text-base flex items-center gap-2 ${appTheme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
+                                    <Command size={18} className="text-indigo-500" />
                                     Search & Query Guide
                                 </h2>
                                 <button
                                     onClick={() => setShowHelp(false)}
-                                    className={`p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ${appTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}
+                                    className={`p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ${appTheme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}
                                 >
-                                    <X size={16} />
+                                    <X size={18} />
                                 </button>
                             </div>
-                            <div className={`p-5 overflow-y-auto custom-scrollbar font-sans text-xs ${appTheme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+                            <div className={`p-6 overflow-y-auto custom-scrollbar font-sans text-sm leading-relaxed ${appTheme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
                                 
-                                <div className="space-y-4">
+                                <div className="space-y-6">
                                     <div>
-                                        <h3 className={`font-semibold mb-1 text-xs ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Basic Search</h3>
-                                        <p className="mb-1">Type any word to perform a semantic fuzzy search across node names, values, paths, and types.</p>
-                                        <code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-indigo-300' : 'bg-slate-100 text-indigo-600'}`}>auth</code>
+                                        <h3 className={`font-semibold mb-2 text-sm ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Basic Search</h3>
+                                        <p className="mb-2">Type any word to perform a semantic fuzzy search across node names, values, paths, and types.</p>
+                                        <code className={`px-2 py-1.5 rounded text-xs break-words ${appTheme === 'dark' ? 'bg-slate-800/80 text-indigo-300' : 'bg-slate-100 text-indigo-600'}`}>auth</code>
                                     </div>
      
                                     <div>
-                                        <h3 className={`font-semibold mb-1 text-xs ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Field Queries</h3>
-                                        <p className="mb-1">Use <code className={`px-1 rounded text-[10px] ${appTheme === 'dark' ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>field:value</code> syntax to query specific properties, like depth, type, or childrenCount.</p>
-                                        <ul className="list-disc pl-5 space-y-1 mt-1">
-                                            <li><code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-amber-300' : 'bg-slate-100 text-amber-600'}`}>type:"array"</code></li>
-                                            <li><code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-emerald-300' : 'bg-slate-100 text-emerald-600'}`}>depth=3</code></li>
-                                            <li><code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-pink-300' : 'bg-slate-100 text-pink-600'}`}>childrenCount &gt; 5</code></li>
+                                        <h3 className={`font-semibold mb-2 text-sm ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Field Queries & Comparisons</h3>
+                                        <p className="mb-2">Use <code className={`px-1.5 py-0.5 rounded text-xs ${appTheme === 'dark' ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>field:value</code> syntax to query specific properties. You can also use comparison operators (<code className="font-bold tracking-widest">&gt;, &lt;, &gt;=, &lt;=, !=, ==</code>) on deeply nested fields.</p>
+                                        <ul className="list-disc pl-5 space-y-2 mt-2">
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-amber-300' : 'bg-slate-100 text-amber-600'}`}>type:"array"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Exact type match</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-emerald-300' : 'bg-slate-100 text-emerald-600'}`}>depth&gt;=3</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Depth is greater than or equal to 3</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-pink-300' : 'bg-slate-100 text-pink-600'}`}>childrenCount &gt; 5</code> <span className="ml-2 text-slate-500 dark:text-slate-400">More than 5 children</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-purple-300' : 'bg-slate-100 text-purple-600'}`}>id!="root"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">ID is not "root"</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-fuchsia-300' : 'bg-slate-100 text-fuchsia-600'}`}>name/="^auth"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Regex match (starts with "auth")</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>dimension.width &lt; 10 AND price &gt; 10</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Nested deep queries</span></li>
                                         </ul>
                                     </div>
      
                                     <div>
-                                        <h3 className={`font-semibold mb-1 text-xs ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Strict Semantic Operators</h3>
-                                        <p className="mb-1">We support deterministic structural search semantics:</p>
-                                        <ul className="list-disc pl-5 space-y-0.5 mt-1 mb-2">
-                                            <li><code className="font-bold">:</code> &nbsp; Strict semantic equality (<code className="text-[10px]">type:"array"</code>)</li>
-                                            <li><code className="font-bold">~=</code> &nbsp; Fuzzy semantic match (<code className="text-[10px]">name~="auth"</code>)</li>
-                                            <li><code className="font-bold">*=</code> &nbsp; Substring contains (<code className="text-[10px]">path*="settings"</code>)</li>
-                                            <li><code className="font-bold">/=</code> &nbsp; Regex Match (<code className="text-[10px]">name/="^auth.*"</code>)</li>
-                                            <li><code className="font-bold">&gt;, &lt;, =</code> &nbsp; Numeric/value comparison (<code className="text-[10px]">depth&gt;=3</code>)</li>
+                                        <h3 className={`font-semibold mb-2 text-sm flex items-center gap-2 ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                                            Strict Semantic Operators
+                                        </h3>
+                                        <p className="mb-2">We support deterministic structural search semantics:</p>
+                                        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 p-3 rounded-lg ${appTheme === 'dark' ? 'bg-slate-800/30' : 'bg-slate-50'}`}>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-6 text-center text-indigo-500">:</code><span className="text-xs">Strict semantic equality</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-6 text-center text-indigo-500">~=</code><span className="text-xs">Fuzzy semantic match</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-6 text-center text-indigo-500">*=</code><span className="text-xs">Substring contains</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-6 text-center text-indigo-500">/=</code><span className="text-xs">Regex Match</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-6 text-center text-indigo-500">&gt;, &lt;</code><span className="text-xs">Numeric comparison</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-6 text-center text-indigo-500">IN</code><span className="text-xs">Array items overlap</span></div>
+                                        </div>
+                                    </div>
+     
+                                    <div>
+                                        <h3 className={`font-semibold mb-2 text-sm flex items-center gap-2 ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>
+                                            Logical Operators
+                                        </h3>
+                                        <p className="mb-2">Combine multiple queries using logical grouping:</p>
+                                        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 p-3 rounded-lg ${appTheme === 'dark' ? 'bg-slate-800/30' : 'bg-slate-50'}`}>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-12 text-center text-indigo-500">AND</code><span className="text-xs">Match all conditions</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-12 text-center text-indigo-500">OR</code><span className="text-xs">Match any condition</span></div>
+                                            <div className="flex items-center gap-3"><code className="font-bold w-12 text-center text-indigo-500">( )</code><span className="text-xs">Group expressions</span></div>
+                                            <div className="flex items-center gap-3"><span className="text-xs italic text-slate-500">Space implies AND</span></div>
+                                        </div>
+                                    </div>
+     
+                                    <div>
+                                        <h3 className={`font-semibold mb-2 text-sm ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Deep Path Queries</h3>
+                                        <p className="mb-2">Search specific nested properties mapping dot notation and wildcards for arrays. <br/><span className="italic text-xs mt-1 inline-block opacity-80">(Note: Strict mode requires exact paths)</span></p>
+                                        <ul className="list-disc pl-5 space-y-2 mt-2">
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>settings.theme:"dark"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Check deeply nested data value</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>features[].name:"Theme"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Find inside array items</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>features[-1]:"Media"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Match the last item in array</span></li>
+                                            <li><code className={`px-2 py-1 inline-block rounded text-[11px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>(depth &gt; 2) AND type:"string"</code> <span className="ml-2 text-slate-500 dark:text-slate-400">Logical grouping</span></li>
                                         </ul>
                                     </div>
      
                                     <div>
-                                        <h3 className={`font-semibold mb-1 text-xs ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Deep Path Queries</h3>
-                                        <p className="mb-1">Search specific nested properties mapping dot notation and wildcards for arrays. Note: Strict mode requires exact paths.</p>
-                                        <ul className="list-disc pl-5 space-y-1 mt-1">
-                                            <li><code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>settings.theme:"dark"</code> (Check deeply nested data value)</li>
-                                            <li><code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>features[].name:"Theme"</code> (Find an object in \`features\` array with name "Theme")</li>
-                                            <li><code className={`px-2 py-0.5 rounded text-[10px] break-words ${appTheme === 'dark' ? 'bg-slate-800 text-blue-300' : 'bg-slate-100 text-blue-600'}`}>(depth &gt; 2) AND type:"string"</code> (Logical grouping)</li>
-                                        </ul>
-                                    </div>
-     
-                                    <div>
-                                        <h3 className={`font-semibold mb-1 flex items-center gap-2 text-xs ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}><Database size={12}/> MongoDB JSON Syntax</h3>
-                                        <p className="mb-1">For power users, strict JSON queries are supported with MongoDB operators.</p>
-                                        <pre className={`p-2 rounded-lg text-[10px] font-mono overflow-x-auto ${appTheme === 'dark' ? 'bg-[#161b22] text-slate-300' : 'bg-slate-50 text-slate-700 border'}`}>
+                                        <h3 className={`font-semibold mb-2 flex items-center gap-2 text-sm ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}><Database size={14} className="text-emerald-500"/> MongoDB JSON Syntax</h3>
+                                        <p className="mb-2">For power users, strict JSON queries are supported with MongoDB operators such as <code className="font-mono text-[10px]">$eq, $gt, $lt, $regex, $text, $or, $and</code>.</p>
+                                        <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border shadow-inner ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
 {`{
-  "type": { "$eq": "object" },
+  "$or": [
+    { "type": { "$eq": "object" } },
+    { "settings.version": { "$gt": 2 } }
+  ],
+  "name": { "$regex": "^user.*", "$ne": "user_archived" },
   "childrenCount": { "$gt": 0, "$lt": 10 }
 }`}
                                         </pre>
                                     </div>
                                     
-                                    <div>
-                                        <h3 className={`font-semibold mb-1 text-xs ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}>Shortcuts</h3>
-                                        <p className="mb-1">Press <kbd className={`px-1 py-0.5 rounded text-[10px] border bg-opacity-50 ${appTheme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>Ctrl+F</kbd> or <kbd className={`px-1 py-0.5 rounded text-[10px] border bg-opacity-50 ${appTheme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>Cmd+F</kbd> to focus the search bar.</p>
+                                    <div className={`mt-6 pt-4 border-t flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'}`}>
+                                        <div className="flex flex-col gap-1.5">
+                                            <h3 className={`font-semibold text-xs uppercase tracking-wider ${appTheme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Shortcuts</h3>
+                                            <p className="text-xs">Press <kbd className={`px-1.5 py-0.5 rounded text-[10px] border font-mono mx-1 shadow-sm ${appTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}>Ctrl+F</kbd> or <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-mono border mx-1 shadow-sm ${appTheme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}>Cmd+F</kbd> to focus the search bar.</p>
+                                        </div>
                                     </div>
                                 </div>
      
