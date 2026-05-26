@@ -2,6 +2,8 @@ import { useStore } from '../store/useStore';
 import Editor, { useMonaco } from '@monaco-editor/react';
 import { useEffect, useRef, useState } from 'react';
 import { Play, Code, Loader2, Globe, CheckCircle2 } from 'lucide-react';
+import { smartJsonFetch, SmartFetchOptions, SmartFetchResult } from '../utils/smartJsonFetch';
+import SmartFetchErrorUI from './SmartFetchErrorUI';
 
 export default function EditorPanel() {
   const { 
@@ -18,6 +20,12 @@ export default function EditorPanel() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [fetchProgress, setFetchProgress] = useState<{
+    phase: 'native-fetch' | 'fallback-fetch' | 'json-parse' | 'initial';
+    message: string;
+    usingFallback: boolean;
+  } | null>(null);
+  const [fetchResult, setFetchResult] = useState<SmartFetchResult | null>(null);
 
   useEffect(() => {
     if (monaco) {
@@ -66,16 +74,25 @@ export default function EditorPanel() {
   const handleFetch = async () => {
     if (!apiUrl) {
       setApiError('URL is required');
+      setFetchResult(null);
       return;
     }
 
     if (apiUrl.startsWith('http://') || (apiUrl && !apiUrl.includes('://'))) {
       setApiError('Secure Connection Required: To protect your data, only HTTPS sources are supported. Please use a secure (https://) URL.');
+      setFetchResult(null);
       return;
     }
     
     setIsLoading(true);
     setApiError('');
+    setFetchResult(null);
+    setFetchProgress({
+      phase: 'native-fetch',
+      message: 'Attempting to fetch directly from the source API...',
+      usingFallback: false,
+    });
+
     try {
       let headers = {};
       try {
@@ -83,37 +100,46 @@ export default function EditorPanel() {
           headers = JSON.parse(apiHeaders);
         }
       } catch (e) {
-        throw new Error('Invalid JSON in Headers');
+        throw new Error('Invalid JSON in Headers: Please check that your headers use standard double-quoted JSON formatting.');
       }
       
-      const options: RequestInit = {
+      const options: SmartFetchOptions = {
         method: apiMethod,
         headers,
+        onProgress: (p) => {
+          setFetchProgress(p);
+        }
       };
       
       if (apiMethod !== 'GET' && apiMethod !== 'HEAD' && apiBody.trim()) {
         options.body = apiBody;
       }
 
-      const response = await fetch(apiUrl, options);
-      const data = await response.text();
-      
-      if (!response.ok) {
-        throw new Error(`HTTP Error ${response.status}: ${data.substring(0, 50)}...`);
+      const result = await smartJsonFetch(apiUrl, options);
+      setFetchResult(result);
+
+      if (result.success && result.data) {
+        setCode(JSON.stringify(result.data, null, 2));
+        setActiveTab('raw');
+      } else {
+        setApiError(result.errorMessage);
       }
-      
-      // Try to format if it's JSON
-      try {
-        const parsed = JSON.parse(data);
-        setCode(JSON.stringify(parsed, null, 2));
-      } catch {
-        setCode(data);
-      }
-      setActiveTab('raw');
     } catch (e: any) {
       setApiError(e.message || 'Fetch failed');
+      setFetchResult({
+        success: false,
+        data: null,
+        rawText: '',
+        source: null,
+        phase: 'initial',
+        status: null,
+        reason: e.message,
+        errorType: 'generic',
+        errorMessage: e.message || 'Fetch failed'
+      });
     } finally {
       setIsLoading(false);
+      setFetchProgress(null);
     }
   };
 
@@ -263,7 +289,25 @@ export default function EditorPanel() {
             )}
 
             <div className="flex flex-col gap-3 pt-2">
-              {apiError && (
+              {isLoading && fetchProgress && (
+                <div className="p-3.5 rounded-xl border border-blue-500/10 dark:border-blue-550/25 bg-blue-500/5 dark:bg-blue-950/15 flex flex-col gap-2.5 animate-pulse">
+                  <div className="flex items-center gap-2.5">
+                    <Loader2 size={15} className="text-blue-500 animate-spin" />
+                    <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                      {fetchProgress.usingFallback ? 'Securing Fallback Connection...' : 'Connecting...'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">
+                    {fetchProgress.message}
+                  </p>
+                </div>
+              )}
+
+              {fetchResult && !fetchResult.success && (
+                <SmartFetchErrorUI result={fetchResult} onRetry={handleFetch} />
+              )}
+
+              {apiError && !fetchResult && (
                 <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium bg-amber-500/5 p-2.5 rounded-lg border border-amber-500/10 flex items-start gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
                   <div className="mt-0.5 min-w-[14px]">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
