@@ -93,13 +93,14 @@ export function tokenize(input: string): Token[] {
            temp++;
        }
        if (closed) {
-           let endIdx = temp + 1;
+           let endIdx = temp;
            let flags = '';
            while (endIdx < input.length && /[gimuy]/.test(input[endIdx])) {
                flags += input[endIdx];
                endIdx++;
            }
-           tokens.push({ type: 'REGEX', value: input.slice(cursor + 1, temp), start: cursor, end: endIdx });
+           // Store regex without the closing slash
+           tokens.push({ type: 'REGEX', value: input.slice(cursor + 1, temp - 1), start: cursor, end: endIdx });
            cursor = endIdx;
            continue;
        }
@@ -177,6 +178,7 @@ export type Expr =
   | { type: 'LogicalExpr', op: 'AND' | 'OR', left: Expr, right: Expr }
   | { type: 'CompareExpr', path: PathAST, op: string, value: any, valueType: 'regex' | 'string' | 'number' | 'boolean' | 'array' }
   | { type: 'FuzzyMatchExpr', value: string }
+  | { type: 'ExactMatchExpr', value: string }
   | { type: 'GroupExpr', expr: Expr };
 
 export type PathNode = 
@@ -270,6 +272,9 @@ export function parseAST(input: string): ParseResult {
   
   try {
       const ast = expression();
+      if (!isAtEnd()) {
+          throw new Error(`Unexpected token '${peek().value || peek().type}'`);
+      }
       return { ast };
   } catch (err: any) {
       return { ast: null, syntaxError: err.message };
@@ -344,7 +349,38 @@ export function parseAST(input: string): ParseResult {
       
       if (t.type === 'STRING') {
           advance();
-          return { type: 'FuzzyMatchExpr', value: t.value };
+          let next = peek();
+          if (next.type === 'OPERATOR' && next.value.toUpperCase() === 'IN') {
+              advance();
+              if (peek().type === 'IDENTIFIER') {
+                  let path = parsePath();
+                  return { type: 'CompareExpr', path, op: 'IN_REVERSE', value: [t.value], valueType: 'array' };
+              } else {
+                  throw new Error("Expected path after 'IN'");
+              }
+          }
+          let exactPath: PathAST = [{ type: 'property', key: t.value }];
+          return {
+              type: 'LogicalExpr', 
+              op: 'OR', 
+              left: { type: 'ExactMatchExpr', value: t.value }, 
+              right: { type: 'CompareExpr', path: exactPath, op: 'EXISTS', value: true, valueType: 'boolean' }
+          };
+      }
+      
+      if (t.type === 'REGEX') {
+          advance();
+          let next = peek();
+          if (next.type === 'OPERATOR' && next.value.toUpperCase() === 'IN') {
+              advance();
+              if (peek().type === 'IDENTIFIER') {
+                  let path = parsePath();
+                  return { type: 'CompareExpr', path, op: 'IN_REVERSE', value: t.value, valueType: 'regex' };
+              } else {
+                  throw new Error("Expected path after 'IN'");
+              }
+          }
+          throw new Error("Expected 'IN <path>' after regex literal");
       }
       
       if (t.type === 'IDENTIFIER') {
@@ -400,6 +436,10 @@ export function parseAST(input: string): ParseResult {
              }
              
              return { type: 'CompareExpr', path, op, value: val, valueType: valType };
+          }
+          
+          if (path.length > 1 || path.some(p => p.type !== 'property')) {
+              return { type: 'CompareExpr', path, op: 'EXISTS', value: true, valueType: 'boolean' };
           }
           
           return {
@@ -552,7 +592,7 @@ function areScopesCompatible(s1: string, s2: string): boolean {
     return true;
 }
 
-function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
+export function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
     if (expr.type === 'GroupExpr') {
         return evalInternal(expr.expr, ctx);
     }
@@ -562,14 +602,36 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
             const leftResults = evalInternal(expr.left, ctx);
             const rightResults = evalInternal(expr.right, ctx);
             
-            const finalKeptL = leftResults.filter(l => 
-                rightResults.some(r => areScopesCompatible(l.scopeId, r.scopeId))
-            );
-            const finalKeptR = rightResults.filter(r => 
-                leftResults.some(l => areScopesCompatible(l.scopeId, r.scopeId))
-            );
+            const unionKept: TraversalResult[] = [];
+            for (const l of leftResults) {
+                for (const r of rightResults) {
+                    if (areScopesCompatible(l.scopeId, r.scopeId)) {
+                        // Keep the more specific one, or both if same
+                        const lLen = l.scopeId.split('.').length;
+                        const rLen = r.scopeId.split('.').length;
+                        if (lLen > rLen) {
+                            unionKept.push(l);
+                        } else if (rLen > lLen) {
+                            unionKept.push(r);
+                        } else {
+                            unionKept.push(l);
+                            unionKept.push(r);
+                        }
+                    }
+                }
+            }
             
-            return [...finalKeptL, ...finalKeptR];
+            // deduplicate
+            const seen = new Set<string>();
+            const result: TraversalResult[] = [];
+            for (const item of unionKept) {
+                const itemKey = `${item.scopeId}:${item.path}`;
+                if (!seen.has(itemKey)) {
+                    seen.add(itemKey);
+                    result.push(item);
+                }
+            }
+            return result;
         }
         if (expr.op === 'OR') {
             const leftResults = evalInternal(expr.left, ctx);
@@ -687,6 +749,103 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
         return results;
     }
     
+    if (expr.type === 'ExactMatchExpr') {
+        const query = expr.value.toLowerCase();
+        const results: TraversalResult[] = [];
+        
+        // Match exact strings in meta
+        for (const [key, value] of Object.entries(ctx.meta)) {
+            if (String(value).toLowerCase() === query) {
+                results.push({
+                    value,
+                    path: '',
+                    parent: ctx.meta,
+                    key,
+                    arrayIndex: null,
+                    source: ctx.node,
+                    scopeId: 'root',
+                    nodeType: 'primitive'
+                });
+            }
+        }
+        
+        if (typeof ctx.node === 'string') {
+           if (ctx.node.toLowerCase() === query) {
+               results.push({
+                   value: ctx.node,
+                   path: '',
+                   parent: null,
+                   key: null,
+                   arrayIndex: null,
+                   source: ctx.node,
+                   scopeId: 'root',
+                   nodeType: 'primitive'
+               });
+           }
+        } else if (typeof ctx.node === 'number') {
+           if (String(ctx.node) === query) {
+               results.push({
+                   value: ctx.node,
+                   path: '',
+                   parent: null,
+                   key: null,
+                   arrayIndex: null,
+                   source: ctx.node,
+                   scopeId: 'root',
+                   nodeType: 'primitive'
+               });
+           }
+        }
+        
+        let metaPathClean = (ctx.meta.path || '').replace(/\[\d+\]/g, '');
+        let qClean = query.replace(/\[\]/g, '');
+        if (metaPathClean.toLowerCase() === qClean) {
+               results.push({
+                   value: ctx.node,
+                   path: '',
+                   parent: null,
+                   key: null,
+                   arrayIndex: null,
+                   source: ctx.node,
+                   scopeId: 'root',
+                   nodeType: typeof ctx.node === 'object' ? (Array.isArray(ctx.node) ? 'array' : 'object') : 'primitive'
+               });
+        } else if (typeof ctx.node === 'object' && ctx.node !== null) {
+           for (const [k, v] of Object.entries(ctx.node)) {
+                if (v === null || v === undefined) continue;
+                if (typeof v === 'string') {
+                    if (v.toLowerCase() === query) {
+                        results.push({
+                            value: v,
+                            path: k,
+                            parent: ctx.node,
+                            key: k,
+                            arrayIndex: null,
+                            source: ctx.node,
+                            scopeId: 'root',
+                            nodeType: 'primitive'
+                        });
+                    }
+                } else if (typeof v === 'number') {
+                    if (String(v) === query) {
+                        results.push({
+                            value: v,
+                            path: k,
+                            parent: ctx.node,
+                            key: k,
+                            arrayIndex: null,
+                            source: ctx.node,
+                            scopeId: 'root',
+                            nodeType: 'primitive'
+                        });
+                    }
+                }
+           }
+        }
+        
+        return results;
+    }
+    
     if (expr.type === 'CompareExpr') {
         let firstKey = expr.path[0].type === 'property' ? expr.path[0].key : '';
         let isMeta = ['id', 'name', 'path', 'type', 'depth', 'childrenCount'].includes(firstKey);
@@ -716,22 +875,40 @@ function evalInternal(expr: Expr, ctx: QueryContext): TraversalResult[] {
         const matched: TraversalResult[] = [];
         
         for (const res of resolved) {
-            if ((op.toUpperCase() === 'IN_REVERSE' || op.toUpperCase() === 'IN') && expr.valueType === 'array' && Array.isArray(res.value)) {
+            if ((op.toUpperCase() === 'IN_REVERSE' || op.toUpperCase() === 'IN') && (expr.valueType === 'array' || expr.valueType === 'regex') && Array.isArray(res.value)) {
                 // Return the specific array elements that matched, rather than the parent array node
-                const cArray = Array.isArray(cValue) ? cValue : [cValue];
+                const cArray = expr.valueType === 'array' ? (Array.isArray(cValue) ? cValue : [cValue]) : null;
+                let regexExpr: RegExp | null = null;
+                if (expr.valueType === 'regex') {
+                    try { regexExpr = new RegExp(cValue, 'i'); } catch {}
+                }
+                
                 for (let i = 0; i < res.value.length; i++) {
-                    // case-insensitive fuzzy check just in case, or strict includes
-                    // actually, better to check with compareValues iteratively or use strict inclusion
-                    if (cArray.includes(res.value[i])) {
+                    let itemMatch = false;
+                    const val = res.value[i];
+                    
+                    if (expr.valueType === 'regex' && regexExpr) {
+                        itemMatch = regexExpr.test(String(val));
+                    } else if (cArray) {
+                        if (typeof val === 'string') {
+                            let normRes = normalizeSemantic(val);
+                            itemMatch = cArray.some(c => typeof c === 'string' && normRes.includes(normalizeSemantic(c)));
+                        }
+                        if (!itemMatch) {
+                            itemMatch = cArray.includes(val);
+                        }
+                    }
+                    
+                    if (itemMatch) {
                         matched.push({
-                            value: res.value[i],
+                            value: val,
                             path: res.path ? `${res.path}[${i}]` : `[${i}]`,
                             parent: res.value,
                             key: null,
                             arrayIndex: i,
                             source: ctx.node,
                             scopeId: res.scopeId ? `${res.scopeId}.${i}` : `${i}`,
-                            nodeType: typeof res.value[i] === 'object' && res.value[i] !== null ? (Array.isArray(res.value[i]) ? 'array' : 'object') : 'primitive'
+                            nodeType: typeof val === 'object' && val !== null ? (Array.isArray(val) ? 'array' : 'object') : 'primitive'
                         });
                     }
                 }
@@ -754,18 +931,56 @@ function normalizeSemantic(val: any): string {
 }
 
 function compareValues(actual: any, op: string, cValue: any, cType: 'string'|'number'|'boolean'|'regex'|'array'): boolean {
+    if (op.toUpperCase() === 'IN_REVERSE' && cType === 'regex') {
+        try {
+            const regex = new RegExp(cValue, 'i');
+            if (Array.isArray(actual)) {
+                return actual.some(a => regex.test(String(a)));
+            }
+            return regex.test(String(actual));
+        } catch {
+            return false;
+        }
+    }
+    
     if (op.toUpperCase() === 'IN_REVERSE' && cType === 'array') {
         // e.g., ["Media Preview", "Other"] IN features
         // This means we are checking if actual exists in our cValue array.
         // Or if actual is an array itself, any overlap between actual array and cValue array.
         const cArray = Array.isArray(cValue) ? cValue : [cValue];
         if (Array.isArray(actual)) {
-            return cArray.some(item => actual.includes(item));
+            return cArray.some(item => {
+                if (typeof item === 'string') {
+                    return actual.some(a => typeof a === 'string' && normalizeSemantic(a).includes(normalizeSemantic(item)));
+                }
+                return actual.includes(item);
+            });
+        }
+        if (typeof actual === 'string') {
+            const normActual = normalizeSemantic(actual);
+            return cArray.some(item => {
+                if (typeof item === 'string') {
+                    return normActual.includes(normalizeSemantic(item));
+                }
+                return false;
+            });
         }
         return cArray.includes(actual);
     }
     
     if (op.toUpperCase() === 'IN') {
+        if (cType === 'regex') {
+            try {
+                const regex = new RegExp(cValue, 'i');
+                if (Array.isArray(actual)) {
+                    return actual.some(a => regex.test(String(a)));
+                }
+                return regex.test(String(actual));
+            } catch {
+                return false;
+            }
+        }
+        
         // path IN [val1, val2]
         if (cType === 'array') {
              const cArray = Array.isArray(cValue) ? cValue : [cValue];
@@ -823,7 +1038,7 @@ function compareValues(actual: any, op: string, cValue: any, cType: 'string'|'nu
     return false;
 }
 
-function traversePath(node: any, path: PathAST, mode: 'strict' | 'permissive', ctx: QueryContext): TraversalResult[] {
+export function traversePath(node: any, path: PathAST, mode: 'strict' | 'permissive', ctx: QueryContext): TraversalResult[] {
     function dig(current: any, pIdx: number, currentPath: string, currentScopeId: string, parentObj: any, parentKey: string | null, parentIndex: number | null): TraversalResult[] {
         if (pIdx >= path.length) {
             const nodeType = current === null ? 'primitive' : Array.isArray(current) ? 'array' : typeof current === 'object' ? 'object' : 'primitive';
@@ -852,21 +1067,16 @@ function traversePath(node: any, path: PathAST, mode: 'strict' | 'permissive', c
         
         if (pNode.type === 'property') {
             if (Array.isArray(current)) {
-                if (mode === 'strict') {
-                     let msg = `Cannot access property "${pNode.key}" on array directly at "${currentPath || 'root'}".`;
-                     if (!ctx.errors.includes(msg)) ctx.errors.push(msg);
-                     let sug = `Did you mean "${currentPath || 'root'}[].${pNode.key}"?`;
-                     if (!ctx.suggestions.includes(sug)) ctx.suggestions.push(sug);
-                     return [];
-                } else {
-                     let results: TraversalResult[] = [];
-                     for (let i=0; i < current.length; i++) {
-                          let nextScope = currentScopeId ? `${currentScopeId}.${i}` : `${i}`;
-                          results.push(...dig(current[i], pIdx, `${currentPath}[${i}]`, nextScope, current, null, i));
-                     }
-                     return results;
+                // By user request, features.om should implicitly search into arrays like features[].om
+                // So we always allow diving into arrays for property lookup
+                let results: TraversalResult[] = [];
+                for (let i=0; i < current.length; i++) {
+                     let nextScope = currentScopeId ? `${currentScopeId}.${i}` : `${i}`;
+                     results.push(...dig(current[i], pIdx, `${currentPath}[${i}]`, nextScope, current, null, i));
                 }
+                return results;
             }
+
             
             if (typeof current !== 'object') {
                 if (mode === 'strict') {
@@ -884,12 +1094,16 @@ function traversePath(node: any, path: PathAST, mode: 'strict' | 'permissive', c
                 return [];
             }
             let results: TraversalResult[] = [];
-            let regex = new RegExp(pNode.regex, 'i');
-            for (let key in current) {
-                if (regex.test(key)) {
-                    let nextPath = currentPath ? `${currentPath}.${key}` : key;
-                    results.push(...dig(current[key], pIdx + 1, nextPath, currentScopeId, current, key, null));
+            try {
+                let regex = new RegExp(pNode.regex, 'i');
+                for (let key in current) {
+                    if (regex.test(key)) {
+                        let nextPath = currentPath ? `${currentPath}.${key}` : key;
+                        results.push(...dig(current[key], pIdx + 1, nextPath, currentScopeId, current, key, null));
+                    }
                 }
+            } catch (e) {
+                // Invalid regex, just ignore and return empty results
             }
             return results;
         }

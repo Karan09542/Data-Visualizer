@@ -5,7 +5,7 @@ import { transformToTree } from '../utils/transformer';
 import { parseSearchQuery, buildSearchContext, evaluateQuery } from '../utils/searchEngine';
 
 export type LayoutMode = 'vertical' | 'horizontal' | 'radial' | 'force' | 'compact' | 'mindmap';
-export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook' | 'custom' | 'nature' | 'circuit' | 'galaxy' | 'glass' | 'neon' | 'math' | 'neural' | 'river' | 'tree' | 'pixel' | 'hacker' | 'cloud' | 'dna' | 'lava' | 'ocean' | 'rhythm' | 'rune' | 'zen' | 'abstract' | 'architect' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed';
+export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook' | 'custom' | 'nature' | 'circuit' | 'galaxy' | 'glass' | 'neon' | 'math' | 'neural' | 'river' | 'tree' | 'pixel' | 'hacker' | 'cloud' | 'dna' | 'lava' | 'ocean' | 'rhythm' | 'rune' | 'zen' | 'abstract' | 'architect' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed' | 'banyan' | 'peepal';
 export type EdgeStyle = 'curved' | 'bezier' | 'straight' | 'step' | 'animated' | 'dashed' | 'neon' | 'double' | 'pipe' | 'thin' | 'orgChart' | 'circuit' | 'glow' | 'zigzag' | 'pulse' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed';
 export type NodeShape = 'default' | 'circle' | 'rectangle' | 'triangle' | 'hexagon' | 'pill' | 'diamond' | 'parallelogram';
 export type CanvasTheme = 'none' | 'dots' | 'grid' | 'lines';
@@ -74,6 +74,10 @@ export interface StoreState {
   collapsedNodes: Set<string>;
   searchMatches: Set<string>;
   searchAncestors: Set<string>;
+  activeMatchIndex: number | null;
+  activeMatchId: string | null;
+  nextMatch: () => void;
+  prevMatch: () => void;
   selectedNodeId: string | null;
   isEditorPanelOpen: boolean;
   isAdvancedPanelOpen: boolean;
@@ -177,6 +181,8 @@ export const useStore = create<StoreState>()(
       collapsedNodes: new Set<string>(),
       searchMatches: new Set<string>(),
       searchAncestors: new Set<string>(),
+      activeMatchIndex: null,
+      activeMatchId: null,
       selectedNodeId: null,
       isEditorPanelOpen: true,
       isAdvancedPanelOpen: false,
@@ -276,12 +282,12 @@ export const useStore = create<StoreState>()(
           const ancestors = new Set<string>();
           
           if (!q || !state.treeData) {
-            return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [], globalSearchSuggestions: [] };
+            return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [], globalSearchSuggestions: [], activeMatchIndex: null, activeMatchId: null };
           }
           
           const parseRes = parseSearchQuery(q);
           if (parseRes.syntaxError) {
-             return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [parseRes.syntaxError], globalSearchSuggestions: [] };
+             return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [parseRes.syntaxError], globalSearchSuggestions: [], activeMatchIndex: null, activeMatchId: null };
           }
           
           const globalErrors = new Set<string>();
@@ -360,13 +366,23 @@ export const useStore = create<StoreState>()(
           
           checkNode(state.treeData, [], 0);
           
+          const matchArray = Array.from(matches);
+          const activeIndex = matchArray.length > 0 ? 0 : null;
+          const activeId = matchArray.length > 0 ? matchArray[0] : null;
+
+          if (activeId) {
+             // ensure it's selected or something?
+          }
+          
           return { 
              searchQuery: query, 
              collapsedNodes: newCollapsed, 
              searchMatches: matches, 
              searchAncestors: ancestors,
              globalSearchErrors: Array.from(globalErrors),
-             globalSearchSuggestions: Array.from(globalSuggestions)
+             globalSearchSuggestions: Array.from(globalSuggestions),
+             activeMatchIndex: activeIndex,
+             activeMatchId: activeId
           };
         });
       },
@@ -473,6 +489,26 @@ export const useStore = create<StoreState>()(
       }),
       clearDragOverrides: () => set({ dragOverrides: {} }),
       
+      nextMatch: () => set((state) => {
+          if (state.searchMatches.size === 0) return state;
+          const matches = Array.from(state.searchMatches);
+          const i = state.activeMatchIndex;
+          const nextIndex = (i === null || i === undefined || i >= matches.length - 1) ? 0 : i + 1;
+          const activeId = matches[nextIndex];
+          
+          return { activeMatchIndex: nextIndex, activeMatchId: activeId };
+      }),
+      
+      prevMatch: () => set((state) => {
+          if (state.searchMatches.size === 0) return state;
+          const matches = Array.from(state.searchMatches);
+          const i = state.activeMatchIndex;
+          const prevIndex = (i === null || i === undefined || i <= 0) ? matches.length - 1 : i - 1;
+          const activeId = matches[prevIndex];
+          
+          return { activeMatchIndex: prevIndex, activeMatchId: activeId };
+      }),
+
       clearCode: () => {
         const { code: currentCode, setCode } = get();
         // Use setCode to ensure all derived search states are cleared

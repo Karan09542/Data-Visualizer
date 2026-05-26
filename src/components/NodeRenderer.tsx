@@ -78,6 +78,7 @@ export default function NodeRenderer({
     searchQuery,
     searchMatches,
     searchAncestors,
+    activeMatchId,
     setSelectedNodeId,
     showMediaPreview,
     setDragOverride,
@@ -122,6 +123,7 @@ export default function NodeRenderer({
 
   const hasQuery = !!searchQuery;
   const isMatch = searchMatches.has(data.id);
+  const isActiveMatch = activeMatchId === data.id;
   const isAncestor = searchAncestors.has(data.id);
   const isDimmed =
     (hasQuery && !isMatch && !isAncestor) ||
@@ -167,7 +169,11 @@ export default function NodeRenderer({
       case "retro":
         return "bg-[#ff9900] border-[#8a2be2] text-[#8a2be2] shadow-[4px_4px_0_#8a2be2]";
       case "nature":
-        return "bg-[#3d5a80]/20 border-[#98c1d9] text-[#e0fbfc] backdrop-blur-sm shadow-inner rounded-2xl";
+        return "bg-gradient-to-br from-[#2d6a4f] to-[#1b4332] border-[#4a7c44] text-white shadow-xl backdrop-blur-md ring-1 ring-white/20 font-bold";
+      case "banyan":
+        return "bg-gradient-to-br from-[#1a4d2e] via-[#2d6a4f] to-[#1a4d2e] border-white/20 text-white shadow-2xl backdrop-blur-md ring-1 ring-emerald-400/30 font-bold";
+      case "peepal":
+        return "bg-gradient-to-br from-[#124219] via-[#1a5b28] to-[#0b2911] border-white/15 text-white shadow-[0_20px_45px_rgba(0,0,0,0.5)] backdrop-blur-md ring-1 ring-emerald-300/20 font-bold";
       case "nature2":
         return data.id === "root"
           ? "bg-[#36573c] border border-[#2b4c30] text-white shadow-xl"
@@ -230,9 +236,9 @@ export default function NodeRenderer({
         return "bg-[#fff9e6] border-[#e0d6b8] text-[#4a4a4a] border-l-4 border-l-red-400 shadow-md font-serif";
       case "custom":
         if (useNodeGradient) {
-          return "border-white/20 shadow-lg";
+          return "border-white/20 shadow-xl backdrop-blur-sm ring-1 ring-white/10";
         }
-        return "border-white/20 shadow-md";
+        return "border-white/10 shadow-lg backdrop-blur-sm ring-1 ring-white/5";
       default:
         return "bg-[#1e293b] border-[#334155] text-slate-200 shadow-sm";
     }
@@ -519,6 +525,8 @@ export default function NodeRenderer({
       "holographic",
       "custom",
       "nature",
+      "banyan",
+      "peepal",
       "circuit",
       "galaxy",
       "glass",
@@ -589,28 +597,43 @@ export default function NodeRenderer({
   const labelText = isCustom ? "" : ""; // Label usually inherits or has own logic
 
   let highlightClasses = "";
-  if (isMatch) {
+  if (isActiveMatch) {
+    highlightClasses = "!ring-4 !ring-emerald-400 !shadow-[0_0_20px_rgba(52,211,153,0.8)] !brightness-125 !z-[120] !border-emerald-400";
+  } else if (isMatch) {
     highlightClasses =
-      "ring-2 ring-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.6)] brightness-110";
+      "!ring-2 !ring-yellow-400 !shadow-[0_0_15px_rgba(250,204,21,0.6)] !brightness-110 !z-[110] !border-yellow-400";
   } else if (isAncestor) {
     highlightClasses =
-      "ring-1 ring-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.4)]";
+      "!ring-1 !ring-sky-400 !shadow-[0_0_10px_rgba(56,189,248,0.4)] !z-[105] !border-sky-400";
   } else if (isSelected) {
     highlightClasses =
-      "ring-2 ring-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.6)] brightness-110";
+      "!ring-2 !ring-purple-500 !shadow-[0_0_15px_rgba(168,85,247,0.6)] !brightness-110 !z-[100] !border-purple-500";
   } else if (isSelectedPath) {
     highlightClasses =
-      "ring-1 ring-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.4)]";
+      "!ring-1 !ring-purple-400 !shadow-[0_0_10px_rgba(168,85,247,0.4)] !z-[90] !border-purple-400";
   }
 
-  let fWidth = isMedia ? 320 : 260;
+  let dropShadowClass = "";
+  if (isActiveMatch) {
+    dropShadowClass = "drop-shadow-[0_0_15px_rgba(52,211,153,0.8)]";
+  } else if (isMatch) {
+    dropShadowClass = "drop-shadow-[0_0_10px_rgba(250,204,21,0.6)]";
+  } else if (isAncestor) {
+    dropShadowClass = "drop-shadow-[0_0_5px_rgba(56,189,248,0.4)]";
+  } else if (isSelected) {
+    dropShadowClass = "drop-shadow-[0_0_10px_rgba(168,85,247,0.6)]";
+  } else if (isSelectedPath) {
+    dropShadowClass = "drop-shadow-[0_0_5px_rgba(168,85,247,0.4)]";
+  }
+
+  let fWidth = isMedia ? 320 : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 220 : 260);
   let fHeight = isMedia
     ? mediaType === "audio"
       ? 140
       : 240
     : isExpanded
-      ? 300
-      : 120;
+      ? (nodeTheme === "peepal" || nodeTheme === "banyan" ? 440 : 300)
+      : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 310 : 120);
 
   const isDefaultShape = nodeShape === "default";
 
@@ -621,8 +644,34 @@ export default function NodeRenderer({
   if (isDefaultShape) {
     switch (nodeTheme) {
       case "nature":
-        shapeClasses = "px-4 py-2 min-w-[140px]";
-        shapeStyle.borderRadius = "24% 76% 30% 70% / 71% 20% 80% 29%";
+        shapeClasses = "px-6 py-4 min-w-[150px] flex items-center justify-center";
+        // A much smoother 12-point leaf polygon
+        shapeStyle.clipPath =
+          "polygon(50% 0%, 75% 5%, 95% 20%, 100% 45%, 95% 75%, 75% 92%, 50% 100%, 25% 92%, 5% 75%, 0% 45%, 5% 20%, 25% 5%)";
+        break;
+      case "banyan":
+        shapeClasses = "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
+        shapeStyle.width = "100%";
+        shapeStyle.height = "100%";
+        shapeStyle.paddingTop = "25%";
+        shapeStyle.paddingBottom = "30%";
+        shapeStyle.paddingLeft = "15%";
+        shapeStyle.paddingRight = "15%";
+        // Beautiful 20-point elliptical Banyan leaf clipPath with slight pointed top apex and elegant stalk base
+        shapeStyle.clipPath =
+          "polygon(50% 3%, 64% 7%, 78% 16%, 88% 30%, 94% 48%, 93% 66%, 84% 81%, 70% 92%, 55% 96%, 52% 100%, 48% 100%, 45% 96%, 30% 92%, 16% 81%, 7% 66%, 6% 48%, 12% 30%, 22% 16%, 36% 7%)";
+        break;
+      case "peepal":
+        shapeClasses = "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
+        shapeStyle.width = "100%";
+        shapeStyle.height = "100%";
+        shapeStyle.paddingTop = "22%";
+        shapeStyle.paddingBottom = "36%";
+        shapeStyle.paddingLeft = "14%";
+        shapeStyle.paddingRight = "14%";
+        // Masterpiece calculated 25-point Peepal leaf polygon: smooth shoulders, top cleft, and organic S-curving long tail
+        shapeStyle.clipPath =
+          "polygon(50% 16%, 38% 6%, 24% 4%, 10% 12%, 3% 26%, 1% 42%, 6% 56%, 18% 68%, 32% 76%, 42% 82%, 45% 88%, 43% 94%, 39% 100%, 41% 100%, 46% 94%, 48% 88%, 50% 82%, 60% 76%, 74% 68%, 88% 56%, 97% 42%, 99% 26%, 90% 12%, 76% 4%, 62% 6%)";
         break;
       case "nature2":
         shapeClasses = "px-5 py-2.5 min-w-[140px] rounded-full";
@@ -918,7 +967,7 @@ export default function NodeRenderer({
         </div>
       )}
       <div
-        className={`flex flex-col items-center justify-center w-full h-full transition-transform duration-300 ${isMatch || isSelected ? "scale-105" : ""}`}
+        className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${isMatch || isSelected ? "scale-105" : ""} ${dropShadowClass}`}
       >
         <div
           className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
@@ -944,6 +993,84 @@ export default function NodeRenderer({
             if (hasChildren) toggleNodeCollapse(data.id);
           }}
         >
+          {nodeTheme === "nature" && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-20">
+              <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white -translate-x-1/2" />
+              <div className="absolute top-[30%] left-[55%] w-[40%] h-0.5 bg-white -rotate-[30deg]" />
+              <div className="absolute top-[30%] right-[55%] w-[40%] h-0.5 bg-white rotate-[30deg]" />
+              <div className="absolute top-[60%] left-[52%] w-[45%] h-0.5 bg-white -rotate-[20deg]" />
+              <div className="absolute top-[60%] right-[52%] w-[45%] h-0.5 bg-white rotate-[20deg]" />
+            </div>
+          )}
+          {nodeTheme === "banyan" && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full opacity-60">
+                {/* Organic, straight-ish thick golden central midrib with strong vascular definition */}
+                <path d="M 50 4 Q 50 50 50 96" fill="none" stroke="#ffeaa7" strokeWidth="1.3" strokeLinecap="round" />
+                
+                {/* Beautifully spaced golden secondary veins arching up and out at ~40 degree angles */}
+                {/* Pair 1 - top */}
+                <path d="M 50 15 Q 68 18 84 22" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+                <path d="M 50 15 Q 32 18 16 22" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+
+                {/* Pair 2 */}
+                <path d="M 50 28 Q 72 31 88 38" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+                <path d="M 50 28 Q 28 31 12 38" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+
+                {/* Pair 3 */}
+                <path d="M 50 42 Q 74 46 90 54" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+                <path d="M 50 42 Q 26 46 10 54" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+
+                {/* Pair 4 */}
+                <path d="M 50 56 Q 74 61 88 71" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+                <path d="M 50 56 Q 26 61 12 71" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
+
+                {/* Pair 5 */}
+                <path d="M 50 70 Q 72 75 84 83" fill="none" stroke="#ffeaa7" strokeWidth="0.5" opacity="0.7" strokeLinecap="round" />
+                <path d="M 50 70 Q 28 75 16 83" fill="none" stroke="#ffeaa7" strokeWidth="0.5" opacity="0.7" strokeLinecap="round" />
+
+                {/* Pair 6 - bottom */}
+                <path d="M 50 83 Q 66 87 74 91" fill="none" stroke="#ffeaa7" strokeWidth="0.45" opacity="0.6" strokeLinecap="round" />
+                <path d="M 50 83 Q 34 87 26 91" fill="none" stroke="#ffeaa7" strokeWidth="0.45" opacity="0.6" strokeLinecap="round" />
+                
+                {/* Tertiary intricate vein net highlights (subtle web patterns to feel incredibly rich and premium) */}
+                <path d="M 68 18 Q 74 24 88 38 M 32 18 Q 26 24 12 38" fill="none" stroke="#ffeaa7" strokeWidth="0.25" opacity="0.3" strokeLinecap="round" />
+                <path d="M 72 31 Q 78 38 90 54 M 28 31 Q 22 38 10 54" fill="none" stroke="#ffeaa7" strokeWidth="0.25" opacity="0.3" strokeLinecap="round" />
+                <path d="M 74 46 Q 80 54 88 71 M 26 46 Q 20 54 12 71" fill="none" stroke="#ffeaa7" strokeWidth="0.25" opacity="0.3" strokeLinecap="round" />
+              </svg>
+              {/* Glossy highlight to represent the heavy, polished, photorealistic shine of banyan leaf rubbery surface */}
+              <div className="absolute top-0 left-0 w-full h-[150%] bg-gradient-to-br from-white/25 via-transparent to-transparent -rotate-12 translate-x-1/8 -translate-y-1/2 opacity-90" />
+            </div>
+          )}
+          {nodeTheme === "peepal" && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full opacity-80">
+                {/* Organic, naturally curved Midrib (S-shaped to match the tail) */}
+                <path d="M 50 16 Q 50 40 50 70 T 40 100" fill="none" stroke="#daf379" strokeWidth="1.2" strokeLinecap="round" />
+                
+                {/* Symmetric but organic lateral veins branching out at angles */}
+                <path d="M 50 25 Q 65 20 85 18" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+                <path d="M 50 25 Q 35 20 15 18" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+
+                <path d="M 50 38 Q 63 34 88 32" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+                <path d="M 50 38 Q 37 34 12 32" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+
+                <path d="M 50 51 Q 65 47 88 47" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+                <path d="M 50 51 Q 35 47 12 47" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+
+                <path d="M 50 64 Q 63 61 80 64" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+                <path d="M 50 64 Q 37 61 20 64" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
+
+                <path d="M 49 76 Q 58 74 68 78" fill="none" stroke="#daf379" strokeWidth="0.4" opacity="0.5" strokeLinecap="round" />
+                <path d="M 49 76 Q 40 74 30 78" fill="none" stroke="#daf379" strokeWidth="0.4" opacity="0.5" strokeLinecap="round" />
+
+                <path d="M 46 87 Q 52 86 58 90" fill="none" stroke="#daf379" strokeWidth="0.3" opacity="0.4" strokeLinecap="round" />
+                <path d="M 46 87 Q 40 86 34 90" fill="none" stroke="#daf379" strokeWidth="0.3" opacity="0.4" strokeLinecap="round" />
+              </svg>
+              {/* Glossy top-right sun highlight simulation */}
+              <div className="absolute top-0 right-0 w-[90%] h-[130%] bg-gradient-to-bl from-white/20 via-transparent to-transparent -rotate-[15deg] translate-x-1/4 -translate-y-1/2" />
+            </div>
+          )}
           {nodeTheme === "ludo" && (
             <>
               <div
@@ -991,11 +1118,14 @@ export default function NodeRenderer({
 
             <div
               className="flex flex-col overflow-hidden w-full max-w-full px-1 min-w-0 leading-tight py-0.5"
-              style={isCustom ? { color: nodeTextColor } : {}}
+              style={{
+                ...(isCustom ? { color: nodeTextColor } : {}),
+                ...(nodeTheme === "peepal" || nodeTheme === "banyan" || nodeTheme === "nature" ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" } : {})
+              }}
             >
               <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                 <span
-                  className={`pointer-events-none font-mono text-xs font-semibold truncate max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
+                  className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
                   title={data.name}
                 >
                   {data.name}
@@ -1003,9 +1133,10 @@ export default function NodeRenderer({
                 {data.type !== "object" && data.type !== "array" && (
                   <span
                     className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${nodeTheme === "hydrogen" ? "bg-transparent" : "bg-black/10"} tracking-widest ${mutedText}`}
-                    style={
-                      isCustom ? { color: nodeTextColor, opacity: 0.7 } : {}
-                    }
+                    style={{
+                      ...(isCustom ? { color: nodeTextColor, opacity: 0.7 } : {}),
+                      ...(nodeTheme === "peepal" || nodeTheme === "banyan" || nodeTheme === "nature" ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" } : {})
+                    }}
                   >
                     {data.type}
                   </span>
@@ -1013,13 +1144,20 @@ export default function NodeRenderer({
               </div>
               {data.value !== undefined && !isMedia && (
                 <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
-                  <div className={`flex-1 min-w-0 ${isExpanded ? 'overflow-y-auto max-h-[180px] custom-scrollbar pr-1' : 'overflow-hidden'}`}>
+                  <div className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}>
                     <span
-                      className={`text-[11px] font-mono leading-normal ${isExpanded ? "whitespace-pre-wrap break-all" : "truncate w-full max-w-full block"} ${valText}`}
+                      className={`text-[11px] font-mono leading-normal ${
+                        isExpanded
+                          ? "whitespace-pre-wrap break-all"
+                          : nodeTheme === "peepal" || nodeTheme === "banyan"
+                            ? "line-clamp-3 whitespace-normal break-all block"
+                            : "truncate w-full max-w-full block"
+                      } ${valText}`}
                       title={!isExpanded ? String(data.value) : undefined}
-                      style={
-                        isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}
-                      }
+                      style={{
+                        ...(isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}),
+                        ...(nodeTheme === "peepal" || nodeTheme === "banyan" || nodeTheme === "nature" ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" } : {})
+                      }}
                     >
                       {String(data.value)}
                     </span>

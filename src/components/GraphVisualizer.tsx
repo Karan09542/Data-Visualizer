@@ -24,6 +24,8 @@ export default function GraphVisualizer() {
     searchQuery,
     searchMatches,
     searchAncestors,
+    activeMatchIndex,
+    activeMatchId,
     selectedNodeId,
     setSelectedNodeId,
     dragOverrides,
@@ -534,6 +536,46 @@ export default function GraphVisualizer() {
       );
   }, [searchQuery, searchMatches, nodes]);
 
+  // Zoom to specific active match
+  const lastActiveMatchIndex = useRef<number | null>(null);
+  const zoomQueryRef = useRef<string | null>(null);
+  
+  useEffect(() => {
+    if (!wrapperRef.current || !zoomRef.current || activeMatchId === null) {
+        lastActiveMatchIndex.current = null;
+        zoomQueryRef.current = searchQuery;
+        return;
+    }
+
+    const isNewQuery = zoomQueryRef.current !== searchQuery;
+    zoomQueryRef.current = searchQuery;
+    
+    if (activeMatchIndex === lastActiveMatchIndex.current) return;
+    lastActiveMatchIndex.current = activeMatchIndex;
+
+    // Do not zoom to individual match if it's the very first match of a new query,
+    // because the main search effect handles group zooming.
+    if (isNewQuery) return;
+
+    const matchedNode = nodes.find((n) => n.data.id === activeMatchId);
+    if (!matchedNode) return;
+
+    const width = wrapperRef.current.clientWidth;
+    const height = wrapperRef.current.clientHeight;
+
+    const scale = 1.2;
+    const tx = width / 2 - matchedNode.x * scale;
+    const ty = height / 2 - matchedNode.y * scale;
+
+    d3.select(wrapperRef.current)
+      .transition()
+      .duration(750)
+      .call(
+        zoomRef.current.transform,
+        d3.zoomIdentity.translate(tx, ty).scale(scale),
+      );
+  }, [activeMatchIndex, activeMatchId, searchQuery, nodes]);
+
   const { isToolbarVisible, activeTool } = useAnnotationStore();
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
 
@@ -965,7 +1007,19 @@ export default function GraphVisualizer() {
           </g>
 
           <g className="nodes-layer" style={{ zIndex: 100 }}>
-            {nodes.map((node) => (
+            {nodes
+              .slice()
+              .sort((a, b) => {
+                const getPriority = (n: any) => {
+                  if (n.data.id === activeMatchId) return 4;
+                  if (searchMatches.has(n.data.id)) return 3;
+                  if (n.data.id === selectedNodeId) return 2;
+                  if (selectedPathNodes.has(n.data.id) || searchAncestors.has(n.data.id)) return 1;
+                  return 0;
+                };
+                return getPriority(a) - getPriority(b);
+              })
+              .map((node) => (
               <NodeRenderer
                 key={`node-${node.data.id}`}
                 node={node}

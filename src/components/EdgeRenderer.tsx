@@ -120,6 +120,16 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
     strokeWidth = 2.5;
     inlines.strokeLinecap = 'round';
     inlines.filter = "drop-shadow(0 2px 3px rgba(90,140,51,0.2))";
+  } else if (style === 'peepal' || nodeTheme === 'peepal') {
+    stroke = "#daf379";
+    strokeWidth = 2.4;
+    inlines.strokeLinecap = 'round';
+    inlines.filter = "drop-shadow(0 2px 4px rgba(0,0,0,0.2))";
+  } else if (style === 'banyan' || nodeTheme === 'banyan') {
+    stroke = "#e2f97c";
+    strokeWidth = 3.2;
+    inlines.strokeLinecap = 'round';
+    inlines.filter = "drop-shadow(0 2px 5px rgba(0,0,0,0.25))";
   }
 
   if (style === 'ludo' || nodeTheme === 'ludo') {
@@ -296,6 +306,18 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
              d={`M ${target.x} ${target.y} Q ${target.x - 12} ${target.y - 18}, ${target.x - 18} ${target.y - 6} Q ${target.x - 6} ${target.y}, ${target.x} ${target.y}`}
              fill={stroke} opacity={0.9}
            />
+        </g>
+      )}
+      {(style === 'peepal' || nodeTheme === 'peepal') && source && target && (
+        <g style={{pointerEvents: 'none'}}>
+           {/* Draw a beautiful yellow-green petiole connection joint swelling at the base of the leaf */}
+           <circle cx={target.x} cy={target.y} r={3.5} fill="#daf379" stroke="#3a5a40" strokeWidth={1} />
+        </g>
+      )}
+      {(style === 'banyan' || nodeTheme === 'banyan') && source && target && (
+        <g style={{pointerEvents: 'none'}}>
+           {/* Draw a robust golden-green woody petiole sheath swelling at the base of the banyan leaf */}
+           <circle cx={target.x} cy={target.y} r={4.5} fill="#e2f97c" stroke="#1b4332" strokeWidth={1.5} />
         </g>
       )}
     </g>

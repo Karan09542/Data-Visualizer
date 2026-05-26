@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { parseSearchQuery } from '../utils/searchEngine';
 
 export default function NodeQueryEngine() {
-  const { searchQuery, setSearchQuery, searchMatches, treeData, appTheme, setIsAdvancedPanelOpen, searchEngineMode, globalSearchErrors, globalSearchSuggestions } = useStore();
+  const { searchQuery, setSearchQuery, searchMatches, activeMatchIndex, treeData, appTheme, setIsAdvancedPanelOpen, searchEngineMode, globalSearchErrors, globalSearchSuggestions } = useStore();
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -66,6 +66,16 @@ export default function NodeQueryEngine() {
                     type="text"
                     value={localSearch}
                     onChange={(e) => setLocalSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Tab') {
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                useStore.getState().prevMatch();
+                            } else {
+                                useStore.getState().nextMatch();
+                            }
+                        }
+                    }}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
                     placeholder='Query nodes (e.g. type:"array", depth>3, { type: { $eq: "string" } })...'
@@ -126,7 +136,14 @@ export default function NodeQueryEngine() {
                                 hasQuery ? (
                                     <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                                         <CheckCircle2 size={13} />
-                                        <span>{totalMatches} match{totalMatches !== 1 && 'es'} found</span>
+                                        <span>
+                                            {totalMatches} match{totalMatches !== 1 && 'es'} found
+                                            {totalMatches > 0 && activeMatchIndex !== null && (
+                                                <span className="ml-1 opacity-75">
+                                                    ({activeMatchIndex + 1}/{totalMatches})
+                                                </span>
+                                            )}
+                                        </span>
                                     </div>
                                 ) : (
                                     <div className="text-slate-500 dark:text-slate-400 flex items-center gap-2">
