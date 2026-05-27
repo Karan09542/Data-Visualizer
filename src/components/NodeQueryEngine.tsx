@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
-import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, X, Info, Settings } from 'lucide-react';
+import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseSearchQuery } from '../utils/searchEngine';
 
@@ -43,7 +43,7 @@ export default function NodeQueryEngine() {
   return (
     <>
       <div 
-        className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[90%] max-w-xl node-query-engine"
+        className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[90%] max-w-xl node-query-engine no-export"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
@@ -88,15 +88,32 @@ export default function NodeQueryEngine() {
 
                 <AnimatePresence>
                     {hasQuery && (
-                        <motion.button
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            onClick={() => setLocalSearch('')}
-                            className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors mr-1"
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex items-center"
                         >
-                            <X size={14} />
-                        </motion.button>
+                            <button
+                                onClick={(e) => { e.preventDefault(); useStore.getState().prevMatch(); }}
+                                className="p-1 rounded-sm hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <button
+                                onClick={(e) => { e.preventDefault(); useStore.getState().nextMatch(); }}
+                                className="p-1 rounded-sm hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors mr-1"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                            <div className="w-[1px] h-4 bg-slate-300 dark:bg-slate-700 mx-1"></div>
+                            <button
+                                onClick={() => setLocalSearch('')}
+                                className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors mx-1"
+                            >
+                                <X size={14} />
+                            </button>
+                        </motion.div>
                     )}
                 </AnimatePresence>
 

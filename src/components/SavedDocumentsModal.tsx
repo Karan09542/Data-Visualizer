@@ -49,7 +49,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
         </div>
 
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22]">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input 
               type="text" 
               value={docName}
@@ -59,7 +59,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
             />
             <button 
               onClick={handleSave}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors"
+              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors whitespace-nowrap shrink-0 w-full sm:w-auto"
             >
               <Save size={16} /> Save Current
             </button>

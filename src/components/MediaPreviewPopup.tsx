@@ -5,6 +5,7 @@ import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import SmartMediaRenderer from './SmartMediaRenderer';
+import { SmartFallbackMedia } from './SmartFallbackMedia';
 
 const MediaPreviewPopup: React.FC = () => {
   const { activePreviewMedia, setActivePreviewMedia } = useStore();
@@ -34,7 +35,8 @@ const MediaPreviewPopup: React.FC = () => {
               wrapperStyle={{ width: '100%', height: '100%' }}
               contentStyle={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              <img 
+              <SmartFallbackMedia 
+                type="image"
                 src={url} 
                 alt="Preview" 
                 className="max-w-full max-h-[90vh] object-contain shadow-2xl rounded-lg"
@@ -55,7 +57,8 @@ const MediaPreviewPopup: React.FC = () => {
     if (type === 'video') {
       return (
         <div className="relative w-full h-full flex items-center justify-center">
-          <video 
+          <SmartFallbackMedia
+            type="video" 
             src={url} 
             controls 
             autoPlay
@@ -73,7 +76,7 @@ const MediaPreviewPopup: React.FC = () => {
             <Music size={80} className="relative z-10 group-hover:scale-110 transition-transform duration-500" />
           </div>
           <div className="space-y-4 w-full">
-            <audio src={url} controls className="w-full sm:w-[450px]" />
+            <SmartFallbackMedia type="audio" src={url} controls className="w-full sm:w-[450px]" />
             <p className="text-slate-400 font-mono text-xs truncate max-w-[400px] text-center opacity-60">
               {url.split('/').pop()}
             </p>

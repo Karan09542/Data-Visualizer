@@ -497,13 +497,35 @@ export default function GraphVisualizer() {
     }
   };
 
+  const preSearchTransformRef = useRef<any>(null);
+
   // Zoom to search matches
   useEffect(() => {
     if (!wrapperRef.current || !zoomRef.current) return;
+    
+    // Save current transform if starting a new search
+    if (!lastSearchQuery.current && searchQuery) {
+       preSearchTransformRef.current = d3.zoomTransform(wrapperRef.current);
+    }
+    
     if (searchQuery === lastSearchQuery.current) return; // only zoom on new query
     lastSearchQuery.current = searchQuery;
 
-    if (!searchQuery || searchMatches.size === 0) return;
+    if (!searchQuery) {
+       if (preSearchTransformRef.current) {
+         d3.select(wrapperRef.current)
+           .transition()
+           .duration(750)
+           .call(
+             zoomRef.current.transform,
+             preSearchTransformRef.current
+           );
+         preSearchTransformRef.current = null;
+       }
+       return;
+    }
+    
+    if (searchMatches.size === 0) return;
 
     // Filter node coordinates
     const matchedNodes = nodes.filter((n) => searchMatches.has(n.data.id));
@@ -523,7 +545,7 @@ export default function GraphVisualizer() {
     const ch = wrapperRef.current.clientHeight;
 
     // Target scale (capped)
-    const scale = Math.min(cw / (width + 400), ch / (height + 400), 1.2);
+    const scale = Math.min(cw / (width + 400), ch / (height + 400), cw < 768 ? 0.85 : 1.2);
     const tx = cw / 2 - ((minX + maxX) / 2) * scale;
     const ty = ch / 2 - ((minY + maxY) / 2) * scale;
 
@@ -563,7 +585,7 @@ export default function GraphVisualizer() {
     const width = wrapperRef.current.clientWidth;
     const height = wrapperRef.current.clientHeight;
 
-    const scale = 1.2;
+    const scale = width < 768 ? 0.85 : 1.2;
     const tx = width / 2 - matchedNode.x * scale;
     const ty = height / 2 - matchedNode.y * scale;
 
@@ -1059,7 +1081,7 @@ export default function GraphVisualizer() {
           <div className={appTheme}>
             <div
               ref={contextMenuRef}
-              className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px]"
+              className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px] no-export"
               style={{ top: contextMenu.y, left: contextMenu.x }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}

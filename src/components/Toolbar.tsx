@@ -1,5 +1,5 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen } from 'lucide-react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { estimateShareSize } from '../utils/shareUtils';
 import { useAnnotationStore } from '../store/useAnnotationStore';
@@ -28,7 +28,9 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     undoStack,
     redoStack,
     code,
-    setIsSavedDocsOpen
+    setIsSavedDocsOpen,
+    globalTextExpanded,
+    setGlobalTextExpanded
   } = useStore();
 
   const { annotations } = useAnnotationStore();
@@ -69,6 +71,22 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     return () => clearTimeout(timer);
   }, [localSearch, setSearchQuery, searchQuery]);
 
+  useEffect(() => {
+    // Warm up SnapDOM cache without blocking the main thread
+    if (typeof window !== 'undefined') {
+      const warmUp = () => {
+        import('@zumer/snapdom').then(({ preCache }) => {
+          preCache({ embedFonts: true }).catch((e) => console.warn('SnapDOM precache failed:', e));
+        });
+      };
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(warmUp);
+      } else {
+        setTimeout(warmUp, 2000);
+      }
+    }
+  }, []);
+
   const toggleTheme = () => {
     if (appTheme === 'dark') {
       setAppTheme('light');
@@ -107,17 +125,38 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   };
 
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportStatus, setExportStatus] = useState<string>('Preparing graph snapshot...');
 
-  const exportHDImage = async (type: 'png' | 'svg' = 'png') => {
+  const exportHDImage = async (type: 'png' | 'svg' | 'jpeg' | 'webp' = 'png') => {
+    setIsExporting(true);
+    setExportStatus('Preparing export...');
+
+    // Wait for React to render the loader UI
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)));
+
     const sourceEl = document.getElementById('graph-export-wrapper');
     const svgEl = document.querySelector('.graph-svg') as SVGSVGElement | null;
     const gEl = document.querySelector('.graph-g') as SVGGElement | null;
     
-    if (!sourceEl || !svgEl || !gEl) return;
+    if (!sourceEl || !svgEl || !gEl) {
+      setIsExporting(false);
+      return;
+    }
     
-    setIsExporting(true);
+    let originalExpanded = useStore.getState().globalTextExpanded;
+
     try {
-      const htmlToImage = await import('html-to-image');
+      if (!originalExpanded) {
+        setExportStatus('Expanding geometry...');
+        setGlobalTextExpanded(true);
+        // Wait for React update and D3 bounds recalculation
+        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 350)));
+      }
+
+      setExportStatus('Optimizing capture...');
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)));
+
+      const { snapdom } = await import('@zumer/snapdom');
       
       // Temporarily remove transition to prevent animation during snapshot
       sourceEl.style.transition = 'none';
@@ -136,7 +175,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       const originalZ = sourceEl.style.zIndex;
       const originalTransform = gEl.getAttribute('transform');
 
-      // Temporarily modify the live DOM so html-to-image reads computed styles accurately
+      // Temporarily modify the live DOM so snapdom reads computed styles accurately
       // We make it slightly cover the screen, but z-index it so it overlays or works underneath
       sourceEl.style.position = 'fixed';
       sourceEl.style.top = '0';
@@ -148,37 +187,38 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       gEl.setAttribute('transform', `translate(${padding - bbox.x}, ${padding - bbox.y}) scale(1)`);
 
       // Hide no-export elements
-      const noExportEls = Array.from(sourceEl.querySelectorAll('.no-export'));
+      const noExportEls = Array.from(sourceEl.querySelectorAll('.no-export, [data-capture-exclude]'));
       const originalDisplays = noExportEls.map((el) => (el as HTMLElement).style.display);
       noExportEls.forEach((el) => {
         (el as HTMLElement).style.display = 'none';
       });
+      
+      sourceEl.classList.add('export-mode-override');
 
-      // Give browser a frame to layout
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Give browser a frame to layout and fetch images
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 200)));
 
-      const filter = (node: HTMLElement) => {
-        if (node.classList && typeof node.classList.contains === 'function') {
-           return !node.classList.contains('no-export');
-        }
-        return true;
-      };
+      setExportStatus('Rendering Snapshot...');
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)));
 
       const options = {
-        filter: filter as any,
-        pixelRatio: type === 'png' ? 2 : 1,
+        exclude: ['.no-export', '.node-query-engine', '[data-capture-exclude]'],
+        compress: true,
+        scale: type === 'svg' ? 1 : 2,
         quality: 1,
-        backgroundColor: useStore.getState().canvasBackgroundColor,
+        backgroundColor: (type === 'jpeg' && (useStore.getState().canvasBackgroundColor === 'transparent' || !useStore.getState().canvasBackgroundColor)) 
+          ? '#ffffff' 
+          : (useStore.getState().canvasBackgroundColor || (useStore.getState().appTheme === 'dark' ? '#0d1117' : '#ffffff')),
         width: fullWidth,
         height: fullHeight,
-        style: {
-          transform: 'none',
-        }
+        format: type === 'jpeg' ? 'jpg' : type,
+        filename: `json-graph-hd`,
       };
 
-      const dataUrl = type === 'png' 
-        ? await htmlToImage.toPng(sourceEl, options)
-        : await htmlToImage.toSvg(sourceEl, options);
+      await snapdom.download(sourceEl, options);
+      
+      setExportStatus('Finalizing export...');
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)));
         
       // Restore everything
       sourceEl.style.position = originalPos;
@@ -194,24 +234,37 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         gEl.removeAttribute('transform');
       }
 
+      sourceEl.classList.remove('export-mode-override');
+
       noExportEls.forEach((el, index) => {
         (el as HTMLElement).style.display = originalDisplays[index];
       });
-      
-      const link = document.createElement("a");
-      link.download = `json-graph-hd.${type}`;
-      link.href = dataUrl;
-      link.click();
     } catch (err) {
       console.error('Export failed:', err);
       alert('Failed to export graph.');
     } finally {
+      if (!originalExpanded) {
+        setGlobalTextExpanded(false);
+      }
       setIsExporting(false);
     }
   };
 
   return (
     <>
+      {isExporting && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white/60 dark:bg-black/60 backdrop-blur-sm transition-all">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl p-6 flex flex-col items-center max-w-sm w-full mx-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-full mb-4">
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">Exporting...</h3>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 text-center">
+              {exportStatus}
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-4 p-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-[500] relative transition-colors">
         <div className="flex items-center gap-3 mr-2 lg:border-r border-slate-300 dark:border-slate-800 lg:pr-4 flex-shrink-0">
           <button 
@@ -311,11 +364,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-4">
               <button 
                 onClick={() => setIsSavedDocsOpen(true)}
-                className="flex items-center gap-2 p-1.5 px-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-md text-xs font-semibold transition-all shadow-sm active:scale-95 mr-2" 
+                className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors border border-slate-300 dark:border-slate-700 hover:-translate-y-px mr-2" 
                 title="Saved Documents"
               >
-                <FolderOpen size={16} />
-                <span>Saved</span>
+                <FolderOpen size={14} />
+                <span className="text-xs font-semibold">Saved</span>
               </button>
               <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Toggle Theme">
                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -341,15 +394,30 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                  </button>
                </div>
                <div className="flex items-center gap-1 pl-1">
-                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mr-1 opacity-50">Exports</span>
-                 <button disabled={isExporting} onClick={() => exportHDImage('png')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export High-Res PNG">
-                   <Download size={16} />
-                   <span className="text-xs font-semibold">{isExporting ? '...' : 'PNG'}</span>
-                 </button>
-                 <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors flex items-center space-x-1" title="Export Vector SVG">
-                   <Download size={16} />
-                   <span className="text-xs font-semibold">{isExporting ? '...' : 'SVG'}</span>
-                 </button>
+                 <div className="relative inline-flex group hover:-translate-y-px transition-transform">
+                   <div className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors pointer-events-none border border-slate-300 dark:border-slate-700">
+                     <Download size={14} />
+                     <span className="text-xs font-semibold">{isExporting ? '...' : 'Export'}</span>
+                     <ChevronDown size={14} className="opacity-50" />
+                   </div>
+                   <select
+                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                     onChange={(e) => {
+                       if (e.target.value) {
+                         exportHDImage(e.target.value as any);
+                         e.target.value = '';
+                       }
+                     }}
+                     value=""
+                     disabled={isExporting}
+                   >
+                     <option value="" disabled className="hidden">{isExporting ? 'Exporting...' : 'Select Format'}</option>
+                     <option value="png" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">PNG (HD)</option>
+                     <option value="jpeg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">JPEG (HD)</option>
+                     <option value="svg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG</option>
+                     <option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
+                   </select>
+                 </div>
                </div>
             </div>
           </div>
@@ -483,13 +551,31 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             
             <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800">
                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">Download & Export</label>
-               <div className="grid grid-cols-2 gap-3">
-                 <button disabled={isExporting} onClick={() => exportHDImage('png')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-colors text-sm font-medium">
-                   <Download size={16} /> {isExporting ? '...' : 'PNG (HD)'}
-                 </button>
-                 <button disabled={isExporting} onClick={() => exportHDImage('svg')} className="w-full flex items-center justify-center gap-2 p-2.5 bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 rounded-md hover:bg-purple-600/30 transition-colors text-sm font-medium">
-                   <Download size={16} /> {isExporting ? '...' : 'SVG'}
-                 </button>
+               <div className="relative flex group">
+                 <div className="flex w-full items-center justify-between p-2.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors pointer-events-none border border-transparent">
+                   <div className="flex items-center gap-2">
+                      <Download size={16} />
+                      <span className="text-sm font-medium">{isExporting ? 'Exporting...' : 'Export Image'}</span>
+                   </div>
+                   <ChevronDown size={16} className="opacity-50" />
+                 </div>
+                 <select
+                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                   onChange={(e) => {
+                     if (e.target.value) {
+                       exportHDImage(e.target.value as any);
+                       e.target.value = '';
+                     }
+                   }}
+                   value=""
+                   disabled={isExporting}
+                 >
+                   <option value="" disabled className="hidden">{isExporting ? 'Exporting...' : 'Select Format to Download'}</option>
+                   <option value="png" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">PNG (HD)</option>
+                   <option value="jpeg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">JPEG (HD)</option>
+                   <option value="svg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG</option>
+                   <option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
+                 </select>
                </div>
             </div>
           </div>

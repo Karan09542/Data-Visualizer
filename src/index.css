@@ -7,6 +7,20 @@
 @custom-variant dark (&:is(.dark *));
 
 @layer utilities {
+  .export-mode-override .truncate {
+    white-space: normal !important;
+    text-overflow: clip !important;
+    word-break: break-all !important;
+  }
+  .export-mode-override .line-clamp-2,
+  .export-mode-override .line-clamp-3 {
+    -webkit-line-clamp: unset !important;
+  }
+  .export-mode-override .max-h-\[140px\],
+  .export-mode-override .max-h-\[180px\] {
+    max-height: none !important;
+  }
+  
   .custom-scrollbar, select {
     scrollbar-gutter: stable both-edges;
     scrollbar-width: thin;

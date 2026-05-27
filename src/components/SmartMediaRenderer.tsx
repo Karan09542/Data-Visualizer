@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { getProxiedUrl } from '../utils/mediaUtils';
 
-// Cache parsed HTML or 'failed' to prevent infinite retries and optimize memory
-export const mediaCache = new Map<string, string | 'failed'>();
+export const mediaCache = new Map<string, any>();
+
+type RenderState = 'loading' | 'direct' | 'proxied' | 'failed';
 
 export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType }: { url: string, onMediaFailed?: () => void, onResolvedType?: (type: string, actualUrl: string) => void }) {
-  const [cachedHtml, setCachedHtml] = useState<string | null>(() => {
+  const [mediaData, setMediaData] = useState<any>(() => {
     const cached = mediaCache.get(url);
     if (cached === 'failed') return null;
     return cached || null;
   });
   
   const [isLoading, setIsLoading] = useState(!mediaCache.has(url));
+  const [renderState, setRenderState] = useState<RenderState>('direct');
+  const [actualUrl, setActualUrl] = useState<string>(url);
 
   useEffect(() => {
     const cached = mediaCache.get(url);
@@ -19,20 +23,9 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       if (onMediaFailed) onMediaFailed();
       return;
     } else if (cached) {
-      setCachedHtml(cached);
+      setMediaData(cached);
       setIsLoading(false);
-      // We don't have the original strategy stored in cache right now easily, 
-      // but we can infer it from the cached html
-      if (onResolvedType) {
-        let actualUrl = url;
-        const srcMatch = cached.match(/src="([^"]+)"/);
-        if (srcMatch && srcMatch[1]) actualUrl = srcMatch[1];
-        
-        if (cached.startsWith('<img') || cached.includes('<img')) onResolvedType('image', actualUrl);
-        else if (cached.startsWith('<video') || cached.includes('<video')) onResolvedType('video', actualUrl);
-        else if (cached.startsWith('<audio') || cached.includes('<audio')) onResolvedType('audio', actualUrl);
-        else onResolvedType('iframe', actualUrl);
-      }
+      extractAndSetUrl(cached);
       return;
     }
 
@@ -47,22 +40,11 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       .then(res => res.json())
       .then(data => {
         if (!isMounted) return;
-        if (data.success && data.data && data.data.render && (data.data.render.html || data.data.render.strategy === 'img')) {
-          const htmlToCache = data.data.render.html || `<img src="${url}" alt="Preview" referrerPolicy="no-referrer" />`;
-          mediaCache.set(url, htmlToCache);
-          setCachedHtml(htmlToCache);
+        if (data.success && data.data && data.data.render) {
+          mediaCache.set(url, data.data.render);
+          setMediaData(data.data.render);
           setIsLoading(false);
-          if (onResolvedType) {
-            let detected = 'iframe';
-            let actualUrl = url;
-            const srcMatch = htmlToCache.match(/src="([^"]+)"/);
-            if (srcMatch && srcMatch[1]) actualUrl = srcMatch[1];
-
-            if (data.data.render.strategy === 'img' || htmlToCache.startsWith('<img')) detected = 'image';
-            else if (data.data.render.strategy === 'video' || htmlToCache.startsWith('<video')) detected = 'video';
-            else if (data.data.render.strategy === 'audio' || htmlToCache.startsWith('<audio')) detected = 'audio';
-            onResolvedType(detected, actualUrl);
-          }
+          extractAndSetUrl(data.data.render);
         } else {
           mediaCache.set(url, 'failed');
           setIsLoading(false);
@@ -78,20 +60,97 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       });
 
     return () => { isMounted = false; };
-  }, [url, onMediaFailed, onResolvedType]);
+  }, [url, onMediaFailed]);
+
+  const extractAndSetUrl = (renderData: any) => {
+    let resolvedUrl = url;
+    let detectedType = renderData.strategy || 'iframe';
+    
+    if (renderData.html) {
+      const srcMatch = renderData.html.match(/src="([^"]+)"/);
+      if (srcMatch && srcMatch[1]) resolvedUrl = srcMatch[1];
+      
+      if (renderData.html.startsWith('<img')) detectedType = 'image';
+      else if (renderData.html.startsWith('<video')) detectedType = 'video';
+      else if (renderData.html.startsWith('<audio')) detectedType = 'audio';
+    } else if (renderData.strategy === 'img') {
+      detectedType = 'image';
+    }
+    
+    setActualUrl(resolvedUrl);
+    
+    if (onResolvedType) {
+      onResolvedType(detectedType, resolvedUrl);
+    }
+  };
+
+  const handleError = () => {
+    if (renderState === 'direct') {
+      console.warn(`Direct rendering failed for ${actualUrl}, falling back to proxy.`);
+      setRenderState('proxied');
+    } else {
+      setRenderState('failed');
+      if (onMediaFailed) onMediaFailed();
+    }
+  };
 
   if (isLoading) {
     return <div className="text-[10px] text-slate-400 p-2 opacity-60 rounded flex justify-center items-center h-full w-full italic">Inspecting...</div>;
   }
 
-  if (!cachedHtml) {
+  if (!mediaData || renderState === 'failed') {
     return null;
   }
 
+  const currentUrl = renderState === 'proxied' ? getProxiedUrl(actualUrl) : actualUrl;
+  
+  const isExternal = currentUrl.startsWith('http') && !currentUrl.includes(window.location.host);
+  const crossOrigin = isExternal ? 'anonymous' : undefined;
+
+  let content;
+  
+  if (mediaData.strategy === 'img' || (mediaData.html && mediaData.html.startsWith('<img'))) {
+    content = (
+       <img 
+        src={currentUrl} 
+        alt="Preview" 
+        referrerPolicy="no-referrer" 
+        crossOrigin={crossOrigin as any}
+        onError={handleError}
+        className="max-w-full max-h-full object-contain rounded"
+      />
+    );
+  } else if (mediaData.strategy === 'video' || (mediaData.html && mediaData.html.startsWith('<video'))) {
+    content = (
+      <video 
+        src={currentUrl} 
+        controls 
+        muted 
+        loop
+        crossOrigin={crossOrigin as any}
+        onError={handleError}
+        className="max-w-full max-h-full rounded focus:outline-none"
+      />
+    );
+  } else if (mediaData.strategy === 'audio' || (mediaData.html && mediaData.html.startsWith('<audio'))) {
+    content = (
+      <audio 
+        src={currentUrl} 
+        controls 
+        crossOrigin={crossOrigin as any}
+        onError={handleError}
+        className="w-full h-10 outline-none"
+      />
+    );
+  } else if (mediaData.html) {
+    content = <div className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded [&>iframe]:border-0" dangerouslySetInnerHTML={{ __html: mediaData.html }} />;
+  } else {
+    content = <iframe src={currentUrl} className="w-full h-full rounded border-0" />;
+  }
+
   return (
-    <div 
-      className="w-full h-full flex justify-center items-center [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded [&>iframe]:border-0 [&>img]:max-w-full [&>img]:max-h-full [&>img]:object-contain [&>img]:rounded [&>video]:max-w-full [&>video]:max-h-full [&>video]:rounded [&>video]:focus:outline-none [&>audio]:w-full [&>audio]:h-10 [&>audio]:outline-none"
-      dangerouslySetInnerHTML={{ __html: cachedHtml }}
-    />
+    <div className="w-full h-full flex justify-center items-center">
+      {content}
+    </div>
   );
 }

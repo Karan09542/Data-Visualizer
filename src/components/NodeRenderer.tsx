@@ -13,11 +13,12 @@ import {
   ToggleLeft,
   HelpCircle,
   MoreVertical,
-  Maximize2,
-  Minimize2,
-  Eye,
+  Maximize2, 
+  Minimize2, 
+  Eye 
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
+import { SmartFallbackMedia } from "./SmartFallbackMedia";
 
 interface NodeProps {
   key?: React.Key;
@@ -1216,14 +1217,16 @@ export default function NodeRenderer({
                 className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
               >
                 {mediaType === "image" && (
-                  <img
+                  <SmartFallbackMedia
+                    type="image"
                     src={strVal}
                     alt={data.name}
                     className="max-w-full max-h-[160px] object-contain rounded"
                   />
                 )}
                 {mediaType === "audio" && (
-                  <audio
+                  <SmartFallbackMedia
+                    type="audio"
                     src={strVal}
                     controls
                     className="w-full h-11 outline-none py-1"
