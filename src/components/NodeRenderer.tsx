@@ -32,6 +32,8 @@ interface NodeProps {
 const getMediaType = (val: string) => {
   if (!val || typeof val !== "string") return null;
   val = val.trim();
+  if (val.match(/\.pdf(\?.*)?$/i) || val.startsWith("data:application/pdf")) 
+    return "pdf";
   if (
     val.startsWith("data:image/") ||
     val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
@@ -1237,6 +1239,13 @@ export default function NodeRenderer({
                     src={strVal}
                     controls
                     className="max-w-full max-h-[160px] rounded focus:outline-none"
+                  />
+                )}
+                {mediaType === "pdf" && (
+                  <iframe
+                    src={strVal}
+                    className="w-full h-[160px] rounded border-0 bg-white"
+                    title="PDF Document"
                   />
                 )}
                 {mediaType === "smart" && (

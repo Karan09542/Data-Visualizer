@@ -1174,7 +1174,7 @@ export default function GraphVisualizer() {
                       const isAudio = val.match(
                         /\.(mp3|wav|flac|aac|ogg)(\?.*)?$/i,
                       );
-                      const isPdf = val.match(/\.pdf(\?.*)?$/i);
+                      const isPdf = val.match(/\.pdf(\?.*)?$/i) || val.startsWith("data:application/pdf");
 
                       const isMediaEnabled =
                         useStore.getState().showMediaPreview;
