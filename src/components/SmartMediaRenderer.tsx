@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getProxiedUrl } from '../utils/mediaUtils';
+import SafeIframe from './SafeIframe';
 
 export const mediaCache = new Map<string, any>();
 
@@ -142,10 +143,24 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
         className="w-full h-10 outline-none"
       />
     );
+  } else if (mediaData.strategy === 'iframe' || (mediaData.html && mediaData.html.includes('<iframe'))) {
+    content = (
+      <SafeIframe
+        src={actualUrl}
+        className="w-full h-full rounded border-0 bg-white"
+        title="preview"
+      />
+    );
   } else if (mediaData.html) {
     content = <div className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded [&>iframe]:border-0" dangerouslySetInnerHTML={{ __html: mediaData.html }} />;
   } else {
-    content = <iframe src={currentUrl} className="w-full h-full rounded border-0" />;
+    content = (
+      <SafeIframe
+        src={currentUrl}
+        className="w-full h-full rounded border-0 bg-white"
+        title="preview"
+      />
+    );
   }
 
   return (

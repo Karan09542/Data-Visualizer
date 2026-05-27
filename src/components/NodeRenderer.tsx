@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
+import SafeIframe from "./SafeIframe";
 
 interface NodeProps {
   key?: React.Key;
@@ -1242,7 +1243,7 @@ export default function NodeRenderer({
                   />
                 )}
                 {mediaType === "pdf" && (
-                  <iframe
+                  <SafeIframe
                     src={strVal}
                     className="w-full h-[160px] rounded border-0 bg-white"
                     title="PDF Document"
