@@ -10,6 +10,7 @@ import ShareDialog from "./components/ShareDialog";
 import SavedDocumentsModal from "./components/SavedDocumentsModal";
 import TextPreviewPopup from "./components/TextPreviewPopup";
 import MediaPreviewPopup from "./components/MediaPreviewPopup";
+import AutosaveManager from "./components/AutosaveManager";
 import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
@@ -161,6 +162,7 @@ export default function App() {
     <div
       className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors`}
     >
+      <AutosaveManager />
       <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
       <div
         ref={containerRef}

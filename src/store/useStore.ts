@@ -48,9 +48,12 @@ export const defaultSettings = {
   nodeGradientAngle: 45,
   nodeGradientType: 'linear' as GradientType,
   searchEngineMode: 'permissive' as SearchEngineMode,
+  isAutosaveEnabled: true,
 };
 
 export interface StoreState {
+  isAutosaveEnabled: boolean;
+  setIsAutosaveEnabled: (enabled: boolean) => void;
   searchEngineMode: SearchEngineMode;
   globalSearchErrors: string[];
   globalSearchSuggestions: string[];
@@ -277,6 +280,7 @@ export const useStore = create<StoreState>()(
       setUseNodeGradient: (use: boolean) => set({ useNodeGradient: use }),
       setNodeGradientAngle: (angle: number) => set({ nodeGradientAngle: angle }),
       setNodeGradientType: (type: GradientType) => set({ nodeGradientType: type }),
+      setIsAutosaveEnabled: (enabled: boolean) => set({ isAutosaveEnabled: enabled }),
       setSearchEngineMode: (mode: SearchEngineMode) => {
         set({ searchEngineMode: mode });
         get().setSearchQuery(get().searchQuery); // trigger re-evaluation

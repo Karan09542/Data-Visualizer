@@ -26,6 +26,7 @@ export default function EditorPanel() {
     usingFallback: boolean;
   } | null>(null);
   const [fetchResult, setFetchResult] = useState<SmartFetchResult | null>(null);
+  const [appendData, setAppendData] = useState(false);
 
   useEffect(() => {
     if (monaco) {
@@ -118,8 +119,30 @@ export default function EditorPanel() {
       const result = await smartJsonFetch(apiUrl, options);
       setFetchResult(result);
 
-      if (result.success && result.data) {
-        setCode(JSON.stringify(result.data, null, 2));
+      if (result.success && result.data !== undefined) {
+        if (appendData) {
+          if (parsedData !== null) {
+            let mergedData;
+            if (Array.isArray(parsedData) && Array.isArray(result.data)) {
+              mergedData = [...parsedData, ...result.data];
+            } else if (Array.isArray(parsedData)) {
+              mergedData = [...parsedData, result.data];
+            } else if (typeof parsedData === 'object' && !Array.isArray(parsedData) && typeof result.data === 'object' && !Array.isArray(result.data)) {
+              mergedData = { ...parsedData, ...result.data };
+            } else if (typeof parsedData === 'object' && !Array.isArray(parsedData) && result.data !== null) {
+              mergedData = { ...parsedData, fetched_data: result.data };
+            } else {
+               mergedData = [parsedData, result.data];
+            }
+            setCode(JSON.stringify(mergedData, null, 2));
+          } else if (code.trim() !== '') {
+            setCode(code + '\n' + (typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2)));
+          } else {
+            setCode(typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2));
+          }
+        } else {
+          setCode(typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2));
+        }
         setActiveTab('raw');
       } else {
         setApiError(result.errorMessage);
@@ -326,7 +349,23 @@ export default function EditorPanel() {
                 </div>
               )}
               
-              <div className="flex justify-between items-center mt-2">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-200 dark:border-slate-800 flex items-center justify-between mt-1">
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Merge with existing data</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Append fetched payload into the current editor state</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={appendData}
+                  onClick={() => setAppendData(!appendData)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${appendData ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                >
+                  <span aria-hidden="true" className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${appendData ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={() => {
                     resetApiConfig();
@@ -335,14 +374,16 @@ export default function EditorPanel() {
                 >
                   Reset Config
                 </button>
-                <button 
-                  onClick={handleFetch}
-                  disabled={isLoading}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-70 text-white rounded-md text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
-                >
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={handleFetch}
+                    disabled={isLoading}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:opacity-70 text-white rounded-md text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                  >
                   {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                   Send Request
-                </button>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

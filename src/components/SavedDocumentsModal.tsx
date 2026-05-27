@@ -8,7 +8,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
   const { code, setCode } = useStore();
   const [docName, setDocName] = useState('');
 
-  const documents = useLiveQuery(() => db.documents.toArray());
+  const documents = useLiveQuery(() => db.documents.orderBy('createdAt').reverse().toArray());
 
   const handleSave = async () => {
     if (!docName.trim()) {

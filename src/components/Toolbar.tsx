@@ -1,5 +1,5 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2 } from 'lucide-react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2, Save, CloudOff, Cloud } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { estimateShareSize } from '../utils/shareUtils';
 import { useAnnotationStore } from '../store/useAnnotationStore';
@@ -30,7 +30,9 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     code,
     setIsSavedDocsOpen,
     globalTextExpanded,
-    setGlobalTextExpanded
+    setGlobalTextExpanded,
+    isAutosaveEnabled,
+    setIsAutosaveEnabled
   } = useStore();
 
   const { annotations } = useAnnotationStore();
@@ -384,6 +386,14 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
             <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-4">
               <button 
+                onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
+                className={`flex items-center gap-1.5 p-1.5 px-2.5 rounded-md transition-colors border hover:-translate-y-px mr-1 ${isAutosaveEnabled ? 'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' : 'bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'}`} 
+                title={isAutosaveEnabled ? "Autosave is On" : "Turn On Autosave"}
+              >
+                {isAutosaveEnabled ? <Cloud size={14} /> : <CloudOff size={14} />}
+                <span className="text-xs font-semibold">{isAutosaveEnabled ? 'Autosave On' : 'Autosave Off'}</span>
+              </button>
+              <button 
                 onClick={() => setIsSavedDocsOpen(true)}
                 className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors border border-slate-300 dark:border-slate-700 hover:-translate-y-px mr-2" 
                 title="Saved Documents"
@@ -543,7 +553,14 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                </button>
             </div>
 
-            <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800">
+            <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 flex flex-col gap-3">
+               <button 
+                 onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
+                 className={`w-full flex items-center justify-center gap-2 p-2.5 rounded-md transition-colors text-sm font-medium ${isAutosaveEnabled ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-m shadow-blue-500/20' : 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'}`}
+               >
+                 {isAutosaveEnabled ? <Cloud size={16} /> : <CloudOff size={16} />} 
+                 {isAutosaveEnabled ? 'Autosave is On' : 'Turn On Autosave'}
+               </button>
                <button 
                  onClick={() => { setIsMobileMenuOpen(false); setIsSavedDocsOpen(true); }} 
                  className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
