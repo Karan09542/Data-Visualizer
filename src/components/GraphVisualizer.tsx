@@ -851,6 +851,7 @@ export default function GraphVisualizer() {
         </div>
       )}
       <div
+        id="graph-background-layer"
         className="absolute inset-0 z-0 pointer-events-none"
         style={{
           backgroundColor:
@@ -983,7 +984,7 @@ export default function GraphVisualizer() {
               width="200000"
               height="200000"
               fill={`url(#theme-${canvasTheme})`}
-              className="pointer-events-none"
+              className="canvas-theme-rect pointer-events-none"
             />
           )}
 

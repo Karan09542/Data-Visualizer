@@ -112,7 +112,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportStatus, setExportStatus] = useState<string>('Preparing graph snapshot...');
 
-  const exportHDImage = async (type: 'png' | 'svg' | 'jpeg' | 'webp' = 'png') => {
+  const exportHDImage = async (rawType: string = 'png') => {
+    let type = rawType;
+    let isTransparent = false;
+    
+    if (rawType.endsWith('-transparent')) {
+      isTransparent = true;
+      type = rawType.replace('-transparent', '');
+    }
+
     setIsExporting(true);
     setExportStatus('Preparing export...');
 
@@ -147,11 +155,28 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       sourceEl.style.transition = 'none';
       gEl.style.transition = 'none';
 
+      const themeRect = gEl.querySelector('.canvas-theme-rect') as SVGRectElement | null;
+      if (themeRect) themeRect.style.display = 'none';
+      
       const bbox = gEl.getBBox();
       const padding = 60;
       
+      if (themeRect) themeRect.style.display = '';
+
       const fullWidth = Math.max(bbox.width + padding * 2, 800);
       const fullHeight = Math.max(bbox.height + padding * 2, 600);
+
+      const originalThemeRectX = themeRect?.getAttribute('x') || '-100000';
+      const originalThemeRectY = themeRect?.getAttribute('y') || '-100000';
+      const originalThemeRectW = themeRect?.getAttribute('width') || '200000';
+      const originalThemeRectH = themeRect?.getAttribute('height') || '200000';
+
+      if (themeRect) {
+        themeRect.setAttribute('x', String(bbox.x - padding));
+        themeRect.setAttribute('y', String(bbox.y - padding));
+        themeRect.setAttribute('width', String(fullWidth));
+        themeRect.setAttribute('height', String(fullHeight));
+      }
 
       // Save original styles to restore later
       const originalPos = sourceEl.style.position;
@@ -172,7 +197,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       gEl.setAttribute('transform', `translate(${padding - bbox.x}, ${padding - bbox.y}) scale(1)`);
 
       // Hide no-export elements
-      const noExportEls = Array.from(sourceEl.querySelectorAll('.no-export, [data-capture-exclude]'));
+      let queryStr = '.no-export, [data-capture-exclude]';
+      if (isTransparent) {
+        queryStr += ', #graph-background-layer';
+      }
+      const noExportEls = Array.from(sourceEl.querySelectorAll(queryStr));
       const originalDisplays = noExportEls.map((el) => (el as HTMLElement).style.display);
       noExportEls.forEach((el) => {
         (el as HTMLElement).style.display = 'none';
@@ -193,11 +222,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         quality: 1,
         backgroundColor: (type === 'jpeg' && (useStore.getState().canvasBackgroundColor === 'transparent' || !useStore.getState().canvasBackgroundColor)) 
           ? '#ffffff' 
-          : (useStore.getState().canvasBackgroundColor || (useStore.getState().appTheme === 'dark' ? '#0d1117' : '#ffffff')),
+          : isTransparent ? 'transparent' : (useStore.getState().canvasBackgroundColor || (useStore.getState().appTheme === 'dark' ? '#0d1117' : '#ffffff')),
         width: fullWidth,
         height: fullHeight,
         format: type === 'jpeg' ? 'jpg' : type,
-        filename: `json-graph-hd`,
+        filename: `json-graph-hd${isTransparent ? '-transparent' : ''}`,
       };
 
       await snapdom.download(sourceEl, options);
@@ -217,6 +246,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         gEl.setAttribute('transform', originalTransform);
       } else {
         gEl.removeAttribute('transform');
+      }
+
+      if (themeRect) {
+        themeRect.setAttribute('x', originalThemeRectX);
+        themeRect.setAttribute('y', originalThemeRectY);
+        themeRect.setAttribute('width', originalThemeRectW);
+        themeRect.setAttribute('height', originalThemeRectH);
       }
 
       sourceEl.classList.remove('export-mode-override');
@@ -398,9 +434,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                    >
                      <option value="" disabled className="hidden">{isExporting ? 'Exporting...' : 'Select Format'}</option>
                      <option value="png" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">PNG (HD)</option>
-                     <option value="jpeg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">JPEG (HD)</option>
-                     <option value="svg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG</option>
-                     <option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
+<option value="png-transparent" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">PNG (Transparent)</option>
+<option value="jpeg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">JPEG (HD)</option>
+<option value="svg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG</option>
+<option value="svg-transparent" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG (Transparent)</option>
+<option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
                    </select>
                  </div>
                </div>
@@ -557,9 +595,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                  >
                    <option value="" disabled className="hidden">{isExporting ? 'Exporting...' : 'Select Format to Download'}</option>
                    <option value="png" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">PNG (HD)</option>
-                   <option value="jpeg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">JPEG (HD)</option>
-                   <option value="svg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG</option>
-                   <option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
+<option value="png-transparent" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">PNG (Transparent)</option>
+<option value="jpeg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">JPEG (HD)</option>
+<option value="svg" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG</option>
+<option value="svg-transparent" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">Vector SVG (Transparent)</option>
+<option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
                  </select>
                </div>
             </div>
