@@ -1,8 +1,15 @@
 import { create } from 'zustand';
+import { startTransition } from 'react';
 import { persist } from 'zustand/middleware';
 import { parseInput } from '../utils/parser';
 import { transformToTree } from '../utils/transformer';
+import SearchWorker from '../utils/searchWorker?worker';
 import { parseSearchQuery, buildSearchContext, evaluateQuery } from '../utils/searchEngine';
+
+let searchWorkerInstance: Worker | null = null;
+if (typeof window !== 'undefined') {
+  searchWorkerInstance = new SearchWorker();
+}
 
 export type LayoutMode = 'vertical' | 'horizontal' | 'radial' | 'force' | 'compact' | 'mindmap';
 export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook' | 'custom' | 'nature' | 'circuit' | 'galaxy' | 'glass' | 'neon' | 'math' | 'neural' | 'river' | 'tree' | 'pixel' | 'hacker' | 'cloud' | 'dna' | 'lava' | 'ocean' | 'rhythm' | 'rune' | 'zen' | 'abstract' | 'architect' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed' | 'banyan' | 'peepal';
@@ -275,116 +282,54 @@ export const useStore = create<StoreState>()(
         get().setSearchQuery(get().searchQuery); // trigger re-evaluation
       },
       setSearchQuery: (query: string) => {
-        set((state) => {
-          const q = query.trim();
-          const newCollapsed = new Set(state.collapsedNodes);
-          const matches = new Set<string>();
-          const ancestors = new Set<string>();
-          
-          if (!q || !state.treeData) {
-            return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [], globalSearchSuggestions: [], activeMatchIndex: null, activeMatchId: null };
-          }
-          
-          const parseRes = parseSearchQuery(q);
-          if (parseRes.syntaxError) {
-             return { searchQuery: query, searchMatches: matches, searchAncestors: ancestors, globalSearchErrors: [parseRes.syntaxError], globalSearchSuggestions: [], activeMatchIndex: null, activeMatchId: null };
-          }
-          
-          const globalErrors = new Set<string>();
-          const globalSuggestions = new Set<string>();
-          
-          const checkNode = (node: any, currentAncestors: string[], depth: number): boolean => {
-            let isMatch = false;
-            let handledMatches = false;
-            
-            if (parseRes.ast) {
-               const context = buildSearchContext(node, depth);
-               context.mode = get().searchEngineMode;
-               const evalRes = evaluateQuery(parseRes.ast, context);
-               isMatch = evalRes.isMatch;
-               
-               if (isMatch && evalRes.matchedPaths && evalRes.matchedPaths.length > 0) {
-                   handledMatches = true;
-                   for (const p of evalRes.matchedPaths) {
-                       matches.add(p);
-                       
-                       const parts = p.match(/root|\[\d+\]|[^.\[]+/g) || [];
-                       let temp = '';
-                       for (let i = 0; i < parts.length; i++) {
-                           let part = parts[i];
-                           if (i > 0 && part !== 'root' && !part.startsWith('[')) {
-                               temp += '.' + part;
-                           } else {
-                               temp += part;
-                           }
-                           ancestors.add(temp);
-                           newCollapsed.delete(temp);
-                       }
-                   }
-                   for (const c of currentAncestors) {
-                       ancestors.add(c);
-                       newCollapsed.delete(c);
-                   }
-                   ancestors.add(node.id);
-                   newCollapsed.delete(node.id);
-               }
-               
-               // Only collect suggestions from AST evaluation, not strict traversal errors
-               // Strict traversal errors on partial structural mismatches are too noisy for global search
-               for (const sug of evalRes.suggestions) globalSuggestions.add(sug);
-            } else {
-               // Fallback basic exact
-               const qLower = q.toLowerCase();
-               const matchName = node.name.toLowerCase().includes(qLower);
-               const matchVal = node.value !== undefined && String(node.value).toLowerCase().includes(qLower);
-               isMatch = matchName || matchVal;
-            }
-            
-            let hasMatchingDescendant = false;
-            
-            if (node.children) {
-               for (const child of node.children) {
-                  if (checkNode(child, [...currentAncestors, node.id], depth + 1)) {
-                     hasMatchingDescendant = true;
-                  }
-               }
-            }
-            
-            if (isMatch && !handledMatches) {
-               matches.add(node.id);
-               for (const id of currentAncestors) {
-                  ancestors.add(id);
-                  newCollapsed.delete(id); // auto expand
-               }
-            } else if (hasMatchingDescendant) {
-               ancestors.add(node.id);
-               newCollapsed.delete(node.id); // ensure path is open
-            }
-            
-            return isMatch || hasMatchingDescendant;
-          };
-          
-          checkNode(state.treeData, [], 0);
-          
-          const matchArray = Array.from(matches);
-          const activeIndex = matchArray.length > 0 ? 0 : null;
-          const activeId = matchArray.length > 0 ? matchArray[0] : null;
+        const state = get();
+        const q = query.trim();
+        
+        if (!q || !state.treeData) {
+          startTransition(() => {
+            set({ 
+              searchQuery: query,
+              searchMatches: new Set(), 
+              searchAncestors: new Set(), 
+              globalSearchErrors: [], 
+              globalSearchSuggestions: [], 
+              activeMatchIndex: null, 
+              activeMatchId: null 
+            });
+          });
+          return;
+        }
 
-          if (activeId) {
-             // ensure it's selected or something?
-          }
-          
-          return { 
-             searchQuery: query, 
-             collapsedNodes: newCollapsed, 
-             searchMatches: matches, 
-             searchAncestors: ancestors,
-             globalSearchErrors: Array.from(globalErrors),
-             globalSearchSuggestions: Array.from(globalSuggestions),
-             activeMatchIndex: activeIndex,
-             activeMatchId: activeId
+        if (searchWorkerInstance) {
+          searchWorkerInstance.onmessage = (e) => {
+            if (e.data.query === query) {
+              startTransition(() => {
+                const currentState = get();
+                const newCollapsed = new Set(currentState.collapsedNodes);
+                
+                // Open paths returned by worker
+                e.data.newCollapsedPaths.forEach((p: string) => newCollapsed.delete(p));
+                
+                set({
+                  searchQuery: query,
+                  collapsedNodes: newCollapsed,
+                  searchMatches: new Set(e.data.matches),
+                  searchAncestors: new Set(e.data.ancestors),
+                  globalSearchErrors: e.data.globalErrors,
+                  globalSearchSuggestions: e.data.globalSuggestions,
+                  activeMatchIndex: e.data.activeIndex,
+                  activeMatchId: e.data.activeId
+                });
+              });
+            }
           };
-        });
+
+          searchWorkerInstance.postMessage({
+            query: query,
+            treeData: state.treeData,
+            searchEngineMode: state.searchEngineMode
+          });
+        }
       },
       toggleNodeCollapse: (id: string) => {
         set((state) => {

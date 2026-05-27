@@ -17,7 +17,9 @@ import {
   Music as MusicIcon,
   FileText as PdfIcon,
   Download,
-  ExternalLink
+  ExternalLink,
+  Code2,
+  LayoutTemplate
 } from 'lucide-react';
 import { SmartFetchResult } from '../utils/smartJsonFetch';
 
@@ -28,6 +30,7 @@ interface SmartFetchErrorUIProps {
 
 export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUIProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [payloadViewMode, setPayloadViewMode] = useState<'raw' | 'rendered'>('rendered');
   const { 
     errorType, 
     errorMessage, 
@@ -132,10 +135,12 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
   const config = getErrorConfig();
 
   // Extract a preview of raw text if we want to show it
+  const hasHtml = Boolean(rawText && (/<html[^>]*>|<\/html>|<body[^>]*>|<\/body>/i.test(rawText) || (contentType && contentType.includes('text/html'))));
+
   const getRawTextPreview = () => {
     if (!rawText) return null;
     const clean = rawText.trim();
-    if (clean.length > 250) {
+    if (!hasHtml && clean.length > 250) {
       return clean.substring(0, 250) + '...';
     }
     return clean;
@@ -270,14 +275,64 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
 
       {/* Optional Payload Preview for JSON/HTML parse issues */}
       {!isMedia && config.showPreview && previewText && (
-        <div className="mt-1 bg-slate-950/5 dark:bg-slate-950/40 border border-slate-200/40 dark:border-slate-800/40 rounded-lg p-2.5">
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            <Terminal size={11} />
-            <span>Response Preview</span>
+        <div className="mt-1 bg-slate-950/5 dark:bg-slate-950/40 border border-slate-200/40 dark:border-slate-800/40 rounded-lg overflow-hidden flex flex-col">
+          {hasHtml ? (
+            <div className="flex border-b border-slate-200/50 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 relative overflow-hidden backdrop-blur-sm shadow-[0_1px_3px_auto_rgba(0,0,0,0.02)]">
+              <button
+                onClick={() => setPayloadViewMode('rendered')}
+                className={`flex-1 flex justify-center items-center gap-1.5 py-1.5 text-[10.5px] uppercase tracking-wider font-semibold transition-all relative ${
+                  payloadViewMode === 'rendered'
+                    ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-800/80'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                }`}
+              >
+                <LayoutTemplate size={12} className={payloadViewMode === 'rendered' ? 'text-indigo-500' : 'opacity-70'} />
+                <span>HTML Preview</span>
+                {payloadViewMode === 'rendered' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                )}
+              </button>
+              <div className="w-[1px] bg-slate-200/50 dark:bg-slate-700/50" />
+              <button
+                onClick={() => setPayloadViewMode('raw')}
+                className={`flex-1 flex justify-center items-center gap-1.5 py-1.5 text-[10.5px] uppercase tracking-wider font-semibold transition-all relative ${
+                  payloadViewMode === 'raw'
+                    ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-800/80 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                }`}
+              >
+                <Code2 size={12} className={payloadViewMode === 'raw' ? 'text-indigo-500' : 'opacity-70'} />
+                <span>Raw Response</span>
+                {payloadViewMode === 'raw' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400 mb-1.5 p-2.5 pb-0">
+              <Terminal size={11} />
+              <span>Response Preview</span>
+            </div>
+          )}
+
+          <div className="relative">
+            {hasHtml && payloadViewMode === 'rendered' ? (
+              <div className="h-64 sm:h-80 w-full bg-white dark:bg-slate-100 flex flex-col p-0.5">
+                <iframe
+                  srcDoc={rawText}
+                  className="w-full flex-1 border-0 rounded-md bg-white shadow-inner"
+                  title="HTML Preview"
+                  sandbox="allow-same-origin"
+                />
+              </div>
+            ) : (
+              <div className={`p-2.5 ${hasHtml ? 'h-64 sm:h-80' : 'max-h-24'} overflow-y-auto custom-scrollbar`}>
+                <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-normal text-slate-700 dark:text-slate-300">
+                  {previewText}
+                </pre>
+              </div>
+            )}
           </div>
-          <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-normal text-slate-700 dark:text-slate-300 max-h-24 overflow-y-auto">
-            {previewText}
-          </pre>
         </div>
       )}
 

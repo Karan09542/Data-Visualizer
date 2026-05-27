@@ -56,27 +56,12 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     }
   }, [shareSizeInfo.status]);
 
-  const [localSearch, setLocalSearch] = useState(searchQuery);
-
-  useEffect(() => {
-    setLocalSearch(searchQuery);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        setSearchQuery(localSearch);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [localSearch, setSearchQuery, searchQuery]);
-
   useEffect(() => {
     // Warm up SnapDOM cache without blocking the main thread
     if (typeof window !== 'undefined') {
       const warmUp = () => {
         import('@zumer/snapdom').then(({ preCache }) => {
-          preCache({ embedFonts: true }).catch((e) => console.warn('SnapDOM precache failed:', e));
+          preCache(document, { embedFonts: true }).catch((e) => console.warn('SnapDOM precache failed:', e));
         });
       };
       if ('requestIdleCallback' in window) {

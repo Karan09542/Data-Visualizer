@@ -12,15 +12,22 @@ export default function NodeQueryEngine() {
   const [showHelp, setShowHelp] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sync external search query
+  const lastSubmittedQuery = useRef<string | null>(null);
+
+  // Initial sync and external reset sync
   useEffect(() => {
-    setLocalSearch(searchQuery);
+    if (searchQuery === '' && localSearch !== '') {
+        setLocalSearch('');
+    }
   }, [searchQuery]);
 
   // Debounced search logic with basic validation
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (localSearch !== lastSubmittedQuery.current) {
+        lastSubmittedQuery.current = localSearch;
         setSearchQuery(localSearch);
+      }
     }, 250);
     return () => clearTimeout(timer);
   }, [localSearch, setSearchQuery]);
@@ -49,7 +56,6 @@ export default function NodeQueryEngine() {
         onDoubleClick={(e) => e.stopPropagation()}
       >
           <motion.div
-              layout
               initial={{ y: -20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             className={`shadow-md rounded-lg overflow-hidden backdrop-blur-md border transition-all duration-300 ${

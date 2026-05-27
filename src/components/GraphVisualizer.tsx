@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useMemo, useState, useDeferredValue } from "react";
 import { createPortal } from "react-dom";
 import * as d3 from "d3";
 import { useStore } from "../store/useStore";
@@ -17,13 +17,13 @@ import NodeQueryEngine from './NodeQueryEngine';
 export default function GraphVisualizer() {
   const {
     treeData,
-    collapsedNodes,
+    collapsedNodes: rawCollapsedNodes,
     layoutMode,
     edgeStyle,
     nodeTheme,
     searchQuery,
-    searchMatches,
-    searchAncestors,
+    searchMatches: rawSearchMatches,
+    searchAncestors: rawSearchAncestors,
     activeMatchIndex,
     activeMatchId,
     selectedNodeId,
@@ -41,6 +41,10 @@ export default function GraphVisualizer() {
     setActivePreviewText,
     setActivePreviewMedia,
   } = useStore();
+  
+  const collapsedNodes = useDeferredValue(rawCollapsedNodes);
+  const searchMatches = useDeferredValue(rawSearchMatches);
+  const searchAncestors = useDeferredValue(rawSearchAncestors);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const svgGRef = useRef<SVGGElement>(null);
 
@@ -151,8 +155,6 @@ export default function GraphVisualizer() {
     newKey?: string;
     typeOverride?: string;
   } | null>(null);
-
-  const [localSearch, setLocalSearch] = useState(searchQuery);
 
   const lastTwoFingerTap = useRef<number>(0);
   const twoFingerTapTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -277,19 +279,6 @@ export default function GraphVisualizer() {
     e.preventDefault();
     processUndoRedoGesture();
   };
-
-  useEffect(() => {
-    setLocalSearch(searchQuery);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localSearch !== searchQuery) {
-        useStore.getState().setSearchQuery(localSearch);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [localSearch, searchQuery]);
 
   const hasCentered = useRef(false);
   const zoomRef = useRef<d3.ZoomBehavior<HTMLDivElement, unknown> | null>(null);

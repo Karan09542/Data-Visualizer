@@ -16,7 +16,16 @@ import { parseShareUrl } from "./utils/shareUtils";
 
 export default function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-  const { isEditorPanelOpen, setIsEditorPanelOpen, appTheme, setCode, isMathHelpOpen, setIsMathHelpOpen, isSavedDocsOpen, setIsSavedDocsOpen } = useStore();
+  
+  const isEditorPanelOpen = useStore(state => state.isEditorPanelOpen);
+  const setIsEditorPanelOpen = useStore(state => state.setIsEditorPanelOpen);
+  const appTheme = useStore(state => state.appTheme);
+  const setCode = useStore(state => state.setCode);
+  const isMathHelpOpen = useStore(state => state.isMathHelpOpen);
+  const setIsMathHelpOpen = useStore(state => state.setIsMathHelpOpen);
+  const isSavedDocsOpen = useStore(state => state.isSavedDocsOpen);
+  const setIsSavedDocsOpen = useStore(state => state.setIsSavedDocsOpen);
+
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
