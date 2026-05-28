@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Download, Music, Video, Image as ImageIcon, FileText, Globe, Move } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Download, Music, Video, Image as ImageIcon, FileText, Globe, Move, Box } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
@@ -97,6 +97,20 @@ const MediaPreviewPopup: React.FC = () => {
       );
     }
 
+    if (type === '3d-model') {
+      const ModelViewer = 'model-viewer' as any;
+      return (
+        <div className="relative w-[95%] h-[95%] max-w-7xl flex items-center justify-center bg-transparent rounded-2xl overflow-hidden shadow-2xl">
+          <ModelViewer
+            src={url}
+            auto-rotate
+            camera-controls
+            style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
+          ></ModelViewer>
+        </div>
+      );
+    }
+
     if (type === 'smart') {
       return (
         <div className="w-[95%] h-[92%] max-w-7xl flex items-center justify-center bg-slate-900/40 rounded-3xl border border-slate-700/50 overflow-hidden shadow-2xl backdrop-blur-sm">
@@ -126,6 +140,7 @@ const MediaPreviewPopup: React.FC = () => {
       case 'audio': return <Music size={20} />;
       case 'pdf': return <FileText size={20} />;
       case 'smart': return <Globe size={20} />;
+      case '3d-model': return <Box size={20} />;
       default: return <Maximize2 size={20} />;
     }
   };

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
+import SchemaVisualizer from "./components/SchemaVisualizer";
 import Toolbar from "./components/Toolbar";
 import DrawingToolbar from "./components/DrawingToolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
@@ -26,6 +27,7 @@ export default function App() {
   const setIsMathHelpOpen = useStore(state => state.setIsMathHelpOpen);
   const isSavedDocsOpen = useStore(state => state.isSavedDocsOpen);
   const setIsSavedDocsOpen = useStore(state => state.setIsSavedDocsOpen);
+  const visualizerMode = useStore(state => state.visualizerMode);
 
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -204,7 +206,7 @@ export default function App() {
 
         <div className="flex-1 h-full min-w-0 relative">
           <DrawingToolbar />
-          <GraphVisualizer />
+          {visualizerMode === 'schema' ? <SchemaVisualizer /> : <GraphVisualizer />}
         </div>
       </div>
       <AdvancedPanel />

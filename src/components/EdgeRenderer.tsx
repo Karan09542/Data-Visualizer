@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useStore } from '../store/useStore';
 
 interface EdgeProps {
   key?: React.Key;
@@ -15,6 +16,7 @@ interface EdgeProps {
 
 export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected, source, target, layoutMode }: EdgeProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const { edgeWidth = 1.0 } = useStore();
 
   let stroke = "#334155";
   let strokeWidth = 1.5;
@@ -45,7 +47,7 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
     strokeWidth = 1.2;
     inlines.filter = "drop-shadow(1px 1px 0 rgba(0,0,0,0.5))";
     strokeDasharray = "30,10,5,10";
-  } else if (style === 'zigzag') {
+  } else if (style === 'zigzag' || style === 'metro' || style === 'angled-step') {
     stroke = "#ec4899";
     strokeWidth = 2;
   } else if (style === 'double') {
@@ -154,6 +156,8 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
     inlines.strokeLinecap = 'round';
     inlines.filter = "drop-shadow(0 0 6px rgba(79,70,229,0.5))";
   }
+
+  strokeWidth = strokeWidth * edgeWidth;
 
   if (isSelected) {
     stroke = "#a855f7"; // purple-500

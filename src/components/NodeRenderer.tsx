@@ -20,6 +20,8 @@ import {
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
 import SafeIframe from "./SafeIframe";
+import { ApiNodeRenderer } from "./ApiNodeRenderer";
+import "@google/model-viewer";
 
 interface NodeProps {
   key?: React.Key;
@@ -37,22 +39,32 @@ const getMediaType = (val: string) => {
     return "pdf";
   if (
     val.startsWith("data:image/") ||
+    val.startsWith("blob:http") && val.includes("image") ||
     val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)
   )
     return "image";
   if (
     val.startsWith("data:audio/") ||
+    val.startsWith("blob:http") && val.includes("audio") ||
     val.match(/\.(mp3|wav|ogg|aac|flac)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac|flac)/i)
   )
     return "audio";
   if (
     val.startsWith("data:video/") ||
+    val.startsWith("blob:http") && val.includes("video") ||
     val.match(/\.(mp4|webm|ogv|mov)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(mp4|webm|ogv|mov)/i)
   )
     return "video";
+  if (
+    val.startsWith("blob:http") && (val.includes("model") || val.includes("3d-model")) ||
+    val.match(/\.(glb|gltf|obj)(\?.*)?$/i) ||
+    val.match(/^https?:\/\/.*\.(glb|gltf|obj)/i) ||
+    val.startsWith("model/")
+  )
+    return "3d-model";
   // Use inspector for youtube, vimoe, spotfiy, or any http url
   // Just treat any http/https link as potential smart media if we didn't natively catch it
   if (val.startsWith("http://") || val.startsWith("https://")) return "smart";
@@ -137,8 +149,10 @@ export default function NodeRenderer({
       useStore.getState().selectedNodeId != null);
 
   const strVal = data.value !== undefined ? String(data.value) : "";
+  const isApiNode = data.type === 'string' && data.name && String(data.name).endsWith('_api_node');
+  
   const mediaType =
-    showMediaPreview && data.type === "string" && !smartMediaFailed
+    showMediaPreview && data.type === "string" && !smartMediaFailed && !isApiNode
       ? getMediaType(strVal)
       : null;
   const isMedia = !!mediaType;
@@ -630,18 +644,20 @@ export default function NodeRenderer({
     dropShadowClass = "drop-shadow-[0_0_5px_rgba(168,85,247,0.4)]";
   }
 
-  let fWidth = isMedia ? 320 : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 220 : 260);
+  let fWidth = isApiNode ? 340 : isMedia ? 320 : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 220 : 260);
   let fHeight = isMedia
     ? mediaType === "audio"
       ? 140
       : 240
-    : isExpanded
-      ? (nodeTheme === "peepal" || nodeTheme === "banyan" ? 440 : 300)
-      : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 310 : 120);
+    : isApiNode
+      ? 140
+      : isExpanded
+        ? (nodeTheme === "peepal" || nodeTheme === "banyan" ? 440 : 300)
+        : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 310 : 120);
 
   const isDefaultShape = nodeShape === "default";
 
-  let shapeClasses = "rounded-md px-3 py-1.5 min-w-[120px] max-w-[260px]";
+  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
 
   // Apply Theme-Specific Shapes ONLY if shape is at 'default'
@@ -819,7 +835,7 @@ export default function NodeRenderer({
     }
     
     if (!shapeStyle.maxWidth) {
-      shapeStyle.maxWidth = isMedia ? "320px" : "260px";
+      shapeStyle.maxWidth = isApiNode ? "340px" : isMedia ? "320px" : "260px";
     }
   }
 
@@ -1146,7 +1162,7 @@ export default function NodeRenderer({
                   </span>
                 )}
               </div>
-              {data.value !== undefined && !isMedia && (
+              {data.value !== undefined && !isMedia && !isApiNode && (
                 <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
                   <div className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}>
                     <span
@@ -1191,6 +1207,16 @@ export default function NodeRenderer({
                     </div>
                   )}
                 </div>
+              )}
+              {isApiNode && (
+                <ApiNodeRenderer 
+                  url={strVal} 
+                  path={data.path} 
+                  nodeId={data.id}
+                  nodeX={node.x}
+                  nodeY={node.y}
+                  nodeWidth={fWidth}
+                />
               )}
               {hasChildren && isCollapsed && (
                 <span
@@ -1242,6 +1268,18 @@ export default function NodeRenderer({
                     className="max-w-full max-h-[160px] rounded focus:outline-none"
                   />
                 )}
+                {mediaType === "3d-model" && (() => {
+                  const ModelViewer = 'model-viewer' as any;
+                  return (
+                    <ModelViewer
+                      src={strVal}
+                      alt={data.name || "3D Model"}
+                      auto-rotate
+                      camera-controls
+                      style={{ width: "100%", height: "160px", backgroundColor: "transparent" }}
+                    />
+                  );
+                })()}
                 {mediaType === "pdf" && (
                   <SafeIframe
                     src={strVal}

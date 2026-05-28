@@ -22,7 +22,11 @@ function simplifyPath(points: Point[], tolerance = 1): Point[] {
   return result;
 }
 
-export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>) {
+export function useDrawingSystem(
+  wrapperRef: React.RefObject<HTMLElement | null>,
+  isReactFlow: boolean = false,
+  reactFlowViewportRef?: React.RefObject<{ x: number; y: number; zoom: number } | null>
+) {
   const { 
     activeTool, color, width, opacity, glowIntensity, brushStyle, 
     smoothing, addAnnotation, updateAnnotation, blinkDuration, fadeOutDuration, autoRemove
@@ -39,14 +43,22 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
     const getGraphPos = (e: PointerEvent): Point => {
       // Get pointer position relative to wrapper
       const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      
+      if (isReactFlow && reactFlowViewportRef?.current) {
+        const vp = reactFlowViewportRef.current;
+        return {
+          x: (px - vp.x) / vp.zoom,
+          y: (py - vp.y) / vp.zoom
+        };
+      }
       
       // Apply inverse D3 transform
       const transform = d3.zoomTransform(el);
       return {
-        x: (x - transform.x) / transform.k,
-        y: (y - transform.y) / transform.k
+        x: (px - transform.x) / transform.k,
+        y: (py - transform.y) / transform.k
       };
     };
 
@@ -356,5 +368,5 @@ export function useDrawingSystem(wrapperRef: React.RefObject<HTMLElement | null>
       window.removeEventListener('cancel-drawing', handleCancelDrawing);
       window.removeEventListener('keydown', handleDrawingKeyDown);
     };
-  }, [addAnnotation, updateAnnotation]);
+  }, [addAnnotation, updateAnnotation, isReactFlow, reactFlowViewportRef]);
 }

@@ -13,11 +13,12 @@ if (typeof window !== 'undefined') {
 
 export type LayoutMode = 'vertical' | 'horizontal' | 'radial' | 'force' | 'compact' | 'mindmap';
 export type NodeTheme = 'glassmorphism' | 'vscode' | 'github' | 'cyberpunk' | 'minimal' | 'gradient' | 'pastel' | 'terminal' | 'material' | 'blueprint' | 'retro' | 'holographic' | 'notebook' | 'custom' | 'nature' | 'circuit' | 'galaxy' | 'glass' | 'neon' | 'math' | 'neural' | 'river' | 'tree' | 'pixel' | 'hacker' | 'cloud' | 'dna' | 'lava' | 'ocean' | 'rhythm' | 'rune' | 'zen' | 'abstract' | 'architect' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed' | 'banyan' | 'peepal';
-export type EdgeStyle = 'curved' | 'bezier' | 'straight' | 'step' | 'animated' | 'dashed' | 'neon' | 'double' | 'pipe' | 'thin' | 'orgChart' | 'circuit' | 'glow' | 'zigzag' | 'pulse' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed';
+export type EdgeStyle = 'curved' | 'bezier' | 'straight' | 'step' | 'animated' | 'dashed' | 'neon' | 'double' | 'pipe' | 'thin' | 'orgChart' | 'circuit' | 'glow' | 'zigzag' | 'pulse' | 'ludo' | 'chess' | 'octopus' | 'nature2' | 'hydrogen' | 'seed' | 'metro' | 'angled-step';
 export type NodeShape = 'default' | 'circle' | 'rectangle' | 'triangle' | 'hexagon' | 'pill' | 'diamond' | 'parallelogram';
 export type CanvasTheme = 'none' | 'dots' | 'grid' | 'lines';
 export type AppTheme = 'dark' | 'light';
 export type GradientType = 'linear' | 'radial';
+export type VisualizerMode = 'graph' | 'schema';
 
 export type SearchEngineMode = 'strict' | 'permissive';
 
@@ -35,6 +36,7 @@ export const defaultSettings = {
   canvasBackgroundBlur: 0,
   nodeSpread: 1.0,
   nodeSize: 1.0,
+  edgeWidth: 1.0,
   showMediaPreview: false,
   globalTextExpanded: false,
   activePreviewText: null,
@@ -49,11 +51,30 @@ export const defaultSettings = {
   nodeGradientType: 'linear' as GradientType,
   searchEngineMode: 'permissive' as SearchEngineMode,
   isAutosaveEnabled: true,
+  visualizerMode: 'graph' as VisualizerMode,
 };
 
+export type CodeFormat = 'json' | 'yaml';
+
 export interface StoreState {
+  codeFormat: CodeFormat;
+  setCodeFormat: (format: CodeFormat) => void;
+  convertFormat: (targetFormat: CodeFormat) => Promise<void>;
+  inlineApiEditor: { url: string; path: string; nodeId: string; x: number; y: number; width: number } | null;
+  setInlineApiEditor: (editor: { url: string; path: string; nodeId: string; x: number; y: number; width: number } | null) => void;
+  apiNodeConfig: Record<string, { method: string; responseType: string; timeout: number }>;
+  setApiNodeConfig: (path: string, config: { method: string; responseType: string; timeout: number }) => void;
+  apiNodeResponses: Record<string, any>;
+  apiNodeLoading: Record<string, boolean>;
+  apiNodeErrors: Record<string, string | null>;
+  setApiNodeResponse: (path: string, data: any) => void;
+  setApiNodeLoading: (path: string, loading: boolean) => void;
+  setApiNodeError: (path: string, error: string | null) => void;
+  removeApiNode: (path: string) => void;
   isAutosaveEnabled: boolean;
   setIsAutosaveEnabled: (enabled: boolean) => void;
+  visualizerMode: VisualizerMode;
+  setVisualizerMode: (mode: VisualizerMode) => void;
   searchEngineMode: SearchEngineMode;
   globalSearchErrors: string[];
   globalSearchSuggestions: string[];
@@ -73,6 +94,7 @@ export interface StoreState {
   canvasBackgroundBlur: number;
   nodeSpread: number;
   nodeSize: number;
+  edgeWidth: number;
   nodeColor: string;
   nodeTextColor: string;
   nodeGradientColor1: string;
@@ -98,7 +120,7 @@ export interface StoreState {
   globalTextExpanded: boolean;
   activePreviewText: string | null;
   activePreviewPath: string | null;
-  activePreviewMedia: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' } | null;
+  activePreviewMedia: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' | '3d-model' } | null;
   apiMethod: string;
   apiUrl: string;
   apiHeaders: string;
@@ -129,6 +151,7 @@ export interface StoreState {
   setCanvasBackgroundBlur: (blur: number) => void;
   setNodeSpread: (spread: number) => void;
   setNodeSize: (size: number) => void;
+  setEdgeWidth: (width: number) => void;
   setNodeColor: (color: string) => void;
   setNodeTextColor: (color: string) => void;
   setNodeGradientColor1: (color: string) => void;
@@ -149,13 +172,15 @@ export interface StoreState {
   setShowMediaPreview: (show: boolean) => void;
   setGlobalTextExpanded: (expanded: boolean) => void;
   setActivePreviewText: (text: string | null, path?: string | null) => void;
-  setActivePreviewMedia: (media: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' } | null) => void;
+  setActivePreviewMedia: (media: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' | '3d-model' } | null) => void;
   updateNodeValue: (path: string, newValue: any) => Promise<void>;
   setDragOverride: (id: string, pos: { x: number, y: number } | null) => void;
   clearDragOverrides: () => void;
   
   isSavedDocsOpen: boolean;
   setIsSavedDocsOpen: (isOpen: boolean) => void;
+  schemaExportActive: boolean;
+  setSchemaExportActive: (active: boolean) => void;
   // Resets
   resetAllSettings: () => void;
   clearCode: () => void;
@@ -200,6 +225,8 @@ export const useStore = create<StoreState>()(
       isShortcutsOpen: false,
       isMathHelpOpen: false,
       isSavedDocsOpen: false,
+      schemaExportActive: false,
+      setSchemaExportActive: (active: boolean) => set({ schemaExportActive: active }),
       apiMethod: 'GET',
       apiUrl: 'https://jsonplaceholder.typicode.com/todos/1',
       apiHeaders: '{\n  "Accept": "application/json"\n}',
@@ -208,13 +235,75 @@ export const useStore = create<StoreState>()(
       dragOverrides: {},
       undoStack: [],
       redoStack: [],
+      inlineApiEditor: null,
+      setInlineApiEditor: (editor) => set({ inlineApiEditor: editor }),
+      apiNodeConfig: {},
+      setApiNodeConfig: (path, config) => set((s) => ({ apiNodeConfig: { ...s.apiNodeConfig, [path]: config } })),
+
+      apiNodeResponses: {},
+      apiNodeLoading: {},
+      apiNodeErrors: {},
+      setApiNodeResponse: (path: string, data: any) => {
+        set((s) => {
+          const res = { ...s.apiNodeResponses, [path]: data };
+          let treeData = null;
+          if (s.parsedData !== null) {
+            treeData = transformToTree(s.parsedData, 'root', 'root', res);
+          }
+          return { apiNodeResponses: res, treeData };
+        });
+      },
+      setApiNodeLoading: (path: string, loading: boolean) => set((s) => ({ apiNodeLoading: { ...s.apiNodeLoading, [path]: loading } })),
+      setApiNodeError: (path: string, error: string | null) => set((s) => ({ apiNodeErrors: { ...s.apiNodeErrors, [path]: error } })),
+      removeApiNode: (path: string) => set((s) => {
+        const res = { ...s.apiNodeResponses };
+        delete res[path];
+        const loading = { ...s.apiNodeLoading };
+        delete loading[path];
+        const errors = { ...s.apiNodeErrors };
+        delete errors[path];
+        let treeData = null;
+        if (s.parsedData !== null) {
+          treeData = transformToTree(s.parsedData, 'root', 'root', res);
+        }
+        return { apiNodeResponses: res, apiNodeLoading: loading, apiNodeErrors: errors, treeData };
+      }),
+
+      codeFormat: 'json',
+      setCodeFormat: (format: CodeFormat) => set({ codeFormat: format }),
+      convertFormat: async (targetFormat: CodeFormat) => {
+        const { parsedData, codeFormat, setCode } = get();
+        if (!parsedData || codeFormat === targetFormat) return;
+        
+        let newCode = '';
+        if (targetFormat === 'yaml') {
+          try {
+            const yaml = (await import('js-yaml')).default;
+            newCode = yaml.dump(parsedData);
+          } catch {
+            return;
+          }
+        } else {
+          newCode = JSON.stringify(parsedData, null, 2);
+        }
+        
+        set({ codeFormat: targetFormat });
+        setCode(newCode);
+      },
 
       setCode: (code: string, skipHistory = false) => {
         const currentCode = get().code;
+        const { apiNodeResponses } = get();
         const { data, error } = parseInput(code);
         let treeData = null;
         if (data !== null) {
-            treeData = transformToTree(data);
+            treeData = transformToTree(data, 'root', 'root', apiNodeResponses);
+        }
+
+        const isYaml = code.trim().startsWith('{') === false && code.trim().startsWith('[') === false;
+        
+        if (code.trim() !== '') {
+           set({ codeFormat: isYaml ? 'yaml' : 'json' });
         }
 
         if (!skipHistory && code !== currentCode) {
@@ -273,6 +362,7 @@ export const useStore = create<StoreState>()(
       setCanvasBackgroundBlur: (blur: number) => set({ canvasBackgroundBlur: blur }),
       setNodeSpread: (spread: number) => set({ nodeSpread: spread, dragOverrides: {} }),
       setNodeSize: (size: number) => set({ nodeSize: size, dragOverrides: {} }),
+      setEdgeWidth: (width: number) => set({ edgeWidth: width }),
       setNodeColor: (color: string) => set({ nodeColor: color }),
       setNodeTextColor: (color: string) => set({ nodeTextColor: color }),
       setNodeGradientColor1: (color: string) => set({ nodeGradientColor1: color }),
@@ -280,6 +370,7 @@ export const useStore = create<StoreState>()(
       setUseNodeGradient: (use: boolean) => set({ useNodeGradient: use }),
       setNodeGradientAngle: (angle: number) => set({ nodeGradientAngle: angle }),
       setNodeGradientType: (type: GradientType) => set({ nodeGradientType: type }),
+      setVisualizerMode: (mode: VisualizerMode) => set({ visualizerMode: mode }),
       setIsAutosaveEnabled: (enabled: boolean) => set({ isAutosaveEnabled: enabled }),
       setSearchEngineMode: (mode: SearchEngineMode) => {
         set({ searchEngineMode: mode });
@@ -472,6 +563,7 @@ export const useStore = create<StoreState>()(
       partialize: (state) => {
         const persistedKeys = [
           ...Object.keys(defaultSettings),
+          'codeFormat',
           'isEditorPanelOpen',
           'isAdvancedPanelOpen',
           'apiMethod',

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
-import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings } from 'lucide-react';
+import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseSearchQuery } from '../utils/searchEngine';
 
@@ -126,6 +126,13 @@ export default function NodeQueryEngine() {
                 <div className="h-5 w-[1px] bg-slate-300 dark:bg-slate-700"></div>
                 
                 <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('refetch-all-api-nodes'))}
+                        className="p-1.5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400"
+                        title="Refetch All APIs"
+                    >
+                        <RefreshCw size={16} />
+                    </button>
                     <button
                         onClick={() => setShowHelp(true)}
                         className="p-1.5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"

@@ -11,6 +11,8 @@ import AnnotationRenderer from "./AnnotationRenderer";
 import { mediaCache } from "./SmartMediaRenderer";
 import { useDrawingSystem } from "../hooks/useDrawingSystem";
 import { Copy, Edit2, Trash2, X, Search, Settings, Eye } from "lucide-react";
+import { getDynamicActions } from "../utils/contextActions";
+import { InlineApiEditor } from "./InlineApiEditor";
 
 import NodeQueryEngine from './NodeQueryEngine';
 
@@ -40,6 +42,8 @@ export default function GraphVisualizer() {
     appTheme,
     setActivePreviewText,
     setActivePreviewMedia,
+    inlineApiEditor,
+    setInlineApiEditor,
   } = useStore();
   
   const collapsedNodes = useDeferredValue(rawCollapsedNodes);
@@ -1053,6 +1057,19 @@ export default function GraphVisualizer() {
           <g className="annotations-layer">
             <AnnotationRenderer />
           </g>
+          <g className="popups-layer">
+            {inlineApiEditor && (
+              <InlineApiEditor 
+                key={inlineApiEditor.nodeId}
+                initialUrl={inlineApiEditor.url}
+                path={inlineApiEditor.path}
+                nodeX={inlineApiEditor.x}
+                nodeY={inlineApiEditor.y}
+                nodeWidth={inlineApiEditor.width}
+                onClose={() => setInlineApiEditor(null)}
+              />
+            )}
+          </g>
         </g>
       </svg>
 
@@ -1153,6 +1170,21 @@ export default function GraphVisualizer() {
                 <Copy size={16} className="text-slate-400" />
                 Copy Key
               </button>
+
+              {/* Dynamic Actions */}
+              {getDynamicActions(contextMenu.node.value).map((action) => (
+                <button
+                  key={action.id}
+                  className="w-full text-left px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700/50 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                  onClick={() => {
+                    action.action(contextMenu.node.value);
+                    setContextMenu(null);
+                  }}
+                >
+                  <action.icon size={16} />
+                  {action.label}
+                </button>
+              ))}
 
               {(contextMenu.node.type === "string" ||
                 contextMenu.node.type === "number") && (
