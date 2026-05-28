@@ -753,6 +753,18 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-[495] shadow-xl overflow-y-auto max-h-[80vh] custom-scrollbar">
             <div className="p-4 grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mode</label>
+              <select 
+                value={visualizerMode} 
+                onChange={(e) => setVisualizerMode(e.target.value as any)}
+                className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
+              >
+                <option value="graph">Graph</option>
+                <option value="schema">Schema</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Format</label>
               <select 
                 value={codeFormat} 
@@ -882,6 +894,22 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                >
                  {isAutosaveEnabled ? <Cloud size={16} /> : <CloudOff size={16} />} 
                  {isAutosaveEnabled ? 'Autosave is On' : 'Turn On Autosave'}
+               </button>
+               <button 
+                 onClick={() => { setIsMobileMenuOpen(false); setIsSavedDocsOpen(true); }} 
+                 className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
+               >
+                 <FolderOpen size={16} /> Saved Documents
+               </button>
+               <button 
+                 onClick={() => { setIsMobileMenuOpen(false); setIsApiHelpOpen(true); }}
+                 className="w-full flex items-center justify-center gap-2 p-2.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 rounded-md transition-all text-sm font-medium relative overflow-hidden group/api-btn" 
+               >
+                 <Network size={16} className="animate-pulse" /> API Nodes Guide
+                 <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                 </span>
                </button>
                <button 
                  onClick={() => { setIsMobileMenuOpen(false); setIsSavedDocsOpen(true); }} 
