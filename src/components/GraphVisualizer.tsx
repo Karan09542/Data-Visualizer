@@ -404,7 +404,98 @@ export default function GraphVisualizer() {
     typeOverride?: string,
   ) => {
     try {
-      const { code, setCode } = useStore.getState();
+      const { code, setCode, apiNodeResponses, setApiNodeResponse, removeApiNode } = useStore.getState();
+
+      if (nodePath.includes(".__fetched")) {
+        const fetchedMarker = ".__fetched";
+        const idx = nodePath.indexOf(fetchedMarker);
+        const apiNodePath = nodePath.substring(0, idx);
+        const relativePath = nodePath.substring(idx + fetchedMarker.length);
+        
+        let finalValue: any = newValueStr;
+        if (action === "edit" || action === "add") {
+          if (typeOverride && typeOverride !== "auto") {
+            if (typeOverride === "object") finalValue = {};
+            else if (typeOverride === "array") finalValue = [];
+            else if (typeOverride === "null") finalValue = null;
+            else if (typeOverride === "boolean") finalValue = newValueStr === "true";
+            else if (typeOverride === "number") {
+              const num = Number(newValueStr);
+              finalValue = isNaN(num) ? 0 : num;
+            } else if (typeOverride === "string") finalValue = newValueStr;
+          } else {
+            try {
+              finalValue = JSON.parse(newValueStr || '""');
+            } catch (e) {
+              finalValue = newValueStr;
+            }
+          }
+        }
+
+        const originalResponse = apiNodeResponses[apiNodePath];
+        if (relativePath === "") {
+          if (action === "edit") {
+            setApiNodeResponse(apiNodePath, finalValue);
+          } else if (action === "delete") {
+            removeApiNode(apiNodePath);
+          } else if (action === "add") {
+            let cloned = originalResponse !== undefined ? JSON.parse(JSON.stringify(originalResponse)) : {};
+            if (Array.isArray(cloned)) {
+              cloned.push(finalValue);
+            } else if (cloned && typeof cloned === "object") {
+              if (newKeyStr) cloned[newKeyStr] = finalValue;
+            }
+            setApiNodeResponse(apiNodePath, cloned);
+          }
+          return;
+        }
+
+        // Relative path modification inside API response
+        const parts = relativePath
+          .split(/(?=\[)|(?=\.)/)
+          .filter(Boolean)
+          .map((p) =>
+            p.startsWith(".") ? p.substring(1) : p.replace(/[\[\]]/g, ""),
+          );
+
+        // Deep copy original response
+        const cloned = JSON.parse(JSON.stringify(originalResponse));
+        let current = cloned;
+        for (let i = 0; i < parts.length - 1; i++) {
+          current = current[parts[i]];
+        }
+
+        const lastKey = parts[parts.length - 1];
+
+        if (action === "edit") {
+          if (newKeyStr && newKeyStr !== lastKey && !Array.isArray(current)) {
+            delete current[lastKey];
+            current[newKeyStr] = finalValue;
+          } else {
+            current[lastKey] = finalValue;
+          }
+        } else if (action === "delete") {
+          if (Array.isArray(current)) {
+            const numIndex = Number(lastKey);
+            if (!isNaN(numIndex)) {
+              current.splice(numIndex, 1);
+            }
+          } else if (typeof current === "object" && current !== null) {
+            delete current[lastKey];
+          }
+        } else if (action === "add") {
+          const target = current[lastKey];
+          if (Array.isArray(target)) {
+            target.push(finalValue);
+          } else if (typeof target === "object" && target !== null) {
+            if (newKeyStr) target[newKeyStr] = finalValue;
+          }
+        }
+
+        setApiNodeResponse(apiNodePath, cloned);
+        return;
+      }
+
       const parsed = JSON.parse(code);
 
       let finalValue: any = newValueStr;
@@ -1135,13 +1226,25 @@ export default function GraphVisualizer() {
                       for (let i = 0; i < parts.length; i++) {
                         current = current[parts[i]];
                       }
-                      valToCopy = JSON.stringify(current, null, 2);
+                      if (current === undefined) {
+                        throw new Error("Path not in original editor code");
+                      }
+                      valToCopy = typeof current === 'object' && current !== null
+                        ? JSON.stringify(current, null, 2)
+                        : String(current);
                     }
                   } catch (e) {
-                    valToCopy =
-                      contextMenu.node.value !== undefined
-                        ? String(contextMenu.node.value)
-                        : "Could not copy";
+                    if (contextMenu.node.rawValue !== undefined) {
+                      const raw = contextMenu.node.rawValue;
+                      valToCopy = typeof raw === 'object' && raw !== null
+                        ? JSON.stringify(raw, null, 2)
+                        : String(raw);
+                    } else {
+                      valToCopy =
+                        contextMenu.node.value !== undefined
+                          ? String(contextMenu.node.value)
+                          : "Could not copy";
+                    }
                   }
                   navigator.clipboard.writeText(valToCopy);
                   setContextMenu(null);
@@ -1275,6 +1378,27 @@ export default function GraphVisualizer() {
                     const nodePath = contextMenu.node.path;
                     if (nodePath === "root") {
                       valToEdit = code;
+                    } else if (nodePath.includes(".__fetched")) {
+                      const parts = nodePath
+                        .split(/(?=\[)|(?=\.)/)
+                        .filter(Boolean)
+                        .map((p) =>
+                          p.startsWith(".")
+                            ? p.substring(1)
+                            : p.replace(/[\[\]]/g, ""),
+                        );
+                      currentKey = parts[parts.length - 1];
+                      
+                      const raw = contextMenu.node.rawValue;
+                      if (raw !== undefined) {
+                        valToEdit = typeof raw === "object" && raw !== null
+                          ? JSON.stringify(raw, null, 2)
+                          : String(raw);
+                      } else {
+                        valToEdit = contextMenu.node.value !== undefined
+                          ? String(contextMenu.node.value)
+                          : "";
+                      }
                     } else {
                       const parts = nodePath
                         .replace(/^root/, "")
@@ -1290,16 +1414,26 @@ export default function GraphVisualizer() {
                       for (let i = 0; i < parts.length; i++) {
                         current = current[parts[i]];
                       }
+                      if (current === undefined) {
+                        throw new Error("Path not in original editor code");
+                      }
                       valToEdit =
                         typeof current === "object"
                           ? JSON.stringify(current, null, 2)
                           : String(current);
                     }
                   } catch (e) {
-                    valToEdit =
-                      contextMenu.node.value !== undefined
-                        ? String(contextMenu.node.value)
-                        : "";
+                    const raw = contextMenu.node.rawValue;
+                    if (raw !== undefined) {
+                      valToEdit = typeof raw === "object" && raw !== null
+                        ? JSON.stringify(raw, null, 2)
+                        : String(raw);
+                    } else {
+                      valToEdit =
+                        contextMenu.node.value !== undefined
+                          ? String(contextMenu.node.value)
+                          : "";
+                    }
                   }
 
                   setEditingNode({
@@ -1361,7 +1495,7 @@ export default function GraphVisualizer() {
               onClick={() => setEditingNode(null)}
             >
               <div
-                className="bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700 rounded-xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto"
+                className="bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700 rounded-xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3 max-h-[90vh] overflow-y-auto custom-scrollbar"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-between items-center border-b border-slate-300 dark:border-slate-700/50 pb-2">
@@ -1391,7 +1525,7 @@ export default function GraphVisualizer() {
                     Node Path
                   </label>
                   <div
-                    className="text-xs font-mono text-blue-600 dark:text-blue-300 bg-slate-50 dark:bg-[#0f172a] p-2 rounded-md max-w-full overflow-x-auto border border-blue-200 dark:border-blue-900/30 truncate"
+                    className="text-xs font-mono text-blue-600 dark:text-blue-300 bg-slate-50 dark:bg-[#0f172a] p-2 rounded-md max-w-full overflow-x-auto custom-scrollbar border border-blue-200 dark:border-blue-900/30 truncate"
                     title={editingNode.node.path}
                   >
                     {editingNode.node.path}
@@ -1467,7 +1601,7 @@ export default function GraphVisualizer() {
                           value: e.target.value,
                         })
                       }
-                      className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-2 text-slate-800 dark:text-slate-200 font-mono text-xs h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y shadow-inner"
+                      className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-2 text-slate-800 dark:text-slate-200 font-mono text-xs h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y shadow-inner custom-scrollbar"
                       placeholder={
                         editingNode.typeOverride === "boolean"
                           ? "true or false"

@@ -102,7 +102,17 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
         ref={wrapperRef}
         className="flex flex-col bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-600/70 rounded-xl p-3 shadow-2xl text-slate-800 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-100 relative"
         style={{ pointerEvents: 'auto', width: '360px' }}
-        onMouseDown={(e) => e.stopPropagation()} // Prevent pan drag start
+        onMouseDown={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
+        onMouseMove={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onPointerMove={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200 dark:border-white/10">
           <span className="text-xs font-semibold tracking-wider uppercase text-blue-600 dark:text-blue-400">Edit API Node</span>

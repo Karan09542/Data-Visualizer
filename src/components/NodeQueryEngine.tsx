@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
-import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings, RefreshCw } from 'lucide-react';
+import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings, RefreshCw, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseSearchQuery } from '../utils/searchEngine';
 
@@ -390,6 +390,15 @@ export default function NodeQueryEngine() {
                                         </pre>
                                     </div>
                                     
+                                    <div>
+                                        <h3 className={`font-semibold mb-2 flex items-center gap-2 text-sm ${appTheme === 'dark' ? 'text-slate-200' : 'text-slate-800'}`}><Globe size={14} className="text-indigo-500 animate-pulse"/> Interactive API Nodes</h3>
+                                        <p className="mb-2">If any JSON/YAML key ends in <code className="font-mono text-xs font-bold text-indigo-500">_api_node</code> and has a String URL value, it transforms into an interactive remote endpoint trigger.</p>
+                                        <ul className="list-disc pl-5 space-y-2 text-xs text-slate-500 dark:text-slate-400">
+                                            <li>Double-click/Edit to customize HTTP Action (<code className="font-mono">GET, POST, etc</code>), timeout, and formats</li>
+                                            <li>Execute directly from Node UI to mount remote responses into the graph tree under a <code className="font-mono text-emerald-500">__fetched</code> subtree directory</li>
+                                        </ul>
+                                    </div>
+
                                     <div className={`mt-6 pt-4 border-t flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'}`}>
                                         <div className="flex flex-col gap-1.5">
                                             <h3 className={`font-semibold text-xs uppercase tracking-wider ${appTheme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Shortcuts</h3>

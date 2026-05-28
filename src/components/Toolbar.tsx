@@ -1,8 +1,9 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2, Save, CloudOff, Cloud, Sliders, SlidersHorizontal } from 'lucide-react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2, Save, CloudOff, Cloud, Sliders, SlidersHorizontal, Network } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { estimateShareSize } from '../utils/shareUtils';
 import { useAnnotationStore } from '../store/useAnnotationStore';
+import ApiNodeHelpModal from './ApiNodeHelpModal';
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const { 
@@ -62,6 +63,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       case 'unsafe': return { color: 'bg-red-500', label: 'Too Large' };
     }
   }, [shareSizeInfo.status]);
+
+  const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
 
   useEffect(() => {
     // Warm up SnapDOM cache without blocking the main thread
@@ -663,6 +666,19 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <FolderOpen size={14} />
                 <span className="text-xs font-semibold">Saved</span>
               </button>
+              <button 
+                onClick={() => setIsApiHelpOpen(true)}
+                className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all border border-emerald-500/25 hover:-translate-y-px mr-2 relative overflow-hidden group/api-btn" 
+                title="Interactive API Nodes Integrations Guide"
+              >
+                <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-r from-transparent via-emerald-500/10 to-transparent -translate-x-full group-hover/api-btn:animate-[shimmer_2s_infinite]" />
+                <Network size={14} className="animate-pulse" />
+                <span className="text-xs font-semibold">API Nodes</span>
+                <span className="absolute top-1 right-1 flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+              </button>
               <button onClick={toggleTheme} className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors" title="Toggle Theme">
                 {appTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
@@ -974,6 +990,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
         </>
       )}
+
+      <ApiNodeHelpModal isOpen={isApiHelpOpen} onClose={() => setIsApiHelpOpen(false)} />
     </>
   );
 }
