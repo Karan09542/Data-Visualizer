@@ -15,7 +15,8 @@ import {
   MoreVertical,
   Maximize2, 
   Minimize2, 
-  Eye 
+  Eye,
+  FileText
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
@@ -32,10 +33,14 @@ interface NodeProps {
   onContextMenu?: (e: React.MouseEvent, node: TreeNode) => void;
 }
 
-const getMediaType = (val: string) => {
+export const getMediaType = (val: string) => {
   if (!val || typeof val !== "string") return null;
   val = val.trim();
-  if (val.match(/\.pdf(\?.*)?$/i) || val.startsWith("data:application/pdf")) 
+  if (
+    val.match(/\.pdf(\?.*)?$/i) || 
+    val.startsWith("data:application/pdf") ||
+    (val.startsWith("blob:http") && val.includes("pdf"))
+  ) 
     return "pdf";
   if (
     val.startsWith("data:image/") ||
@@ -97,6 +102,7 @@ export default function NodeRenderer({
     activeMatchId,
     setSelectedNodeId,
     showMediaPreview,
+    manuallyRenderedNodes,
     setDragOverride,
     globalTextExpanded,
     setActivePreviewText,
@@ -151,8 +157,9 @@ export default function NodeRenderer({
   const strVal = data.value !== undefined ? String(data.value) : "";
   const isApiNode = data.type === 'string' && data.name && String(data.name).endsWith('_api_node');
   
+  const isManuallyRendered = manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
   const mediaType =
-    showMediaPreview && data.type === "string" && !smartMediaFailed && !isApiNode
+    (showMediaPreview || isManuallyRendered) && data.type === "string" && !smartMediaFailed && !isApiNode
       ? getMediaType(strVal)
       : null;
   const isMedia = !!mediaType;
@@ -1281,11 +1288,20 @@ export default function NodeRenderer({
                   );
                 })()}
                 {mediaType === "pdf" && (
-                  <SafeIframe
-                    src={strVal}
-                    className="w-full h-[160px] rounded border-0 bg-white"
-                    title="PDF Document"
-                  />
+                  <div className="flex flex-col items-center justify-center p-4 w-full h-[160px] bg-gradient-to-br from-rose-500/5 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/20 rounded border border-rose-500/20 text-center gap-1.5 cursor-pointer">
+                    <div className="p-2 rounded-full bg-rose-500/10 text-rose-500 animate-pulse">
+                      <FileText size={22} />
+                    </div>
+                    <div className="text-xs font-semibold text-rose-700 dark:text-rose-400 font-sans">
+                      PDF Document
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-full px-2" title={strVal.split('/').pop()}>
+                      {strVal.split('/').pop() || "document.pdf"}
+                    </div>
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 font-mono">
+                      Click Full Preview below
+                    </span>
+                  </div>
                 )}
                 {mediaType === "smart" && (
                   <SmartMediaRenderer
@@ -1305,7 +1321,7 @@ export default function NodeRenderer({
                     type:
                       mediaType === "smart"
                         ? "smart"
-                        : strVal.match(/\.pdf(\?.*)?$/i)
+                        : (mediaType === "pdf" || strVal.match(/\.pdf(\?.*)?$/i))
                           ? "pdf"
                           : (mediaType as any),
                   });

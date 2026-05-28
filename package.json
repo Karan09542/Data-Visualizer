@@ -38,6 +38,7 @@
     "lz-string": "^1.5.0",
     "mathjs": "^15.2.0",
     "motion": "^12.40.0",
+    "pdfjs-dist": "^5.7.284",
     "prop-types": "^15.8.1",
     "react": "^19.0.1",
     "react-colorful": "^5.7.0",

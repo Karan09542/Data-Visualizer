@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import SmartMediaRenderer from './SmartMediaRenderer';
 import { SmartFallbackMedia } from './SmartFallbackMedia';
+import { PdfViewer } from './PdfViewer';
 
 const MediaPreviewPopup: React.FC = () => {
   const { activePreviewMedia, setActivePreviewMedia } = useStore();
@@ -87,12 +88,8 @@ const MediaPreviewPopup: React.FC = () => {
 
     if (type === 'pdf') {
       return (
-        <div className="w-[95%] h-[92%] bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl ring-1 ring-white/10">
-          <iframe 
-            src={url} 
-            className="w-full h-full border-0" 
-            title="PDF Preview"
-          />
+        <div className="w-[95%] h-[92%] bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl ring-1 ring-white/10 flex flex-col p-2">
+          <PdfViewer url={url} />
         </div>
       );
     }

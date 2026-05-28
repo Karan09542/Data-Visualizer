@@ -65,15 +65,19 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       let data;
       const contentType = res.headers.get('content-type') || '';
       
+      const isPdf = contentType.includes('application/pdf') || (config.responseType === 'auto' && currentUrl.match(/\.pdf(\?.*)?$/i));
       const isImage = contentType.includes('image/');
       const isAudio = contentType.includes('audio/');
       const isVideo = contentType.includes('video/');
       const isModel = contentType.includes('model/') || (config.responseType === 'auto' && currentUrl.match(/\.(glb|gltf|obj)(\?.*)?$/i));
-      const hasMedia = isImage || isAudio || isVideo || isModel;
+      const hasMedia = isPdf || isImage || isAudio || isVideo || isModel;
 
       if (config.responseType === 'blob' || (config.responseType === 'auto' && hasMedia)) {
         const blob = await res.blob();
-        if (isImage) {
+        if (isPdf) {
+          const objectUrl = URL.createObjectURL(blob) + '#pdf';
+          data = { _pdfUrl: objectUrl, type: contentType, size: blob.size };
+        } else if (isImage) {
           const objectUrl = URL.createObjectURL(blob) + '#image';
           data = { _imageUrl: objectUrl, type: contentType, size: blob.size };
         } else if (isAudio) {

@@ -38,6 +38,7 @@ export const defaultSettings = {
   nodeSize: 1.0,
   edgeWidth: 1.0,
   showMediaPreview: false,
+  manuallyRenderedNodes: {} as Record<string, boolean>,
   globalTextExpanded: false,
   activePreviewText: null,
   activePreviewPath: null,
@@ -117,6 +118,7 @@ export interface StoreState {
   isShortcutsOpen: boolean;
   isMathHelpOpen: boolean;
   showMediaPreview: boolean;
+  manuallyRenderedNodes: Record<string, boolean>;
   globalTextExpanded: boolean;
   activePreviewText: string | null;
   activePreviewPath: string | null;
@@ -170,6 +172,7 @@ export interface StoreState {
   setIsShortcutsOpen: (isOpen: boolean) => void;
   setIsMathHelpOpen: (isOpen: boolean) => void;
   setShowMediaPreview: (show: boolean) => void;
+  toggleManualMediaRender: (nodeId: string) => void;
   setGlobalTextExpanded: (expanded: boolean) => void;
   setActivePreviewText: (text: string | null, path?: string | null) => void;
   setActivePreviewMedia: (media: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' | '3d-model' } | null) => void;
@@ -457,6 +460,12 @@ export const useStore = create<StoreState>()(
       setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
       setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
       setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show }),
+      toggleManualMediaRender: (nodeId: string) => set((state) => ({
+        manuallyRenderedNodes: {
+          ...state.manuallyRenderedNodes,
+          [nodeId]: !state.manuallyRenderedNodes[nodeId],
+        }
+      })),
       setGlobalTextExpanded: (expanded: boolean) => set({ globalTextExpanded: expanded }),
       setActivePreviewText: (text, path = null) => set({ activePreviewText: text, activePreviewPath: path }),
       setActivePreviewMedia: (media) => set({ activePreviewMedia: media }),

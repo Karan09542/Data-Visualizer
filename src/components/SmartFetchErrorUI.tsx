@@ -22,6 +22,7 @@ import {
   LayoutTemplate
 } from 'lucide-react';
 import { SmartFetchResult } from '../utils/smartJsonFetch';
+import { PdfViewer } from './PdfViewer';
 
 interface SmartFetchErrorUIProps {
   result: SmartFetchResult;
@@ -226,23 +227,8 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
               </div>
               <span className="text-[10px] font-mono text-slate-400 truncate max-w-[150px]">{contentType}</span>
             </div>
-            <div className="h-64 border border-slate-200/60 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-lg overflow-hidden flex flex-col">
-              <iframe
-                src={mediaUrl}
-                title="PDF Preview"
-                className="w-full flex-1 border-0"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <a
-                href={mediaUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 dark:bg-slate-850 hover:bg-slate-800 text-white rounded-lg text-[11px] font-bold uppercase tracking-wider transition shadow-sm"
-              >
-                <ExternalLink size={11} />
-                <span>Open in New Tab</span>
-              </a>
+            <div className="h-[430px] border border-slate-200/60 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-lg overflow-hidden flex flex-col">
+              <PdfViewer url={mediaUrl} />
             </div>
           </div>
         );
