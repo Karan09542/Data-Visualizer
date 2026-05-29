@@ -88,9 +88,27 @@ export default function EditorPanel() {
   }, [monaco, appTheme]);
 
   useEffect(() => {
-    const handleFormat = () => {
-      if (editorRef.current && activeTab === 'raw') {
-        editorRef.current.getAction('editor.action.formatDocument').run();
+    const handleFormat = async () => {
+      if (activeTab === 'raw') {
+        const { codeFormat, code, setCode } = useStore.getState();
+        if (codeFormat === 'json') {
+          try {
+            const parsed = JSON.parse(code);
+            setCode(JSON.stringify(parsed, null, 2));
+          } catch (e) {
+            // Do not format if invalid
+          }
+        } else if (codeFormat === 'yaml') {
+          try {
+            const yaml = (await import('js-yaml')).default;
+            const parsed = yaml.load(code);
+            if (typeof parsed === 'object') {
+              setCode(yaml.dump(parsed));
+            }
+          } catch (e) {
+            // Do not format if invalid
+          }
+        }
       }
     };
     window.addEventListener('format-editor', handleFormat);

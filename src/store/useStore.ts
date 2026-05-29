@@ -296,17 +296,11 @@ export const useStore = create<StoreState>()(
 
       setCode: (code: string, skipHistory = false) => {
         const currentCode = get().code;
-        const { apiNodeResponses } = get();
+        const { apiNodeResponses, codeFormat } = get();
         const { data, error } = parseInput(code);
         let treeData = null;
         if (data !== null) {
             treeData = transformToTree(data, 'root', 'root', apiNodeResponses);
-        }
-
-        const isYaml = code.trim().startsWith('{') === false && code.trim().startsWith('[') === false;
-        
-        if (code.trim() !== '') {
-           set({ codeFormat: isYaml ? 'yaml' : 'json' });
         }
 
         if (!skipHistory && code !== currentCode) {
@@ -471,7 +465,7 @@ export const useStore = create<StoreState>()(
       setActivePreviewMedia: (media) => set({ activePreviewMedia: media }),
       
       updateNodeValue: async (path, newValue) => {
-        const { parsedData, code, setCode } = get();
+        const { parsedData, code, setCode, codeFormat } = get();
         if (!parsedData) return;
 
         // Clone parsedData
@@ -510,7 +504,7 @@ export const useStore = create<StoreState>()(
         }
 
         // Detect format
-        const isYaml = code.trim().startsWith('{') === false && code.trim().startsWith('[') === false;
+        const isYaml = codeFormat === 'yaml';
 
         let newCode = '';
         if (isYaml) {

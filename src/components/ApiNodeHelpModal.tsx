@@ -11,18 +11,18 @@ interface ApiNodeHelpModalProps {
 const ApiNodeHelpModal: React.FC<ApiNodeHelpModalProps> = ({ isOpen, onClose }) => {
   const { code, setCode, appTheme } = useStore();
 
-  const handleInsertExample = () => {
+  const handleInsertExample = async () => {
     try {
-      let currentJson: any = {};
-      try {
-        currentJson = JSON.parse(code);
-      } catch {
-        currentJson = {};
+      const { parsedData, codeFormat, setCode } = useStore.getState();
+      
+      let currentData: any = {};
+      if (parsedData && typeof parsedData === 'object' && !Array.isArray(parsedData)) {
+        currentData = { ...parsedData };
+      } else if (Array.isArray(parsedData)) {
+         currentData = { _original_array: parsedData };
       }
 
-      // Add demo API node structure
-      const updatedJson = {
-        ...currentJson,
+      const demoNodes = {
         demo_user_info: "Demographic and details panel",
         github_profile_api_node: "https://api.github.com/users/octocat",
         posts_api_node: "https://jsonplaceholder.typicode.com/posts/1",
@@ -32,7 +32,21 @@ const ApiNodeHelpModal: React.FC<ApiNodeHelpModalProps> = ({ isOpen, onClose }) 
         }
       };
 
-      setCode(JSON.stringify(updatedJson, null, 2));
+      currentData.demo_nodes = demoNodes;
+
+      let newCode = '';
+      if (codeFormat === 'yaml') {
+        try {
+          const yaml = (await import('js-yaml')).default;
+          newCode = yaml.dump(currentData);
+        } catch {
+          newCode = JSON.stringify(currentData, null, 2);
+        }
+      } else {
+        newCode = JSON.stringify(currentData, null, 2);
+      }
+
+      setCode(newCode);
       onClose();
     } catch (e) {
       console.error("Could not insert example", e);
