@@ -1676,15 +1676,15 @@ export default function GraphVisualizer() {
       {/* Table View Modal */}
       {tableViewData &&
         createPortal(
-          <div className={appTheme}>
+          <div className={`fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 ${appTheme}`}>
             <div
-              className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setTableViewData(null)}
+            />
+            <div 
+              className="relative w-full max-w-6xl max-h-[85vh] h-full bg-slate-50 dark:bg-slate-900 rounded-xl shadow-2xl flex flex-col overflow-hidden"
+              onClick={e => e.stopPropagation()}
             >
-              <div 
-                className="w-full max-w-6xl h-[85vh] bg-slate-50 dark:bg-slate-900 rounded-xl shadow-2xl flex flex-col overflow-hidden"
-                onClick={e => e.stopPropagation()}
-              >
                 <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
                     <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
                         <TableProperties className="text-blue-500" size={20} />
@@ -1701,7 +1701,6 @@ export default function GraphVisualizer() {
                     <TableView data={tableViewData.data} title={tableViewData.title} />
                 </div>
               </div>
-            </div>
           </div>,
           document.body
         )}

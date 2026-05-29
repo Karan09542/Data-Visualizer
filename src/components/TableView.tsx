@@ -12,7 +12,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
   Search, ChevronDown, ChevronUp, Hash, Calendar, Mail, FileText, 
-  Link as LinkIcon, DollarSign, Smartphone, X, Filter 
+  Link as LinkIcon, DollarSign, Smartphone, X, Filter, Check, Copy 
 } from 'lucide-react';
 
 interface TableViewProps {
@@ -130,6 +130,7 @@ export function TableView({ data, title }: TableViewProps) {
   const [globalFilter, setGlobalFilter] = useState('');
   // Column specific filters
   const [columnFilters, setColumnFilters] = useState<any[]>([]);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
 
   const columns = useMemo<ColumnDef<any>[]>(() => {
     if (!data || data.length === 0) return [];
@@ -320,10 +321,28 @@ export function TableView({ data, title }: TableViewProps) {
                     ))}
                     <div className="absolute right-0 top-0 h-full hidden group-hover/row:flex items-center px-4 bg-gradient-to-l from-blue-50 via-blue-50 to-transparent dark:from-blue-900/40 dark:via-blue-900/40 z-10 space-x-2 w-32 justify-end">
                       <button 
-                        onClick={() => navigator.clipboard.writeText(JSON.stringify(row.original, null, 2))}
-                        className="p-1 px-2 text-[10px] font-semibold text-slate-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 shadow-sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(row.original, null, 2));
+                          setCopiedRowId(row.id);
+                          setTimeout(() => setCopiedRowId(null), 2000);
+                        }}
+                        className={`p-1 flex items-center gap-1.5 px-2 text-[10px] font-semibold rounded border shadow-sm transition-all ${
+                          copiedRowId === row.id 
+                            ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-800/50 dark:text-green-400"
+                            : "text-slate-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                        }`}
                       >
-                        Copy JSON
+                        {copiedRowId === row.id ? (
+                          <>
+                            <Check size={12} strokeWidth={2.5} />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={12} />
+                            <span>Copy JSON</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

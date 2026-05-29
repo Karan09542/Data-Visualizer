@@ -3,19 +3,30 @@ import * as XLSX from 'xlsx';
 
 export function isProbableCsv(text: string): boolean {
   if (typeof text !== 'string') return false;
-  if (!text.includes(',')) return false;
   
   const result = Papa.parse(text, { header: false, preview: 10, skipEmptyLines: true });
   if (!result.data || result.data.length < 2) return false;
   
   const numColumns = (result.data[0] as any[]).length;
-  if (numColumns < 2) return false;
 
   for (let i = 1; i < result.data.length; i++) {
     const rowLen = (result.data[i] as any[]).length;
-    // Allow slight variation, but if completely different it might be regular text with commas
+    // Allow slight variation, but if completely different it might be regular text parsing errors
     if (Math.abs(rowLen - numColumns) > 1) {
       return false;
+    }
+  }
+
+  // If it is a single column, ensure it looks like a list rather than paragraphs of text
+  if (numColumns === 1) {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return false; // Need at least header + 1 row
+    
+    // Check if lines are reasonably short (like a list/CSV) rather than prose
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+      if (lines[i].trim().length > 150) {
+        return false; // A line is too long, probably paragraph/prose
+      }
     }
   }
 
