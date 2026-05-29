@@ -4,7 +4,7 @@ import SafeIframe from './SafeIframe';
 import { useStore } from '../store/useStore';
 
 export const mediaCache = new Map<string, any>();
-export const failedCache = new Map<string, { error?: any, expiresAt: number }>();
+export const failedCache = new Map<string, { error?: any, errorType?: string, message?: string, timestamp: number, expiresAt: number }>();
 const FAILED_CACHE_TTL = 30000; // 30 seconds
 
 const ongoingRequests = new Map<string, Promise<any>>();
@@ -54,6 +54,7 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
 
     let fetchPromise = ongoingRequests.get(url);
     if (!fetchPromise) {
+      console.log("New Inspector Request", url);
       fetchPromise = fetch(`https://api.urlmediainspector.dev/api/v1/inspect?profile=embed&expand=html`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,6 +65,8 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
         ongoingRequests.delete(url);
       });
       ongoingRequests.set(url, fetchPromise);
+    } else {
+      console.log("Reusing Existing Promise", url);
     }
 
     fetchPromise
@@ -80,7 +83,13 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
               if (mime.includes('csv')) type = 'csv';
               useStore.getState().setKnownDataUrl(url, type as any);
             }
-            failedCache.set(url, { error: 'Not a renderable media', expiresAt: Date.now() + FAILED_CACHE_TTL });
+            failedCache.set(url, { 
+              error: 'Not a renderable media', 
+              errorType: 'INVALID_MEDIA_TYPE',
+              message: 'The component returned data, not renderable media. Skipping preview.',
+              timestamp: Date.now(),
+              expiresAt: Date.now() + FAILED_CACHE_TTL 
+            });
             setIsLoading(false);
             if (onMediaFailed) onMediaFailed();
             return;
@@ -91,7 +100,13 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
           setIsLoading(false);
           extractAndSetUrl(data.data.render);
         } else {
-          failedCache.set(url, { error: 'Invalid response', expiresAt: Date.now() + FAILED_CACHE_TTL });
+          failedCache.set(url, { 
+            error: 'Invalid response', 
+            errorType: 'INVALID_RESPONSE',
+            message: 'Target server returned an invalid or unparseable response',
+            timestamp: Date.now(),
+            expiresAt: Date.now() + FAILED_CACHE_TTL 
+          });
           setIsLoading(false);
           if (onMediaFailed) onMediaFailed();
         }
@@ -99,7 +114,13 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       .catch(e => {
         if (!isMounted) return;
         console.error('Inspector error', e);
-        failedCache.set(url, { error: e, expiresAt: Date.now() + FAILED_CACHE_TTL });
+        failedCache.set(url, { 
+          error: e, 
+          errorType: 'NETWORK_ERROR',
+          message: e?.message || 'Network error occurred during media inspection',
+          timestamp: Date.now(),
+          expiresAt: Date.now() + FAILED_CACHE_TTL 
+        });
         setIsLoading(false);
         if (onMediaFailed) onMediaFailed();
       });
