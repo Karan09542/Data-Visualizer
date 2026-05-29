@@ -4,42 +4,69 @@ import SafeIframe from './SafeIframe';
 import { useStore } from '../store/useStore';
 
 export const mediaCache = new Map<string, any>();
+export const failedCache = new Map<string, { error?: any, expiresAt: number }>();
+const FAILED_CACHE_TTL = 30000; // 30 seconds
+
+const ongoingRequests = new Map<string, Promise<any>>();
 
 type RenderState = 'loading' | 'direct' | 'proxied' | 'failed';
 
 export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType }: { url: string, onMediaFailed?: () => void, onResolvedType?: (type: string, actualUrl: string) => void }) {
   const [mediaData, setMediaData] = useState<any>(() => {
     const cached = mediaCache.get(url);
-    if (cached === 'failed') return null;
-    return cached || null;
+    if (cached === 'failed') return null; // Legacy cleanup
+    if (cached) return cached;
+    const failed = failedCache.get(url);
+    if (failed && failed.expiresAt > Date.now()) return null;
+    return null;
   });
   
-  const [isLoading, setIsLoading] = useState(!mediaCache.has(url));
+  const [isLoading, setIsLoading] = useState(() => {
+    if (mediaCache.has(url) && mediaCache.get(url) !== 'failed') return false;
+    const failed = failedCache.get(url);
+    if (failed && failed.expiresAt > Date.now()) return false;
+    return true;
+  });
+  
   const [renderState, setRenderState] = useState<RenderState>('direct');
   const [actualUrl, setActualUrl] = useState<string>(url);
 
   useEffect(() => {
     const cached = mediaCache.get(url);
-    if (cached === 'failed') {
-      setIsLoading(false);
-      if (onMediaFailed) onMediaFailed();
-      return;
-    } else if (cached) {
+    if (cached === 'failed') mediaCache.delete(url); // Clean up legacy entry
+    
+    if (cached && cached !== 'failed') {
       setMediaData(cached);
       setIsLoading(false);
       extractAndSetUrl(cached);
       return;
     }
 
+    const failed = failedCache.get(url);
+    if (failed && failed.expiresAt > Date.now()) {
+      setIsLoading(false);
+      if (onMediaFailed) onMediaFailed();
+      return;
+    }
+
     let isMounted = true;
     setIsLoading(true);
 
-    fetch(`https://api.urlmediainspector.dev/api/v1/inspect?profile=embed&expand=html`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
-    })
+    let fetchPromise = ongoingRequests.get(url);
+    if (!fetchPromise) {
+      fetchPromise = fetch(`https://api.urlmediainspector.dev/api/v1/inspect?profile=embed&expand=html`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      })
       .then(res => res.json())
+      .finally(() => {
+        ongoingRequests.delete(url);
+      });
+      ongoingRequests.set(url, fetchPromise);
+    }
+
+    fetchPromise
       .then(data => {
         if (!isMounted) return;
         if (data.success && data.data && data.data.render) {
@@ -53,7 +80,7 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
               if (mime.includes('csv')) type = 'csv';
               useStore.getState().setKnownDataUrl(url, type as any);
             }
-            mediaCache.set(url, 'failed');
+            failedCache.set(url, { error: 'Not a renderable media', expiresAt: Date.now() + FAILED_CACHE_TTL });
             setIsLoading(false);
             if (onMediaFailed) onMediaFailed();
             return;
@@ -64,7 +91,7 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
           setIsLoading(false);
           extractAndSetUrl(data.data.render);
         } else {
-          mediaCache.set(url, 'failed');
+          failedCache.set(url, { error: 'Invalid response', expiresAt: Date.now() + FAILED_CACHE_TTL });
           setIsLoading(false);
           if (onMediaFailed) onMediaFailed();
         }
@@ -72,7 +99,7 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       .catch(e => {
         if (!isMounted) return;
         console.error('Inspector error', e);
-        mediaCache.set(url, 'failed');
+        failedCache.set(url, { error: e, expiresAt: Date.now() + FAILED_CACHE_TTL });
         setIsLoading(false);
         if (onMediaFailed) onMediaFailed();
       });

@@ -1513,26 +1513,31 @@ export default function GraphVisualizer() {
                         detectedType = "smart";
                         const cached = mediaCache.get(val);
                         if (cached && cached !== "failed") {
-                          const srcMatch = cached.match(/src="([^"]+)"/);
+                          const htmlStr = typeof cached === 'string' ? cached : cached?.html || '';
+                          const srcMatch = htmlStr.match(/src="([^"]+)"/);
                           if (srcMatch && srcMatch[1])
                             detectedUrl = srcMatch[1];
 
+                          const strategy = typeof cached === 'object' ? cached.strategy : null;
+
                           if (
-                            cached.startsWith("<img") ||
-                            cached.includes("<img")
+                            strategy === 'img' ||
+                            htmlStr.startsWith("<img") ||
+                            htmlStr.includes("<img")
                           )
                             detectedType = "image";
                           else if (
-                            cached.startsWith("<video") ||
-                            cached.includes("<video")
+                            strategy === 'video' ||
+                            htmlStr.startsWith("<video") ||
+                            htmlStr.includes("<video")
                           )
                             detectedType = "video";
                           else if (
-                            cached.startsWith("<audio") ||
-                            cached.includes("<audio")
+                            strategy === 'audio' ||
+                            htmlStr.startsWith("<audio") ||
+                            htmlStr.includes("<audio")
                           )
                             detectedType = "audio";
-                          else detectedType = "iframe";
                         }
                       }
 
