@@ -72,7 +72,10 @@ export const getMediaType = (val: string) => {
     return "3d-model";
   // Use inspector for youtube, vimoe, spotfiy, or any http url
   // Just treat any http/https link as potential smart media if we didn't natively catch it
-  if (val.startsWith("http://") || val.startsWith("https://")) return "smart";
+  if (val.startsWith("http://") || val.startsWith("https://")) {
+    if (val.includes("{") || val.includes("}")) return null;
+    return "smart";
+  }
   return null;
 };
 
@@ -108,8 +111,10 @@ export default function NodeRenderer({
     setActivePreviewText,
     setActivePreviewMedia,
     appTheme,
+    knownDataUrls,
   } = useStore();
   const foreignRef = useRef<SVGForeignObjectElement>(null);
+  const mediaContainerRef = useRef<HTMLDivElement>(null);
 
   const nodeRef = useRef(node);
   nodeRef.current = node;
@@ -158,11 +163,44 @@ export default function NodeRenderer({
   const isApiNode = data.type === 'string' && data.name && String(data.name).endsWith('_api_node');
   
   const isManuallyRendered = manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
+  const isKnownDataUrl = !!knownDataUrls[strVal];
   const mediaType =
-    (showMediaPreview || isManuallyRendered) && data.type === "string" && !smartMediaFailed && !isApiNode
+    (showMediaPreview || isManuallyRendered) && data.type === "string" && !smartMediaFailed && !isApiNode && !isKnownDataUrl
       ? getMediaType(strVal)
       : null;
   const isMedia = !!mediaType;
+
+  useEffect(() => {
+    const el = mediaContainerRef.current;
+    if (!el) return;
+
+    const stopPropagation = (e: Event) => {
+      e.stopPropagation();
+    };
+
+    const events = [
+      "mousedown",
+      "mousemove",
+      "mouseup",
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "touchstart",
+      "touchmove",
+      "touchend",
+      "wheel",
+    ];
+
+    events.forEach((event) => {
+      el.addEventListener(event, stopPropagation, { capture: false });
+    });
+
+    return () => {
+      events.forEach((event) => {
+        el.removeEventListener(event, stopPropagation, { capture: false });
+      });
+    };
+  }, [mediaType]);
 
   // reset smartMediaFailed if value changes
   React.useEffect(() => {
@@ -1172,8 +1210,13 @@ export default function NodeRenderer({
               {data.value !== undefined && !isMedia && !isApiNode && (
                 <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
                   <div className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}>
+                    {isKnownDataUrl && (
+                      <span className="inline-block px-1 mr-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 align-middle">
+                        {knownDataUrls[strVal]}
+                      </span>
+                    )}
                     <span
-                      className={`text-[11px] font-mono leading-normal ${
+                      className={`text-[11px] font-mono leading-normal inline ${
                         isExpanded
                           ? "whitespace-pre-wrap break-all"
                           : nodeTheme === "peepal" || nodeTheme === "banyan"
@@ -1248,7 +1291,10 @@ export default function NodeRenderer({
           </div>
 
           {isMedia && (
-            <div className="flex flex-col w-full mt-2 relative group/media-container">
+            <div
+              ref={mediaContainerRef}
+              className="flex flex-col w-full mt-2 relative group/media-container"
+            >
               <div
                 className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
               >

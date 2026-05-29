@@ -57,6 +57,20 @@ export const defaultSettings = {
 
 export type CodeFormat = 'json' | 'yaml';
 
+export type ApiNodeDiagnosticError = {
+  type: string;
+  code: string;
+  message: string;
+  userMessage: string;
+  details?: string;
+  timestamp: string;
+  requestInfo: {
+    url: string;
+    method: string;
+    proxyUsed: boolean;
+  };
+};
+
 export interface StoreState {
   codeFormat: CodeFormat;
   setCodeFormat: (format: CodeFormat) => void;
@@ -67,10 +81,10 @@ export interface StoreState {
   setApiNodeConfig: (path: string, config: { method: string; responseType: string; timeout: number }) => void;
   apiNodeResponses: Record<string, any>;
   apiNodeLoading: Record<string, boolean>;
-  apiNodeErrors: Record<string, string | null>;
+  apiNodeErrors: Record<string, ApiNodeDiagnosticError | null>;
   setApiNodeResponse: (path: string, data: any) => void;
   setApiNodeLoading: (path: string, loading: boolean) => void;
-  setApiNodeError: (path: string, error: string | null) => void;
+  setApiNodeError: (path: string, error: ApiNodeDiagnosticError | null) => void;
   removeApiNode: (path: string) => void;
   isAutosaveEnabled: boolean;
   setIsAutosaveEnabled: (enabled: boolean) => void;
@@ -123,6 +137,8 @@ export interface StoreState {
   activePreviewText: string | null;
   activePreviewPath: string | null;
   activePreviewMedia: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' | '3d-model' } | null;
+  knownDataUrls: Record<string, 'json' | 'xml' | 'csv'>;
+  setKnownDataUrl: (url: string, type: 'json' | 'xml' | 'csv') => void;
   apiMethod: string;
   apiUrl: string;
   apiHeaders: string;
@@ -180,6 +196,8 @@ export interface StoreState {
   setDragOverride: (id: string, pos: { x: number, y: number } | null) => void;
   clearDragOverrides: () => void;
   
+  pendingImport: { filename: string; text: string; dataExcel?: any } | null;
+  setPendingImport: (importData: { filename: string; text: string; dataExcel?: any } | null) => void;
   isSavedDocsOpen: boolean;
   setIsSavedDocsOpen: (isOpen: boolean) => void;
   schemaExportActive: boolean;
@@ -228,6 +246,8 @@ export const useStore = create<StoreState>()(
       isShortcutsOpen: false,
       isMathHelpOpen: false,
       isSavedDocsOpen: false,
+      pendingImport: null,
+      setPendingImport: (importData) => set({ pendingImport: importData }),
       schemaExportActive: false,
       setSchemaExportActive: (active: boolean) => set({ schemaExportActive: active }),
       apiMethod: 'GET',
@@ -257,7 +277,7 @@ export const useStore = create<StoreState>()(
         });
       },
       setApiNodeLoading: (path: string, loading: boolean) => set((s) => ({ apiNodeLoading: { ...s.apiNodeLoading, [path]: loading } })),
-      setApiNodeError: (path: string, error: string | null) => set((s) => ({ apiNodeErrors: { ...s.apiNodeErrors, [path]: error } })),
+      setApiNodeError: (path: string, error: ApiNodeDiagnosticError | null) => set((s) => ({ apiNodeErrors: { ...s.apiNodeErrors, [path]: error } })),
       removeApiNode: (path: string) => set((s) => {
         const res = { ...s.apiNodeResponses };
         delete res[path];
@@ -463,6 +483,8 @@ export const useStore = create<StoreState>()(
       setGlobalTextExpanded: (expanded: boolean) => set({ globalTextExpanded: expanded }),
       setActivePreviewText: (text, path = null) => set({ activePreviewText: text, activePreviewPath: path }),
       setActivePreviewMedia: (media) => set({ activePreviewMedia: media }),
+      knownDataUrls: {},
+      setKnownDataUrl: (url, type) => set((state) => ({ knownDataUrls: { ...state.knownDataUrls, [url]: type } })),
       
       updateNodeValue: async (path, newValue) => {
         const { parsedData, code, setCode, codeFormat } = get();

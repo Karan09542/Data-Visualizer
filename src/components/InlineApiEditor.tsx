@@ -25,6 +25,39 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
   const wrapperRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const stopPropagation = (e: Event) => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+
+    const events = [
+      "mousedown",
+      "mousemove",
+      "mouseup",
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "touchstart",
+      "touchmove",
+      "touchend",
+      "wheel",
+    ];
+
+    events.forEach((event) => {
+      el.addEventListener(event, stopPropagation, { capture: false });
+    });
+
+    return () => {
+      events.forEach((event) => {
+        el.removeEventListener(event, stopPropagation, { capture: false });
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         handleSave();

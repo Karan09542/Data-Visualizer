@@ -10,9 +10,11 @@ import EdgeRenderer from "./EdgeRenderer";
 import AnnotationRenderer from "./AnnotationRenderer";
 import { mediaCache } from "./SmartMediaRenderer";
 import { useDrawingSystem } from "../hooks/useDrawingSystem";
-import { Copy, Edit2, Trash2, X, Search, Settings, Eye } from "lucide-react";
+import { Copy, Edit2, Trash2, X, Search, Settings, Eye, Network, TableProperties, Database, FileText } from "lucide-react";
 import { getDynamicActions } from "../utils/contextActions";
 import { InlineApiEditor } from "./InlineApiEditor";
+import { isProbableCsv, parseCsv, generateSchemaFromData } from "../utils/dataFormats";
+import { TableView } from "./TableView";
 
 import NodeQueryEngine from './NodeQueryEngine';
 
@@ -46,6 +48,7 @@ export default function GraphVisualizer() {
     setInlineApiEditor,
     manuallyRenderedNodes,
     toggleManualMediaRender,
+    knownDataUrls,
   } = useStore();
   
   const collapsedNodes = useDeferredValue(rawCollapsedNodes);
@@ -126,6 +129,9 @@ export default function GraphVisualizer() {
     y: number;
     node: TreeNode;
   } | null>(null);
+  
+  const [tableViewData, setTableViewData] = useState<{ data: any[], title: string } | null>(null);
+  
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -1276,7 +1282,106 @@ export default function GraphVisualizer() {
                 Copy Key
               </button>
 
-              {/* Dynamic Actions */}
+              {/* CSV/Table Actions */}
+              {contextMenu.node.type === "string" && isProbableCsv(contextMenu.node.value) && (
+                <>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-cyan-600 dark:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                    onClick={() => {
+                        try {
+                           const data = parseCsv(contextMenu.node.value);
+                           setTableViewData({ data, title: String(contextMenu.node.name) });
+                           setContextMenu(null);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                    }}
+                  >
+                    <TableProperties size={16} />
+                    Open as Table (CSV)
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors"
+                    onClick={() => {
+                        try {
+                           const data = parseCsv(contextMenu.node.value);
+                           applyJsonChange(
+                               contextMenu.node.path,
+                               "edit",
+                               JSON.stringify(data),
+                               undefined,
+                               "array" // Overriding to array so backend recognizes it
+                           );
+                           setContextMenu(null);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                    }}
+                  >
+                    <Database size={16} />
+                    Convert to JSON List
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors"
+                    onClick={() => {
+                        try {
+                           const data = parseCsv(contextMenu.node.value);
+                           const schema = generateSchemaFromData(data);
+                           applyJsonChange(
+                               contextMenu.node.path + "_schema",
+                               "add",
+                               JSON.stringify(schema)
+                           );
+                           setContextMenu(null);
+                        } catch (e) {
+                           console.error(e);
+                        }
+                    }}
+                  >
+                    <FileText size={16} />
+                    Generate Schema
+                  </button>
+                </>
+              )}
+              {/* General Array -> Table Action */}
+              {contextMenu.node.type === "array" && (
+                <button
+                    className="w-full text-left px-4 py-2 text-sm text-cyan-600 dark:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                    onClick={() => {
+                        try {
+                            setTableViewData({ data: contextMenu.node.rawValue, title: String(contextMenu.node.name) });
+                           setContextMenu(null);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                    }}
+                  >
+                    <TableProperties size={16} />
+                    Open as Table View
+                </button>
+              )}
+              {/* General Array -> Generate Schema */}
+              {contextMenu.node.type === "array" && (
+                <button
+                    className="w-full text-left px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                    onClick={() => {
+                        try {
+                            const schema = generateSchemaFromData(contextMenu.node.rawValue as any[]);
+                           applyJsonChange(
+                               contextMenu.node.path + "_schema",
+                               "add",
+                               schema
+                           );
+                           setContextMenu(null);
+                        } catch (e) {
+                          console.error(e);
+                        }
+                    }}
+                  >
+                    <FileText size={16} />
+                    Extract Schema
+                </button>
+              )}
               {getDynamicActions(contextMenu.node.value).map((action) => (
                 <button
                   key={action.id}
@@ -1292,7 +1397,9 @@ export default function GraphVisualizer() {
               ))}
 
               {contextMenu.node.type === "string" &&
-                getMediaType(String(contextMenu.node.value)) !== null && (
+                String(contextMenu.node.name).endsWith("_api_node") === false && 
+                getMediaType(String(contextMenu.node.value)) !== null &&
+                !knownDataUrls[String(contextMenu.node.value)] && (
                 <button
                   className="w-full text-left px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
                   onClick={() => {
@@ -1307,8 +1414,31 @@ export default function GraphVisualizer() {
                 </button>
               )}
 
-              {(contextMenu.node.type === "string" ||
-                contextMenu.node.type === "number") && (
+              {contextMenu.node.type === "string" &&
+                String(contextMenu.node.name).endsWith("_api_node") === false &&
+                typeof contextMenu.node.name === "string" &&
+                String(contextMenu.node.value).match(/^https?:\/\//) && (
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                    onClick={() => {
+                      applyJsonChange(
+                        contextMenu.node.path, 
+                        "edit", 
+                        contextMenu.node.rawValue !== undefined ? String(contextMenu.node.rawValue) : String(contextMenu.node.value), 
+                        String(contextMenu.node.name) + "_api_node_tmp".replace("_tmp", ""),
+                        "string"
+                      );
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Network size={16} className="text-amber-400 dark:text-amber-500" />
+                    Convert to API Node
+                  </button>
+                )}
+
+              {String(contextMenu.node.name).endsWith("_api_node") === false &&
+                (contextMenu.node.type === "string" ||
+                  contextMenu.node.type === "number") && (
                 <button
                   className="w-full text-left px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
                   onClick={() => {
@@ -1502,6 +1632,39 @@ export default function GraphVisualizer() {
             </div>
           </div>,
           document.body,
+        )}
+
+      {/* Table View Modal */}
+      {tableViewData &&
+        createPortal(
+          <div className={appTheme}>
+            <div
+              className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setTableViewData(null)}
+            >
+              <div 
+                className="w-full max-w-6xl h-[85vh] bg-slate-50 dark:bg-slate-900 rounded-xl shadow-2xl flex flex-col overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+                    <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                        <TableProperties className="text-blue-500" size={20} />
+                        Table View: {tableViewData.title}
+                    </h2>
+                    <button 
+                        onClick={() => setTableViewData(null)}
+                        className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+                <div className="flex-1 p-4 bg-slate-50 dark:bg-slate-900 overflow-hidden">
+                    <TableView data={tableViewData.data} title={tableViewData.title} />
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
 
       {/* Editing Modal */}

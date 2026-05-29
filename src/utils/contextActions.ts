@@ -97,31 +97,15 @@ export const actionDetectors: ActionDetector[] = [
     }]
   },
   {
-    id: 'json_url',
-    name: 'JSON URL Detector',
-    match: (value: any) => {
-      if (typeof value !== 'string') return false;
-      if (!value.startsWith('http://') && !value.startsWith('https://')) return false;
-      return value.toLowerCase().endsWith('.json') || value.includes('api.');
-    },
-    getActions: (value: string) => [{
-      id: 'fetch-json',
-      label: 'Fetch & Expand',
-      icon: FileJson,
-      action: (val: string) => window.open(val, '_blank') // In the future, this could integrate with internal fetch
-    }]
-  },
-  {
     id: 'url',
     name: 'URL Detector',
     match: (value: any) => {
       if (typeof value !== 'string') return false;
       try {
         new URL(value);
-        // Exclude JSON/GitHub/YouTube to prevent duplicates since they have dedicated actions
+        // Exclude GitHub/YouTube to prevent duplicates since they have dedicated actions
         if (actionDetectors.find(d => d.id === 'github')?.match(value)) return false;
         if (actionDetectors.find(d => d.id === 'youtube')?.match(value)) return false;
-        if (actionDetectors.find(d => d.id === 'json_url')?.match(value)) return false;
         return value.startsWith('http://') || value.startsWith('https://');
       } catch (e) {
         return false;

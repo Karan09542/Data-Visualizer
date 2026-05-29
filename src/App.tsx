@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
 import SchemaVisualizer from "./components/SchemaVisualizer";
+import { ImportModal } from "./components/ImportModal";
 import Toolbar from "./components/Toolbar";
 import DrawingToolbar from "./components/DrawingToolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
@@ -160,8 +161,42 @@ export default function App() {
     }
   }, [appTheme]);
 
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const result = event.target?.result;
+      if (!result) return;
+      
+      const text = result as string;
+      const { parseExcel } = await import('./utils/dataFormats');
+      
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        try {
+            const dataExcel = parseExcel(result as ArrayBuffer);
+            useStore.getState().setPendingImport({ filename: file.name, text: '', dataExcel });
+        } catch (e) {
+            console.error('Failed to parse Excel', e);
+        }
+      } else {
+         useStore.getState().setPendingImport({ filename: file.name, text });
+      }
+    };
+    
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        reader.readAsArrayBuffer(file);
+    } else {
+        reader.readAsText(file);
+    }
+  }, []);
+
   return (
     <div
+      onDragOver={e => e.preventDefault()}
+      onDrop={onDrop}
       className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors`}
     >
       <AutosaveManager />
@@ -212,6 +247,7 @@ export default function App() {
       <AdvancedPanel />
       <ShortcutsPopup />
       <MathHelpPopup isOpen={isMathHelpOpen} onClose={() => setIsMathHelpOpen(false)} />
+      <ImportModal />
       <SavedDocumentsModal isOpen={isSavedDocsOpen} onClose={() => setIsSavedDocsOpen(false)} />
       <ShareDialog isOpen={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)} />
       <TextPreviewPopup />

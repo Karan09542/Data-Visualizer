@@ -1,5 +1,5 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
-import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2, Save, CloudOff, Cloud, Sliders, SlidersHorizontal, Network } from 'lucide-react';
+import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2, Save, CloudOff, Cloud, Sliders, SlidersHorizontal, Network, Database } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { estimateShareSize } from '../utils/shareUtils';
 import { useAnnotationStore } from '../store/useAnnotationStore';
@@ -666,6 +666,51 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <FolderOpen size={14} />
                 <span className="text-xs font-semibold">Saved</span>
               </button>
+              
+              <label 
+                className="cursor-pointer flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors border border-indigo-500/25 hover:-translate-y-px mr-2" 
+                title="Upload JSON/CSV/Excel"
+              >
+                <Database size={14} />
+                <span className="text-xs font-semibold hidden lg:inline">Upload File</span>
+                <input 
+                    type="file" 
+                    key={Date.now()}
+                    className="hidden" 
+                    accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt" 
+                    onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        
+                        const reader = new FileReader();
+                        reader.onload = async (event) => {
+                          const result = event.target?.result;
+                          if (!result) return;
+                          
+                          const text = result as string;
+                          const { parseExcel } = await import('../utils/dataFormats');
+                          
+                          if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                            try {
+                                const dataExcel = parseExcel(result as ArrayBuffer);
+                                useStore.getState().setPendingImport({ filename: file.name, text: '', dataExcel });
+                            } catch (e) {
+                                console.error('Failed to parse Excel', e);
+                            }
+                          } else {
+                              useStore.getState().setPendingImport({ filename: file.name, text });
+                          }
+                        };
+                        
+                        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                            reader.readAsArrayBuffer(file);
+                        } else {
+                            reader.readAsText(file);
+                        }
+                    }} 
+                />
+              </label>
+
               <button 
                 onClick={() => setIsApiHelpOpen(true)}
                 className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all border border-emerald-500/25 hover:-translate-y-px mr-2 relative overflow-hidden group/api-btn" 

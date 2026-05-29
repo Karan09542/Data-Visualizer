@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getProxiedUrl } from '../utils/mediaUtils';
 import SafeIframe from './SafeIframe';
+import { useStore } from '../store/useStore';
 
 export const mediaCache = new Map<string, any>();
 
@@ -42,6 +43,22 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       .then(data => {
         if (!isMounted) return;
         if (data.success && data.data && data.data.render) {
+          const mime = data.data.mime || '';
+          const isDataResponse = mime.includes('json') || mime.includes('xml') || mime.includes('csv') || url.includes('{') || url.includes('}');
+          
+          if (isDataResponse || (mime === 'application/octet-stream' && data.data.verification?.networkVerified === false)) {
+            if (isDataResponse && !url.includes('{')) {
+              let type = 'json';
+              if (mime.includes('xml')) type = 'xml';
+              if (mime.includes('csv')) type = 'csv';
+              useStore.getState().setKnownDataUrl(url, type as any);
+            }
+            mediaCache.set(url, 'failed');
+            setIsLoading(false);
+            if (onMediaFailed) onMediaFailed();
+            return;
+          }
+
           mediaCache.set(url, data.data.render);
           setMediaData(data.data.render);
           setIsLoading(false);
