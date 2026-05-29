@@ -560,6 +560,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               >
                 <option value="json">JSON</option>
                 <option value="yaml">YAML</option>
+                <option value="csv">CSV</option>
               </select>
             </div>
 
@@ -818,6 +819,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               >
                 <option value="json">JSON</option>
                 <option value="yaml">YAML</option>
+                <option value="csv">CSV</option>
               </select>
             </div>
 

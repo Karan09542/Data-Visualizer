@@ -108,6 +108,15 @@ export default function EditorPanel() {
           } catch (e) {
             // Do not format if invalid
           }
+        } else if (codeFormat === 'csv') {
+          try {
+            const Papa = (await import('papaparse')).default;
+             // re-parsing and unparsing trims spaces and normalizes
+             const parsed = Papa.parse(code, { header: true, skipEmptyLines: true });
+             setCode(Papa.unparse(parsed.data));
+          } catch (e) {
+             // Do not format if invalid
+          }
         }
       }
     };
@@ -209,6 +218,13 @@ export default function EditorPanel() {
       try {
         const yaml = (await import('js-yaml')).default;
         dumpFn = (data: any) => yaml.dump(data);
+      } catch (e) {
+        // fallback
+      }
+    } else if (codeFormat === 'csv') {
+      try {
+        const Papa = (await import('papaparse')).default;
+        dumpFn = (data: any) => Papa.unparse(data);
       } catch (e) {
         // fallback
       }

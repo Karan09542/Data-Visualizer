@@ -55,7 +55,7 @@ export const defaultSettings = {
   visualizerMode: 'graph' as VisualizerMode,
 };
 
-export type CodeFormat = 'json' | 'yaml';
+export type CodeFormat = 'json' | 'yaml' | 'csv';
 
 export type ApiNodeDiagnosticError = {
   type: string;
@@ -145,8 +145,8 @@ export interface StoreState {
   apiBody: string;
   activeTab: 'raw' | 'api';
   dragOverrides: Record<string, { x: number, y: number }>;
-  undoStack: string[];
-  redoStack: string[];
+  undoStack: { code: string, format: CodeFormat }[];
+  redoStack: { code: string, format: CodeFormat }[];
   
   setCode: (code: string, skipHistory?: boolean) => void;
   setApiMethod: (method: string) => void;
@@ -306,6 +306,13 @@ export const useStore = create<StoreState>()(
           } catch {
             return;
           }
+        } else if (targetFormat === 'csv') {
+          try {
+            const Papa = (await import('papaparse')).default;
+            newCode = Papa.unparse(parsedData);
+          } catch {
+            return;
+          }
         } else {
           newCode = JSON.stringify(parsedData, null, 2);
         }
@@ -325,7 +332,7 @@ export const useStore = create<StoreState>()(
 
         if (!skipHistory && code !== currentCode) {
           set((state) => ({
-            undoStack: [...state.undoStack, currentCode].slice(-50),
+            undoStack: [...state.undoStack, { code: currentCode, format: codeFormat }].slice(-50),
             redoStack: []
           }));
         }
@@ -339,33 +346,35 @@ export const useStore = create<StoreState>()(
       },
 
       undo: () => {
-        const { undoStack, code } = get();
+        const { undoStack, code, codeFormat } = get();
         if (undoStack.length === 0) return;
 
-        const previousCode = undoStack[undoStack.length - 1];
+        const previousState = undoStack[undoStack.length - 1];
         const newUndoStack = undoStack.slice(0, -1);
 
         set((state) => ({
           undoStack: newUndoStack,
-          redoStack: [code, ...state.redoStack].slice(0, 50)
+          redoStack: [{ code, format: codeFormat }, ...state.redoStack].slice(0, 50),
+          codeFormat: previousState.format
         }));
 
-        get().setCode(previousCode, true);
+        get().setCode(previousState.code, true);
       },
 
       redo: () => {
-        const { redoStack, code } = get();
+        const { redoStack, code, codeFormat } = get();
         if (redoStack.length === 0) return;
 
-        const nextCode = redoStack[0];
+        const nextState = redoStack[0];
         const newRedoStack = redoStack.slice(1);
 
         set((state) => ({
           redoStack: newRedoStack,
-          undoStack: [...state.undoStack, code].slice(-50)
+          undoStack: [...state.undoStack, { code, format: codeFormat }].slice(-50),
+          codeFormat: nextState.format
         }));
 
-        get().setCode(nextCode, true);
+        get().setCode(nextState.code, true);
       },
       setLayoutMode: (mode: LayoutMode) => set({ layoutMode: mode, dragOverrides: {} }),
       setNodeTheme: (theme: NodeTheme) => set({ nodeTheme: theme }),
@@ -527,6 +536,7 @@ export const useStore = create<StoreState>()(
 
         // Detect format
         const isYaml = codeFormat === 'yaml';
+        const isCsv = codeFormat === 'csv';
 
         let newCode = '';
         if (isYaml) {
@@ -535,6 +545,13 @@ export const useStore = create<StoreState>()(
             newCode = yaml.dump(newData);
           } catch {
             newCode = JSON.stringify(newData, null, 2);
+          }
+        } else if (isCsv) {
+          try {
+            const Papa = (await import('papaparse')).default;
+            newCode = Papa.unparse(newData);
+          } catch {
+             newCode = JSON.stringify(newData, null, 2);
           }
         } else {
           newCode = JSON.stringify(newData, null, 2);

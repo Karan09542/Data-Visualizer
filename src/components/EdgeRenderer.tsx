@@ -14,9 +14,9 @@ interface EdgeProps {
   layoutMode?: string;
 }
 
-export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected, source, target, layoutMode }: EdgeProps) {
+function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected, source, target, layoutMode }: EdgeProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const { edgeWidth = 1.0 } = useStore();
+  const edgeWidth = useStore(state => state.edgeWidth ?? 1.0);
 
   let stroke = "#334155";
   let strokeWidth = 1.5;
@@ -327,3 +327,5 @@ export default function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDim
     </g>
   );
 }
+
+export default React.memo(EdgeRenderer);

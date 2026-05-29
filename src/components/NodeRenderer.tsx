@@ -3,6 +3,7 @@ import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore, NodeTheme } from "../store/useStore";
+import { useShallow } from 'zustand/react/shallow';
 import {
   ChevronRight,
   ChevronDown,
@@ -79,48 +80,56 @@ export const getMediaType = (val: string) => {
   return null;
 };
 
-export default function NodeRenderer({
+function NodeRenderer({
   node,
   layoutMode,
   isSelectedPath,
   isSelected,
   onContextMenu,
 }: NodeProps) {
-  const {
-    nodeTheme,
-    nodeShape,
-    nodeSize,
-    nodeColor,
-    nodeTextColor,
-    nodeGradientColor1,
-    nodeGradientColor2,
-    useNodeGradient,
-    nodeGradientAngle,
-    nodeGradientType,
-    toggleNodeCollapse,
-    collapsedNodes,
-    searchQuery,
-    searchMatches,
-    searchAncestors,
-    activeMatchId,
-    setSelectedNodeId,
-    showMediaPreview,
-    manuallyRenderedNodes,
-    setDragOverride,
-    globalTextExpanded,
-    setActivePreviewText,
-    setActivePreviewMedia,
-    appTheme,
-    knownDataUrls,
-  } = useStore();
+  const nodeTheme = useStore(state => state.nodeTheme);
+  const nodeShape = useStore(state => state.nodeShape);
+  const nodeSize = useStore(state => state.nodeSize);
+  const nodeColor = useStore(state => state.nodeColor);
+  const nodeTextColor = useStore(state => state.nodeTextColor);
+  const nodeGradientColor1 = useStore(state => state.nodeGradientColor1);
+  const nodeGradientColor2 = useStore(state => state.nodeGradientColor2);
+  const useNodeGradient = useStore(state => state.useNodeGradient);
+  const nodeGradientAngle = useStore(state => state.nodeGradientAngle);
+  const nodeGradientType = useStore(state => state.nodeGradientType);
+  const toggleNodeCollapse = useStore(state => state.toggleNodeCollapse);
+  const collapsedNodes = useStore(state => state.collapsedNodes);
+  const searchQuery = useStore(state => state.searchQuery);
+  const searchMatches = useStore(state => state.searchMatches);
+  const searchAncestors = useStore(state => state.searchAncestors);
+  const activeMatchId = useStore(state => state.activeMatchId);
+  const setSelectedNodeId = useStore(state => state.setSelectedNodeId);
+  const showMediaPreview = useStore(state => state.showMediaPreview);
+  const manuallyRenderedNodes = useStore(state => state.manuallyRenderedNodes);
+  const globalTextExpanded = useStore(state => state.globalTextExpanded);
+  const setActivePreviewText = useStore(state => state.setActivePreviewText);
+  const setActivePreviewMedia = useStore(state => state.setActivePreviewMedia);
+  const appTheme = useStore(state => state.appTheme);
+  const knownDataUrls = useStore(state => state.knownDataUrls);
+  
   const foreignRef = useRef<SVGForeignObjectElement>(null);
   const mediaContainerRef = useRef<HTMLDivElement>(null);
 
   const nodeRef = useRef(node);
   nodeRef.current = node;
 
+  const [isDraggingLocally, setIsDraggingLocally] = React.useState(false);
+
   useEffect(() => {
     if (!foreignRef.current) return;
+
+    let animationFrameId: number;
+    let pendingX = 0;
+    let pendingY = 0;
+
+    const dispatchDrag = () => {
+      useStore.getState().setDragOverride(nodeRef.current.data.id, { x: pendingX, y: pendingY });
+    };
 
     const drag = d3
       .drag<SVGForeignObjectElement, unknown>()
@@ -128,13 +137,23 @@ export default function NodeRenderer({
       .on("start", function (event) {
         event.sourceEvent?.stopPropagation();
         d3.select(this).raise();
+        useStore.getState().setDragOverride(nodeRef.current.data.id, { x: event.x, y: event.y });
+        setIsDraggingLocally(true);
       })
       .on("drag", function (event) {
-        setDragOverride(nodeRef.current.data.id, { x: event.x, y: event.y });
+        pendingX = event.x;
+        pendingY = event.y;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(dispatchDrag);
+      })
+      .on("end", function (event) {
+         if (animationFrameId) cancelAnimationFrame(animationFrameId);
+         useStore.getState().setDragOverride(nodeRef.current.data.id, { x: event.x, y: event.y });
+         setIsDraggingLocally(false);
       });
 
     d3.select(foreignRef.current).call(drag);
-  }, [setDragOverride]);
+  }, []);
 
   const [smartMediaFailed, setSmartMediaFailed] = React.useState(false);
   const [isExpanded, setIsExpanded] = React.useState(globalTextExpanded);
@@ -1297,6 +1316,7 @@ export default function NodeRenderer({
             >
               <div
                 className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
+                style={{ pointerEvents: isDraggingLocally ? 'none' : 'auto' }}
               >
                 {mediaType === "image" && (
                   <SmartFallbackMedia
@@ -1329,7 +1349,7 @@ export default function NodeRenderer({
                       alt={data.name || "3D Model"}
                       auto-rotate
                       camera-controls
-                      style={{ width: "100%", height: "160px", backgroundColor: "transparent" }}
+                      style={{ width: "100%", height: "160px", backgroundColor: "transparent", pointerEvents: isDraggingLocally ? 'none' : 'auto' }}
                     />
                   );
                 })()}
@@ -1383,3 +1403,16 @@ export default function NodeRenderer({
     </foreignObject>
   );
 }
+
+export default React.memo(NodeRenderer, (prevProps, nextProps) => {
+  return (
+    prevProps.node.x === nextProps.node.x &&
+    prevProps.node.y === nextProps.node.y &&
+    prevProps.layoutMode === nextProps.layoutMode &&
+    prevProps.isSelectedPath === nextProps.isSelectedPath &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.node.data.id === nextProps.node.data.id &&
+    prevProps.node.data.name === nextProps.node.data.name &&
+    prevProps.node.data.value === nextProps.node.data.value
+  );
+});

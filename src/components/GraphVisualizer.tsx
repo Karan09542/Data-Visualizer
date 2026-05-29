@@ -91,10 +91,17 @@ export default function GraphVisualizer() {
 
     const nodeById = new Map(overridenNodes.map((n) => [n.data.id, n]));
 
-    const overridenLinks = originalLinks.map((l) => ({
-      source: nodeById.get(l.source.data.id)!,
-      target: nodeById.get(l.target.data.id)!,
-    }));
+    const overridenLinks = originalLinks.map((l) => {
+      const newSource = nodeById.get(l.source.data.id)!;
+      const newTarget = nodeById.get(l.target.data.id)!;
+      if (newSource === l.source && newTarget === l.target) {
+        return l;
+      }
+      return {
+        source: newSource,
+        target: newTarget,
+      };
+    });
 
     return { nodes: overridenNodes, links: overridenLinks };
   }, [originalNodes, originalLinks, dragOverrides]);
@@ -404,7 +411,7 @@ export default function GraphVisualizer() {
     return () => window.removeEventListener("click", handleClick);
   }, []);
 
-  const applyJsonChange = (
+  const applyJsonChange = async (
     nodePath: string,
     action: "edit" | "add" | "delete",
     newValueStr: string,
@@ -412,7 +419,7 @@ export default function GraphVisualizer() {
     typeOverride?: string,
   ) => {
     try {
-      const { code, setCode, apiNodeResponses, setApiNodeResponse, removeApiNode } = useStore.getState();
+      const { code, setCode, codeFormat, parsedData, apiNodeResponses, setApiNodeResponse, removeApiNode } = useStore.getState();
 
       if (nodePath.includes(".__fetched")) {
         const fetchedMarker = ".__fetched";
@@ -504,7 +511,7 @@ export default function GraphVisualizer() {
         return;
       }
 
-      const parsed = JSON.parse(code);
+      const parsed = parsedData ? JSON.parse(JSON.stringify(parsedData)) : (codeFormat === 'yaml' || codeFormat === 'csv' ? (codeFormat === 'csv' ? [] : {}) : JSON.parse(code));
 
       let finalValue: any = newValueStr;
 
@@ -529,14 +536,38 @@ export default function GraphVisualizer() {
       }
 
       if (nodePath === "root") {
-        if (action === "edit") setCode(JSON.stringify(finalValue, null, 2));
-        else if (action === "delete") setCode("{}");
+        if (action === "edit") {
+          if (codeFormat === 'yaml') {
+            const yaml = (await import('js-yaml')).default;
+            setCode(yaml.dump(finalValue));
+          } else if (codeFormat === 'csv') {
+            const Papa = (await import('papaparse')).default;
+            setCode(Papa.unparse(finalValue));
+          } else {
+            setCode(JSON.stringify(finalValue, null, 2));
+          }
+        }
+        else if (action === "delete") {
+          if (codeFormat === 'yaml' || codeFormat === 'csv') {
+            setCode("");
+          } else {
+            setCode("{}");
+          }
+        }
         else if (action === "add") {
           if (Array.isArray(parsed)) parsed.push(finalValue);
           else if (typeof parsed === "object" && parsed !== null) {
             if (newKeyStr) parsed[newKeyStr] = finalValue;
           }
-          setCode(JSON.stringify(parsed, null, 2));
+          if (codeFormat === 'yaml') {
+            const yaml = (await import('js-yaml')).default;
+            setCode(yaml.dump(parsed));
+          } else if (codeFormat === 'csv') {
+            const Papa = (await import('papaparse')).default;
+            setCode(Papa.unparse(parsed));
+          } else {
+            setCode(JSON.stringify(parsed, null, 2));
+          }
         }
         return;
       }
@@ -580,11 +611,19 @@ export default function GraphVisualizer() {
         }
       }
 
-      setCode(JSON.stringify(parsed, null, 2));
+      if (codeFormat === 'yaml') {
+        const yaml = (await import('js-yaml')).default;
+        setCode(yaml.dump(parsed));
+      } else if (codeFormat === 'csv') {
+        const Papa = (await import('papaparse')).default;
+        setCode(Papa.unparse(parsed));
+      } else {
+        setCode(JSON.stringify(parsed, null, 2));
+      }
     } catch (e) {
-      console.error("Failed to update JSON", e);
+      console.error("Failed to update JSON/YAML/CSV", e);
       alert(
-        "Invalid JSON format or edit failure. Check if key is empty for object insertions.",
+        "Invalid format or edit failure. Check if key is empty for object insertions.",
       );
     }
   };
@@ -1214,12 +1253,12 @@ export default function GraphVisualizer() {
                 className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors"
                 onClick={() => {
                   let valToCopy = "";
-                  const { code } = useStore.getState();
+                  const { code, parsedData, codeFormat } = useStore.getState();
                   // Try to extract original JSON value to copy
                   try {
                     const nodePath = contextMenu.node.path;
                     if (nodePath === "root") {
-                      valToCopy = code;
+                      valToCopy = (codeFormat === 'yaml' || codeFormat === 'csv') ? JSON.stringify(parsedData, null, 2) : code;
                     } else {
                       const parts = nodePath
                         .replace(/^root/, "")
@@ -1230,7 +1269,7 @@ export default function GraphVisualizer() {
                             ? p.substring(1)
                             : p.replace(/[\[\]]/g, ""),
                         );
-                      let current = JSON.parse(code);
+                      let current = parsedData;
                       for (let i = 0; i < parts.length; i++) {
                         current = current[parts[i]];
                       }
@@ -1521,11 +1560,11 @@ export default function GraphVisualizer() {
                 onClick={() => {
                   let valToEdit = "";
                   let currentKey = "";
-                  const { code } = useStore.getState();
+                  const { code, parsedData, codeFormat } = useStore.getState();
                   try {
                     const nodePath = contextMenu.node.path;
                     if (nodePath === "root") {
-                      valToEdit = code;
+                      valToEdit = (codeFormat === 'yaml' || codeFormat === 'csv') ? JSON.stringify(parsedData, null, 2) : code;
                     } else if (nodePath.includes(".__fetched")) {
                       const parts = nodePath
                         .split(/(?=\[)|(?=\.)/)
@@ -1558,7 +1597,7 @@ export default function GraphVisualizer() {
                             : p.replace(/[\[\]]/g, ""),
                         );
                       currentKey = parts[parts.length - 1];
-                      let current = JSON.parse(code);
+                      let current = parsedData;
                       for (let i = 0; i < parts.length; i++) {
                         current = current[parts[i]];
                       }
@@ -1566,7 +1605,7 @@ export default function GraphVisualizer() {
                         throw new Error("Path not in original editor code");
                       }
                       valToEdit =
-                        typeof current === "object"
+                        typeof current === "object" && current !== null
                           ? JSON.stringify(current, null, 2)
                           : String(current);
                     }

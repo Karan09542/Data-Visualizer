@@ -5,10 +5,7 @@ export function isProbableCsv(text: string): boolean {
   if (typeof text !== 'string') return false;
   if (!text.includes(',')) return false;
   
-  const lines = text.trim().split('\n');
-  if (lines.length < 2) return false;
-
-  const result = Papa.parse(text.trim(), { header: false, preview: 10, skipEmptyLines: true });
+  const result = Papa.parse(text, { header: false, preview: 10, skipEmptyLines: true });
   if (!result.data || result.data.length < 2) return false;
   
   const numColumns = (result.data[0] as any[]).length;
@@ -26,8 +23,13 @@ export function isProbableCsv(text: string): boolean {
 }
 
 export function parseCsv(text: string): any[] {
-  const result = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
+  const result = Papa.parse(text, { header: true, skipEmptyLines: true });
   return result.data;
+}
+
+export function parseCsvArray(text: string): any[][] {
+  const result = Papa.parse(text, { header: false, skipEmptyLines: true });
+  return result.data as any[][];
 }
 
 export function parseExcel(arrayBuffer: ArrayBuffer): Record<string, any[]> {

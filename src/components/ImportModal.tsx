@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileText, Database, ArrowRight, X, AlertCircle, FileJson, Table2, Layers, AlertTriangle, Key, Sparkles, Hash } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { parseCsv } from '../utils/dataFormats';
+import { parseCsv, parseCsvArray } from '../utils/dataFormats';
 
 export function ImportModal() {
   const { pendingImport, setPendingImport, parsedData } = useStore();
@@ -100,8 +100,7 @@ export function ImportModal() {
         resultData = pendingImport.text;
     } else if (importMode === 'array') {
         if (pendingImport.filename.endsWith('.csv')) {
-            const lines = pendingImport.text.trim().split('\n').map(l => l.split(','));
-            resultData = lines;
+            resultData = parseCsvArray(pendingImport.text);
         } else {
             resultData = pendingImport.text;
         }
