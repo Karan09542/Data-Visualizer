@@ -318,7 +318,9 @@ export default function EditorPanel() {
                 folding: true,
                 lineNumbersMinChars: 3,
                 formatOnPaste: true,
-                padding: { top: 10, bottom: 10 }
+                padding: { top: 10, bottom: 10 },
+                dragAndDrop: false,
+                dropIntoEditor: { enabled: false }
               }}
             />
           </div>

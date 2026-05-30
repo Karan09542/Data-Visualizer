@@ -246,6 +246,8 @@ const initialCode = `{
   "metadata": null
 }`;
 
+const initialParsedData = JSON.parse(initialCode);
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
@@ -253,8 +255,8 @@ export const useStore = create<StoreState>()(
       code: initialCode,
       globalSearchErrors: [],
       globalSearchSuggestions: [],
-      parsedData: null,
-      treeData: null,
+      parsedData: initialParsedData,
+      treeData: transformToTree(initialParsedData, 'root', 'root', {}),
       error: null,
       searchQuery: '',
       collapsedNodes: new Set<string>(),

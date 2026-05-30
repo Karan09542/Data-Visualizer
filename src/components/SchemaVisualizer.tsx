@@ -33,13 +33,16 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
   nodes.forEach(n => nodeMap.set(n.id, n));
 
   const childrenMap = new Map<string, string[]>();
+  const isTarget = new Set<string>();
   edges.forEach(e => {
     const arr = childrenMap.get(e.source) || [];
     arr.push(e.target);
     childrenMap.set(e.source, arr);
+    isTarget.add(e.target);
   });
 
-  const rootId = nodeMap.has('root-node') ? 'root-node' : nodes[0]?.id;
+  const rootIds = nodes.filter(n => !isTarget.has(n.id)).map(n => n.id);
+  const rootId = nodeMap.has('root-node') ? 'root-node' : (rootIds.length > 0 ? rootIds[0] : nodes[0]?.id);
 
   // 1. DIRECTED LAYOUTS (vertical, horizontal, compact)
   if (['vertical', 'horizontal', 'compact'].includes(layoutMode)) {
@@ -104,11 +107,20 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
 
   // 2. CONCENTRIC RADIAL LAYOUT
   if (layoutMode === 'radial') {
-    if (rootId) {
+    if (rootIds.length > 0) {
       const levels: string[][] = [];
       const visited = new Set<string>();
-      const q: { id: string, depth: number }[] = [{ id: rootId, depth: 0 }];
-      visited.add(rootId);
+      
+      let startNodes;
+      if (rootIds.length > 1) {
+         startNodes = rootIds.map(id => ({ id, depth: 1 }));
+         levels[0] = ['VIRTUAL_ROOT']; // Add padding for depth 0 to push items into a circle
+      } else {
+         startNodes = [{ id: rootIds[0], depth: 0 }];
+      }
+
+      const q: { id: string, depth: number }[] = [...startNodes];
+      startNodes.forEach(sn => visited.add(sn.id));
 
       while (q.length > 0) {
         const { id, depth } = q.shift()!;
@@ -128,6 +140,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
         const radius = depth * 460;
         const count = nodeIds.length;
         nodeIds.forEach((id, idx) => {
+          if (id === 'VIRTUAL_ROOT') return;
           const angle = (idx / count) * 2 * Math.PI - Math.PI / 2;
           const n = nodeMap.get(id);
           if (n) {
@@ -146,7 +159,12 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
   // 3. FORCE DIRECTED PHYSICS LAYOUT
   else if (layoutMode === 'force') {
     if (nodes.length > 0) {
-      const forceNodes = nodes.map(n => ({ id: n.id, x: 0, y: 0, node: n }));
+      const forceNodes = nodes.map((n, i) => ({ 
+        id: n.id, 
+        x: Math.cos(i) * 50, 
+        y: Math.sin(i) * 50, 
+        node: n 
+      }));
       const forceLinks = edges.map(e => ({ source: e.source, target: e.target }));
       
       const simulation = d3.forceSimulation(forceNodes)
@@ -167,15 +185,19 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
 
   // 4. BI-DIRECTIONAL MINDMAP LAYOUT
   else if (layoutMode === 'mindmap') {
-    if (rootId) {
-      const rootNode = nodeMap.get(rootId);
-      if (rootNode) {
-        rootNode.position = { x: 0, y: 0 };
-        rootNode.targetPosition = Position.Left;
-        rootNode.sourcePosition = Position.Right;
+    if (rootIds.length > 0) {
+      const isMultiRoot = rootIds.length > 1;
+
+      if (!isMultiRoot && rootId) {
+        const rootNode = nodeMap.get(rootId);
+        if (rootNode) {
+          rootNode.position = { x: 0, y: 0 };
+          rootNode.targetPosition = Position.Left;
+          rootNode.sourcePosition = Position.Right;
+        }
       }
 
-      const firstLevelChildren = childrenMap.get(rootId) || [];
+      const firstLevelChildren = isMultiRoot ? rootIds : (childrenMap.get(rootId) || []);
       const leftChildren = firstLevelChildren.filter((_, i) => i % 2 === 0);
       const rightChildren = firstLevelChildren.filter((_, i) => i % 2 === 1);
 
@@ -183,9 +205,9 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
         const n = nodeMap.get(childId);
         if (n) {
           const yPos = (idx - (leftChildren.length - 1) / 2) * 360;
-          n.position = { x: -480, y: yPos };
-          n.targetPosition = Position.Right;
-          n.sourcePosition = Position.Left;
+          n.position = { x: isMultiRoot && rightChildren.length === 0 ? 0 : -480, y: yPos };
+          n.targetPosition = isMultiRoot && rightChildren.length === 0 ? Position.Left : Position.Right;
+          n.sourcePosition = isMultiRoot && rightChildren.length === 0 ? Position.Right : Position.Left;
 
           const cascadeLeft = (parentId: string, currentX: number, parentY: number) => {
             const children = childrenMap.get(parentId) || [];
@@ -200,7 +222,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
               }
             });
           };
-          cascadeLeft(childId, -480, yPos);
+          cascadeLeft(childId, isMultiRoot && rightChildren.length === 0 ? 0 : -480, yPos);
         }
       });
 
@@ -208,7 +230,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
         const n = nodeMap.get(childId);
         if (n) {
           const yPos = (idx - (rightChildren.length - 1) / 2) * 360;
-          n.position = { x: 480, y: yPos };
+          n.position = { x: isMultiRoot && leftChildren.length === 0 ? 0 : 480, y: yPos };
           n.targetPosition = Position.Left;
           n.sourcePosition = Position.Right;
 
@@ -225,7 +247,7 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], layoutMode: string) =
               }
             });
           };
-          cascadeRight(childId, 480, yPos);
+          cascadeRight(childId, isMultiRoot && leftChildren.length === 0 ? 0 : 480, yPos);
         }
       });
     }

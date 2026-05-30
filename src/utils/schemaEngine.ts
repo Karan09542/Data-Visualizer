@@ -183,23 +183,19 @@ export function extractSchema(data: any, rootName = 'Root', layoutMode: LayoutMo
   const edges: Edge[] = [];
 
   if (Array.isArray(data)) {
-    data.forEach((item, index) => {
-      if (typeof item === 'object' && item !== null) {
-        const rootId = `root-${index}`;
-        const cleanPath = `root[${index}]`;
-        nodes.push({
-          id: rootId,
-          type: 'schemaNode',
-          data: { 
-            label: `${rootName} [${index}]`, 
-            fields: parseFields(item, `root_${index}`, rootId, cleanPath), 
-            path: `root_${index}`, 
-            layoutMode,
-            jsonPath: cleanPath
-          },
-          position: { x: index * 450, y: 0 }
-        });
-      }
+    // For arrays, sample the first item to generate the schema
+    const sampleItem = data.length > 0 ? data[0] : {};
+    nodes.push({
+      id: 'root-node',
+      type: 'schemaNode',
+      data: { 
+        label: `${rootName} []`, 
+        fields: parseFields(sampleItem, 'root', 'root-node', 'root[]'), 
+        path: 'root', 
+        layoutMode,
+        jsonPath: 'root[]'
+      },
+      position: { x: 0, y: 0 }
     });
   } else {
     nodes.push({
