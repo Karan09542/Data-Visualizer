@@ -409,8 +409,43 @@ export default function GraphVisualizer() {
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
     window.addEventListener("click", handleClick);
-    return () => window.removeEventListener("click", handleClick);
-  }, []);
+
+    const handleCanvasClick = (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      // Check if clicking inside a node, button, input etc.
+      // All node bodies reside inside ".nodes-layer" or have class ".pointer-events-auto", or form components.
+      if (
+        target.closest(".pointer-events-auto") ||
+        target.closest("button") ||
+        target.closest("input") ||
+        target.closest("select") ||
+        target.closest("textarea") ||
+        target.closest(".no-export") ||
+        target.closest('[role="dialog"]') ||
+        target.closest(".context-menu") ||
+        target.closest(".advanced-panel") ||
+        target.closest(".drawing-toolbar") ||
+        target.closest(".toolbar-container") ||
+        target.closest(".editor-panel")
+      ) {
+        return;
+      }
+
+      // If clicked inside our wrapper (empty canvas space)
+      if (wrapperRef.current && wrapperRef.current.contains(target)) {
+        setSelectedNodeId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handleCanvasClick);
+
+    return () => {
+      window.removeEventListener("click", handleClick);
+      document.removeEventListener("pointerdown", handleCanvasClick);
+    };
+  }, [setSelectedNodeId]);
 
   const applyJsonChange = async (
     nodePath: string,

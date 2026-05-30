@@ -13,14 +13,14 @@ const ApiNodeHelpModal: React.FC<ApiNodeHelpModalProps> = ({ isOpen, onClose }) 
 
   const handleInsertExample = async () => {
     try {
-      const { parsedData, codeFormat, setCode } = useStore.getState();
-      
-      let currentData: any = {};
-      if (parsedData && typeof parsedData === 'object' && !Array.isArray(parsedData)) {
-        currentData = { ...parsedData };
-      } else if (Array.isArray(parsedData)) {
-         currentData = { _original_array: parsedData };
-      }
+      const { parsedData, codeFormat, setCode, setCodeFormat } = useStore.getState();
+
+      const demoFields = {
+        demo_user_info: "Demographic and details panel",
+        github_profile_api_node: "https://api.github.com/users/octocat",
+        posts_api_node: "https://jsonplaceholder.typicode.com/posts/1",
+        ip_lookup_api_node: "https://ipapi.co/json/"
+      };
 
       const demoNodes = {
         demo_user_info: "Demographic and details panel",
@@ -32,18 +32,60 @@ const ApiNodeHelpModal: React.FC<ApiNodeHelpModalProps> = ({ isOpen, onClose }) 
         }
       };
 
-      currentData.demo_nodes = demoNodes;
-
       let newCode = '';
-      if (codeFormat === 'yaml') {
+
+      if (codeFormat === 'csv') {
+        let currentData: any[] = [];
+        if (parsedData && Array.isArray(parsedData)) {
+          if (parsedData.length === 0) {
+            currentData = [demoFields];
+          } else {
+            currentData = parsedData.map(row => ({
+              ...row,
+              ...demoFields
+            }));
+          }
+        } else {
+          currentData = [demoFields];
+        }
+
         try {
-          const yaml = (await import('js-yaml')).default;
-          newCode = yaml.dump(currentData);
+          const Papa = (await import('papaparse')).default;
+          newCode = Papa.unparse(currentData);
         } catch {
           newCode = JSON.stringify(currentData, null, 2);
+          setCodeFormat('json');
         }
       } else {
-        newCode = JSON.stringify(currentData, null, 2);
+        let currentData: any = {};
+        if (parsedData && typeof parsedData === 'object') {
+          if (Array.isArray(parsedData)) {
+            currentData = parsedData.map(row => ({
+              ...row,
+              ...demoFields
+            }));
+          } else {
+            currentData = { ...parsedData, demo_nodes: demoNodes };
+          }
+        } else {
+          currentData = {
+            project_name: "API Visualizer Showcase",
+            demo_nodes: demoNodes
+          };
+        }
+
+        if (codeFormat === 'yaml') {
+          try {
+            const yaml = (await import('js-yaml')).default;
+            newCode = yaml.dump(currentData);
+          } catch {
+            newCode = JSON.stringify(currentData, null, 2);
+            setCodeFormat('json');
+          }
+        } else {
+          newCode = JSON.stringify(currentData, null, 2);
+          setCodeFormat('json');
+        }
       }
 
       setCode(newCode);
