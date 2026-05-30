@@ -22,6 +22,7 @@ export default function ShortcutsPopup() {
     { keys: ['Scroll'], desc: 'Zoom In/Out' },
     { keys: ['Two Fingers Pinch'], desc: 'Zoom Graph (when tool active)' },
     { keys: ['Click & Drag'], desc: 'Pan Graph' },
+    { keys: ['Shift', 'Drag Node'], desc: 'Drag Node & Subtree' },
     { keys: ['Right Click'], desc: 'Node Actions Options' },
   ];
 
