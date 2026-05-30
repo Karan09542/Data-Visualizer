@@ -13,6 +13,7 @@ interface ShareDialogProps {
 export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
   const { 
     code,
+    codeFormat,
     layoutMode,
     nodeTheme,
     edgeStyle,
@@ -241,11 +242,25 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
                  <button
                     onClick={() => {
                         // Trigger file download fallback if needed
-                        alert('Fallback: Use "Export Project" logic or manual download.');
+                        try {
+                          const formatStr = codeFormat || 'json';
+                          const blob = new Blob([code], { type: formatStr === 'json' ? 'application/json' : formatStr === 'yaml' ? 'application/yaml' : 'text/csv' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `exported_data.${formatStr}`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          useStore.getState().setNotification({ message: `Successfully exported and downloaded exported_data.${formatStr}`, type: 'success' });
+                        } catch (err) {
+                          useStore.getState().setNotification({ message: 'Failed to download data file.', type: 'error' });
+                        }
                     }}
                     className="w-full py-3 border-2 border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                  >
-                   <Download size={18} /> Export as JSON File Instead
+                   <Download size={18} /> Export as {String(codeFormat || 'json').toUpperCase()} File Instead
                  </button>
               </div>
             )}

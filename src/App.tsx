@@ -13,6 +13,7 @@ import SavedDocumentsModal from "./components/SavedDocumentsModal";
 import TextPreviewPopup from "./components/TextPreviewPopup";
 import MediaPreviewPopup from "./components/MediaPreviewPopup";
 import AutosaveManager from "./components/AutosaveManager";
+import { NotificationToast } from "./components/NotificationToast";
 import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
@@ -61,6 +62,9 @@ export default function App() {
       // window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }, [setCode]);
+
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounter = useRef(0);
 
   const startDragging = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -161,45 +165,56 @@ export default function App() {
     }
   }, [appTheme]);
 
-  const onDrop = useCallback((e: React.DragEvent) => {
+  const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const result = event.target?.result;
-      if (!result) return;
-      
-      const text = result as string;
-      const { parseExcel } = await import('./utils/dataFormats');
-      
-      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        try {
-            const dataExcel = parseExcel(result as ArrayBuffer);
-            useStore.getState().setPendingImport({ filename: file.name, text: '', dataExcel });
-        } catch (e) {
-            console.error('Failed to parse Excel', e);
-        }
-      } else {
-         useStore.getState().setPendingImport({ filename: file.name, text });
-      }
-    };
-    
-    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        reader.readAsArrayBuffer(file);
-    } else {
-        reader.readAsText(file);
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragOver(true);
     }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragOver(false);
+    
+    // We hand off to our new intelligent file service
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    
+    // We will dynamically import the handler so App.tsx stays lean
+    const { processFiles } = await import('./utils/fileProcessor');
+    processFiles(files);
   }, []);
 
   return (
     <div
+      onDragEnter={handleDragEnter}
       onDragOver={e => e.preventDefault()}
-      onDrop={onDrop}
-      className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors`}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors relative`}
     >
+      {isDragOver && (
+        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pointer-events-none">
+          <div className="flex flex-col items-center justify-center p-12 bg-white/20 dark:bg-black/30 border-2 border-dashed border-indigo-500/50 rounded-3xl shadow-2xl backdrop-blur-xl animate-pulse">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 dark:text-indigo-400 mb-4 drop-shadow-lg"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m16 16-4-4-4 4"></path></svg>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight drop-shadow-md">Drop Files Here</h2>
+            <p className="text-slate-600 dark:text-indigo-200 font-medium tracking-wide text-center">Upload JSON, CSV, Excel, PDF,<br />Images, Videos & More</p>
+          </div>
+        </div>
+      )}
       <AutosaveManager />
+      <NotificationToast />
+
       <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
       <div
         ref={containerRef}

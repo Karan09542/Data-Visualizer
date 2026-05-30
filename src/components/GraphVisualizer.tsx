@@ -10,7 +10,7 @@ import EdgeRenderer from "./EdgeRenderer";
 import AnnotationRenderer from "./AnnotationRenderer";
 import { mediaCache } from "./SmartMediaRenderer";
 import { useDrawingSystem } from "../hooks/useDrawingSystem";
-import { Copy, Edit2, Trash2, X, Search, Settings, Eye, Network, TableProperties, Database, FileText } from "lucide-react";
+import { Copy, Edit2, Trash2, X, Search, Settings, Eye, Network, TableProperties, Database, FileText, Info } from "lucide-react";
 import { getDynamicActions } from "../utils/contextActions";
 import { InlineApiEditor } from "./InlineApiEditor";
 import { isProbableCsv, parseCsv, generateSchemaFromData } from "../utils/dataFormats";
@@ -138,6 +138,7 @@ export default function GraphVisualizer() {
   } | null>(null);
   
   const [tableViewData, setTableViewData] = useState<{ data: any[], title: string } | null>(null);
+  const [mediaInfoModal, setMediaInfoModal] = useState<{ filename: string, mimeType: string, size: number } | null>(null);
   
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -622,9 +623,7 @@ export default function GraphVisualizer() {
       }
     } catch (e) {
       console.error("Failed to update JSON/YAML/CSV", e);
-      alert(
-        "Invalid format or edit failure. Check if key is empty for object insertions.",
-      );
+      useStore.getState().setNotification({ message: 'Invalid format or edit failure. Check if key is empty for object insertions.', type: 'error' });
     }
   };
 
@@ -1475,6 +1474,19 @@ export default function GraphVisualizer() {
                   </button>
                 )}
 
+              {contextMenu.node.type === "string" && useStore.getState().uploadedMediaMetadata[String(contextMenu.node.value)] && (
+                <button
+                  className="w-full text-left px-4 py-2 text-sm text-pink-600 dark:text-pink-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-pink-700 dark:hover:text-pink-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                  onClick={() => {
+                    setMediaInfoModal(useStore.getState().uploadedMediaMetadata[String(contextMenu.node.value)]);
+                    setContextMenu(null);
+                  }}
+                >
+                  <Info size={16} />
+                  Media Info
+                </button>
+              )}
+
               {String(contextMenu.node.name).endsWith("_api_node") === false &&
                 (contextMenu.node.type === "string" ||
                   contextMenu.node.type === "number") && (
@@ -1869,6 +1881,45 @@ export default function GraphVisualizer() {
             </div>
           </div>,
           document.body,
+        )}
+
+      {mediaInfoModal && 
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setMediaInfoModal(null)}>
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col gap-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <Info size={18} className="text-pink-500" />
+                        Media Info
+                    </h3>
+                    <button onClick={() => setMediaInfoModal(null)} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                        <X size={16} />
+                    </button>
+                </div>
+                <div className="flex flex-col gap-3">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">File Name</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-300 truncate" title={mediaInfoModal.filename}>{mediaInfoModal.filename}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">MIME Type</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-300 truncate">{mediaInfoModal.mimeType}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Size</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-300">
+                           {mediaInfoModal.size >= 1024 * 1024 
+                             ? (mediaInfoModal.size / (1024 * 1024)).toFixed(2) + ' MB'
+                             : mediaInfoModal.size >= 1024 
+                               ? (mediaInfoModal.size / 1024).toFixed(2) + ' KB' 
+                               : mediaInfoModal.size + ' B'
+                           }
+                        </span>
+                    </div>
+                </div>
+            </div>
+          </div>,
+          document.body
         )}
     </div>
   );

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Check, Type, Eye, Edit3, Save, FileText, Layout } from 'lucide-react';
+import { X, Copy, Check, Type, Eye, Edit3, Save, FileText, Layout, Globe } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -8,15 +8,28 @@ import ReactMarkdown from 'react-markdown';
 const TextPreviewPopup: React.FC = () => {
   const { activePreviewText, activePreviewPath, setActivePreviewText, updateNodeValue } = useStore();
   const [copied, setCopied] = React.useState(false);
-  const [isEditing, setIsEditing] = React.useState(false);
-  const [isPreviewMode, setIsPreviewMode] = React.useState(false); // Markdown preview
+  const [viewMode, setViewMode] = React.useState<'raw' | 'markdown' | 'html' | 'edit'>('raw');
   const [editText, setEditText] = React.useState('');
 
   React.useEffect(() => {
     if (activePreviewText) {
       setEditText(activePreviewText);
-      setIsEditing(false);
-      setIsPreviewMode(false);
+      const val = activePreviewText.toLowerCase().trim();
+      if (
+        val.startsWith('<html') || 
+        val.startsWith('<!doc') || 
+        val.includes('<head>') || 
+        val.includes('<body>') || 
+        val.includes('</div>') || 
+        val.includes('</p>') ||
+        val.includes('</a>')
+      ) {
+        setViewMode('html');
+      } else if (activePreviewText.startsWith('#') || activePreviewText.includes('\n# ')) {
+        setViewMode('markdown');
+      } else {
+        setViewMode('raw');
+      }
     }
   }, [activePreviewText]);
 
@@ -32,7 +45,7 @@ const TextPreviewPopup: React.FC = () => {
     if (activePreviewPath) {
       await updateNodeValue(activePreviewPath, editText);
       setActivePreviewText(editText, activePreviewPath);
-      setIsEditing(false);
+      setViewMode('raw');
     }
   };
 
@@ -41,10 +54,10 @@ const TextPreviewPopup: React.FC = () => {
       {activePreviewText && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-md">
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-4xl h-full max-h-[85vh] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl flex flex-col overflow-hidden"
+             initial={{ opacity: 0, scale: 0.9, y: 20 }}
+             animate={{ opacity: 1, scale: 1, y: 0 }}
+             exit={{ opacity: 0, scale: 0.9, y: 20 }}
+             className="relative w-full max-w-4xl h-full max-h-[85vh] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-slate-800/80 border-b border-slate-700 backdrop-blur-sm">
@@ -54,7 +67,7 @@ const TextPreviewPopup: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-semibold text-white tracking-tight flex items-center gap-2">
-                    {isEditing ? 'Editor' : (isPreviewMode ? 'Markdown View' : 'Raw View')}
+                    {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown View' : (viewMode === 'html' ? 'HTML HTML Preview' : 'Raw View'))}
                     <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 font-mono uppercase">
                       {activePreviewPath?.split('.').pop()}
                     </span>
@@ -69,22 +82,29 @@ const TextPreviewPopup: React.FC = () => {
                 {/* Mode Toggles */}
                 <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 mr-2">
                   <button
-                    onClick={() => { setIsPreviewMode(false); setIsEditing(false); }}
-                    className={`p-1.5 rounded-md transition-all ${!isPreviewMode && !isEditing ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    onClick={() => setViewMode('raw')}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'raw' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
                     title="Code View"
                   >
                     <FileText size={16} />
                   </button>
                   <button
-                    onClick={() => { setIsPreviewMode(true); setIsEditing(false); }}
-                    className={`p-1.5 rounded-md transition-all ${isPreviewMode && !isEditing ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    onClick={() => setViewMode('markdown')}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'markdown' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
                     title="Markdown Preview"
                   >
                     <Layout size={16} />
                   </button>
                   <button
-                    onClick={() => { setIsEditing(true); setIsPreviewMode(false); }}
-                    className={`p-1.5 rounded-md transition-all ${isEditing ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    onClick={() => setViewMode('html')}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'html' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    title="HTML Preview"
+                  >
+                    <Globe size={16} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('edit')}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'edit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
                     title="Edit Text"
                   >
                     <Edit3 size={16} />
@@ -112,7 +132,7 @@ const TextPreviewPopup: React.FC = () => {
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden flex flex-col">
-              {isEditing ? (
+              {viewMode === 'edit' ? (
                 <div className="flex-1 p-4 bg-slate-950 flex flex-col gap-4">
                   <textarea
                     autoFocus
@@ -125,7 +145,7 @@ const TextPreviewPopup: React.FC = () => {
                     <button
                       onClick={() => {
                         setEditText(activePreviewText);
-                        setIsEditing(false);
+                        setViewMode('raw');
                       }}
                       className="px-4 py-2 text-slate-400 hover:text-slate-200 text-sm font-medium transition-colors"
                     >
@@ -140,11 +160,20 @@ const TextPreviewPopup: React.FC = () => {
                     </button>
                   </div>
                 </div>
-              ) : isPreviewMode ? (
+              ) : viewMode === 'markdown' ? (
                 <div className="flex-1 p-6 sm:p-10 overflow-auto bg-white dark:bg-slate-950 custom-scrollbar">
                   <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none prose-headings:tracking-tight prose-a:text-indigo-400 prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-800 markdown-body">
                     <ReactMarkdown>{editText}</ReactMarkdown>
                   </div>
+                </div>
+              ) : viewMode === 'html' ? (
+                <div className="flex-1 p-4 bg-slate-950 overflow-hidden flex flex-col">
+                  <iframe
+                    srcDoc={editText}
+                    sandbox="allow-scripts allow-popups"
+                    className="w-full flex-1 rounded-xl bg-white border border-slate-800 shadow-inner"
+                    title="HTML Preview"
+                  />
                 </div>
               ) : (
                 <div className="flex-1 p-4 sm:p-6 overflow-auto bg-slate-950 custom-scrollbar">
@@ -164,7 +193,7 @@ const TextPreviewPopup: React.FC = () => {
                 <span>{editText.split(/\s+/).filter(Boolean).length} WORDS</span>
               </div>
               <span className="flex items-center gap-1.5">
-                {isEditing ? (
+                {viewMode === 'edit' ? (
                   <>
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
                     UNSAVED EDITS
@@ -172,7 +201,7 @@ const TextPreviewPopup: React.FC = () => {
                 ) : (
                   <>
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                    {isPreviewMode ? 'RENDERED PREVIEW' : 'READ ONLY VIEW'}
+                    {viewMode === 'markdown' ? 'MARKDOWN PREVIEW' : (viewMode === 'html' ? 'HTML PREVIEW' : 'READ ONLY VIEW')}
                   </>
                 )}
               </span>
@@ -183,7 +212,7 @@ const TextPreviewPopup: React.FC = () => {
           <div 
             className="absolute inset-0 -z-10" 
             onClick={() => {
-              if (!isEditing || confirm('You have unsaved changes. Close anyway?')) {
+              if (viewMode !== 'edit' || confirm('You have unsaved changes. Close anyway?')) {
                 setActivePreviewText(null);
               }
             }}

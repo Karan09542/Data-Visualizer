@@ -6,7 +6,7 @@ import { parseCsv, parseCsvArray } from '../utils/dataFormats';
 export function ImportModal() {
   const { pendingImport, setPendingImport, parsedData } = useStore();
   
-  const [importMode, setImportMode] = useState<'raw' | 'array' | 'object' | 'replace'>('raw');
+  const [importMode, setImportMode] = useState<'raw' | 'array' | 'object' | 'replace' | 'media_node'>('raw');
   const [keyStrategy, setKeyStrategy] = useState<'filename' | 'intelligent' | 'custom'>('filename');
   const [customKey, setCustomKey] = useState('');
   const [collisionAction, setCollisionAction] = useState<'rename' | 'merge' | 'replace_key'>('rename');
@@ -20,9 +20,11 @@ export function ImportModal() {
     if (!pendingImport) return;
     
     // Auto-detect mode and gather metadata
-    if (pendingImport.filename.endsWith('.csv')) {
+    if (pendingImport.fileContext === 'media') {
+        setImportMode('media_node');
+    } else if (pendingImport.filename.endsWith('.csv')) {
        try {
-           const parsed = parseCsv(pendingImport.text);
+           const parsed = parseCsv(pendingImport.text || '');
            if (parsed && parsed.length > 0) {
                setRowCount(parsed.length);
                setDetectedHeaders(Object.keys(parsed[0] || {}));
@@ -74,6 +76,15 @@ export function ImportModal() {
   const applyImport = () => {
     if (!pendingImport) return;
     
+    // Register metadata for media items regardless of import mode
+    if (pendingImport.fileContext === 'media' && pendingImport.blobUrl) {
+       useStore.getState().registerMediaMetadata(pendingImport.blobUrl, {
+          filename: pendingImport.filename,
+          mimeType: pendingImport.mimeType || 'unknown',
+          size: pendingImport.fileSize || 0
+       });
+    }
+    
     let resultData: any = pendingImport.text;
     if (importMode === 'replace') {
        if (pendingImport.filename.endsWith('.csv')) {
@@ -97,7 +108,15 @@ export function ImportModal() {
     
     // Process content for other modes
     if (importMode === 'raw') {
-        resultData = pendingImport.text;
+        resultData = pendingImport.blobUrl || pendingImport.text;
+    } else if (importMode === 'media_node') {
+        resultData = {
+           _type: 'media',
+           filename: pendingImport.filename,
+           mimeType: pendingImport.mimeType || 'unknown',
+           size: pendingImport.fileSize,
+           url: pendingImport.blobUrl || ''
+        };
     } else if (importMode === 'array') {
         if (pendingImport.filename.endsWith('.csv')) {
             resultData = parseCsvArray(pendingImport.text);
@@ -162,7 +181,9 @@ export function ImportModal() {
                       currentDataCheck !== null && 
                       targetKey in currentDataCheck;
 
-  const fileSize = formatBytes(pendingImport.text.length || 0);
+  const fileSize = formatBytes(pendingImport.fileSize || pendingImport.text?.length || 0);
+
+  const isMediaCtx = pendingImport.fileContext === 'media';
 
   return (
     <div className="fixed inset-0 z-[500] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
@@ -172,8 +193,8 @@ export function ImportModal() {
       >
         <div className="flex justify-between items-center p-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1117]">
             <h2 className="text-xl font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
-               <Database className="text-indigo-500" size={24} />
-               Import Data
+               {isMediaCtx ? <Sparkles className="text-pink-500" size={24} /> : <Database className="text-indigo-500" size={24} />}
+               {isMediaCtx ? 'Import Media' : 'Import Data'}
             </h2>
             <button 
                 onClick={() => setPendingImport(null)}
@@ -186,13 +207,19 @@ export function ImportModal() {
         <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8 bg-slate-50/50 dark:bg-[#0d1117]/50">
             {/* File Context Card */}
             <div className="flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-                <div className="w-12 h-12 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
-                    <FileText size={24} />
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${isMediaCtx ? 'bg-pink-50 dark:bg-pink-500/10 text-pink-600 dark:text-pink-400' : 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'}`}>
+                    {isMediaCtx ? <Layers size={24} /> : <FileText size={24} />}
                 </div>
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
                     <h3 className="font-semibold text-slate-900 dark:text-slate-100 truncate">{pendingImport.filename}</h3>
                     <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400 mt-1">
                         <span>{fileSize}</span>
+                        {pendingImport.mimeType && (
+                            <>
+                                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
+                                <span>{pendingImport.mimeType}</span>
+                            </>
+                        )}
                         {rowCount > 0 && (
                             <>
                                 <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
@@ -213,29 +240,74 @@ export function ImportModal() {
             <div className="flex flex-col gap-4">
                <div>
                  <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">1. Interpretation Mode</h3>
-                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Choose how to interpret the contents of this file.</p>
+                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                   {isMediaCtx ? 'Choose how you want to embed this media file.' : 'Choose how to interpret the contents of this file.'}
+                 </p>
                </div>
                
                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                 <div 
-                   onClick={() => setImportMode('raw')}
-                   className={`relative p-4 rounded-xl border cursor-pointer flex flex-col gap-1 transition-all ${
-                     importMode === 'raw' 
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 shadow-[0_0_0_1px_rgba(99,102,241,1)]' 
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-700 shadow-sm hover:shadow'
-                   }`}
-                 >
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-medium">
-                            <FileJson size={18} />
-                            Raw Text
+                 {isMediaCtx ? (
+                   <>
+                     <div 
+                       onClick={() => setImportMode('media_node')}
+                       className={`relative p-4 rounded-xl border cursor-pointer flex flex-col gap-1 transition-all ${
+                         importMode === 'media_node' 
+                            ? 'border-pink-500 bg-pink-50 dark:bg-pink-500/10 shadow-[0_0_0_1px_rgba(236,72,153,1)]' 
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-pink-300 dark:hover:border-pink-700 shadow-sm hover:shadow'
+                       }`}
+                     >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-pink-700 dark:text-pink-400 font-medium">
+                                <Layers size={18} />
+                                Metadata Node
+                            </div>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${importMode === 'media_node' ? 'border-pink-500 bg-pink-500' : 'border-slate-300 dark:border-slate-700'}`}>
+                                {importMode === 'media_node' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
                         </div>
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${importMode === 'raw' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300 dark:border-slate-700'}`}>
-                            {importMode === 'raw' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Embed with full metadata (size, type, name) as child nodes</div>
+                     </div>
+                     <div 
+                       onClick={() => setImportMode('raw')}
+                       className={`relative p-4 rounded-xl border cursor-pointer flex flex-col gap-1 transition-all ${
+                         importMode === 'raw' 
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 shadow-[0_0_0_1px_rgba(99,102,241,1)]' 
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-700 shadow-sm hover:shadow'
+                       }`}
+                     >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-medium">
+                                <Sparkles size={18} />
+                                Direct Media Link
+                            </div>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${importMode === 'raw' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300 dark:border-slate-700'}`}>
+                                {importMode === 'raw' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
                         </div>
-                    </div>
-                    <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Preserve original text content exactly as is</div>
-                 </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Insert only the file URL (renders visual preview directly)</div>
+                     </div>
+                   </>
+                 ) : (
+                   <div 
+                     onClick={() => setImportMode('raw')}
+                     className={`relative p-4 rounded-xl border cursor-pointer flex flex-col gap-1 transition-all ${
+                       importMode === 'raw' 
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 shadow-[0_0_0_1px_rgba(99,102,241,1)]' 
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-700 shadow-sm hover:shadow'
+                     }`}
+                   >
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400 font-medium">
+                              <FileJson size={18} />
+                              Raw Text
+                          </div>
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${importMode === 'raw' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300 dark:border-slate-700'}`}>
+                              {importMode === 'raw' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                      </div>
+                      <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Preserve original text content exactly as is</div>
+                   </div>
+                 )}
 
                  {pendingImport.filename.endsWith('.csv') && (
                    <>

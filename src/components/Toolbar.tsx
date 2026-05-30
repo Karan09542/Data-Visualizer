@@ -83,34 +83,12 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const result = event.target?.result;
-      if (!result) return;
-      
-      const text = result as string;
-      const { parseExcel } = await import('../utils/dataFormats');
-      
-      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        try {
-            const dataExcel = parseExcel(result as ArrayBuffer);
-            useStore.getState().setPendingImport({ filename: file.name, text: '', dataExcel });
-        } catch (e) {
-            console.error('Failed to parse Excel', e);
-        }
-      } else {
-          useStore.getState().setPendingImport({ filename: file.name, text });
-      }
-    };
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     
-    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        reader.readAsArrayBuffer(file);
-    } else {
-        reader.readAsText(file);
-    }
+    // We will dynamically import the handler for file processing
+    const { processFiles } = await import('../utils/fileProcessor');
+    processFiles(Array.from(files));
 
     // Clear input so same file can be selected again
     e.target.value = '';
@@ -351,7 +329,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
       } catch (err) {
         console.error('Schema Export failed:', err);
-        alert('Failed to export schema visualizer.');
+        useStore.getState().setNotification({ message: 'Failed to export schema visualizer.', type: 'error' });
       } finally {
         if (overrideApplied) {
           // Restore
@@ -530,7 +508,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       });
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Failed to export graph.');
+      useStore.getState().setNotification({ message: 'Failed to export graph.', type: 'error' });
     } finally {
       if (!originalExpanded) {
         setGlobalTextExpanded(false);
@@ -712,37 +690,9 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     type="file" 
                     key={Date.now()}
                     className="hidden" 
-                    accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt" 
-                    onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        
-                        const reader = new FileReader();
-                        reader.onload = async (event) => {
-                          const result = event.target?.result;
-                          if (!result) return;
-                          
-                          const text = result as string;
-                          const { parseExcel } = await import('../utils/dataFormats');
-                          
-                          if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                            try {
-                                const dataExcel = parseExcel(result as ArrayBuffer);
-                                useStore.getState().setPendingImport({ filename: file.name, text: '', dataExcel });
-                            } catch (e) {
-                                console.error('Failed to parse Excel', e);
-                            }
-                          } else {
-                              useStore.getState().setPendingImport({ filename: file.name, text });
-                          }
-                        };
-                        
-                        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                            reader.readAsArrayBuffer(file);
-                        } else {
-                            reader.readAsText(file);
-                        }
-                    }} 
+                    multiple
+                    accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf" 
+                    onChange={handleFileUpload} 
                 />
               </label>
 
@@ -997,7 +947,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                  <input 
                      type="file" 
                      className="hidden" 
-                     accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt" 
+                     multiple
+                     accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf" 
                      onChange={(e) => { setIsMobileMenuOpen(false); handleFileUpload(e); }} 
                  />
                </label>

@@ -12,7 +12,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
 
   const handleSave = async () => {
     if (!docName.trim()) {
-      alert('Please enter a name for the document');
+      useStore.getState().setNotification({ message: 'Please enter a name for the document', type: 'error' });
       return;
     }
     await db.documents.add({

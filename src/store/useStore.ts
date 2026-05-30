@@ -197,8 +197,30 @@ export interface StoreState {
   setMultipleDragOverrides: (overrides: Record<string, { x: number, y: number } | null>) => void;
   clearDragOverrides: () => void;
   
-  pendingImport: { filename: string; text: string; dataExcel?: any } | null;
-  setPendingImport: (importData: { filename: string; text: string; dataExcel?: any } | null) => void;
+  pendingImport: { 
+    filename: string; 
+    text?: string; 
+    dataExcel?: any; 
+    fileContext?: 'media' | 'data' | 'unknown';
+    mimeType?: string;
+    blobUrl?: string;
+    fileSize?: number;
+  } | null;
+  setPendingImport: (importData: { 
+    filename: string; 
+    text?: string; 
+    dataExcel?: any; 
+    fileContext?: 'media' | 'data' | 'unknown';
+    mimeType?: string;
+    blobUrl?: string;
+    fileSize?: number;
+  } | null) => void;
+  
+  uploadedMediaMetadata: Record<string, { filename: string, mimeType: string, size: number }>;
+  registerMediaMetadata: (url: string, metadata: { filename: string, mimeType: string, size: number}) => void;
+
+  notification: { message: string, type: 'error' | 'success' | 'info' } | null;
+  setNotification: (notification: { message: string, type: 'error' | 'success' | 'info' } | null) => void;
   isSavedDocsOpen: boolean;
   setIsSavedDocsOpen: (isOpen: boolean) => void;
   schemaExportActive: boolean;
@@ -249,6 +271,15 @@ export const useStore = create<StoreState>()(
       isSavedDocsOpen: false,
       pendingImport: null,
       setPendingImport: (importData) => set({ pendingImport: importData }),
+      
+      uploadedMediaMetadata: {},
+      registerMediaMetadata: (url, metadata) => set((state) => ({ 
+          uploadedMediaMetadata: { ...state.uploadedMediaMetadata, [url]: metadata } 
+      })),
+
+      notification: null,
+      setNotification: (notification) => set({ notification }),
+
       schemaExportActive: false,
       setSchemaExportActive: (active: boolean) => set({ schemaExportActive: active }),
       apiMethod: 'GET',
