@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { db } from '../lib/db';
 
+let initialAutosaveLoaded = false;
+
 export default function AutosaveManager() {
   const { code, setCode, isAutosaveEnabled } = useStore();
   const lastSavedCode = useRef(code);
@@ -12,6 +14,12 @@ export default function AutosaveManager() {
     async function loadAutosave() {
       // Don't load autosave if we're opening a shared link
       if (window.location.hash.startsWith('#share=')) {
+        setHasLoadedAutosave(true);
+        initialAutosaveLoaded = true;
+        return;
+      }
+
+      if (initialAutosaveLoaded) {
         setHasLoadedAutosave(true);
         return;
       }
@@ -26,6 +34,7 @@ export default function AutosaveManager() {
         console.error('Failed to load autosaved document:', err);
       } finally {
         setHasLoadedAutosave(true);
+        initialAutosaveLoaded = true;
       }
     }
 

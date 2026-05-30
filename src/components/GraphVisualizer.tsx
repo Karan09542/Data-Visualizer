@@ -547,7 +547,7 @@ export default function GraphVisualizer() {
         return;
       }
 
-      const parsed = parsedData ? JSON.parse(JSON.stringify(parsedData)) : (codeFormat === 'yaml' || codeFormat === 'csv' ? (codeFormat === 'csv' ? [] : {}) : JSON.parse(code));
+      const parsed = parsedData ? JSON.parse(JSON.stringify(parsedData)) : (codeFormat === 'yaml' ? {} : JSON.parse(code));
 
       let finalValue: any = newValueStr;
 
@@ -576,15 +576,12 @@ export default function GraphVisualizer() {
           if (codeFormat === 'yaml') {
             const yaml = (await import('js-yaml')).default;
             setCode(yaml.dump(finalValue));
-          } else if (codeFormat === 'csv') {
-            const Papa = (await import('papaparse')).default;
-            setCode(Papa.unparse(finalValue));
           } else {
             setCode(JSON.stringify(finalValue, null, 2));
           }
         }
         else if (action === "delete") {
-          if (codeFormat === 'yaml' || codeFormat === 'csv') {
+          if (codeFormat === 'yaml') {
             setCode("");
           } else {
             setCode("{}");
@@ -598,9 +595,6 @@ export default function GraphVisualizer() {
           if (codeFormat === 'yaml') {
             const yaml = (await import('js-yaml')).default;
             setCode(yaml.dump(parsed));
-          } else if (codeFormat === 'csv') {
-            const Papa = (await import('papaparse')).default;
-            setCode(Papa.unparse(parsed));
           } else {
             setCode(JSON.stringify(parsed, null, 2));
           }
@@ -650,9 +644,6 @@ export default function GraphVisualizer() {
       if (codeFormat === 'yaml') {
         const yaml = (await import('js-yaml')).default;
         setCode(yaml.dump(parsed));
-      } else if (codeFormat === 'csv') {
-        const Papa = (await import('papaparse')).default;
-        setCode(Papa.unparse(parsed));
       } else {
         setCode(JSON.stringify(parsed, null, 2));
       }
@@ -1292,7 +1283,7 @@ export default function GraphVisualizer() {
                   try {
                     const nodePath = contextMenu.node.path;
                     if (nodePath === "root") {
-                      valToCopy = (codeFormat === 'yaml' || codeFormat === 'csv') ? JSON.stringify(parsedData, null, 2) : code;
+                      valToCopy = (codeFormat === 'yaml') ? JSON.stringify(parsedData, null, 2) : code;
                     } else {
                       const parts = nodePath
                         .replace(/^root/, "")
@@ -1616,7 +1607,7 @@ export default function GraphVisualizer() {
                   try {
                     const nodePath = contextMenu.node.path;
                     if (nodePath === "root") {
-                      valToEdit = (codeFormat === 'yaml' || codeFormat === 'csv') ? JSON.stringify(parsedData, null, 2) : code;
+                      valToEdit = (codeFormat === 'yaml') ? JSON.stringify(parsedData, null, 2) : code;
                     } else if (nodePath.includes(".__fetched")) {
                       const parts = nodePath
                         .split(/(?=\[)|(?=\.)/)

@@ -22,7 +22,7 @@ export function ImportModal() {
     // Auto-detect mode and gather metadata
     if (pendingImport.fileContext === 'media') {
         setImportMode('media_node');
-    } else if (pendingImport.filename.endsWith('.csv')) {
+    } else if (pendingImport.filename.match(/\.(csv)$/i)) {
        try {
            const parsed = parseCsv(pendingImport.text || '');
            if (parsed && parsed.length > 0) {
@@ -37,6 +37,8 @@ export function ImportModal() {
        } catch(e) {
            setImportMode('raw');
        }
+    } else if (pendingImport.dataExcel || pendingImport.filename.match(/\.(xlsx|xls|json|yaml|yml)$/i)) {
+        setImportMode('object');
     } else {
         setImportMode('raw');
     }
@@ -87,7 +89,7 @@ export function ImportModal() {
     
     let resultData: any = pendingImport.text;
     if (importMode === 'replace') {
-       if (pendingImport.filename.endsWith('.csv')) {
+       if (pendingImport.filename.match(/\.(csv)$/i)) {
           resultData = parseCsv(pendingImport.text);
        } else if (pendingImport.dataExcel) {
           resultData = pendingImport.dataExcel;
@@ -98,9 +100,21 @@ export function ImportModal() {
               resultData = pendingImport.text;
           }
        }
-       useStore.getState().setCode(typeof resultData === 'string' ? resultData : JSON.stringify(resultData, null, 2));
+       
+       const { codeFormat } = useStore.getState();
        if (typeof resultData === 'object') {
-          useStore.getState().setCodeFormat('json');
+          if (codeFormat === 'yaml') {
+              import('js-yaml').then(yaml => {
+                  useStore.getState().setCode(yaml.default.dump(resultData));
+                  setPendingImport(null);
+              });
+              return;
+          } else {
+              useStore.getState().setCode(JSON.stringify(resultData, null, 2));
+              useStore.getState().setCodeFormat('json');
+          }
+       } else {
+           useStore.getState().setCode(resultData);
        }
        setPendingImport(null);
        return;
@@ -123,8 +137,64 @@ export function ImportModal() {
         } else {
             resultData = pendingImport.text;
         }
-    } else if (importMode === 'object') {
-        if (pendingImport.filename.endsWith('.csv')) {
+    }
+    
+    const processImportResult = (finalResultData: any) => {
+        const { parsedData, codeFormat } = useStore.getState();
+        const currentData = parsedData || {};
+        let actualKey = targetKey;
+        let finalData = currentData;
+        
+        if (typeof currentData === 'object' && !Array.isArray(currentData) && currentData !== null) {
+            if (actualKey in currentData) {
+                if (collisionAction === 'rename') {
+                    let counter = 2;
+                    while (`${targetKey}_${counter}` in currentData) {
+                        counter++;
+                    }
+                    actualKey = `${targetKey}_${counter}`;
+                    finalData = { ...currentData, [actualKey]: finalResultData };
+                } else if (collisionAction === 'replace_key') {
+                    finalData = { ...currentData, [actualKey]: finalResultData };
+                } else if (collisionAction === 'merge') {
+                    const existingVal = currentData[actualKey];
+                    if (Array.isArray(existingVal) && Array.isArray(finalResultData)) {
+                        finalData = { ...currentData, [actualKey]: [...existingVal, ...finalResultData] };
+                    } else if (typeof existingVal === 'object' && existingVal !== null && typeof finalResultData === 'object' && !Array.isArray(finalResultData)) {
+                        finalData = { ...currentData, [actualKey]: { ...existingVal, ...finalResultData } };
+                    } else {
+                        finalData = { ...currentData, [actualKey]: finalResultData };
+                    }
+                }
+            } else {
+                 finalData = { ...currentData, [actualKey]: finalResultData };
+            }
+        } else if (Array.isArray(currentData)) {
+           // if they append to an array, and resultData is an array, concat
+           if (Array.isArray(finalResultData)) {
+               finalData = [...currentData, ...finalResultData];
+           } else {
+               finalData = [...currentData, finalResultData];
+           }
+        } else {
+           finalData = { [actualKey]: finalResultData };
+        }
+        
+        if (codeFormat === 'yaml') {
+            import('js-yaml').then(yaml => {
+                 useStore.getState().setCode(yaml.default.dump(finalData));
+                 setPendingImport(null);
+            });
+            return;
+        }
+        
+        useStore.getState().setCode(JSON.stringify(finalData, null, 2));
+        useStore.getState().setCodeFormat('json');
+        setPendingImport(null);
+    };
+
+    if (importMode === 'object') {
+        if (pendingImport.filename.match(/\.(csv)$/i)) {
             resultData = parseCsv(pendingImport.text);
         } else if (pendingImport.dataExcel) {
             resultData = pendingImport.dataExcel;
@@ -132,46 +202,22 @@ export function ImportModal() {
             try {
                 resultData = JSON.parse(pendingImport.text);
             } catch(e) {
-                resultData = pendingImport.text;
-            }
-        }
-    }
-    
-    const currentData = parsedData || {};
-    let actualKey = targetKey;
-    let finalData = currentData;
-    
-    if (typeof currentData === 'object' && !Array.isArray(currentData) && currentData !== null) {
-        if (actualKey in currentData) {
-            if (collisionAction === 'rename') {
-                let counter = 2;
-                while (`${targetKey}_${counter}` in currentData) {
-                    counter++;
-                }
-                actualKey = `${targetKey}_${counter}`;
-                finalData = { ...currentData, [actualKey]: resultData };
-            } else if (collisionAction === 'replace_key') {
-                finalData = { ...currentData, [actualKey]: resultData };
-            } else if (collisionAction === 'merge') {
-                const existingVal = currentData[actualKey];
-                if (Array.isArray(existingVal) && Array.isArray(resultData)) {
-                    finalData = { ...currentData, [actualKey]: [...existingVal, ...resultData] };
-                } else if (typeof existingVal === 'object' && existingVal !== null && typeof resultData === 'object' && !Array.isArray(resultData)) {
-                    finalData = { ...currentData, [actualKey]: { ...existingVal, ...resultData } };
+                if (pendingImport.filename.match(/\.(yaml|yml)$/i)) {
+                    import('js-yaml').then(yaml => {
+                        const parsed = yaml.default.load(pendingImport.text);
+                        processImportResult(parsed);
+                    }).catch(() => {
+                        processImportResult(pendingImport.text);
+                    });
+                    return; // wait for async
                 } else {
-                    finalData = { ...currentData, [actualKey]: resultData };
+                    resultData = pendingImport.text;
                 }
             }
-        } else {
-             finalData = { ...currentData, [actualKey]: resultData };
         }
-    } else {
-       finalData = { [actualKey]: resultData };
     }
-    
-    useStore.getState().setCode(JSON.stringify(finalData, null, 2));
-    useStore.getState().setCodeFormat('json');
-    setPendingImport(null);
+
+    processImportResult(resultData);
   };
   
   const currentDataCheck = parsedData || {};
@@ -309,8 +355,9 @@ export function ImportModal() {
                    </div>
                  )}
 
-                 {pendingImport.filename.endsWith('.csv') && (
+                 {(pendingImport.filename.match(/\.(csv|xlsx|xls|json|yaml|yml)$/i) || pendingImport.dataExcel) && (
                    <>
+                     {pendingImport.filename.match(/\.(csv|xlsx|xls)$/i) && (
                      <div 
                        onClick={() => setImportMode('array')}
                        className={`relative p-4 rounded-xl border cursor-pointer flex flex-col gap-1 transition-all ${
@@ -330,6 +377,7 @@ export function ImportModal() {
                         </div>
                         <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Convert into a 2D array of raw cell values</div>
                      </div>
+                     )}
                      
                      <div 
                        onClick={() => setImportMode('object')}

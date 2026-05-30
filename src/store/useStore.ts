@@ -55,7 +55,7 @@ export const defaultSettings = {
   visualizerMode: 'graph' as VisualizerMode,
 };
 
-export type CodeFormat = 'json' | 'yaml' | 'csv';
+export type CodeFormat = 'json' | 'yaml';
 
 export type ApiNodeDiagnosticError = {
   type: string;
@@ -338,13 +338,6 @@ export const useStore = create<StoreState>()(
           } catch {
             return;
           }
-        } else if (targetFormat === 'csv') {
-          try {
-            const Papa = (await import('papaparse')).default;
-            newCode = Papa.unparse(parsedData);
-          } catch {
-            return;
-          }
         } else {
           newCode = JSON.stringify(parsedData, null, 2);
         }
@@ -568,7 +561,6 @@ export const useStore = create<StoreState>()(
 
         // Detect format
         const isYaml = codeFormat === 'yaml';
-        const isCsv = codeFormat === 'csv';
 
         let newCode = '';
         if (isYaml) {
@@ -577,13 +569,6 @@ export const useStore = create<StoreState>()(
             newCode = yaml.dump(newData);
           } catch {
             newCode = JSON.stringify(newData, null, 2);
-          }
-        } else if (isCsv) {
-          try {
-            const Papa = (await import('papaparse')).default;
-            newCode = Papa.unparse(newData);
-          } catch {
-             newCode = JSON.stringify(newData, null, 2);
           }
         } else {
           newCode = JSON.stringify(newData, null, 2);

@@ -244,7 +244,7 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
                         // Trigger file download fallback if needed
                         try {
                           const formatStr = codeFormat || 'json';
-                          const blob = new Blob([code], { type: formatStr === 'json' ? 'application/json' : formatStr === 'yaml' ? 'application/yaml' : 'text/csv' });
+                          const blob = new Blob([code], { type: formatStr === 'json' ? 'application/json' : 'application/yaml' });
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement('a');
                           a.href = url;

@@ -1,6 +1,7 @@
 import { useStore, LayoutMode, NodeTheme, EdgeStyle, NodeShape, AppTheme } from '../store/useStore';
 import { Download, Minimize, Maximize, Search, Maximize2, RotateCcw, Paintbrush, Settings, PanelLeft, Menu, X, Sun, Moon, Undo2, Redo2, Share2, FolderOpen, ChevronDown, Loader2, Save, CloudOff, Cloud, Sliders, SlidersHorizontal, Network, Database } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { estimateShareSize } from '../utils/shareUtils';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import ApiNodeHelpModal from './ApiNodeHelpModal';
@@ -541,11 +542,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           >
             <PanelLeft size={18} />
           </button>
-          <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <Link to="/" className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 hover:text-blue-500 transition-colors">
             <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
             </svg>
-            JSON Graph Viewer
+            Data Visualizer
+          </Link>
+          <div className="hidden xl:flex items-center gap-4 ml-4 text-xs font-semibold">
+            <Link to="/about" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors">About</Link>
+            <Link to="/examples" className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors">Examples</Link>
           </div>
         </div>
 
@@ -572,7 +577,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               >
                 <option value="json">JSON</option>
                 <option value="yaml">YAML</option>
-                <option value="csv">CSV</option>
               </select>
             </div>
 
@@ -803,7 +807,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               >
                 <option value="json">JSON</option>
                 <option value="yaml">YAML</option>
-                <option value="csv">CSV</option>
               </select>
             </div>
 
@@ -948,7 +951,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                      type="file" 
                      className="hidden" 
                      multiple
-                     accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf" 
+                     accept=".json,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf" 
                      onChange={(e) => { setIsMobileMenuOpen(false); handleFileUpload(e); }} 
                  />
                </label>
@@ -1004,6 +1007,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 <option value="webp" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">WebP</option>
                  </select>
                </div>
+            </div>
+
+            <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-2 text-center text-sm font-medium">
+               <Link to="/about" className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors">About</Link>
+               <Link to="/examples" className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors">Examples</Link>
+               <Link to="/privacy" className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors">Privacy</Link>
+               <Link to="/terms" className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors">Terms</Link>
             </div>
           </div>
         </div>
