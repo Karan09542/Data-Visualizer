@@ -194,6 +194,7 @@ export interface StoreState {
   setActivePreviewMedia: (media: { url: string; type: 'image' | 'video' | 'audio' | 'smart' | 'pdf' | '3d-model' } | null) => void;
   updateNodeValue: (path: string, newValue: any) => Promise<void>;
   setDragOverride: (id: string, pos: { x: number, y: number } | null) => void;
+  setMultipleDragOverrides: (overrides: Record<string, { x: number, y: number } | null>) => void;
   clearDragOverrides: () => void;
   
   pendingImport: { filename: string; text: string; dataExcel?: any } | null;
@@ -566,6 +567,17 @@ export const useStore = create<StoreState>()(
           newOverrides[id] = pos;
         } else {
           delete newOverrides[id];
+        }
+        return { dragOverrides: newOverrides };
+      }),
+      setMultipleDragOverrides: (overrides) => set((state) => {
+        const newOverrides = { ...state.dragOverrides };
+        for (const [id, pos] of Object.entries(overrides)) {
+          if (pos) {
+            newOverrides[id] = pos;
+          } else {
+            delete newOverrides[id];
+          }
         }
         return { dragOverrides: newOverrides };
       }),

@@ -82,6 +82,40 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     }
   }, []);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const result = event.target?.result;
+      if (!result) return;
+      
+      const text = result as string;
+      const { parseExcel } = await import('../utils/dataFormats');
+      
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        try {
+            const dataExcel = parseExcel(result as ArrayBuffer);
+            useStore.getState().setPendingImport({ filename: file.name, text: '', dataExcel });
+        } catch (e) {
+            console.error('Failed to parse Excel', e);
+        }
+      } else {
+          useStore.getState().setPendingImport({ filename: file.name, text });
+      }
+    };
+    
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        reader.readAsArrayBuffer(file);
+    } else {
+        reader.readAsText(file);
+    }
+
+    // Clear input so same file can be selected again
+    e.target.value = '';
+  };
+
   const toggleTheme = () => {
     if (appTheme === 'dark') {
       setAppTheme('light');
@@ -958,12 +992,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                  </span>
                </button>
-               <button 
-                 onClick={() => { setIsMobileMenuOpen(false); setIsSavedDocsOpen(true); }} 
-                 className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
-               >
-                 <FolderOpen size={16} /> Saved Documents
-               </button>
+               <label className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium cursor-pointer">
+                 <Database size={16} /> Upload File
+                 <input 
+                     type="file" 
+                     className="hidden" 
+                     accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt" 
+                     onChange={(e) => { setIsMobileMenuOpen(false); handleFileUpload(e); }} 
+                 />
+               </label>
             </div>
 
             <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800">

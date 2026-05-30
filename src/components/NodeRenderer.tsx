@@ -124,31 +124,77 @@ function NodeRenderer({
     if (!foreignRef.current) return;
 
     let animationFrameId: number;
-    let pendingX = 0;
-    let pendingY = 0;
+    let dragPosUpdates: Record<string, {x: number, y: number} | null> = {};
 
     const dispatchDrag = () => {
-      useStore.getState().setDragOverride(nodeRef.current.data.id, { x: pendingX, y: pendingY });
+      useStore.getState().setMultipleDragOverrides(dragPosUpdates);
     };
+
+    let startPositions: Array<{ id: string, startX: number, startY: number }> = [];
 
     const drag = d3
       .drag<SVGForeignObjectElement, unknown>()
-      .subject(() => ({ x: nodeRef.current.x, y: nodeRef.current.y }))
+      .subject(function() {
+         const store = useStore.getState();
+         const pos = store.dragOverrides[nodeRef.current.data.id] || { x: nodeRef.current.x, y: nodeRef.current.y };
+         return { x: pos.x, y: pos.y };
+      })
       .on("start", function (event) {
         event.sourceEvent?.stopPropagation();
         d3.select(this).raise();
-        useStore.getState().setDragOverride(nodeRef.current.data.id, { x: event.x, y: event.y });
         setIsDraggingLocally(true);
+
+        const store = useStore.getState();
+        startPositions = [];
+        
+        // Add the current node
+        const currentId = nodeRef.current.data.id;
+        const currentPos = store.dragOverrides[currentId] || { x: nodeRef.current.x, y: nodeRef.current.y };
+        startPositions.push({ id: currentId, startX: currentPos.x, startY: currentPos.y });
+
+        // If shift is held, select descendants
+        if (event.sourceEvent?.shiftKey) {
+          const descendants = nodeRef.current.descendants().slice(1);
+          for (const desc of descendants) {
+             const id = desc.data.id;
+             const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
+             startPositions.push({ id, startX: pos.x, startY: pos.y });
+          }
+        }
+
+        // Apply immediately
+        dragPosUpdates = {};
+        for (const sp of startPositions) {
+           dragPosUpdates[sp.id] = { x: sp.startX, y: sp.startY };
+        }
+        
+        dragPosUpdates[currentId] = { x: event.x, y: event.y };
+        useStore.getState().setMultipleDragOverrides(dragPosUpdates);
       })
       .on("drag", function (event) {
-        pendingX = event.x;
-        pendingY = event.y;
+        const headNode = startPositions[0];
+        const dx = event.x - headNode.startX;
+        const dy = event.y - headNode.startY;
+
+        dragPosUpdates = {};
+        for (const sp of startPositions) {
+           dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
+        }
+
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(dispatchDrag);
       })
       .on("end", function (event) {
          if (animationFrameId) cancelAnimationFrame(animationFrameId);
-         useStore.getState().setDragOverride(nodeRef.current.data.id, { x: event.x, y: event.y });
+         const headNode = startPositions[0];
+         const dx = event.x - headNode.startX;
+         const dy = event.y - headNode.startY;
+
+         dragPosUpdates = {};
+         for (const sp of startPositions) {
+            dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
+         }
+         useStore.getState().setMultipleDragOverrides(dragPosUpdates);
          setIsDraggingLocally(false);
       });
 
