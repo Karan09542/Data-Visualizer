@@ -40,66 +40,82 @@ self.onmessage = (e) => {
   }
 
   const checkNode = (node: any, currentAncestors: string[], depth: number): boolean => {
+    if (!node) return false;
     let isMatch = false;
     let handledMatches = false;
     
-    if (parseRes.ast) {
-       const context = buildSearchContext(node, depth);
-       context.mode = searchEngineMode;
-       const evalRes = evaluateQuery(parseRes.ast, context);
-       isMatch = evalRes.isMatch;
-       
-       if (isMatch && evalRes.matchedPaths && evalRes.matchedPaths.length > 0) {
-           handledMatches = true;
-           for (const p of evalRes.matchedPaths) {
-               matches.add(p);
-               
-               const parts = p.match(/root|\[\d+\]|[^.\[]+/g) || [];
-               let temp = '';
-               for (let i = 0; i < parts.length; i++) {
-                   let part = parts[i];
-                   if (i > 0 && part !== 'root' && !part.startsWith('[')) {
-                       temp += '.' + part;
-                   } else {
-                       temp += part;
-                   }
-                   ancestors.add(temp);
-                   newCollapsedPaths.add(temp);
-               }
-           }
-           for (const c of currentAncestors) {
-               ancestors.add(c);
-               newCollapsedPaths.add(c);
-           }
-           ancestors.add(node.id);
-           newCollapsedPaths.add(node.id);
-       }
-       
-       for (const sug of evalRes.suggestions) globalSuggestions.add(sug);
-    } else {
-       const qLower = q.toLowerCase();
-       const matchName = node.name.toLowerCase().includes(qLower);
-       const matchVal = node.value !== undefined && String(node.value).toLowerCase().includes(qLower);
-       isMatch = matchName || matchVal;
+    try {
+      if (parseRes.ast) {
+         const context = buildSearchContext(node, depth);
+         context.mode = searchEngineMode;
+         const evalRes = evaluateQuery(parseRes.ast, context);
+         isMatch = !!evalRes.isMatch;
+         
+         if (isMatch && evalRes.matchedPaths && evalRes.matchedPaths.length > 0) {
+             handledMatches = true;
+             for (const p of evalRes.matchedPaths) {
+                 if (!p) continue;
+                 matches.add(p);
+                 
+                 const parts = p.match(/root|\[\d+\]|[^.\[]+/g) || [];
+                 let temp = '';
+                 for (let i = 0; i < parts.length; i++) {
+                     let part = parts[i];
+                     if (i > 0 && part !== 'root' && !part.startsWith('[')) {
+                         temp += '.' + part;
+                     } else {
+                         temp += part;
+                     }
+                     ancestors.add(temp);
+                     newCollapsedPaths.add(temp);
+                 }
+             }
+             for (const c of currentAncestors) {
+                 if (c) {
+                     ancestors.add(c);
+                     newCollapsedPaths.add(c);
+                 }
+             }
+             if (node.id) {
+                 ancestors.add(node.id);
+                 newCollapsedPaths.add(node.id);
+             }
+         }
+         
+         if (evalRes.suggestions) {
+             for (const sug of evalRes.suggestions) {
+                 if (sug) globalSuggestions.add(sug);
+             }
+         }
+      } else {
+         const qLower = q.toLowerCase();
+         const matchName = typeof node.name === 'string' ? node.name.toLowerCase().includes(qLower) : false;
+         const matchVal = node.value !== undefined && String(node.value).toLowerCase().includes(qLower);
+         isMatch = matchName || matchVal;
+      }
+    } catch (e) {
+      console.error("Unable to search this item", node, e);
     }
     
     let hasMatchingDescendant = false;
     
-    if (node.children) {
+    if (node.children && Array.isArray(node.children)) {
        for (const child of node.children) {
-          if (checkNode(child, [...currentAncestors, node.id], depth + 1)) {
+          if (child && checkNode(child, [...currentAncestors, node.id || ''], depth + 1)) {
              hasMatchingDescendant = true;
           }
        }
     }
     
-    if (isMatch && !handledMatches) {
+    if (isMatch && !handledMatches && node.id) {
        matches.add(node.id);
        for (const id of currentAncestors) {
-          ancestors.add(id);
-          newCollapsedPaths.add(id); 
+          if (id) {
+              ancestors.add(id);
+              newCollapsedPaths.add(id); 
+          }
        }
-    } else if (hasMatchingDescendant) {
+    } else if (hasMatchingDescendant && node.id) {
        ancestors.add(node.id);
        newCollapsedPaths.add(node.id); 
     }

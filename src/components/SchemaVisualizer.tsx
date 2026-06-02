@@ -296,9 +296,29 @@ const CustomSchemaEdge = ({
   markerEnd,
   type,
 }: EdgeProps) => {
-  const { edgeStyle, layoutMode, appTheme, edgeWidth = 1.0 } = useStore();
+  const edgeStyle = useStore((s) => s.edgeStyle);
+  const layoutMode = useStore((s) => s.layoutMode);
+  const appTheme = useStore((s) => s.appTheme);
+  const edgeWidth = useStore((s) => s.edgeWidth ?? 1.0);
   
   const styleKey = type || edgeStyle;
+
+  if (
+    sourceX === undefined ||
+    sourceX === null ||
+    isNaN(sourceX) ||
+    sourceY === undefined ||
+    sourceY === null ||
+    isNaN(sourceY) ||
+    targetX === undefined ||
+    targetX === null ||
+    isNaN(targetX) ||
+    targetY === undefined ||
+    targetY === null ||
+    isNaN(targetY)
+  ) {
+    return null;
+  }
 
   const path = getEdgePath(
     { x: sourceX, y: sourceY },
@@ -767,7 +787,14 @@ const edgeTypes = {
 };
 
 function SchemaVisualizerInner() {
-  const { parsedData, appTheme, layoutMode, edgeStyle, schemaExportActive, searchQuery, searchMatches, activeMatchId } = useStore();
+  const parsedData = useStore((s) => s.parsedData);
+  const appTheme = useStore((s) => s.appTheme);
+  const layoutMode = useStore((s) => s.layoutMode);
+  const edgeStyle = useStore((s) => s.edgeStyle);
+  const schemaExportActive = useStore((s) => s.schemaExportActive);
+  const searchQuery = useStore((s) => s.searchQuery);
+  const searchMatches = useStore((s) => s.searchMatches);
+  const activeMatchId = useStore((s) => s.activeMatchId);
   const [hasSelection, setHasSelection] = useState(false);
   const { fitView } = useReactFlow();
 

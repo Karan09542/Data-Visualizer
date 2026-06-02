@@ -7,6 +7,7 @@ import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'reac
 import SmartMediaRenderer from './SmartMediaRenderer';
 import { SmartFallbackMedia } from './SmartFallbackMedia';
 import { PdfViewer } from './PdfViewer';
+import { SafeModelViewer } from './SafeModelViewer';
 
 const MediaPreviewPopup: React.FC = () => {
   const { activePreviewMedia, setActivePreviewMedia } = useStore();
@@ -95,15 +96,14 @@ const MediaPreviewPopup: React.FC = () => {
     }
 
     if (type === '3d-model') {
-      const ModelViewer = 'model-viewer' as any;
       return (
         <div className="relative w-[95%] h-[95%] max-w-7xl flex items-center justify-center bg-transparent rounded-2xl overflow-hidden shadow-2xl">
-          <ModelViewer
+          <SafeModelViewer
             src={url}
-            auto-rotate
-            camera-controls
+            autoRotate
+            cameraControls
             style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
-          ></ModelViewer>
+          />
         </div>
       );
     }

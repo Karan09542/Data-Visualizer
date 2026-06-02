@@ -260,3 +260,32 @@ input[type="number"] {
     @apply font-sans;
   }
 }
+
+/* Custom Monaco Minimap Styling */
+.monaco-editor .minimap {
+  opacity: 0.85 !important;
+  transition: opacity 0.2s ease-in-out;
+}
+.monaco-editor:hover .minimap {
+  opacity: 1 !important;
+}
+.monaco-editor .minimap-slider {
+  background: rgba(120, 120, 120, 0.1) !important;
+  border-radius: 4px !important;
+  border-left: 2px solid rgba(120, 120, 120, 0.2) !important;
+  transition: background 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+.dark .monaco-editor .minimap-slider {
+  background: rgba(200, 200, 200, 0.1) !important;
+  border-left: 2px solid rgba(200, 200, 200, 0.2) !important;
+}
+.monaco-editor .minimap-slider:hover,
+.monaco-editor .minimap-slider.active {
+  background: rgba(120, 120, 120, 0.2) !important;
+  border-left: 2px solid rgba(59, 130, 246, 0.7) !important; /* Blue-500 accent */
+}
+.dark .monaco-editor .minimap-slider:hover,
+.dark .monaco-editor .minimap-slider.active {
+  background: rgba(200, 200, 200, 0.2) !important;
+  border-left: 2px solid rgba(59, 130, 246, 0.7) !important; /* Blue-500 accent */
+}

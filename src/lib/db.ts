@@ -8,15 +8,23 @@ export interface SavedDocument {
   updatedAt: number;
 }
 
+export interface NodePosition {
+  id: string; // The node ID/path
+  x: number;
+  y: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
-  documents: EntityTable<
-    SavedDocument,
-    'id'
-  >;
+  documents: EntityTable<SavedDocument, 'id'>;
+  nodePositions: EntityTable<NodePosition, 'id'>;
 };
 
-db.version(1).stores({
-  documents: '++id, name, createdAt, updatedAt'
+db.version(2).stores({
+  documents: '++id, name, createdAt, updatedAt',
+  nodePositions: 'id' // Primary key is id, no auto-increment
+}).upgrade(tx => {
+  // Upgrade handling automatically managed by Dexie for new tables
 });
 
 export { db };
+

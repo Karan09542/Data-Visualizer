@@ -127,6 +127,13 @@ export async function smartJsonFetch(
   }
 
   const nativeAbort = createAbortController();
+  const onParentAbort = () => {
+    nativeAbort.controller.abort();
+  };
+  if (options.signal) {
+    options.signal.addEventListener('abort', onParentAbort);
+  }
+
   try {
     const nativeOptions: RequestInit = {
       ...fetchOptions,
@@ -143,6 +150,9 @@ export async function smartJsonFetch(
       const blob = await response.blob();
       const mediaUrl = URL.createObjectURL(blob);
       nativeAbort.cleanup();
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onParentAbort);
+      }
       return {
         success: false,
         data: null,
@@ -163,6 +173,9 @@ export async function smartJsonFetch(
 
     responseText = await response.text();
     nativeAbort.cleanup();
+    if (options.signal) {
+      options.signal.removeEventListener('abort', onParentAbort);
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP Error Status: ${response.status}`);
@@ -189,10 +202,14 @@ export async function smartJsonFetch(
 
   } catch (err: any) {
     nativeAbort.cleanup();
+    if (options.signal) {
+      options.signal.removeEventListener('abort', onParentAbort);
+    }
     nativeFetchError = err;
     
-    // Check for explicit timeout abort
+    // Check for explicit timeout or user abort
     if (err.name === 'AbortError') {
+      const isUserAborted = options.signal?.aborted;
       return {
         success: false,
         data: null,
@@ -200,9 +217,9 @@ export async function smartJsonFetch(
         source: 'native',
         phase: 'native-fetch',
         status: null,
-        reason: 'Request Timed Out',
-        errorType: 'timeout',
-        errorMessage: 'The request took too long to respond.'
+        reason: isUserAborted ? 'Aborted' : 'Request Timed Out',
+        errorType: isUserAborted ? 'generic' : 'timeout',
+        errorMessage: isUserAborted ? 'The request was cancelled by the user.' : 'The request took too long to respond.'
       };
     }
   }
@@ -220,6 +237,12 @@ export async function smartJsonFetch(
 
     const fallbackUrl = `https://go.data-visualizer.workers.dev/?url=${encodeURIComponent(trimmedUrl)}`;
     const fallbackAbort = createAbortController();
+    const onFallbackParentAbort = () => {
+      fallbackAbort.controller.abort();
+    };
+    if (options.signal) {
+      options.signal.addEventListener('abort', onFallbackParentAbort);
+    }
 
     try {
       const fallbackOptions: RequestInit = {
@@ -242,6 +265,9 @@ export async function smartJsonFetch(
         const blob = await response.blob();
         const mediaUrl = URL.createObjectURL(blob);
         fallbackAbort.cleanup();
+        if (options.signal) {
+          options.signal.removeEventListener('abort', onFallbackParentAbort);
+        }
         return {
           success: false,
           data: null,
@@ -262,6 +288,9 @@ export async function smartJsonFetch(
 
       responseText = await response.text();
       fallbackAbort.cleanup();
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onFallbackParentAbort);
+      }
 
       if (!response.ok) {
         return {
@@ -301,8 +330,12 @@ export async function smartJsonFetch(
 
     } catch (err: any) {
       fallbackAbort.cleanup();
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onFallbackParentAbort);
+      }
       
       if (err.name === 'AbortError') {
+        const isUserAborted = options.signal?.aborted;
         return {
           success: false,
           data: null,
@@ -310,9 +343,9 @@ export async function smartJsonFetch(
           source: 'fallback',
           phase: 'fallback-fetch',
           status: null,
-          reason: 'Proxy Request Timed Out',
-          errorType: 'timeout',
-          errorMessage: 'The request took too long to respond.'
+          reason: isUserAborted ? 'Aborted' : 'Proxy Request Timed Out',
+          errorType: isUserAborted ? 'generic' : 'timeout',
+          errorMessage: isUserAborted ? 'The request was cancelled by the user.' : 'The request took too long to respond.'
         };
       }
 

@@ -12,11 +12,16 @@ interface EdgeProps {
   source?: { x: number, y: number };
   target?: { x: number, y: number };
   layoutMode?: string;
+  targetData?: any;
 }
 
-function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected, source, target, layoutMode }: EdgeProps) {
-  const [isHovered, setIsHovered] = useState(false);
+function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected, source, target, layoutMode, targetData }: EdgeProps) {
+  const isHoveredState = useState(false);
+  const isHovered = isHoveredState[0];
+  const setIsHovered = isHoveredState[1];
   const edgeWidth = useStore(state => state.edgeWidth ?? 1.0);
+  const jsNodeErrors = useStore(state => state.jsNodeErrors);
+  const jsNodeResponses = useStore(state => state.jsNodeResponses);
 
   let stroke = "#334155";
   let strokeWidth = 1.5;
@@ -26,6 +31,8 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     opacity: 1,
     filter: 'none'
   };
+
+  const isJsNodeEdge = targetData && targetData.type === 'string' && typeof targetData.name === 'string' && (targetData.name.endsWith('_js_node') || targetData.name.endsWith('_ts_node'));
 
   // Base style logic
   if (style === 'dashed') {
@@ -58,6 +65,28 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   } else if (style === 'animated') {
     strokeDasharray = "8,8";
     inlines.animation = "dash 20s linear infinite"; 
+  }
+
+  // JS Node Edge Override
+  if (isJsNodeEdge) {
+    stroke = "#eab308"; // yellow-500
+    strokeWidth = 2;
+    strokeDasharray = "6,4";
+    inlines.filter = "drop-shadow(0 0 6px rgba(234, 179, 8, 0.4))";
+    inlines.animation = "dash 1.5s linear infinite";
+    
+    const isError = jsNodeErrors[targetData.path];
+    const isSuccess = jsNodeResponses[targetData.path] !== undefined;
+    
+    if (isError) {
+      stroke = "#ef4444";
+      inlines.filter = "drop-shadow(0 0 6px rgba(239, 68, 68, 0.6))";
+      inlines.animation = "none";
+    } else if (isSuccess) {
+      stroke = "#22c55e";
+      inlines.filter = "drop-shadow(0 0 6px rgba(34, 197, 94, 0.6))";
+      inlines.animation = "dash 3s linear infinite"; // slower pulse
+    }
   }
 
   // Theme-specific overrides if style is default or specifically requested
@@ -322,6 +351,17 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
         <g style={{pointerEvents: 'none'}}>
            {/* Draw a robust golden-green woody petiole sheath swelling at the base of the banyan leaf */}
            <circle cx={target.x} cy={target.y} r={4.5} fill="#e2f97c" stroke="#1b4332" strokeWidth={1.5} />
+        </g>
+      )}
+      {isJsNodeEdge && target && source && (
+        <g transform={`translate(${layoutMode === 'vertical' ? target.x : target.x - 30}, ${layoutMode === 'vertical' ? target.y - 20 : target.y - 12})`} style={{ pointerEvents: 'none' }}>
+           <text
+             textAnchor="middle" 
+             className={`text-[8px] font-bold uppercase tracking-widest ${jsNodeErrors[targetData.path] ? 'fill-red-500' : jsNodeResponses[targetData.path] !== undefined ? 'fill-green-500' : 'fill-yellow-500 animate-pulse'}`}
+             style={{ filter: "drop-shadow(0px 1px 2px rgba(0,0,0,0.6))" }}
+           >
+             Data In
+           </text>
         </g>
       )}
     </g>

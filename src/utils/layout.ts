@@ -169,8 +169,16 @@ export const computeLayout = (treeData: TreeNode | null, collapsedNodes: Set<str
 };
 
 export const getEdgePath = (source: {x: number, y: number}, target: {x: number, y: number}, edgeStyle: string, layoutMode: string) => {
+    if (!source || !target || typeof source.x !== 'number' || typeof source.y !== 'number' || typeof target.x !== 'number' || typeof target.y !== 'number' || isNaN(source.x) || isNaN(source.y) || isNaN(target.x) || isNaN(target.y)) {
+        return '';
+    }
+
     const { x: x1, y: y1 } = source;
     const { x: x2, y: y2 } = target;
+
+    if (x1 === x2 && y1 === y2) {
+        return `M ${x1},${y1} L ${x2},${y2}`;
+    }
 
     // 1. STRAIGHT & SOLID STYLES
     if (edgeStyle === 'straight' || edgeStyle === 'double' || edgeStyle === 'thin') {
@@ -216,7 +224,7 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
     if (edgeStyle === 'floating') {
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const dist = Math.hypot(dx, dy);
+        const dist = Math.hypot(dx, dy) || 1;
         if (dist > 180) {
             const sx = x1 + (dx / dist) * 130;
             const sy = y1 + (dy / dist) * 50;
@@ -231,7 +239,7 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
     if (edgeStyle === 'smart') {
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const dist = Math.hypot(dx, dy);
+        const dist = Math.hypot(dx, dy) || 1;
         const nx = -dy / dist;
         const ny = dx / dist;
         const offset = dist > 250 ? 60 : 25;
@@ -260,7 +268,7 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
     if (edgeStyle === 'zigzag' || edgeStyle === 'pulse') {
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const dist = Math.hypot(dx, dy);
+        const dist = Math.hypot(dx, dy) || 1;
         const steps = Math.max(6, Math.floor(dist / 22));
         let path = `M ${x1},${y1}`;
         const nx = -dy / dist;
@@ -284,7 +292,7 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
     if (edgeStyle === 'octopus') {
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const dist = Math.hypot(dx, dy);
+        const dist = Math.hypot(dx, dy) || 1;
         const nx = -dy / dist;
         const ny = dx / dist;
         const shift = Math.sin(dist / 40) * 35;

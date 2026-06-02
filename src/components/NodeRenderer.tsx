@@ -3,7 +3,7 @@ import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore, NodeTheme } from "../store/useStore";
-import { useShallow } from 'zustand/react/shallow';
+import { useShallow } from "zustand/react/shallow";
 import {
   ChevronRight,
   ChevronDown,
@@ -14,16 +14,26 @@ import {
   ToggleLeft,
   HelpCircle,
   MoreVertical,
-  Maximize2, 
-  Minimize2, 
+  Maximize2,
+  Minimize2,
   Eye,
-  FileText
+  FileText,
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
 import SafeIframe from "./SafeIframe";
 import { ApiNodeRenderer } from "./ApiNodeRenderer";
-import "@google/model-viewer";
+import { JsNodeRenderer } from "./JsNodeRenderer";
+import { JsNodeCodeRenderer } from "./JsNodeCodeRenderer";
+import { JsNodeTerminalRenderer } from "./JsNodeTerminalRenderer";
+import { TsNodeRenderer } from "./TsNodeRenderer";
+import { TsNodeCodeRenderer } from "./TsNodeCodeRenderer";
+import { TsNodeTerminalRenderer } from "./TsNodeTerminalRenderer";
+import { PyNodeRenderer } from "./PyNodeRenderer";
+import { PyNodeCodeRenderer } from "./PyNodeCodeRenderer";
+import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
+
+import { SafeModelViewer } from "./SafeModelViewer";
 
 interface NodeProps {
   key?: React.Key;
@@ -38,34 +48,35 @@ export const getMediaType = (val: string) => {
   if (!val || typeof val !== "string") return null;
   val = val.trim();
   if (
-    val.match(/\.pdf(\?.*)?$/i) || 
+    val.match(/\.pdf(\?.*)?$/i) ||
     val.startsWith("data:application/pdf") ||
     (val.startsWith("blob:http") && val.includes("pdf"))
-  ) 
+  )
     return "pdf";
   if (
     val.startsWith("data:image/") ||
-    val.startsWith("blob:http") && val.includes("image") ||
+    (val.startsWith("blob:http") && val.includes("image")) ||
     val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)
   )
     return "image";
   if (
     val.startsWith("data:audio/") ||
-    val.startsWith("blob:http") && val.includes("audio") ||
+    (val.startsWith("blob:http") && val.includes("audio")) ||
     val.match(/\.(mp3|wav|ogg|aac|flac)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac|flac)/i)
   )
     return "audio";
   if (
     val.startsWith("data:video/") ||
-    val.startsWith("blob:http") && val.includes("video") ||
+    (val.startsWith("blob:http") && val.includes("video")) ||
     val.match(/\.(mp4|webm|ogv|mov)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(mp4|webm|ogv|mov)/i)
   )
     return "video";
   if (
-    val.startsWith("blob:http") && (val.includes("model") || val.includes("3d-model")) ||
+    (val.startsWith("blob:http") &&
+      (val.includes("model") || val.includes("3d-model"))) ||
     val.match(/\.(glb|gltf|obj)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(glb|gltf|obj)/i) ||
     val.startsWith("model/")
@@ -87,31 +98,36 @@ function NodeRenderer({
   isSelected,
   onContextMenu,
 }: NodeProps) {
-  const nodeTheme = useStore(state => state.nodeTheme);
-  const nodeShape = useStore(state => state.nodeShape);
-  const nodeSize = useStore(state => state.nodeSize);
-  const nodeColor = useStore(state => state.nodeColor);
-  const nodeTextColor = useStore(state => state.nodeTextColor);
-  const nodeGradientColor1 = useStore(state => state.nodeGradientColor1);
-  const nodeGradientColor2 = useStore(state => state.nodeGradientColor2);
-  const useNodeGradient = useStore(state => state.useNodeGradient);
-  const nodeGradientAngle = useStore(state => state.nodeGradientAngle);
-  const nodeGradientType = useStore(state => state.nodeGradientType);
-  const toggleNodeCollapse = useStore(state => state.toggleNodeCollapse);
-  const collapsedNodes = useStore(state => state.collapsedNodes);
-  const searchQuery = useStore(state => state.searchQuery);
-  const searchMatches = useStore(state => state.searchMatches);
-  const searchAncestors = useStore(state => state.searchAncestors);
-  const activeMatchId = useStore(state => state.activeMatchId);
-  const setSelectedNodeId = useStore(state => state.setSelectedNodeId);
-  const showMediaPreview = useStore(state => state.showMediaPreview);
-  const manuallyRenderedNodes = useStore(state => state.manuallyRenderedNodes);
-  const globalTextExpanded = useStore(state => state.globalTextExpanded);
-  const setActivePreviewText = useStore(state => state.setActivePreviewText);
-  const setActivePreviewMedia = useStore(state => state.setActivePreviewMedia);
-  const appTheme = useStore(state => state.appTheme);
-  const knownDataUrls = useStore(state => state.knownDataUrls);
-  
+  const nodeTheme = useStore((state) => state.nodeTheme);
+  const nodeShape = useStore((state) => state.nodeShape);
+  const nodeSize = useStore((state) => state.nodeSize);
+  const nodeColor = useStore((state) => state.nodeColor);
+  const nodeTextColor = useStore((state) => state.nodeTextColor);
+  const nodeGradientColor1 = useStore((state) => state.nodeGradientColor1);
+  const nodeGradientColor2 = useStore((state) => state.nodeGradientColor2);
+  const useNodeGradient = useStore((state) => state.useNodeGradient);
+  const nodeGradientAngle = useStore((state) => state.nodeGradientAngle);
+  const nodeGradientType = useStore((state) => state.nodeGradientType);
+  const toggleNodeCollapse = useStore((state) => state.toggleNodeCollapse);
+  const collapsedNodes = useStore((state) => state.collapsedNodes);
+  const searchQuery = useStore((state) => state.searchQuery);
+  const searchMatches = useStore((state) => state.searchMatches);
+  const searchAncestors = useStore((state) => state.searchAncestors);
+  const activeMatchId = useStore((state) => state.activeMatchId);
+  const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
+  const showMediaPreview = useStore((state) => state.showMediaPreview);
+  const manuallyRenderedNodes = useStore(
+    (state) => state.manuallyRenderedNodes,
+  );
+  const globalTextExpanded = useStore((state) => state.globalTextExpanded);
+  const setActivePreviewText = useStore((state) => state.setActivePreviewText);
+  const setActivePreviewMedia = useStore(
+    (state) => state.setActivePreviewMedia,
+  );
+  const appTheme = useStore((state) => state.appTheme);
+  const knownDataUrls = useStore((state) => state.knownDataUrls);
+  const nodeSizes = useStore((state) => state.nodeSizes);
+
   const foreignRef = useRef<SVGForeignObjectElement>(null);
   const mediaContainerRef = useRef<HTMLDivElement>(null);
 
@@ -124,20 +140,31 @@ function NodeRenderer({
     if (!foreignRef.current) return;
 
     let animationFrameId: number;
-    let dragPosUpdates: Record<string, {x: number, y: number} | null> = {};
+    let dragPosUpdates: Record<string, { x: number; y: number } | null> = {};
 
     const dispatchDrag = () => {
       useStore.getState().setMultipleDragOverrides(dragPosUpdates);
     };
 
-    let startPositions: Array<{ id: string, startX: number, startY: number }> = [];
+    let startPositions: Array<{ id: string; startX: number; startY: number }> =
+      [];
 
     const drag = d3
       .drag<SVGForeignObjectElement, unknown>()
-      .subject(function() {
-         const store = useStore.getState();
-         const pos = store.dragOverrides[nodeRef.current.data.id] || { x: nodeRef.current.x, y: nodeRef.current.y };
-         return { x: pos.x, y: pos.y };
+      .filter((event) => {
+        const target = event.target as Element;
+        if (target?.closest?.(".drag-handle")) {
+          return !event.ctrlKey && !event.button;
+        }
+        return !event.ctrlKey && !event.button && !target?.closest?.(".nodrag");
+      })
+      .subject(function () {
+        const store = useStore.getState();
+        const pos = store.dragOverrides[nodeRef.current.data.id] || {
+          x: nodeRef.current.x,
+          y: nodeRef.current.y,
+        };
+        return { x: pos.x, y: pos.y };
       })
       .on("start", function (event) {
         event.sourceEvent?.stopPropagation();
@@ -146,28 +173,35 @@ function NodeRenderer({
 
         const store = useStore.getState();
         startPositions = [];
-        
+
         // Add the current node
         const currentId = nodeRef.current.data.id;
-        const currentPos = store.dragOverrides[currentId] || { x: nodeRef.current.x, y: nodeRef.current.y };
-        startPositions.push({ id: currentId, startX: currentPos.x, startY: currentPos.y });
+        const currentPos = store.dragOverrides[currentId] || {
+          x: nodeRef.current.x,
+          y: nodeRef.current.y,
+        };
+        startPositions.push({
+          id: currentId,
+          startX: currentPos.x,
+          startY: currentPos.y,
+        });
 
         // If shift is held, select descendants
         if (event.sourceEvent?.shiftKey) {
           const descendants = nodeRef.current.descendants().slice(1);
           for (const desc of descendants) {
-             const id = desc.data.id;
-             const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
-             startPositions.push({ id, startX: pos.x, startY: pos.y });
+            const id = desc.data.id;
+            const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
+            startPositions.push({ id, startX: pos.x, startY: pos.y });
           }
         }
 
         // Apply immediately
         dragPosUpdates = {};
         for (const sp of startPositions) {
-           dragPosUpdates[sp.id] = { x: sp.startX, y: sp.startY };
+          dragPosUpdates[sp.id] = { x: sp.startX, y: sp.startY };
         }
-        
+
         dragPosUpdates[currentId] = { x: event.x, y: event.y };
         useStore.getState().setMultipleDragOverrides(dragPosUpdates);
       })
@@ -178,24 +212,24 @@ function NodeRenderer({
 
         dragPosUpdates = {};
         for (const sp of startPositions) {
-           dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
+          dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
         }
 
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(dispatchDrag);
       })
       .on("end", function (event) {
-         if (animationFrameId) cancelAnimationFrame(animationFrameId);
-         const headNode = startPositions[0];
-         const dx = event.x - headNode.startX;
-         const dy = event.y - headNode.startY;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        const headNode = startPositions[0];
+        const dx = event.x - headNode.startX;
+        const dy = event.y - headNode.startY;
 
-         dragPosUpdates = {};
-         for (const sp of startPositions) {
-            dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
-         }
-         useStore.getState().setMultipleDragOverrides(dragPosUpdates);
-         setIsDraggingLocally(false);
+        dragPosUpdates = {};
+        for (const sp of startPositions) {
+          dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
+        }
+        useStore.getState().setMultipleDragOverrides(dragPosUpdates);
+        setIsDraggingLocally(false);
       });
 
     d3.select(foreignRef.current).call(drag);
@@ -225,12 +259,43 @@ function NodeRenderer({
       useStore.getState().selectedNodeId != null);
 
   const strVal = data.value !== undefined ? String(data.value) : "";
-  const isApiNode = data.type === 'string' && data.name && String(data.name).endsWith('_api_node');
-  
-  const isManuallyRendered = manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
+  const isApiNode =
+    data.type === "string" &&
+    data.name &&
+    String(data.name).endsWith("_api_node");
+  const isJsNode =
+    data.type === "string" &&
+    data.name &&
+    String(data.name).endsWith("_js_node");
+  const isJsCode = data.type === "js_code";
+  const isJsTerminal = data.type === "js_terminal";
+
+  const isTsNode =
+    data.type === "string" &&
+    data.name &&
+    String(data.name).endsWith("_ts_node");
+  const isTsCode = data.type === "ts_code";
+  const isTsTerminal = data.type === "ts_terminal";
+
+  const isPyNode =
+    data.type === "string" &&
+    data.name &&
+    String(data.name).endsWith("_py_node");
+
+  const isPyCode = data.type === "py_code";
+  const isPyTerminal = data.type === "py_terminal";
+
+  const isManuallyRendered =
+    manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
   const isKnownDataUrl = !!knownDataUrls[strVal];
   const mediaType =
-    (showMediaPreview || isManuallyRendered) && data.type === "string" && !smartMediaFailed && !isApiNode && !isKnownDataUrl
+    (showMediaPreview || isManuallyRendered) &&
+    data.type === "string" &&
+    !smartMediaFailed &&
+    !isApiNode &&
+    !isJsNode &&
+    !isTsNode &&
+    !isKnownDataUrl
       ? getMediaType(strVal)
       : null;
   const isMedia = !!mediaType;
@@ -726,7 +791,8 @@ function NodeRenderer({
 
   let highlightClasses = "";
   if (isActiveMatch) {
-    highlightClasses = "!ring-4 !ring-emerald-400 !shadow-[0_0_20px_rgba(52,211,153,0.8)] !brightness-125 !z-[120] !border-emerald-400";
+    highlightClasses =
+      "!ring-4 !ring-emerald-400 !shadow-[0_0_20px_rgba(52,211,153,0.8)] !brightness-125 !z-[120] !border-emerald-400";
   } else if (isMatch) {
     highlightClasses =
       "!ring-2 !ring-yellow-400 !shadow-[0_0_15px_rgba(250,204,21,0.6)] !brightness-110 !z-[110] !border-yellow-400";
@@ -754,33 +820,67 @@ function NodeRenderer({
     dropShadowClass = "drop-shadow-[0_0_5px_rgba(168,85,247,0.4)]";
   }
 
-  let fWidth = isApiNode ? 340 : isMedia ? 320 : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 220 : 260);
-  let fHeight = isMedia
-    ? mediaType === "audio"
-      ? 140
-      : 240
+  const customSize = nodeSizes[data.id];
+
+  let fWidth = customSize
+    ? customSize.width
     : isApiNode
-      ? 140
-      : isExpanded
-        ? (nodeTheme === "peepal" || nodeTheme === "banyan" ? 440 : 300)
-        : (nodeTheme === "peepal" || nodeTheme === "banyan" ? 310 : 120);
+      ? 340
+      : (isJsNode || isTsNode || isPyNode)
+        ? 440
+        : (isJsCode || isTsCode || isPyCode)
+          ? 420
+          : (isJsTerminal || isTsTerminal || isPyTerminal)
+            ? 420
+            : isMedia
+              ? 320
+              : nodeTheme === "peepal" || nodeTheme === "banyan"
+                ? 220
+                : 260;
+  let fHeight = customSize
+    ? customSize.height
+    : isMedia
+      ? mediaType === "audio"
+        ? 140
+        : 240
+      : isApiNode
+        ? 140
+        : (isJsNode || isTsNode || isPyNode)
+          ? 380
+          : (isJsCode || isTsCode || isPyCode)
+            ? 260
+            : (isJsTerminal || isTsTerminal || isPyTerminal)
+              ? 200
+              : isExpanded
+                ? nodeTheme === "peepal" || nodeTheme === "banyan"
+                  ? 440
+                  : 300
+                : nodeTheme === "peepal" || nodeTheme === "banyan"
+                  ? 310
+                  : 120;
 
   const isDefaultShape = nodeShape === "default";
 
-  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : "max-w-[260px]"}`;
+  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
+
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode) {
+    shapeClasses = `p-0 !bg-transparent !border-transparent !shadow-none overflow-visible`;
+  }
 
   // Apply Theme-Specific Shapes ONLY if shape is at 'default'
   if (isDefaultShape) {
     switch (nodeTheme) {
       case "nature":
-        shapeClasses = "px-6 py-4 min-w-[150px] flex items-center justify-center";
+        shapeClasses =
+          "px-6 py-4 min-w-[150px] flex items-center justify-center";
         // A much smoother 12-point leaf polygon
         shapeStyle.clipPath =
           "polygon(50% 0%, 75% 5%, 95% 20%, 100% 45%, 95% 75%, 75% 92%, 50% 100%, 25% 92%, 5% 75%, 0% 45%, 5% 20%, 25% 5%)";
         break;
       case "banyan":
-        shapeClasses = "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
+        shapeClasses =
+          "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
         shapeStyle.width = "100%";
         shapeStyle.height = "100%";
         shapeStyle.paddingTop = "25%";
@@ -792,7 +892,8 @@ function NodeRenderer({
           "polygon(50% 3%, 64% 7%, 78% 16%, 88% 30%, 94% 48%, 93% 66%, 84% 81%, 70% 92%, 55% 96%, 52% 100%, 48% 100%, 45% 96%, 30% 92%, 16% 81%, 7% 66%, 6% 48%, 12% 30%, 22% 16%, 36% 7%)";
         break;
       case "peepal":
-        shapeClasses = "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
+        shapeClasses =
+          "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
         shapeStyle.width = "100%";
         shapeStyle.height = "100%";
         shapeStyle.paddingTop = "22%";
@@ -943,7 +1044,7 @@ function NodeRenderer({
         shapeStyle.outlineOffset = "4px";
         break;
     }
-    
+
     if (!shapeStyle.maxWidth) {
       shapeStyle.maxWidth = isApiNode ? "340px" : isMedia ? "320px" : "260px";
     }
@@ -1008,442 +1109,762 @@ function NodeRenderer({
     }
   }
 
-  fWidth *= nodeSize;
-  fHeight *= nodeSize;
+  if (!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode)) {
+    fWidth *= nodeSize;
+    fHeight *= nodeSize;
+  }
+
+  let foWidth = fWidth + 100;
+  let foHeight = fHeight + 100;
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode) {
+    foWidth += 200;
+    foHeight += 200;
+  }
 
   return (
     <foreignObject
       ref={foreignRef}
-      x={node.x - fWidth / 2}
-      y={node.y - fHeight / 2}
-      width={fWidth}
-      height={fHeight}
+      x={node.x - foWidth / 2}
+      y={node.y - foHeight / 2}
+      width={foWidth}
+      height={foHeight}
       className={`transition-all duration-500 ease-out origin-center ${isDimmed ? "opacity-30 grayscale scale-95" : "opacity-100"} ${isMatch || isSelected ? "z-[100]" : isAncestor || isSelectedPath ? "z-[90]" : "z-[50]"}`}
-      style={{ overflow: "visible", touchAction: "none" }}
+      style={{
+        overflow: "visible",
+        touchAction: "none",
+        pointerEvents: "none",
+      }}
     >
-      {nodeTheme === "seed" && data.id === "root" && (
-        <div
-          className="absolute left-1/2 -translate-x-1/2 top-4 w-[240px] h-[350px] pointer-events-none"
-          style={{ zIndex: -10 }}
-        >
-          <svg viewBox="0 0 240 350" width="100%" height="100%">
-            <defs>
-              <radialGradient id="soilGrad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#4a2e1b" stopOpacity="0.9" />
-                <stop offset="60%" stopColor="#5d3921" stopOpacity="0.5" />
-                <stop offset="100%" stopColor="#8c5836" stopOpacity="0" />
-              </radialGradient>
-              <linearGradient
-                id="seedColor"
-                x1="0%"
-                y1="0%"
-                x2="100%"
-                y2="100%"
-              >
-                <stop offset="0%" stopColor="#a36e3c" />
-                <stop offset="100%" stopColor="#3d2110" />
-              </linearGradient>
-            </defs>
-
-            <ellipse cx="120" cy="200" rx="110" ry="80" fill="url(#soilGrad)" />
-
-            {/* Roots */}
-            <path
-              d="M 120 190 C 100 230, 50 280, 20 320 M 120 190 C 140 240, 200 300, 220 330 M 120 190 C 110 250, 90 290, 100 340 M 130 200 C 150 230, 140 280, 160 320 M 110 220 C 80 250, 70 270, 60 300"
-              stroke="#362312"
-              strokeWidth="2.5"
-              fill="none"
-              opacity="0.8"
-            />
-
-            {/* Seed */}
-            <g transform="translate(120, 170)">
-              <ellipse
-                cx="-15"
-                cy="0"
-                rx="28"
-                ry="42"
-                fill="url(#seedColor)"
-                transform="rotate(-15)"
-              />
-              <ellipse
-                cx="15"
-                cy="0"
-                rx="28"
-                ry="42"
-                fill="url(#seedColor)"
-                transform="rotate(15)"
-              />
-              <path
-                d="M 0 -35 C -10 -15, -10 25, 0 40 C 10 25, 10 -15, 0 -35"
-                fill="#f0d5a8"
-                opacity="0.9"
-              />
-            </g>
-
-            {/* Stem */}
-            <path
-              d="M 120 140 C 115 100, 90 80, 120 20"
-              stroke="#7eaa54"
-              strokeWidth="6"
-              fill="none"
-              strokeLinecap="round"
-            />
-
-            {/* Leaves on stem */}
-            <path d="M 112 100 C 70 100, 50 60, 102 90" fill="#5c8a38" />
-            <path d="M 126 60 C 170 50, 190 90, 115 70" fill="#5c8a38" />
-          </svg>
-        </div>
-      )}
-      <div
-        className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${isMatch || isSelected ? "scale-105" : ""} ${dropShadowClass}`}
-      >
-        <div
-          className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
-          style={{
-            ...shapeStyle,
-            transform: `scale(${nodeSize})`,
-            transformOrigin: "center",
-            touchAction: "none",
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelectedNodeId(data.id);
-          }}
-          onContextMenu={(e) => {
-            if (onContextMenu) {
-              e.preventDefault();
-              e.stopPropagation();
-              onContextMenu(e, data);
-            }
-          }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            if (hasChildren) toggleNodeCollapse(data.id);
-          }}
-        >
-          {nodeTheme === "nature" && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-20">
-              <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white -translate-x-1/2" />
-              <div className="absolute top-[30%] left-[55%] w-[40%] h-0.5 bg-white -rotate-[30deg]" />
-              <div className="absolute top-[30%] right-[55%] w-[40%] h-0.5 bg-white rotate-[30deg]" />
-              <div className="absolute top-[60%] left-[52%] w-[45%] h-0.5 bg-white -rotate-[20deg]" />
-              <div className="absolute top-[60%] right-[52%] w-[45%] h-0.5 bg-white rotate-[20deg]" />
-            </div>
-          )}
-          {nodeTheme === "banyan" && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full opacity-60">
-                {/* Organic, straight-ish thick golden central midrib with strong vascular definition */}
-                <path d="M 50 4 Q 50 50 50 96" fill="none" stroke="#ffeaa7" strokeWidth="1.3" strokeLinecap="round" />
-                
-                {/* Beautifully spaced golden secondary veins arching up and out at ~40 degree angles */}
-                {/* Pair 1 - top */}
-                <path d="M 50 15 Q 68 18 84 22" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-                <path d="M 50 15 Q 32 18 16 22" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-
-                {/* Pair 2 */}
-                <path d="M 50 28 Q 72 31 88 38" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-                <path d="M 50 28 Q 28 31 12 38" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-
-                {/* Pair 3 */}
-                <path d="M 50 42 Q 74 46 90 54" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-                <path d="M 50 42 Q 26 46 10 54" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-
-                {/* Pair 4 */}
-                <path d="M 50 56 Q 74 61 88 71" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-                <path d="M 50 56 Q 26 61 12 71" fill="none" stroke="#ffeaa7" strokeWidth="0.55" opacity="0.8" strokeLinecap="round" />
-
-                {/* Pair 5 */}
-                <path d="M 50 70 Q 72 75 84 83" fill="none" stroke="#ffeaa7" strokeWidth="0.5" opacity="0.7" strokeLinecap="round" />
-                <path d="M 50 70 Q 28 75 16 83" fill="none" stroke="#ffeaa7" strokeWidth="0.5" opacity="0.7" strokeLinecap="round" />
-
-                {/* Pair 6 - bottom */}
-                <path d="M 50 83 Q 66 87 74 91" fill="none" stroke="#ffeaa7" strokeWidth="0.45" opacity="0.6" strokeLinecap="round" />
-                <path d="M 50 83 Q 34 87 26 91" fill="none" stroke="#ffeaa7" strokeWidth="0.45" opacity="0.6" strokeLinecap="round" />
-                
-                {/* Tertiary intricate vein net highlights (subtle web patterns to feel incredibly rich and premium) */}
-                <path d="M 68 18 Q 74 24 88 38 M 32 18 Q 26 24 12 38" fill="none" stroke="#ffeaa7" strokeWidth="0.25" opacity="0.3" strokeLinecap="round" />
-                <path d="M 72 31 Q 78 38 90 54 M 28 31 Q 22 38 10 54" fill="none" stroke="#ffeaa7" strokeWidth="0.25" opacity="0.3" strokeLinecap="round" />
-                <path d="M 74 46 Q 80 54 88 71 M 26 46 Q 20 54 12 71" fill="none" stroke="#ffeaa7" strokeWidth="0.25" opacity="0.3" strokeLinecap="round" />
-              </svg>
-              {/* Glossy highlight to represent the heavy, polished, photorealistic shine of banyan leaf rubbery surface */}
-              <div className="absolute top-0 left-0 w-full h-[150%] bg-gradient-to-br from-white/25 via-transparent to-transparent -rotate-12 translate-x-1/8 -translate-y-1/2 opacity-90" />
-            </div>
-          )}
-          {nodeTheme === "peepal" && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full opacity-80">
-                {/* Organic, naturally curved Midrib (S-shaped to match the tail) */}
-                <path d="M 50 16 Q 50 40 50 70 T 40 100" fill="none" stroke="#daf379" strokeWidth="1.2" strokeLinecap="round" />
-                
-                {/* Symmetric but organic lateral veins branching out at angles */}
-                <path d="M 50 25 Q 65 20 85 18" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-                <path d="M 50 25 Q 35 20 15 18" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-
-                <path d="M 50 38 Q 63 34 88 32" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-                <path d="M 50 38 Q 37 34 12 32" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-
-                <path d="M 50 51 Q 65 47 88 47" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-                <path d="M 50 51 Q 35 47 12 47" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-
-                <path d="M 50 64 Q 63 61 80 64" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-                <path d="M 50 64 Q 37 61 20 64" fill="none" stroke="#daf379" strokeWidth="0.5" opacity="0.6" strokeLinecap="round" />
-
-                <path d="M 49 76 Q 58 74 68 78" fill="none" stroke="#daf379" strokeWidth="0.4" opacity="0.5" strokeLinecap="round" />
-                <path d="M 49 76 Q 40 74 30 78" fill="none" stroke="#daf379" strokeWidth="0.4" opacity="0.5" strokeLinecap="round" />
-
-                <path d="M 46 87 Q 52 86 58 90" fill="none" stroke="#daf379" strokeWidth="0.3" opacity="0.4" strokeLinecap="round" />
-                <path d="M 46 87 Q 40 86 34 90" fill="none" stroke="#daf379" strokeWidth="0.3" opacity="0.4" strokeLinecap="round" />
-              </svg>
-              {/* Glossy top-right sun highlight simulation */}
-              <div className="absolute top-0 right-0 w-[90%] h-[130%] bg-gradient-to-bl from-white/20 via-transparent to-transparent -rotate-[15deg] translate-x-1/4 -translate-y-1/2" />
-            </div>
-          )}
-          {nodeTheme === "ludo" && (
-            <>
-              <div
-                className={`absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-              />
-              <div
-                className={`absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-              />
-              <div
-                className={`absolute -bottom-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-              />
-              <div
-                className={`absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-              />
-            </>
-          )}
-          {nodeTheme === "octopus" && (
-            <div className="absolute right-3 top-1/2 flex flex-col gap-1.5 -translate-y-1/2 opacity-70">
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
-              <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
-            </div>
-          )}
+      <div className="w-full h-full flex items-center justify-center">
+        {nodeTheme === "seed" && data.id === "root" && (
           <div
-            className={`flex w-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"}`}
+            className="absolute left-1/2 -translate-x-1/2 top-4 w-[240px] h-[350px] pointer-events-none"
+            style={{ zIndex: -10 }}
           >
-            <div className="flex-shrink-0 mr-2 flex items-center">
-              {hasChildren && (
-                <div
-                  className={`mr-1 -ml-1 ${mutedText} hover:text-slate-200 transition-colors p-1 -m-1 rounded z-10`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleNodeCollapse(data.id);
-                  }}
+            <svg viewBox="0 0 240 350" width="100%" height="100%">
+              <defs>
+                <radialGradient id="soilGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#4a2e1b" stopOpacity="0.9" />
+                  <stop offset="60%" stopColor="#5d3921" stopOpacity="0.5" />
+                  <stop offset="100%" stopColor="#8c5836" stopOpacity="0" />
+                </radialGradient>
+                <linearGradient
+                  id="seedColor"
+                  x1="0%"
+                  y1="0%"
+                  x2="100%"
+                  y2="100%"
                 >
-                  {isCollapsed ? (
-                    <ChevronRight size={14} />
-                  ) : (
-                    <ChevronDown size={14} />
+                  <stop offset="0%" stopColor="#a36e3c" />
+                  <stop offset="100%" stopColor="#3d2110" />
+                </linearGradient>
+              </defs>
+
+              <ellipse
+                cx="120"
+                cy="200"
+                rx="110"
+                ry="80"
+                fill="url(#soilGrad)"
+              />
+
+              {/* Roots */}
+              <path
+                d="M 120 190 C 100 230, 50 280, 20 320 M 120 190 C 140 240, 200 300, 220 330 M 120 190 C 110 250, 90 290, 100 340 M 130 200 C 150 230, 140 280, 160 320 M 110 220 C 80 250, 70 270, 60 300"
+                stroke="#362312"
+                strokeWidth="2.5"
+                fill="none"
+                opacity="0.8"
+              />
+
+              {/* Seed */}
+              <g transform="translate(120, 170)">
+                <ellipse
+                  cx="-15"
+                  cy="0"
+                  rx="28"
+                  ry="42"
+                  fill="url(#seedColor)"
+                  transform="rotate(-15)"
+                />
+                <ellipse
+                  cx="15"
+                  cy="0"
+                  rx="28"
+                  ry="42"
+                  fill="url(#seedColor)"
+                  transform="rotate(15)"
+                />
+                <path
+                  d="M 0 -35 C -10 -15, -10 25, 0 40 C 10 25, 10 -15, 0 -35"
+                  fill="#f0d5a8"
+                  opacity="0.9"
+                />
+              </g>
+
+              {/* Stem */}
+              <path
+                d="M 120 140 C 115 100, 90 80, 120 20"
+                stroke="#7eaa54"
+                strokeWidth="6"
+                fill="none"
+                strokeLinecap="round"
+              />
+
+              {/* Leaves on stem */}
+              <path d="M 112 100 C 70 100, 50 60, 102 90" fill="#5c8a38" />
+              <path d="M 126 60 C 170 50, 190 90, 115 70" fill="#5c8a38" />
+            </svg>
+          </div>
+        )}
+        <div
+          className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${isMatch || isSelected ? "scale-105" : ""} ${dropShadowClass}`}
+        >
+          <div
+            className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
+            style={{
+              ...shapeStyle,
+              transform:
+                isJsCode || isJsTerminal ? undefined : `scale(${nodeSize})`,
+              transformOrigin: "center",
+              touchAction: "none",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedNodeId(data.id);
+            }}
+            onContextMenu={(e) => {
+              if (onContextMenu) {
+                e.preventDefault();
+                e.stopPropagation();
+                onContextMenu(e, data);
+              }
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              if (hasChildren) toggleNodeCollapse(data.id);
+            }}
+          >
+            {nodeTheme === "nature" && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-20">
+                <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white -translate-x-1/2" />
+                <div className="absolute top-[30%] left-[55%] w-[40%] h-0.5 bg-white -rotate-[30deg]" />
+                <div className="absolute top-[30%] right-[55%] w-[40%] h-0.5 bg-white rotate-[30deg]" />
+                <div className="absolute top-[60%] left-[52%] w-[45%] h-0.5 bg-white -rotate-[20deg]" />
+                <div className="absolute top-[60%] right-[52%] w-[45%] h-0.5 bg-white rotate-[20deg]" />
+              </div>
+            )}
+            {nodeTheme === "banyan" && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <svg
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  className="absolute inset-0 w-full h-full opacity-60"
+                >
+                  {/* Organic, straight-ish thick golden central midrib with strong vascular definition */}
+                  <path
+                    d="M 50 4 Q 50 50 50 96"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Beautifully spaced golden secondary veins arching up and out at ~40 degree angles */}
+                  {/* Pair 1 - top */}
+                  <path
+                    d="M 50 15 Q 68 18 84 22"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 15 Q 32 18 16 22"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Pair 2 */}
+                  <path
+                    d="M 50 28 Q 72 31 88 38"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 28 Q 28 31 12 38"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Pair 3 */}
+                  <path
+                    d="M 50 42 Q 74 46 90 54"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 42 Q 26 46 10 54"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Pair 4 */}
+                  <path
+                    d="M 50 56 Q 74 61 88 71"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 56 Q 26 61 12 71"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.55"
+                    opacity="0.8"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Pair 5 */}
+                  <path
+                    d="M 50 70 Q 72 75 84 83"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.5"
+                    opacity="0.7"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 70 Q 28 75 16 83"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.5"
+                    opacity="0.7"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Pair 6 - bottom */}
+                  <path
+                    d="M 50 83 Q 66 87 74 91"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.45"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 83 Q 34 87 26 91"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.45"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Tertiary intricate vein net highlights (subtle web patterns to feel incredibly rich and premium) */}
+                  <path
+                    d="M 68 18 Q 74 24 88 38 M 32 18 Q 26 24 12 38"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.25"
+                    opacity="0.3"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 72 31 Q 78 38 90 54 M 28 31 Q 22 38 10 54"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.25"
+                    opacity="0.3"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 74 46 Q 80 54 88 71 M 26 46 Q 20 54 12 71"
+                    fill="none"
+                    stroke="#ffeaa7"
+                    strokeWidth="0.25"
+                    opacity="0.3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {/* Glossy highlight to represent the heavy, polished, photorealistic shine of banyan leaf rubbery surface */}
+                <div className="absolute top-0 left-0 w-full h-[150%] bg-gradient-to-br from-white/25 via-transparent to-transparent -rotate-12 translate-x-1/8 -translate-y-1/2 opacity-90" />
+              </div>
+            )}
+            {nodeTheme === "peepal" && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <svg
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  className="absolute inset-0 w-full h-full opacity-80"
+                >
+                  {/* Organic, naturally curved Midrib (S-shaped to match the tail) */}
+                  <path
+                    d="M 50 16 Q 50 40 50 70 T 40 100"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Symmetric but organic lateral veins branching out at angles */}
+                  <path
+                    d="M 50 25 Q 65 20 85 18"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 25 Q 35 20 15 18"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+
+                  <path
+                    d="M 50 38 Q 63 34 88 32"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 38 Q 37 34 12 32"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+
+                  <path
+                    d="M 50 51 Q 65 47 88 47"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 51 Q 35 47 12 47"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+
+                  <path
+                    d="M 50 64 Q 63 61 80 64"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 50 64 Q 37 61 20 64"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.5"
+                    opacity="0.6"
+                    strokeLinecap="round"
+                  />
+
+                  <path
+                    d="M 49 76 Q 58 74 68 78"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.4"
+                    opacity="0.5"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 49 76 Q 40 74 30 78"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.4"
+                    opacity="0.5"
+                    strokeLinecap="round"
+                  />
+
+                  <path
+                    d="M 46 87 Q 52 86 58 90"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.3"
+                    opacity="0.4"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 46 87 Q 40 86 34 90"
+                    fill="none"
+                    stroke="#daf379"
+                    strokeWidth="0.3"
+                    opacity="0.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {/* Glossy top-right sun highlight simulation */}
+                <div className="absolute top-0 right-0 w-[90%] h-[130%] bg-gradient-to-bl from-white/20 via-transparent to-transparent -rotate-[15deg] translate-x-1/4 -translate-y-1/2" />
+              </div>
+            )}
+            {nodeTheme === "ludo" && (
+              <>
+                <div
+                  className={`absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
+                />
+                <div
+                  className={`absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
+                />
+                <div
+                  className={`absolute -bottom-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
+                />
+                <div
+                  className={`absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
+                />
+              </>
+            )}
+            {nodeTheme === "octopus" && (
+              <div className="absolute right-3 top-1/2 flex flex-col gap-1.5 -translate-y-1/2 opacity-70">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
+              </div>
+            )}
+            <div
+              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode ? "p-0" : ""}`}
+            >
+              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode) && (
+                <div className="flex-shrink-0 mr-2 flex items-center">
+                  {hasChildren && (
+                    <div
+                      className={`mr-1 -ml-1 ${mutedText} hover:text-slate-200 transition-colors p-1 -m-1 rounded z-10`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleNodeCollapse(data.id);
+                      }}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight size={14} />
+                      ) : (
+                        <ChevronDown size={14} />
+                      )}
+                    </div>
                   )}
+                  {getIcon(data.type)}
                 </div>
               )}
-              {getIcon(data.type)}
-            </div>
 
-            <div
-              className="flex flex-col overflow-hidden w-full max-w-full px-1 min-w-0 leading-tight py-0.5"
-              style={{
-                ...(isCustom ? { color: nodeTextColor } : {}),
-                ...(nodeTheme === "peepal" || nodeTheme === "banyan" || nodeTheme === "nature" ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" } : {})
-              }}
-            >
-              <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
-                <span
-                  className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
-                  title={data.name}
-                >
-                  {data.name}
-                </span>
-                {data.type !== "object" && data.type !== "array" && (
+              <div
+                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
+                style={{
+                  ...(isCustom ? { color: nodeTextColor } : {}),
+                  ...(nodeTheme === "peepal" ||
+                  nodeTheme === "banyan" ||
+                  nodeTheme === "nature"
+                    ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
+                    : {}),
+                }}
+              >
+                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode) && (
+                  <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
+                    <span
+                      className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
+                      title={data.name}
+                    >
+                      {data.name}
+                    </span>
+                    {data.type !== "object" && data.type !== "array" && (
+                      <span
+                        className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${nodeTheme === "hydrogen" ? "bg-transparent" : "bg-black/10"} tracking-widest ${mutedText}`}
+                        style={{
+                          ...(isCustom
+                            ? { color: nodeTextColor, opacity: 0.7 }
+                            : {}),
+                          ...(nodeTheme === "peepal" ||
+                          nodeTheme === "banyan" ||
+                          nodeTheme === "nature"
+                            ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
+                            : {}),
+                        }}
+                      >
+                        {data.type}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {data.value !== undefined &&
+                  !isMedia &&
+                  !isApiNode &&
+                  !isJsNode &&
+                  !isJsCode &&
+                  !isJsTerminal &&
+                  !isTsNode &&
+                  !isTsCode &&
+                  !isTsTerminal &&
+                  !isPyNode &&
+                  !isPyCode &&
+                  !isPyTerminal && (
+                    <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
+                      <div
+                        className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}
+                      >
+                        {isKnownDataUrl && (
+                          <span className="inline-block px-1 mr-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 align-middle">
+                            {knownDataUrls[strVal]}
+                          </span>
+                        )}
+                        <span
+                          className={`text-[11px] font-mono leading-normal inline ${
+                            isExpanded
+                              ? "whitespace-pre-wrap break-all"
+                              : nodeTheme === "peepal" || nodeTheme === "banyan"
+                                ? "line-clamp-3 whitespace-normal break-all block"
+                                : "truncate w-full max-w-full block"
+                          } ${valText}`}
+                          title={!isExpanded ? String(data.value) : undefined}
+                          style={{
+                            ...(isCustom
+                              ? { color: nodeTextColor, opacity: 0.9 }
+                              : {}),
+                            ...(nodeTheme === "peepal" ||
+                            nodeTheme === "banyan" ||
+                            nodeTheme === "nature"
+                              ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
+                              : {}),
+                          }}
+                        >
+                          {String(data.value)}
+                        </span>
+                      </div>
+                      {strVal.length > 50 && (
+                        <div className="flex items-center gap-1.5 mt-1 shrink-0">
+                          <button
+                            className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter px-1.5 py-0.5 rounded transition-all bg-black/10 hover:bg-black/20 ${mutedText} z-20 cursor-pointer`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsExpanded(!isExpanded);
+                            }}
+                            title={isExpanded ? "Show Less" : "Show More"}
+                          >
+                            {isExpanded ? (
+                              <>
+                                <Minimize2 size={10} />
+                                <span>LESS</span>
+                              </>
+                            ) : (
+                              <>
+                                <Maximize2 size={10} />
+                                <span>MORE</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                {isApiNode && (
+                  <ApiNodeRenderer
+                    url={strVal}
+                    path={data.path}
+                    nodeId={data.id}
+                    nodeX={node.x}
+                    nodeY={node.y}
+                    nodeWidth={fWidth}
+                  />
+                )}
+                {isJsNode && <JsNodeRenderer path={data.path} code={strVal} width={fWidth} height={fHeight} />}
+                {isJsCode && (
+                  <JsNodeCodeRenderer
+                    code={strVal}
+                    path={data.path.replace(".__js_code", "")}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {isJsTerminal && (
+                  <JsNodeTerminalRenderer
+                    path={data.path.replace(".__js_terminal", "")}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {isTsNode && <TsNodeRenderer path={data.path} code={strVal} width={fWidth} height={fHeight} />}
+                {isPyNode && <PyNodeRenderer path={data.path} code={strVal} width={fWidth} height={fHeight} />}
+                {isTsCode && (
+                  <TsNodeCodeRenderer
+                    code={strVal}
+                    path={data.path.replace(".__ts_code", "")}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {isTsTerminal && (
+                  <TsNodeTerminalRenderer
+                    path={data.path.replace(".__ts_terminal", "")}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {isPyCode && (
+                  <PyNodeCodeRenderer
+                    code={strVal}
+                    path={data.path.replace(".__py_code", "")}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {isPyTerminal && (
+                  <PyNodeTerminalRenderer
+                    path={data.path.replace(".__py_terminal", "")}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {hasChildren && isCollapsed && (
                   <span
-                    className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${nodeTheme === "hydrogen" ? "bg-transparent" : "bg-black/10"} tracking-widest ${mutedText}`}
-                    style={{
-                      ...(isCustom ? { color: nodeTextColor, opacity: 0.7 } : {}),
-                      ...(nodeTheme === "peepal" || nodeTheme === "banyan" || nodeTheme === "nature" ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" } : {})
-                    }}
+                    className={`pointer-events-none text-[10px] mt-0.5 italic ${mutedText}`}
+                    style={
+                      isCustom ? { color: nodeTextColor, opacity: 0.6 } : {}
+                    }
                   >
-                    {data.type}
+                    {data.children!.length} item
+                    {data.children!.length !== 1 ? "s" : ""}
                   </span>
                 )}
               </div>
-              {data.value !== undefined && !isMedia && !isApiNode && (
-                <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
-                  <div className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}>
-                    {isKnownDataUrl && (
-                      <span className="inline-block px-1 mr-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 align-middle">
-                        {knownDataUrls[strVal]}
-                      </span>
-                    )}
-                    <span
-                      className={`text-[11px] font-mono leading-normal inline ${
-                        isExpanded
-                          ? "whitespace-pre-wrap break-all"
-                          : nodeTheme === "peepal" || nodeTheme === "banyan"
-                            ? "line-clamp-3 whitespace-normal break-all block"
-                            : "truncate w-full max-w-full block"
-                      } ${valText}`}
-                      title={!isExpanded ? String(data.value) : undefined}
-                      style={{
-                        ...(isCustom ? { color: nodeTextColor, opacity: 0.9 } : {}),
-                        ...(nodeTheme === "peepal" || nodeTheme === "banyan" || nodeTheme === "nature" ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" } : {})
-                      }}
-                    >
-                      {String(data.value)}
-                    </span>
-                  </div>
-                  {strVal.length > 50 && (
-                    <div className="flex items-center gap-1.5 mt-1 shrink-0">
-                      <button
-                        className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-tighter px-1.5 py-0.5 rounded transition-all bg-black/10 hover:bg-black/20 ${mutedText} z-20 cursor-pointer`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsExpanded(!isExpanded);
-                        }}
-                        title={isExpanded ? "Show Less" : "Show More"}
-                      >
-                        {isExpanded ? (
-                          <>
-                            <Minimize2 size={10} />
-                            <span>LESS</span>
-                          </>
-                        ) : (
-                          <>
-                            <Maximize2 size={10} />
-                            <span>MORE</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {isApiNode && (
-                <ApiNodeRenderer 
-                  url={strVal} 
-                  path={data.path} 
-                  nodeId={data.id}
-                  nodeX={node.x}
-                  nodeY={node.y}
-                  nodeWidth={fWidth}
-                />
-              )}
-              {hasChildren && isCollapsed && (
-                <span
-                  className={`pointer-events-none text-[10px] mt-0.5 italic ${mutedText}`}
-                  style={isCustom ? { color: nodeTextColor, opacity: 0.6 } : {}}
-                >
-                  {data.children!.length} item
-                  {data.children!.length !== 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
 
-            <div
-              className="ml-1 flex-shrink-0 flex items-center justify-center p-1 md:hidden rounded-full hover:bg-black/10 touch-manipulation z-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onContextMenu) onContextMenu(e, data);
-              }}
-            >
-              <MoreVertical size={14} className={mutedText} />
-            </div>
-          </div>
-
-          {isMedia && (
-            <div
-              ref={mediaContainerRef}
-              className="flex flex-col w-full mt-2 relative group/media-container"
-            >
               <div
-                className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
-                style={{ pointerEvents: isDraggingLocally ? 'none' : 'auto' }}
-              >
-                {mediaType === "image" && (
-                  <SmartFallbackMedia
-                    type="image"
-                    src={strVal}
-                    alt={data.name}
-                    className="max-w-full max-h-[160px] object-contain rounded"
-                  />
-                )}
-                {mediaType === "audio" && (
-                  <SmartFallbackMedia
-                    type="audio"
-                    src={strVal}
-                    controls
-                    className="w-full h-11 outline-none py-1"
-                  />
-                )}
-                {mediaType === "video" && (
-                  <video
-                    src={strVal}
-                    controls
-                    className="max-w-full max-h-[160px] rounded focus:outline-none"
-                  />
-                )}
-                {mediaType === "3d-model" && (() => {
-                  const ModelViewer = 'model-viewer' as any;
-                  return (
-                    <ModelViewer
-                      src={strVal}
-                      alt={data.name || "3D Model"}
-                      auto-rotate
-                      camera-controls
-                      style={{ width: "100%", height: "160px", backgroundColor: "transparent", pointerEvents: isDraggingLocally ? 'none' : 'auto' }}
-                    />
-                  );
-                })()}
-                {mediaType === "pdf" && (
-                  <div className="flex flex-col items-center justify-center p-4 w-full h-[160px] bg-gradient-to-br from-rose-500/5 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/20 rounded border border-rose-500/20 text-center gap-1.5 cursor-pointer">
-                    <div className="p-2 rounded-full bg-rose-500/10 text-rose-500 animate-pulse">
-                      <FileText size={22} />
-                    </div>
-                    <div className="text-xs font-semibold text-rose-700 dark:text-rose-400 font-sans">
-                      PDF Document
-                    </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-full px-2" title={strVal.split('/').pop()}>
-                      {strVal.split('/').pop() || "document.pdf"}
-                    </div>
-                    <span className="text-[9px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 font-mono">
-                      Click Full Preview below
-                    </span>
-                  </div>
-                )}
-                {mediaType === "smart" && (
-                  <SmartMediaRenderer
-                    key={strVal}
-                    url={strVal}
-                    onMediaFailed={() => setSmartMediaFailed(true)}
-                  />
-                )}
-              </div>
-
-              <button
-                className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 bg-black/60 hover:bg-indigo-600 backdrop-blur-md text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-white/10 z-20 whitespace-nowrap`}
+                className="ml-1 flex-shrink-0 flex items-center justify-center p-1 md:hidden rounded-full hover:bg-black/10 touch-manipulation z-10"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setActivePreviewMedia({
-                    url: strVal,
-                    type:
-                      mediaType === "smart"
-                        ? "smart"
-                        : (mediaType === "pdf" || strVal.match(/\.pdf(\?.*)?$/i))
-                          ? "pdf"
-                          : (mediaType as any),
-                  });
+                  if (onContextMenu) onContextMenu(e, data);
                 }}
               >
-                <Eye size={10} />
-                FULL PREVIEW
-              </button>
+                <MoreVertical size={14} className={mutedText} />
+              </div>
             </div>
-          )}
+
+            {isMedia && (
+              <div
+                ref={mediaContainerRef}
+                className="flex flex-col w-full mt-2 relative group/media-container"
+              >
+                <div
+                  className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
+                  style={{ pointerEvents: isDraggingLocally ? "none" : "auto" }}
+                >
+                  {mediaType === "image" && (
+                    <SmartFallbackMedia
+                      type="image"
+                      src={strVal}
+                      alt={data.name}
+                      className="max-w-full max-h-[160px] object-contain rounded"
+                    />
+                  )}
+                  {mediaType === "audio" && (
+                    <SmartFallbackMedia
+                      type="audio"
+                      src={strVal}
+                      controls
+                      className="w-full h-11 outline-none py-1"
+                    />
+                  )}
+                  {mediaType === "video" && (
+                    <video
+                      src={strVal}
+                      controls
+                      className="max-w-full max-h-[160px] rounded focus:outline-none"
+                    />
+                  )}
+                  {mediaType === "3d-model" && (
+                    <SafeModelViewer
+                      src={strVal}
+                      alt={data.name || "3D Model"}
+                      autoRotate
+                      cameraControls
+                      style={{
+                        width: "100%",
+                        height: "160px",
+                        backgroundColor: "transparent",
+                        pointerEvents: isDraggingLocally ? "none" : "auto",
+                      }}
+                    />
+                  )}
+                  {mediaType === "pdf" && (
+                    <div className="flex flex-col items-center justify-center p-4 w-full h-[160px] bg-gradient-to-br from-rose-500/5 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/20 rounded border border-rose-500/20 text-center gap-1.5 cursor-pointer">
+                      <div className="p-2 rounded-full bg-rose-500/10 text-rose-500 animate-pulse">
+                        <FileText size={22} />
+                      </div>
+                      <div className="text-xs font-semibold text-rose-700 dark:text-rose-400 font-sans">
+                        PDF Document
+                      </div>
+                      <div
+                        className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-full px-2"
+                        title={strVal.split("/").pop()}
+                      >
+                        {strVal.split("/").pop() || "document.pdf"}
+                      </div>
+                      <span className="text-[9px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 font-mono">
+                        Click Full Preview below
+                      </span>
+                    </div>
+                  )}
+                  {mediaType === "smart" && (
+                    <SmartMediaRenderer
+                      key={strVal}
+                      url={strVal}
+                      onMediaFailed={() => setSmartMediaFailed(true)}
+                    />
+                  )}
+                </div>
+
+                <button
+                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 bg-black/60 hover:bg-indigo-600 backdrop-blur-md text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-white/10 z-20 whitespace-nowrap`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActivePreviewMedia({
+                      url: strVal,
+                      type:
+                        mediaType === "smart"
+                          ? "smart"
+                          : mediaType === "pdf" ||
+                              strVal.match(/\.pdf(\?.*)?$/i)
+                            ? "pdf"
+                            : (mediaType as any),
+                    });
+                  }}
+                >
+                  <Eye size={10} />
+                  FULL PREVIEW
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </foreignObject>

@@ -212,7 +212,7 @@ const TextPreviewPopup: React.FC = () => {
           <div 
             className="absolute inset-0 -z-10" 
             onClick={() => {
-              if (viewMode !== 'edit' || confirm('You have unsaved changes. Close anyway?')) {
+              if (viewMode !== 'edit' || editText === activePreviewText) {
                 setActivePreviewText(null);
               }
             }}

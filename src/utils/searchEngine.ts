@@ -152,7 +152,7 @@ export function tokenize(input: string): Token[] {
        }
     }
     
-    let anyWordMatch = input.slice(cursor).match(/^[-a-zA-Z0-9_$@]+/);
+    let anyWordMatch = input.slice(cursor).match(/^[-a-zA-Z0-9_$@\u0080-\u{10FFFF}]+/u);
     if (anyWordMatch) {
        let val = anyWordMatch[0];
        let upper = val.toUpperCase();
