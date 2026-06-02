@@ -197,7 +197,7 @@ export const executeTsNode = async (path: string, codeToRun: string, monacoInsta
                         promptType: "alert"
                     });
                     const xhr = new XMLHttpRequest();
-                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.open('GET', '${window.location.origin}/api/stdin-get?sessionId=' + currentSessionId, false);
                     xhr.send();
                 };
                 
@@ -210,7 +210,7 @@ export const executeTsNode = async (path: string, codeToRun: string, monacoInsta
                         promptType: "confirm"
                     });
                     const xhr = new XMLHttpRequest();
-                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.open('GET', '${window.location.origin}/api/stdin-get?sessionId=' + currentSessionId, false);
                     xhr.send();
                     if (xhr.status === 200) {
                         try {
@@ -230,7 +230,7 @@ export const executeTsNode = async (path: string, codeToRun: string, monacoInsta
                         promptType: "prompt"
                     });
                     const xhr = new XMLHttpRequest();
-                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.open('GET', '${window.location.origin}/api/stdin-get?sessionId=' + currentSessionId, false);
                     xhr.send();
                     if (xhr.status === 200) {
                         try {
@@ -285,6 +285,7 @@ export const executeTsNode = async (path: string, codeToRun: string, monacoInsta
 
               hasFinished = true;
               if (e.data.type === 'need_prompt') {
+                  hasFinished = false; // reset finished state for timeout
                   const s = useStore.getState();
                   s.setActivePrompt(path, {
                       sessionId: e.data.sessionId,

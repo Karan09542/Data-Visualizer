@@ -132,7 +132,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                         promptType: "alert"
                     });
                     const xhr = new XMLHttpRequest();
-                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.open('GET', '${window.location.origin}/api/stdin-get?sessionId=' + currentSessionId, false);
                     xhr.send();
                 };
                 
@@ -145,7 +145,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                         promptType: "confirm"
                     });
                     const xhr = new XMLHttpRequest();
-                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.open('GET', '${window.location.origin}/api/stdin-get?sessionId=' + currentSessionId, false);
                     xhr.send();
                     if (xhr.status === 200) {
                         try {
@@ -165,7 +165,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                         promptType: "prompt"
                     });
                     const xhr = new XMLHttpRequest();
-                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.open('GET', '${window.location.origin}/api/stdin-get?sessionId=' + currentSessionId, false);
                     xhr.send();
                     if (xhr.status === 200) {
                         try {
@@ -220,6 +220,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
 
              hasFinished = true;
              if (e.data.type === 'need_prompt') {
+                  hasFinished = false; // reset finished state for timeout
                   const s = useStore.getState();
                   s.setActivePrompt(path, {
                       sessionId: e.data.sessionId,
