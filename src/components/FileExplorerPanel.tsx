@@ -22,6 +22,10 @@ import {
   FileText,
   RotateCcw,
   Maximize2,
+  Braces,
+  Terminal,
+  FileCode,
+  Code,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import {
@@ -33,6 +37,45 @@ import {
   moveValueAtPath,
   getParts,
 } from "../utils/pathUtils";
+
+const JavaScriptIcon = () => (
+  <div className="w-[16px] h-[16px] rounded bg-[#f7df1e] text-black font-sans font-bold text-[9px] flex items-end justify-end pr-[1.5px] pb-[0.5px] select-none shrink-0" style={{ width: '16px', height: '16px' }}>
+    JS
+  </div>
+);
+
+const TypeScriptIcon = () => (
+  <div className="w-[16px] h-[16px] rounded bg-[#3178c6] text-white font-sans font-bold text-[9px] flex items-end justify-end pr-[1.5px] pb-[0.5px] select-none shrink-0" style={{ width: '16px', height: '16px' }}>
+    TS
+  </div>
+);
+
+const PythonIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 110 110" className="shrink-0" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px' }}>
+    <path d="M51.8 1.4C30.6 1.4 32.2 10.5 32.2 14.8v10.1h20.4V28H23.8C9.5 28 1.4 34.6 1.4 51.7c0 17 8.3 22.4 18.5 22.4h11V58c0-8.9 7.7-16.7 16.7-16.7H75V25c0-14.8-10.7-23.6-23.2-23.6z" fill="#387EB8"/>
+    <path d="M58.2 108.6C79.4 108.6 77.8 99.5 77.8 95.2V85.1H57.4V82h28.8c14.3 0 22.4-6.6 22.4-23.7C108.6 41.3 100.3 36 90.1 36h-11v16.1c0 8.9-7.7 16.7-16.7 16.7H35V85c0 14.8 10.7 23.6 23.2 23.6z" fill="#FFE052"/>
+    <circle cx="41.3" cy="11.4" r="5.5" fill="#F4F4F4"/>
+    <circle cx="68.8" cy="98.6" r="5.5" fill="#387EBA"/>
+  </svg>
+);
+
+const JsonIcon = () => (
+  <div className="w-[16px] h-[16px] rounded bg-[#cb7c0a] text-white font-sans font-bold text-[8px] flex items-center justify-center select-none shrink-0" style={{ width: '16px', height: '16px' }}>
+    {"{}"}
+  </div>
+);
+
+const MarkdownIcon = () => (
+  <div className="w-[16px] h-[16px] rounded bg-[#0083fd] text-white font-sans font-bold text-[8px] flex items-center justify-center select-none shrink-0" style={{ width: '16px', height: '16px' }}>
+    MD
+  </div>
+);
+
+const TextIcon = () => (
+  <div className="w-[16px] h-[16px] rounded bg-[#8292a6] dark:bg-[#5c6f84] text-white font-sans font-bold text-[7px] flex items-center justify-center select-none shrink-0" style={{ width: '16px', height: '16px' }}>
+    TXT
+  </div>
+);
 
 interface ExplorerItem {
   id: string; // E.g., 'root.src.user_ts_node'
@@ -474,17 +517,17 @@ function isFileSystemMeaningful(value: any): boolean {
       if (rawVal.endsWith(".js") || rawVal.endsWith("_js_node")) {
         const baseName = rawVal.replace(/\.js$/, "").replace(/_js_node$/, "");
         finalKey = `${baseName}_js_node`;
-        initialValue = "return 'Welcome to JS node output!';";
+        initialValue = "console.log('JS execution starts here!');";
         actualType = "js_node";
       } else if (rawVal.endsWith(".py") || rawVal.endsWith("_py_node")) {
         const baseName = rawVal.replace(/\.py$/, "").replace(/_py_node$/, "");
         finalKey = `${baseName}_py_node`;
-        initialValue = 'text = "Welcome to Pyodide!"\nprint(text)\nresult = {"message": text}\nresult';
+        initialValue = "print('Python execution starts here!')";
         actualType = "py_node"; // keep icon generic using the code node execution flow
       } else if (rawVal.endsWith(".ts") || rawVal.endsWith("_ts_node")) {
         const baseName = rawVal.replace(/\.ts$/, "").replace(/_ts_node$/, "");
         finalKey = `${baseName}_ts_node`;
-        initialValue = "const text: string = 'Welcome to TypeSafe compiling!';\nreturn text;";
+        initialValue = "const msg: string = 'TS execution starts here!';\nconsole.log(msg);";
         actualType = "ts_node";
       } else if (rawVal.endsWith(".api") || rawVal.endsWith("_api_node")) {
         const baseName = rawVal.replace(/\.api$/, "").replace(/_api_node$/, "");
@@ -795,19 +838,23 @@ function isFileSystemMeaningful(value: any): boolean {
       const isCreatingInside = creatingInPath === item.id;
 
       let fileIcon = <FileText size={16} className="text-slate-400 dark:text-slate-500 shrink-0" />;
-      if (item.type === "js_node") {
-        fileIcon = <FileCode2 size={16} className="text-amber-500 shrink-0" />;
-      } else if (item.type === "py_node") {
-        fileIcon = <FileCode2 size={16} className="text-emerald-500 shrink-0" />;
-      } else if (item.type === "ts_node") {
-        fileIcon = <FileCode2 size={16} className="text-blue-500 shrink-0" />;
-      } else if (item.type === "api_node") {
+      if (item.type === "js_node" || item.name.endsWith(".js")) {
+        fileIcon = <JavaScriptIcon />;
+      } else if (item.type === "py_node" || item.name.endsWith(".py")) {
+        fileIcon = <PythonIcon />;
+      } else if (item.type === "ts_node" || item.name.endsWith(".ts")) {
+        fileIcon = <TypeScriptIcon />;
+      } else if (item.type === "api_node" || item.name.endsWith(".api")) {
         fileIcon = <Globe size={16} className="text-sky-500 dark:text-sky-400 shrink-0" />;
       } else if (item.type === "primitive") {
         if (item.name.endsWith(".json")) {
-          fileIcon = <FileJson size={16} className="text-emerald-500 shrink-0" />;
+          fileIcon = <JsonIcon />;
+        } else if (item.name.endsWith(".md")) {
+          fileIcon = <MarkdownIcon />;
+        } else if (item.name.endsWith(".txt")) {
+          fileIcon = <TextIcon />;
         } else {
-          fileIcon = <FileText size={16} className="text-indigo-400 dark:text-indigo-400/90 shrink-0" />;
+          fileIcon = <FileText size={16} className="text-indigo-400 dark:text-indigo-400/95 shrink-0" />;
         }
       }
 
@@ -871,27 +918,17 @@ function isFileSystemMeaningful(value: any): boolean {
               )}
             </div>
 
-            {/* Quick Action icon triggers */}
+             {/* Quick Action icon triggers */}
             <div className="hidden group-hover:flex items-center gap-1.5 pl-2 z-10">
               {isFolder && (
                 <>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleCreatePrompt(item.id, "ts_node");
+                      handleCreatePrompt(item.id, "primitive");
                     }}
-                    title="New TypeScript File"
+                    title="New File"
                     className="p-1 rounded text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 transition"
-                  >
-                    <Plus size={13} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCreatePrompt(item.id, "py_node");
-                    }}
-                    title="New Python File"
-                    className="p-1 rounded text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 transition"
                   >
                     <Plus size={13} />
                   </button>
@@ -1024,16 +1061,9 @@ function isFileSystemMeaningful(value: any): boolean {
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => handleCreatePrompt(resolvedRootPath, "ts_node")}
-            title="New TypeScript File"
+            onClick={() => handleCreatePrompt(resolvedRootPath, "primitive")}
+            title="New File"
             className="p-1 rounded text-slate-550 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
-          >
-            <Plus size={14} />
-          </button>
-          <button
-            onClick={() => handleCreatePrompt(resolvedRootPath, "py_node")}
-            title="New Python File"
-            className="p-1 rounded text-slate-550 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
           >
             <Plus size={14} />
           </button>
@@ -1233,23 +1263,13 @@ function isFileSystemMeaningful(value: any): boolean {
                 <>
                   <button
                     onClick={() => {
-                      handleCreatePrompt(activeNodeMenu.id, "ts_node");
+                      handleCreatePrompt(activeNodeMenu.id, "primitive");
                       setContextMenu(null);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
                   >
                     <Plus size={13} className="text-slate-400 dark:text-slate-500" />
-                    <span>New JS/TS File</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleCreatePrompt(activeNodeMenu.id, "py_node");
-                      setContextMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
-                  >
-                    <Plus size={13} className="text-slate-400 dark:text-slate-500" />
-                    <span>New Python File</span>
+                    <span>New File</span>
                   </button>
                   <button
                     onClick={() => {

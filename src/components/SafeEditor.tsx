@@ -53,19 +53,39 @@ function TextareaFallback(props: EditorProps) {
 }
 
 export function SafeEditor(props: EditorProps) {
-  // Calculate a key that stays constant during typing but changes when changing file / context / language.
-  // This ensures Monaco does not attempt to hot-swap models/themes across unrelated contexts,
-  // which is what causes the "InstantiationService has been disposed" error.
+  const componentId = React.useId().replace(/:/g, "-");
+  const lang = props.language || props.defaultLanguage || "javascript";
+  let ext = "js";
+  if (lang === "typescript") ext = "ts";
+  else if (lang === "python") ext = "py";
+  else if (lang === "json") ext = "json";
+  else if (lang === "markdown") ext = "md";
+  else if (lang === "html") ext = "html";
+  else if (lang === "css") ext = "css";
+
+  const resolvedPath = props.path || `inmemory://model-${componentId}.${ext}`;
+
   const activeKey = props.path 
     ? `path-${props.path}` 
-    : `lang-${props.defaultLanguage || props.language || "default"}`;
+    : `lang-${lang}-${componentId}`;
+
+  const mergedOptions = React.useMemo(() => {
+    return {
+      fixedOverflowWidgets: true,
+      ...(props.options || {}),
+    };
+  }, [props.options]);
 
   return (
     <EditorErrorBoundary 
       resetTrigger={activeKey} 
       fallback={<TextareaFallback {...props} />}
     >
-      <MonacoEditor key={activeKey} {...props} />
+      <MonacoEditor 
+        {...props} 
+        path={resolvedPath} 
+        options={mergedOptions} 
+      />
     </EditorErrorBoundary>
   );
 }

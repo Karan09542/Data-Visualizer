@@ -426,8 +426,8 @@ const initialCode = `{
   "version": "2.0.0",
   "dataSources": {
      "my_data_api_node": "https://api.github.com/users",
-     "transform_users_js_node": "if (!Array.isArray(input)) return [];\\nreturn input.slice(0, 3).map(u => ({\\n  username: u.login,\\n  url: u.html_url,\\n  avatar_url: u.avatar_url\\n}));",
-     "typescript_filtering_ts_node": "interface GithubUser {\\n  username: string;\\n  url: string;\\n  avatar_url: string;\\n}\\n\\n// Cast parent's output data\\nconst users = input as GithubUser[];\\nif (!Array.isArray(users)) return [];\\n\\nconsole.log('TypeScript is compiling and running in a secure, isolated sandbox!');\\nreturn users.filter((u: GithubUser) => u.username.length > 5);"
+     "transform_users_js_node": "console.log('JS calculation node executing!');\\nreturn { status: 'active', timestamp: Date.now() };",
+     "typescript_filtering_ts_node": "const greet: string = 'Hello from TypeSafe compiling!';\\nconsole.log(greet);\\nreturn { success: true };"
   },
   "settings": {
     "theme": "dark",

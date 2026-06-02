@@ -94,12 +94,12 @@ export function JsNodeTerminalRenderer({
                 <Virtuoso
                   totalCount={logCount + (error ? 1 : 0)}
                   firstItemIndex={startOffset}
-                  className="h-full min-w-max custom-scrollbar overflow-x-auto w-full"
+                  className="h-full custom-scrollbar overflow-x-hidden w-full"
                   followOutput="auto"
                   itemContent={(index) => {
                     if (index === startOffset + logCount && error) {
                       return (
-                        <div className="px-2 py-2 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-2 w-fit min-w-full">
+                        <div className="px-2 py-2 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-2 w-full">
                           <div className="flex-1 min-w-0 font-bold whitespace-pre-wrap flex items-start gap-1.5 break-all">
                             <span className="shrink-0 mt-0.5 text-[9px]">✖</span>
                             <span>{renderClickableErrorText(error, path, setJsNodeFocusLine)}</span>
@@ -115,15 +115,15 @@ export function JsNodeTerminalRenderer({
 
                     return (
                       <div
-                        className={`px-2 py-0 flex gap-2 w-fit min-w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
+                        className={`px-2 py-0 flex gap-2 w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start gap-1.5 w-max">
+                          <div className="flex flex-wrap items-start gap-1.5 w-full">
                             {log.args.map((arg: any, argIdx: number) =>
                               typeof arg === "string" ? (
                                 <span
                                   key={argIdx}
-                                  className="whitespace-pre font-medium text-slate-800 dark:text-slate-300 leading-[1.2]"
+                                  className="whitespace-pre-wrap break-all font-medium text-slate-800 dark:text-slate-300 leading-[1.2]"
                                 >
                                   {arg}
                                 </span>

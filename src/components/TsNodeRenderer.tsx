@@ -273,12 +273,12 @@ export function TsNodeRenderer({ path, code, width, height }: TsNodeRendererProp
                   <Virtuoso
                     totalCount={logCount + (error ? 1 : 0)}
                     firstItemIndex={startOffset}
-                    className="h-full w-full min-h-[120px] custom-scrollbar"
+                    className="h-full w-full min-h-[120px] custom-scrollbar overflow-x-hidden"
                     followOutput="auto"
                     itemContent={(index) => {
                       if (index === logCount && error) {
                         return (
-                          <div className="text-red-500 dark:text-[#f85149] mt-2 flex gap-1.5 border-l-2 border-red-500 dark:border-[#f85149] pl-2 w-max min-w-full">
+                          <div className="text-red-500 dark:text-[#f85149] mt-2 flex gap-1.5 border-l-2 border-red-500 dark:border-[#f85149] pl-2 w-full whitespace-pre-wrap break-all">
                              <span className="shrink-0">&gt;</span>
                              <span className="break-all">{error}</span>
                           </div>
@@ -287,16 +287,16 @@ export function TsNodeRenderer({ path, code, width, height }: TsNodeRendererProp
                       const log = getLog(index);
                       if (!log) return <div className="text-slate-500 dark:text-[#8b949e]">...</div>;
                       return (
-                        <div className="flex flex-col mb-1.5 w-max min-w-full">
+                        <div className="flex flex-col mb-1.5 w-full">
                           <div className="flex items-start gap-1.5">
                             <span className="text-slate-500 dark:text-[#8b949e] shrink-0">&gt;</span>
-                            <div className="flex-1 break-words">
+                            <div className="flex-1 whitespace-pre-wrap break-all">
                               {log.args.map((a: any, idx: number) => (
-                                <span key={idx} className="mr-1">
+                                <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
                                   {typeof a === 'string' ? (
-                                     <span className={a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""}>{a}</span>
+                                     <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
                                   ) : (
-                                     <span className="text-[#d2a8ff]">{JSON.stringify(a)}</span>
+                                     <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{JSON.stringify(a)}</span>
                                   )}
                                 </span>
                               ))}

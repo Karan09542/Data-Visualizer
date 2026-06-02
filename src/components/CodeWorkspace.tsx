@@ -425,7 +425,7 @@ declare const console: {
         return null;
       }
       return (
-        <span key={index} style={currentStyle}>
+        <span key={index} style={currentStyle} className="whitespace-pre-wrap break-all">
           {part}
         </span>
       );
@@ -435,32 +435,32 @@ declare const console: {
   const renderArgElement = (arg: any, index: number) => {
     if (typeof arg === "string") {
       const colorized = renderColorizedOutput(arg);
-      return <span key={index}>{colorized}</span>;
+      return <span key={index} className="whitespace-pre-wrap break-all">{colorized}</span>;
     }
     if (typeof arg === "undefined") {
       return (
-        <span key={index} className="text-slate-400 dark:text-slate-500 italic">
+        <span key={index} className="text-slate-400 dark:text-slate-500 italic whitespace-pre-wrap break-all">
           undefined
         </span>
       );
     }
     if (arg === null) {
       return (
-        <span key={index} className="text-cyan-500 dark:text-cyan-400 font-bold">
+        <span key={index} className="text-cyan-500 dark:text-cyan-400 font-bold whitespace-pre-wrap break-all">
           null
         </span>
       );
     }
     if (typeof arg === "number") {
       return (
-        <span key={index} className="text-amber-600 dark:text-amber-400">
+        <span key={index} className="text-amber-600 dark:text-amber-400 whitespace-pre-wrap break-all">
           {arg}
         </span>
       );
     }
     if (typeof arg === "boolean") {
       return (
-        <span key={index} className="text-purple-500 dark:text-purple-400">
+        <span key={index} className="text-purple-500 dark:text-purple-400 whitespace-pre-wrap break-all">
           {String(arg)}
         </span>
       );
@@ -473,12 +473,12 @@ declare const console: {
         displayed = "[Unserializable Object]";
       }
       return (
-        <span key={index} className="text-blue-600 dark:text-blue-400">
+        <span key={index} className="text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all font-mono">
           {displayed}
         </span>
       );
     }
-    return <span key={index}>{String(arg)}</span>;
+    return <span key={index} className="whitespace-pre-wrap break-all">{String(arg)}</span>;
   };
 
   // Settings
@@ -511,7 +511,6 @@ declare const console: {
   });
 
   const [activeTab, setActiveTab] = useState<"result" | "console">("console");
-  const [leftActiveTab, setLeftActiveTab] = useState<"files" | "context">("files");
   const [layoutMode, setLayoutMode] = useState<"bottom" | "right">("bottom");
   const [terminalState, setTerminalState] = useState<"normal" | "maximized" | "hidden">("normal");
   const [wordWrap, setWordWrap] = useState<"on" | "off">("on");
@@ -981,69 +980,9 @@ declare const console: {
             style={{ width: `${settings.sidebarWidth || 260}px` }}
             className="absolute md:relative top-0 bottom-0 left-0 max-w-[85vw] md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
           >
-            {/* Quick Switch Sidebar Panel Tab Headers */}
-            <div className="flex p-2 gap-1 bg-slate-100 dark:bg-[#0c0f16]">
-              <button
-                onClick={() => setLeftActiveTab("files")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition cursor-pointer ${leftActiveTab === "files" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200 dark:border-slate-800" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/40"}`}
-              >
-                <FolderOpen size={13} />
-                Files
-              </button>
-              <button
-                onClick={() => setLeftActiveTab("context")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition cursor-pointer ${leftActiveTab === "context" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 shadow-xs border border-slate-200 dark:border-slate-800" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/40"}`}
-              >
-                <Info size={13} />
-                Context
-              </button>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <FileExplorerPanel />
             </div>
-
-            {leftActiveTab === "files" ? (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <FileExplorerPanel />
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-                  <h3 className="font-semibold text-xs mb-1 uppercase tracking-wider text-slate-500 dark:text-slate-400 font-sans">
-                    Context
-                  </h3>
-                  <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    Write scripts to transform data. A global{" "}
-                    <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono">
-                      input
-                    </code>{" "}
-                    object represents surrounding data. Return the structure to output.
-                  </p>
-                </div>
-
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/30 dark:bg-slate-900/10">
-                    <h3 className="font-semibold text-xs flex items-center gap-2">
-                      <Braces size={14} className="text-blue-500" /> Input Data
-                    </h3>
-                  </div>
-                  <div className="flex-1 overflow-auto custom-scrollbar p-3 bg-white dark:bg-[#0d1117]/10">
-                    {inputData !== null && inputData !== undefined ? (
-                      <pre className="text-xs font-mono text-slate-700 dark:text-slate-300">
-                        {(() => {
-                          try {
-                            return JSON.stringify(inputData, null, 2);
-                          } catch {
-                            return "[Unserializable Input Data]";
-                          }
-                        })()}
-                      </pre>
-                    ) : (
-                      <div className="text-xs text-slate-500">
-                        No input data resolved.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
             
             {/* Draggable Resizer */}
             <div 
@@ -1400,12 +1339,12 @@ declare const console: {
                       <Virtuoso
                         totalCount={logCount + (lastError ? 1 : 0)}
                         firstItemIndex={startOffset}
-                        className="h-full min-w-max custom-scrollbar overflow-x-auto w-full"
+                        className="h-full custom-scrollbar overflow-x-hidden w-full"
                         followOutput="auto"
                         itemContent={(index) => {
                           if (index === logCount && lastError) {
                             return (
-                              <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-4 w-fit min-w-full">
+                              <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-4 w-full">
                                 <div className="flex-1 min-w-0 font-bold whitespace-pre-wrap flex items-start gap-2">
                                   <span className="shrink-0 mt-0.5">✖</span>
                                   <span>{renderClickableErrorText(typeof lastError === "object" && lastError !== null ? (lastError as any).message : String(lastError), currentFilePath, setJsNodeFocusLine)}</span>
@@ -1419,10 +1358,10 @@ declare const console: {
                           }
                           return (
                             <div
-                              className={`px-4 py-0 flex gap-4 w-fit min-w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
+                              className={`px-4 py-0 flex gap-4 w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
                             >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start gap-2 w-max text-[13px]">
+                              <div className="flex-1 min-w-0 font-mono">
+                                <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
                                   {log.args.map((arg: any, argIdx: number) =>
                                     renderArgElement(arg, argIdx)
                                   )}
