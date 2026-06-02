@@ -63,10 +63,45 @@ export function SafeEditor(props: EditorProps) {
   else if (lang === "html") ext = "html";
   else if (lang === "css") ext = "css";
 
-  const resolvedPath = props.path || `inmemory://model-${componentId}.${ext}`;
+  let resolvedPath = props.path;
+  if (resolvedPath) {
+    if (resolvedPath.endsWith("_py_node")) {
+      resolvedPath = resolvedPath.replace(/_py_node$/, ".py");
+    } else if (resolvedPath.endsWith("_ts_node")) {
+      resolvedPath = resolvedPath.replace(/_ts_node$/, ".ts");
+    } else if (resolvedPath.endsWith("_js_node")) {
+      resolvedPath = resolvedPath.replace(/_js_node$/, ".js");
+    } else if (resolvedPath.endsWith("_api_node")) {
+      resolvedPath = resolvedPath.replace(/_api_node$/, ".api");
+    } else {
+      const lowerPath = resolvedPath.toLowerCase();
+      const hasExtension = lowerPath.endsWith(".js") || 
+                            lowerPath.endsWith(".ts") || 
+                            lowerPath.endsWith(".py") || 
+                            lowerPath.endsWith(".json") || 
+                            lowerPath.endsWith(".md") || 
+                            lowerPath.endsWith(".html") || 
+                            lowerPath.endsWith(".css") || 
+                            lowerPath.endsWith(".api");
+      if (!hasExtension) {
+        let cleanPath = resolvedPath.replace(/\./g, "/");
+        if (lang === "python") cleanPath += ".py";
+        else if (lang === "typescript") cleanPath += ".ts";
+        else if (lang === "javascript") cleanPath += ".js";
+        else if (lang === "json") cleanPath += ".json";
+        else if (lang === "markdown") cleanPath += ".md";
+        else {
+          cleanPath += `.${ext}`;
+        }
+        resolvedPath = `file:///${cleanPath}`;
+      }
+    }
+  } else {
+    resolvedPath = `inmemory://model-${componentId}.${ext}`;
+  }
 
   const activeKey = props.path 
-    ? `path-${props.path}` 
+    ? `path-${resolvedPath}` 
     : `lang-${lang}-${componentId}`;
 
   const mergedOptions = React.useMemo(() => {
@@ -76,15 +111,31 @@ export function SafeEditor(props: EditorProps) {
     };
   }, [props.options]);
 
+  const handleOnMount = (editor: any, monaco: any) => {
+    const model = editor.getModel();
+    if (model && lang) {
+      try {
+        monaco.editor.setModelLanguage(model, lang);
+      } catch (err) {
+        console.warn("Error setting model language on mount", err);
+      }
+    }
+    if (props.onMount) {
+      props.onMount(editor, monaco);
+    }
+  };
+
   return (
     <EditorErrorBoundary 
       resetTrigger={activeKey} 
       fallback={<TextareaFallback {...props} />}
     >
       <MonacoEditor 
+        key={activeKey}
         {...props} 
         path={resolvedPath} 
         options={mergedOptions} 
+        onMount={handleOnMount}
       />
     </EditorErrorBoundary>
   );

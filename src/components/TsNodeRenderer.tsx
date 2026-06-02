@@ -223,6 +223,7 @@ export function TsNodeRenderer({ path, code, width, height }: TsNodeRendererProp
                     padding: { top: 8, bottom: 8 },
                     renderLineHighlight: "none",
                     contextmenu: false,
+                    fixedOverflowWidgets: false,
                   }}
                 />
               </div>

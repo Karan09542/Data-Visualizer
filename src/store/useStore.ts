@@ -426,8 +426,8 @@ const initialCode = `{
   "version": "2.0.0",
   "dataSources": {
      "my_data_api_node": "https://api.github.com/users",
-     "transform_users_js_node": "console.log('JS calculation node executing!');\\nreturn { status: 'active', timestamp: Date.now() };",
-     "typescript_filtering_ts_node": "const greet: string = 'Hello from TypeSafe compiling!';\\nconsole.log(greet);\\nreturn { success: true };"
+     "transform_users_js_node": "console.log('JS calculation node executing!');\\nconsole.log('Namaste');",
+     "typescript_filtering_ts_node": "const greet: string = 'Hello from TypeSafe compiling!';\\nconsole.log(greet);\\nconsole.log('Namaste');"
   },
   "settings": {
     "theme": "dark",

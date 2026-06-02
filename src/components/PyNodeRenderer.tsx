@@ -223,6 +223,7 @@ export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProp
                     padding: { top: 8, bottom: 8 },
                     renderLineHighlight: "none",
                     contextmenu: false,
+                    fixedOverflowWidgets: false,
                   }}
                 />
               </div>

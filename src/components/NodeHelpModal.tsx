@@ -22,9 +22,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         github_profile_api_node: "https://api.github.com/users/octocat",
         posts_api_node: "https://jsonplaceholder.typicode.com/posts/1",
         ip_lookup_api_node: "https://ipapi.co/json/",
-        calculator_js_node: "return 2 + 2;",
-        greeting_ts_node: "const name: string = 'World';\nreturn `Hello ${name}!`;",
-        greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nresult = {"message": f"Hello {text}!"}\nresult'
+        calculator_js_node: "console.log('JS calculation node executing!');\nconsole.log('namaste');",
+        greeting_ts_node: "const name: string = 'World';\nconsole.log(`Hello ${name}!`);\nconsole.log('namaste');",
+        greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")'
       };
 
       const demoNodes = {
@@ -34,9 +34,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         meta: {
           api_status: "online",
           ip_lookup_api_node: "https://ipapi.co/json/",
-          run_calc_js_node: "return Math.random() * 100;",
-          format_date_ts_node: "return new Date().toISOString();",
-          greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nresult = {"message": f"Hello {text}!"}\nresult'
+          run_calc_js_node: "console.log('Math calculation:', Math.random() * 100);\nconsole.log('namaste');",
+          format_date_ts_node: "console.log('Current ISO Date:', new Date().toISOString());\nconsole.log('namaste');",
+          greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")'
         }
       };
 
@@ -272,7 +272,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     }`}>
 {`{
   "project_name": "JS execution",
-  "math_calc_js_node": "const result = 50 * 20;\\nreturn result;"
+  "math_calc_js_node": "const result = 50 * 20;\\nconsole.log('Result:', result);\\nconsole.log('namaste');"
 }`}
                     </pre>
                   </div>
@@ -322,7 +322,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     }`}>
 {`{
   "project_name": "TS execution",
-  "greet_ts_node": "const msg: string = 'Typescript Rules';\\nreturn msg;"
+  "greet_ts_node": "const msg: string = 'Typescript Rules';\\nconsole.log(msg);\\nconsole.log('namaste');"
 }`}
                     </pre>
                   </div>

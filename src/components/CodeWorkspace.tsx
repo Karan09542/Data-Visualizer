@@ -42,6 +42,14 @@ import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/t
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
 import FileExplorerPanel from "./FileExplorerPanel";
+import {
+  JavaScriptIcon,
+  TypeScriptIcon,
+  PythonIcon,
+  JsonIcon,
+  MarkdownIcon,
+  TextIcon,
+} from "./FileIcons";
 import { getValueAtPath } from "../utils/pathUtils";
 import { editorThemes } from "../utils/editorThemes";
 import { renderClickableErrorText } from "../utils/errorParser";
@@ -164,7 +172,26 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (isXml) return "xml";
     if (isMd) return "markdown";
     return "plaintext";
-  }, [isTs, isJs, isJson, isYaml, isXml, isMd]);
+  }, [isPy, isTs, isJs, isJson, isYaml, isXml, isMd]);
+
+  const getTabIcon = (filePath: string, isActive: boolean) => {
+    if (typeof filePath !== 'string') return <FileText size={13} className="text-slate-400 dark:text-slate-500 shrink-0" />;
+    
+    const lowerPath = filePath.toLowerCase();
+    const isPy = lowerPath.endsWith('_py_node') || lowerPath.endsWith('.py');
+    const isTs = lowerPath.endsWith('_ts_node') || lowerPath.endsWith('.ts');
+    const isJs = lowerPath.endsWith('_js_node') || lowerPath.endsWith('.js');
+    const isJson = lowerPath.endsWith('_json') || lowerPath.endsWith('.json');
+    const isMd = lowerPath.endsWith('_md') || lowerPath.endsWith('.md');
+    
+    if (isPy) return <PythonIcon />;
+    if (isTs) return <TypeScriptIcon />;
+    if (isJs) return <JavaScriptIcon />;
+    if (isJson) return <JsonIcon />;
+    if (isMd) return <MarkdownIcon />;
+
+    return <FileText size={13} className={isActive ? "text-yellow-500 shrink-0" : "text-slate-400 dark:text-slate-500 shrink-0"} />;
+  };
 
   const getCleanName = (filePath: string) => {
     if (typeof filePath !== 'string') return "";
@@ -1090,7 +1117,7 @@ declare const console: {
                           : "text-slate-500 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
                       }`}
                     >
-                      <FileText size={13} className={isActive ? "text-yellow-500 shrink-0" : "text-slate-400 dark:text-slate-500 shrink-0"} />
+                      {getTabIcon(tab.path, isActive)}
                       <span className={`truncate max-w-[120px] ${tab.isPreview ? "italic" : ""}`}>{cleanName}</span>
                       
                       <span

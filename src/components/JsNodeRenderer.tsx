@@ -223,6 +223,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                     padding: { top: 8, bottom: 8 },
                     renderLineHighlight: "none",
                     contextmenu: false,
+                    fixedOverflowWidgets: false,
                   }}
                 />
               </div>

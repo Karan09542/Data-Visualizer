@@ -281,7 +281,7 @@ export const executeTsNode = async (path: string, codeToRun: string, monacoInsta
 
 export function generateTypeScriptSchema(val: any, interfaceName: string = "Input"): { types: string; entry: string } {
   if (val === undefined || val === null) {
-    return { types: `interface ${interfaceName} {}`, entry: `declare const input: ${interfaceName};` };
+    return { types: `interface ${interfaceName} {}`, entry: "" };
   }
   
   const customTypes: string[] = [];
@@ -317,6 +317,6 @@ export function generateTypeScriptSchema(val: any, interfaceName: string = "Inpu
   
   return {
     types: finalTypes,
-    entry: `declare const input: ${interfaceName};`
+    entry: ""
   };
 }
