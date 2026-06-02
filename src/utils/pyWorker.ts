@@ -3,6 +3,7 @@ import { loadPyodide } from 'pyodide';
 let pyodide: any = null;
 let currentFlushInterval: any = null;
 let activeAddLog: ((logType: string, args: any[]) => void) | null = null;
+let currentSessionId: string = "";
 
 self.addEventListener('error', (e) => {
     e.preventDefault();
@@ -18,6 +19,7 @@ self.addEventListener('unhandledrejection', (e) => {
 
 self.onmessage = async (e) => {
     const { code, input, id } = e.data;
+    currentSessionId = id || "";
     
     // Support clear logs if a command requests it
     if (e.data.type === 'clear') {
@@ -75,6 +77,37 @@ self.onmessage = async (e) => {
                     activeAddLog('error', [msg]);
                 }
             }});
+            pyodide.setStdin({
+                stdin: () => {
+                    // Send message to main thread
+                    self.postMessage({
+                        type: 'need_prompt',
+                        sessionId: currentSessionId,
+                        promptText: "Python input requested",
+                        promptType: "input"
+                    });
+                    
+                    // Do synchronous XHR to block the Web Worker thread until the user enters their info
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', `${self.location.origin}/api/stdin-get?sessionId=${currentSessionId}`, false);
+                    xhr.send();
+                    
+                    if (xhr.status === 200) {
+                        try {
+                            const res = JSON.parse(xhr.responseText);
+                            const val = (res.value !== null && res.value !== undefined) ? String(res.value) : "";
+                            // Echo user's typed value to stdout for a realistic terminal feel
+                            if (activeAddLog) {
+                                activeAddLog('log', [val]);
+                            }
+                            return val + "\n";
+                        } catch (err) {
+                            console.error("Error parsing stdin result", err);
+                        }
+                    }
+                    return "\n";
+                }
+            });
         }
         
         pyodide.globals.set('input_data', input || {});

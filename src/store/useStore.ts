@@ -242,6 +242,12 @@ export interface StoreState {
   expandedJsNodeId: string | null;
   setExpandedJsNodeId: (id: string | null) => void;
 
+  activePrompts: Record<string, { sessionId: string; promptText?: string; defaultValue?: string; type: "input" | "prompt" | "confirm" | "alert" } | null>;
+  setActivePrompt: (
+    path: string,
+    prompt: { sessionId: string; promptText?: string; defaultValue?: string; type: "input" | "prompt" | "confirm" | "alert" } | null,
+  ) => void;
+
   isAutosaveEnabled: boolean;
   setIsAutosaveEnabled: (enabled: boolean) => void;
   visualizerMode: VisualizerMode;
@@ -653,6 +659,11 @@ export const useStore = create<StoreState>()(
         set({ jsNodeFocusLine: path ? { path, line: line!, column } : null }),
       expandedJsNodeId: null,
       setExpandedJsNodeId: (id: string | null) => set({ expandedJsNodeId: id }),
+      activePrompts: {},
+      setActivePrompt: (path, prompt) =>
+        set((s) => ({
+          activePrompts: { ...s.activePrompts, [path]: prompt },
+        })),
       setJsNodeRunMetadata: (path: string, duration: number, lastRun: string) => {
         set((s) => ({
           jsNodeDurations: { ...s.jsNodeDurations, [path]: duration },

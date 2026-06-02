@@ -100,7 +100,18 @@ export const executePyNode = async (path: string, codeToRun: string) => {
                 return;
             }
 
-            if (e.data.type === 'finish') {
+            if (e.data.type === 'need_prompt') {
+                 const storeState = useStore.getState();
+                 storeState.setActivePrompt(path, {
+                     sessionId: e.data.sessionId,
+                     promptText: e.data.promptText,
+                     defaultValue: e.data.defaultValue,
+                     type: e.data.promptType || 'input'
+                 });
+                 return;
+             }
+
+             if (e.data.type === 'finish') {
                 clearTimeout(timeoutId);
                 if (e.data.success) {
                    resolve(e.data);

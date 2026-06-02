@@ -15,6 +15,7 @@ import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { ExpandableJSON } from "./ExpandableJSON";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import { Virtuoso } from "react-virtuoso";
+import { TerminalInputPrompt } from "./TerminalInputPrompt";
 
 interface JsNodeRendererProps {
   path: string;
@@ -50,6 +51,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
   const error = jsNodeErrors[path];
   const hasData = jsNodeResponses[path] !== undefined;
 
+  const isPromptActive = !!useStore(state => state.activePrompts[path]);
   const visibility = jsNodeVisibility[path] || { code: true, terminal: true };
   const activeCode = jsNodeCodeOverrides[path] ?? code;
   const { logCount, getLog, clearLogs, startOffset } = useExecutionLogs(path);
@@ -267,50 +269,55 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                 </div>
               </div>
               
-              <div className="p-3 font-mono text-[12px] text-slate-800 dark:text-[#e6edf3] space-y-1.5 h-[160px]">
-                {logCount === 0 && !error ? (
-                  <div className="text-slate-500 dark:text-[#8b949e] italic overflow-y-auto h-full max-h-[160px] custom-scrollbar">Ready...</div>
-                ) : (
-                  <Virtuoso
-                    totalCount={logCount + (error ? 1 : 0)}
-                    firstItemIndex={startOffset}
-                    className="h-full w-full min-h-[120px] custom-scrollbar overflow-x-hidden"
-                    followOutput="auto"
-                    itemContent={(index) => {
-                      if (index === logCount && error) {
+              <div className={`p-3 font-mono text-[12px] text-slate-800 dark:text-[#e6edf3] flex flex-col gap-2 ${isPromptActive ? "h-[300px]" : "h-[160px]"} transition-all duration-200`}>
+                <div className="flex-1 min-h-0 relative">
+                  {logCount === 0 && !error ? (
+                    <div className="text-slate-500 dark:text-[#8b949e] italic overflow-y-auto h-full max-h-full custom-scrollbar">Ready...</div>
+                  ) : (
+                    <Virtuoso
+                      totalCount={logCount + (error ? 1 : 0)}
+                      firstItemIndex={startOffset}
+                      className="h-full w-full custom-scrollbar overflow-x-hidden"
+                      followOutput="auto"
+                      itemContent={(index) => {
+                        if (index === logCount && error) {
+                          return (
+                            <div className="text-red-500 dark:text-[#f85149] mt-2 flex gap-1.5 border-l-2 border-red-500 dark:border-[#f85149] pl-2 w-full whitespace-pre-wrap break-all">
+                               <span className="shrink-0">&gt;</span>
+                               <span className="break-all">{error}</span>
+                            </div>
+                          );
+                        }
+                        const log = getLog(index);
+                        if (!log) return <div className="text-slate-500 dark:text-[#8b949e]">...</div>;
                         return (
-                          <div className="text-red-500 dark:text-[#f85149] mt-2 flex gap-1.5 border-l-2 border-red-500 dark:border-[#f85149] pl-2 w-full whitespace-pre-wrap break-all">
-                             <span className="shrink-0">&gt;</span>
-                             <span className="break-all">{error}</span>
-                          </div>
-                        );
-                      }
-                      const log = getLog(index);
-                      if (!log) return <div className="text-slate-500 dark:text-[#8b949e]">...</div>;
-                      return (
-                        <div className="flex flex-col mb-1.5 w-full">
-                          <div className="flex items-start gap-1.5">
-                            <span className="text-slate-500 dark:text-[#8b949e] shrink-0">&gt;</span>
-                            <div className="flex-1 whitespace-pre-wrap break-all">
-                              {log.args.map((a: any, idx: number) => (
-                                <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
-                                  {typeof a === 'string' ? (
-                                     <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
-                                  ) : (
-                                     <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{JSON.stringify(a)}</span>
-                                  )}
-                                </span>
-                              ))}
+                          <div className="flex flex-col mb-1.5 w-full">
+                            <div className="flex items-start gap-1.5">
+                              <span className="text-slate-500 dark:text-[#8b949e] shrink-0">&gt;</span>
+                              <div className="flex-1 whitespace-pre-wrap break-all">
+                                {log.args.map((a: any, idx: number) => (
+                                  <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
+                                    {typeof a === 'string' ? (
+                                       <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
+                                    ) : (
+                                       <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{JSON.stringify(a)}</span>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    }}
-                  />
-                )}
-                <div className="flex items-center gap-1.5 pt-1">
-                  <span className="text-slate-500 dark:text-[#8b949e]">&gt;</span>
-                  <div className="w-1.5 h-3 bg-[#e6edf3] animate-pulse" />
+                        );
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5 shrink-0 pt-1.5 border-t border-slate-200/40 dark:border-slate-800/40 mt-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 dark:text-[#8b949e]">&gt;</span>
+                    <div className="w-1.5 h-3 bg-[#e6edf3] animate-pulse" />
+                  </div>
+                  <TerminalInputPrompt path={path} />
                 </div>
               </div>
             </div>

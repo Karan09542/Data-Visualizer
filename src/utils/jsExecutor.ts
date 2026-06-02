@@ -121,7 +121,62 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                    info: (...args) => addLog('log', args)
                };
 
-               const executionFunc = new Function('input', 'console', "return (async () => {\\n" + code + "\\n})();");
+               const currentSessionId = "${sessionId}";
+                
+                self.alert = (message) => {
+                    self.postMessage({
+                        type: 'need_prompt',
+                        sessionId: currentSessionId,
+                        promptText: message || "Alert",
+                        defaultValue: "",
+                        promptType: "alert"
+                    });
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.send();
+                };
+                
+                self.confirm = (message) => {
+                    self.postMessage({
+                        type: 'need_prompt',
+                        sessionId: currentSessionId,
+                        promptText: message || "Confirm",
+                        defaultValue: "",
+                        promptType: "confirm"
+                    });
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.send();
+                    if (xhr.status === 200) {
+                        try {
+                            const res = JSON.parse(xhr.responseText);
+                            return res.value === true;
+                        } catch(e) {}
+                    }
+                    return false;
+                };
+                
+                self.prompt = (message, defaultValue) => {
+                    self.postMessage({
+                        type: 'need_prompt',
+                        sessionId: currentSessionId,
+                        promptText: message || "Prompt",
+                        defaultValue: defaultValue || "",
+                        promptType: "prompt"
+                    });
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', self.location.origin + '/api/stdin-get?sessionId=' + currentSessionId, false);
+                    xhr.send();
+                    if (xhr.status === 200) {
+                        try {
+                            const res = JSON.parse(xhr.responseText);
+                            return res.value !== null ? String(res.value) : null;
+                        } catch(e) {}
+                    }
+                    return null;
+                };
+
+                const executionFunc = new Function('input', 'console', "return (async () => {\\n" + code + "\\n})();");
                
                const result = await executionFunc(input, customConsole);
                clearInterval(flushInterval);
@@ -164,7 +219,18 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
              }
 
              hasFinished = true;
-             if (e.data.success) {
+             if (e.data.type === 'need_prompt') {
+                  const s = useStore.getState();
+                  s.setActivePrompt(path, {
+                      sessionId: e.data.sessionId,
+                      promptText: e.data.promptText,
+                      defaultValue: e.data.defaultValue,
+                      type: e.data.promptType || 'prompt'
+                  });
+                  return;
+              }
+
+              if (e.data.success) {
                 resolve(e.data);
              } else {
                 reject({ message: e.data.error || "Execution failed", stack: e.data.stack, isWorkerError: true });
