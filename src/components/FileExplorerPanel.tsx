@@ -848,10 +848,12 @@ function isFileSystemMeaningful(value: any): boolean {
               }
             }}
             style={{ paddingLeft: indentPadding }}
-            className={`group flex items-center justify-between py-1.5 pr-2 cursor-pointer transition-colors text-xs border border-transparent select-none relative ${
+            className={`group flex items-center justify-start py-1.5 cursor-pointer transition-colors text-xs border-l-2 select-none relative ${
+              isFolder ? "pr-20" : "pr-8"
+            } ${
               isSelected
-                ? "bg-blue-500/10 dark:bg-blue-500/15 border-l-2 border-l-blue-600 dark:border-l-blue-500 text-blue-800 dark:text-blue-300 font-medium"
-                : "text-slate-700 hover:text-slate-900 dark:text-slate-350 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                ? "bg-blue-500/10 dark:bg-blue-500/15 border-l-blue-600 dark:border-l-blue-500 text-blue-800 dark:text-blue-300 font-normal"
+                : "border-l-transparent text-slate-700 hover:text-slate-900 dark:text-slate-350 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
             } ${dragOverFolderId === item.id ? "bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500 border-dashed rounded" : ""}`}
           >
             <div className="flex items-center gap-2 min-w-0 pr-2">
@@ -888,7 +890,7 @@ function isFileSystemMeaningful(value: any): boolean {
             </div>
 
              {/* Quick Action icon triggers */}
-            <div className="hidden group-hover:flex items-center gap-1.5 pl-2 z-10">
+            <div className="hidden group-hover:flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 rounded border border-slate-200/60 dark:border-slate-800 bg-slate-100/95 dark:bg-[#151c24]/95 shadow-sm animate-in fade-in duration-100 z-10 absolute right-1.5 top-1/2 -translate-y-1/2">
               {isFolder && (
                 <>
                   <button

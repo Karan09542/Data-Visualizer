@@ -41,22 +41,22 @@ export function PyNodeCodeRenderer({ code, path, width, height }: PyNodeCodeRend
   useEffect(() => {
     if (monaco) {
       try {
-        if (monaco.languages && (monaco.languages as any).python) {
+        if (monaco.languages && (monaco.languages as any).typescript) {
           if ((window as any).__monacoCompilerConfigured) return;
           (window as any).__monacoCompilerConfigured = true;
 
-          const tsDefaults = (monaco.languages as any).python.pythonDefaults;
-          const jsDefaults = (monaco.languages as any).python.javascriptDefaults;
+          const tsDefaults = (monaco.languages as any).typescript.typescriptDefaults;
+          const jsDefaults = (monaco.languages as any).typescript.javascriptDefaults;
 
           [tsDefaults, jsDefaults].forEach((defaults) => {
             if (!defaults) return;
             const currentOptions = defaults.getCompilerOptions();
             defaults.setCompilerOptions({
               ...currentOptions,
-              target: (monaco.languages as any).python.ScriptTarget?.Latest ?? 99,
-              module: (monaco.languages as any).python.ModuleKind?.ESNext ?? 99,
-              moduleResolution: (monaco.languages as any).python.ModuleResolutionKind?.NodeJs ?? 2,
-              allowNonTsExtensions: true,
+              target: (monaco.languages as any).typescript.ScriptTarget?.Latest ?? 99,
+              module: (monaco.languages as any).typescript.ModuleKind?.ESNext ?? 99,
+              moduleResolution: (monaco.languages as any).typescript.ModuleResolutionKind?.NodeJs ?? 2,
+              allowNonTsExtensions: false,
               isolatedModules: true,
               moduleDetection: 3, // Force treating scripts/files as independent modules
             });

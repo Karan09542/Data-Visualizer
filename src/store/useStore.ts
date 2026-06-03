@@ -516,7 +516,20 @@ export const useStore = create<StoreState>()(
               tabs.push({ path, isPreview: false, isDirty: false });
             }
           }
-          return { workspaceTabs: tabs, activeExplorerFile: path, selectedExplorerFiles: [path] };
+
+          // Expand contains/parent folders for the path
+          const explorerExpandedPaths = { ...s.explorerExpandedPaths };
+          if (path) {
+            const parts = path.split(".");
+            if (parts.length > 2) {
+              for (let i = 2; i < parts.length; i++) {
+                const parentPath = parts.slice(0, i).join(".");
+                explorerExpandedPaths[parentPath] = true;
+              }
+            }
+          }
+
+          return { workspaceTabs: tabs, activeExplorerFile: path, selectedExplorerFiles: [path], explorerExpandedPaths };
         }),
       closeWorkspaceTab: (path) =>
         set((s) => {
@@ -658,7 +671,38 @@ export const useStore = create<StoreState>()(
       setJsNodeFocusLine: (path, line, column) =>
         set({ jsNodeFocusLine: path ? { path, line: line!, column } : null }),
       expandedJsNodeId: null,
-      setExpandedJsNodeId: (id: string | null) => set({ expandedJsNodeId: id }),
+      setExpandedJsNodeId: (id: string | null) =>
+        set((s) => {
+          const stateUpdate: any = { expandedJsNodeId: id };
+          if (id) {
+            let tabs = [...s.workspaceTabs];
+            const existing = tabs.find(t => t.path === id);
+            if (!existing) {
+              // Add a preview tab
+              const previewIndex = tabs.findIndex(t => t.isPreview);
+              if (previewIndex !== -1) {
+                tabs[previewIndex] = { path: id, isPreview: true, isDirty: false };
+              } else {
+                tabs.push({ path: id, isPreview: true, isDirty: false });
+              }
+            }
+            stateUpdate.workspaceTabs = tabs;
+            stateUpdate.activeExplorerFile = id;
+            stateUpdate.selectedExplorerFiles = [id];
+
+            // Automatically expand parent folders
+            const explorerExpandedPaths = { ...s.explorerExpandedPaths };
+            const parts = id.split(".");
+            if (parts.length > 2) {
+              for (let i = 2; i < parts.length; i++) {
+                const parentPath = parts.slice(0, i).join(".");
+                explorerExpandedPaths[parentPath] = true;
+              }
+            }
+            stateUpdate.explorerExpandedPaths = explorerExpandedPaths;
+          }
+          return stateUpdate;
+        }),
       activePrompts: {},
       setActivePrompt: (path, prompt) =>
         set((s) => ({

@@ -56,7 +56,7 @@ export function JsNodeCodeRenderer({ code, path, width, height }: JsNodeCodeRend
               target: (monaco.languages as any).typescript.ScriptTarget?.Latest ?? 99,
               module: (monaco.languages as any).typescript.ModuleKind?.ESNext ?? 99,
               moduleResolution: (monaco.languages as any).typescript.ModuleResolutionKind?.NodeJs ?? 2,
-              allowNonTsExtensions: true,
+              allowNonTsExtensions: false,
               isolatedModules: true,
               moduleDetection: 3, // Force treating scripts/files as independent modules
             });

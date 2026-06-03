@@ -36,7 +36,7 @@ export function detectImports(pyCode: string): string[] {
     "os", "sys", "math", "json", "re", "time", "datetime", "hashlib", "random", "collections", 
     "urllib", "http", "socket", "threading", "subprocess", "xml", "csv", "ast", "tempfile", 
     "shutil", "glob", "logging", "typing", "warnings", "functools", "itertools", "io", "pickle",
-    "traceback", "inspect", "unittest", "platform", "string"
+    "traceback", "inspect", "unittest", "platform", "string", "js", "pyodide", "micropip"
   ]);
 
   return imports.filter(pkg => !builtins.has(pkg));
@@ -188,7 +188,21 @@ export const executePyNode = async (path: string, codeToRun: string) => {
          }, timeoutMs);
 
          const messageHandler = async (e: MessageEvent) => {
-            if (e.data.type === 'logs') {
+            if (e.data.type === 'trigger_download') {
+                 try {
+                     const link = document.createElement('a');
+                     link.href = e.data.url;
+                     link.download = e.data.filename || 'download';
+                     document.body.appendChild(link);
+                     link.click();
+                     document.body.removeChild(link);
+                 } catch (err) {
+                     console.error("Failed to perform trigger_download in executor host", err);
+                 }
+                 return;
+             }
+
+             if (e.data.type === 'logs') {
                 await appendLogs(path, e.data.logs);
                 return;
             }

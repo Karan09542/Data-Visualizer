@@ -1,6 +1,39 @@
 import { loadPyodide } from "pyodide";
 import { getInstalledPackages, saveInstalledPackage, pyDb } from "./pyDb";
 
+// Set up shims for window and document so python scripts can import them and perform actions like downloads
+(self as any).window = self;
+
+const mockDocument = {
+  body: {
+    appendChild: (element: any) => {
+      return element;
+    },
+    removeChild: (element: any) => {
+      return element;
+    }
+  },
+  createElement: (tagName: string) => {
+    if (typeof tagName === "string" && tagName.toLowerCase() === "a") {
+      return {
+        tagName: "A",
+        href: "",
+        download: "",
+        click: function(this: any) {
+          self.postMessage({
+            type: "trigger_download",
+            url: this.href,
+            filename: this.download
+          });
+        }
+      };
+    }
+    return {};
+  }
+};
+
+(self as any).document = mockDocument;
+
 let cacheEnabled = true;
 
 const originalFetch = self.fetch;
@@ -359,7 +392,25 @@ except Exception:
         if (currentFlushInterval) clearInterval(currentFlushInterval);
         flushLogs();
 
-        self.postMessage({ type: "finish", id, success: true, result: finalResult });
+        try {
+            self.postMessage({ type: "finish", id, success: true, result: finalResult });
+        } catch (postErr) {
+            // Safe fallback if the result object is not cloneable (e.g. contains functions or DOM mocks)
+            try {
+                let safeResult = null;
+                if (typeof finalResult === "object" && finalResult !== null) {
+                    safeResult = JSON.parse(JSON.stringify(finalResult, (key, value) => {
+                        if (typeof value === "function") return undefined;
+                        return value;
+                    }));
+                } else {
+                    safeResult = String(finalResult);
+                }
+                self.postMessage({ type: "finish", id, success: true, result: safeResult });
+            } catch (err2) {
+                self.postMessage({ type: "finish", id, success: true, result: null });
+            }
+        }
     } catch (error: any) {
         if (currentFlushInterval) clearInterval(currentFlushInterval);
         try { if (typeof flushLogs === "function") flushLogs(); } catch (e) {}

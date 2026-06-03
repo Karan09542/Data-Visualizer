@@ -15,7 +15,7 @@ interface PlotPayload {
 export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
   const [payload, setPayload] = useState<PlotPayload | null>(null);
   const [activeFormat, setActiveFormat] = useState<"svg" | "png" | "jpeg">("svg");
-  const [zoom, setZoom] = useState(0.85); // elegant default fit
+  const [zoom, setZoom] = useState(0.95); // compact default fit
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -107,7 +107,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
   };
 
   const handleReset = () => {
-    setZoom(0.85); // fitted aspect ratio
+    setZoom(0.95); // fitted aspect ratio
     setPan({ x: 0, y: 0 });
   };
 
@@ -262,14 +262,14 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
   };
 
   return (
-    <div id="matplotlib-viewer-root" className="my-5 bg-[#18181b] border border-[#27272a] rounded-xl overflow-hidden shadow-2xl flex flex-col w-full max-w-full font-sans select-none text-neutral-200">
+    <div id="matplotlib-viewer-root" className="my-3 bg-[#111113] border border-[#222225] rounded-lg overflow-hidden shadow-lg flex flex-col w-full max-w-[620px] font-sans select-none text-neutral-200">
       
-      {/* 1. Header Toolbar (Re-created beautifully from reference image) */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#121214] border-b border-[#222225] h-12">
+      {/* 1. Header Toolbar (Re-created beautifully from reference image, made compact) */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e0e10] border-b border-[#212124] h-10">
         {/* Left: Plot symbol and text view */}
-        <div className="flex items-center gap-2.5">
-          <LineChart className="w-4 h-4 text-neutral-300" />
-          <span className="text-[#f4f4f5] text-sm font-semibold tracking-wide">
+        <div className="flex items-center gap-2">
+          <LineChart className="w-3.5 h-3.5 text-neutral-400" />
+          <span className="text-neutral-300 text-xs font-semibold tracking-wide">
             Plot Viewer
           </span>
         </div>
@@ -282,13 +282,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-zoom-in"
               onClick={handleZoomIn}
-              className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none"
+              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none"
               aria-label="Zoom In"
             >
-              <ZoomIn className="w-5 h-5" />
+              <ZoomIn className="w-4 h-4" />
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-[#0b0b0c] text-neutral-200 text-xs rounded-md border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
-              <div className="absolute -top-[5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[#0b0b0c] text-neutral-200 text-[10px] rounded border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
+              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
               <span className="relative z-10 font-medium">Zoom In (Ctrl++)</span>
             </div>
           </div>
@@ -298,13 +298,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-zoom-out"
               onClick={handleZoomOut}
-              className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none"
+              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none"
               aria-label="Zoom Out"
             >
-              <ZoomOut className="w-5 h-5" />
+              <ZoomOut className="w-4 h-4" />
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-[#0b0b0c] text-neutral-200 text-xs rounded-md border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
-              <div className="absolute -top-[5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[#0b0b0c] text-neutral-200 text-[10px] rounded border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
+              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
               <span className="relative z-10 font-medium">Zoom Out (Ctrl+-)</span>
             </div>
           </div>
@@ -314,19 +314,19 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-fit-canvas"
               onClick={handleReset}
-              className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none"
+              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none"
               aria-label="Reset View"
             >
-              <Maximize2 className="w-[18px] h-[18px]" />
+              <Maximize2 className="w-3.5 h-3.5" />
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 bg-[#0b0b0c] text-neutral-200 text-xs rounded-md border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
-              <div className="absolute -top-[5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[#0b0b0c] text-neutral-200 text-[10px] rounded border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
+              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
               <span className="relative z-10 font-medium">Reset View & Pan (Ctrl+0)</span>
             </div>
           </div>
 
           {/* Live Zoom scale indicator value style */}
-          <span className="ml-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold text-neutral-500 select-none">
+          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-neutral-500 select-none">
             {Math.round(zoom * 100)}%
           </span>
         </div>
@@ -336,10 +336,10 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
           <button
             id="btn-export-dropdown"
             onClick={() => setShowFormatsDropdown(!showFormatsDropdown)}
-            className="h-8 px-3.5 rounded-lg bg-[#242427] hover:bg-[#2c2c30] text-neutral-100 border border-[#38383c]/60 shadow transition-all duration-150 flex items-center justify-center gap-1.5 font-medium text-xs select-none outline-none active:scale-95"
+            className="h-7 px-2.5 rounded bg-[#202023] hover:bg-[#28282b] text-neutral-100 border border-[#303034]/60 shadow transition-all duration-150 flex items-center justify-center gap-1 font-semibold text-[10px] select-none outline-none active:scale-95"
           >
             <span>Export</span>
-            <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+            <ChevronDown className="w-3 h-3 text-neutral-400" />
           </button>
 
           {showFormatsDropdown && (
@@ -348,42 +348,42 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
                 className="fixed inset-0 z-10"
                 onClick={() => setShowFormatsDropdown(false)}
               />
-              <div className="absolute right-0 mt-2 w-56 bg-neutral-950 border border-neutral-800 rounded-lg shadow-2xl py-1.5 z-20 text-neutral-200 animate-in fade-in duration-100">
-                <div className="px-3.5 py-1 text-[10px] text-neutral-500 uppercase tracking-wider font-extrabold">
+              <div className="absolute right-0 mt-2 w-52 bg-neutral-950 border border-neutral-800 rounded shadow-2xl py-1 z-20 text-neutral-200 animate-in fade-in duration-100">
+                <div className="px-3 py-1 text-[9px] text-neutral-500 uppercase tracking-wider font-extrabold">
                   Download Options
                 </div>
                 
                 {payload.svg && (
                   <button
                     onClick={() => handleDownload("svg")}
-                    className="w-full text-left px-3.5 py-2 hover:bg-[#1a1a1c] flex items-center justify-between text-xs transition"
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition"
                   >
                     <span className="flex items-center gap-2 font-medium text-neutral-200">
-                      <FileText className="w-4 h-4 text-emerald-400" />
+                      <FileText className="w-3.5 h-3.5 text-emerald-400" />
                       Save as Vector SVG
                     </span>
-                    <span className="text-[9px] bg-emerald-950/70 text-emerald-300 px-1.5 py-0.5 rounded font-extrabold border border-emerald-800/40">Vector</span>
+                    <span className="text-[8px] bg-emerald-950/75 text-emerald-300 px-1 py-0.2 rounded font-extrabold border border-emerald-800/40">Vector</span>
                   </button>
                 )}
 
                 <button
                   onClick={() => handleDownload("png")}
-                  className="w-full text-left px-3.5 py-2 hover:bg-[#1a1a1c] flex items-center justify-between text-xs transition"
+                  className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition"
                 >
                   <span className="flex items-center gap-2 font-medium text-neutral-200">
-                    <Image className="w-4 h-4 text-sky-400" />
+                    <Image className="w-3.5 h-3.5 text-sky-400" />
                     Save as PNG Image
                   </span>
-                  <span className="text-[9px] bg-neutral-900 text-neutral-400 px-1 py-0.5 rounded border border-neutral-800 font-bold">300dpi</span>
+                  <span className="text-[8px] bg-neutral-900 text-neutral-500 px-1 py-0.2 rounded border border-neutral-800 font-bold">300dpi</span>
                 </button>
 
                 {payload.jpeg && (
                   <button
                     onClick={() => handleDownload("jpeg")}
-                    className="w-full text-left px-3.5 py-2 hover:bg-[#1a1a1c] flex items-center justify-between text-xs transition"
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition"
                   >
                     <span className="flex items-center gap-2 font-medium text-neutral-200">
-                      <Image className="w-4 h-4 text-amber-500" />
+                      <Image className="w-3.5 h-3.5 text-amber-500" />
                       Save as JPEG Image
                     </span>
                   </button>
@@ -392,13 +392,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
                 {payload.pdf && (
                   <button
                     onClick={() => handleDownload("pdf")}
-                    className="w-full text-left px-3.5 py-2 hover:bg-[#1a1a1c] flex items-center justify-between text-xs transition"
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition"
                   >
                     <span className="flex items-center gap-2 font-medium text-neutral-200">
-                      <FileText className="w-4 h-4 text-rose-400" />
+                      <FileText className="w-3.5 h-3.5 text-rose-400" />
                       Save as printable PDF
                     </span>
-                    <span className="text-[9px] bg-neutral-900 text-slate-400 px-1 py-0.5 rounded border border-neutral-800 font-extrabold">PDF</span>
+                    <span className="text-[8px] bg-neutral-900 text-slate-400 px-1 py-0.2 rounded border border-neutral-800 font-extrabold">PDF</span>
                   </button>
                 )}
               </div>
@@ -407,7 +407,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
         </div>
       </div>
 
-      {/* 2. Main Plot Canvas Box: Centering paper sheet with solid luxury gray background */}
+      {/* 2. Main Plot Canvas Box: Compact height centering the paper sheet */}
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
@@ -418,24 +418,24 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onDoubleClick={handleReset}
-        className={`relative flex items-center justify-center bg-[#0b0b0c] p-6 min-h-[460px] md:min-h-[500px] overflow-hidden select-none transition-all ${
+        className={`relative flex items-center justify-center bg-[#070708] p-3.5 min-h-[250px] md:min-h-[280px] max-h-[320px] overflow-hidden select-none transition-all ${
           isDragging ? "cursor-grabbing" : "cursor-grab"
         }`}
         style={{ touchAction: "none" }}
       >
-        {/* Soft grid/dots accent layer optionally added with super low opacity */}
-        <div className="absolute inset-0 bg-[#09090a] bg-[radial-gradient(#1e1e24_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none opacity-40" />
+        {/* Soft grid/dots background accent with very subtle low opacity */}
+        <div className="absolute inset-0 bg-[#060607] bg-[radial-gradient(#1e1e24_1px,transparent_1px)] bg-[size:18px_18px] pointer-events-none opacity-30" />
 
-        {/* This white graphing board contains the Matplotlib printout, perfectly aligned centrally! */}
+        {/* Neatly styled rectangular white board containing the plot */}
         <div
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: "center",
             transition: isDragging ? "none" : "transform 0.1s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
-          className="relative block bg-white rounded-xl shadow-2xl border border-neutral-200 p-8 select-none pointer-events-none flex items-center justify-center w-full max-w-[820px] aspect-[4/3] max-h-[580px] hover:border-neutral-300 transition-colors"
+          className="relative block bg-white rounded shadow-md border border-neutral-200 p-2 select-none pointer-events-none flex items-center justify-center w-full max-w-[420px] aspect-[4/3] max-h-[270px] hover:border-neutral-300 transition-colors"
         >
-          {/* Matplotlib image element centered inside white plotting card */}
+          {/* Matplotlib image element centered perfectly inside card */}
           <img
             src={displaySrc}
             alt="Centering Matplotlib Plot Output"
@@ -445,14 +445,14 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
         </div>
       </div>
 
-      {/* 3. Footer Bar: Metadata Specifications (Reconstructed beautifully) */}
-      <div className="flex items-center justify-between px-5 h-10 bg-[#121214] border-t border-[#222225] text-[11px] font-mono text-neutral-400">
+      {/* 3. Footer Bar: Metadata Specifications */}
+      <div className="flex items-center justify-between px-3 h-8 bg-[#0e0e10] border-t border-[#212124] text-[10px] font-mono text-neutral-400">
         
-        {/* Active render configuration selectors client options */}
-        <div className="flex items-center gap-1.5">
+        {/* Active render format options */}
+        <div className="flex items-center gap-1.55">
           <button
             onClick={() => setActiveFormat("svg")}
-            className={`px-2 py-0.5 rounded transition ${
+            className={`px-1.5 py-0.5 rounded text-[9px] transition ${
               activeFormat === "svg"
                 ? "bg-neutral-800 text-neutral-100 font-bold"
                 : "hover:text-neutral-200"
@@ -462,11 +462,11 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             SVG
           </button>
           
-          <span className="text-neutral-700 select-none">|</span>
+          <span className="text-neutral-700/80 text-[9px] select-none">|</span>
           
           <button
             onClick={() => setActiveFormat("png")}
-            className={`px-2 py-0.5 rounded transition ${
+            className={`px-1.5 py-0.5 rounded text-[9px] transition ${
               activeFormat === "png"
                 ? "bg-neutral-800 text-neutral-100 font-bold"
                 : "hover:text-neutral-200"
@@ -477,15 +477,15 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
           </button>
         </div>
 
-        {/* Centered/Right dynamic plot meta values */}
-        <div className="flex items-center gap-3">
+        {/* Right metadata log values */}
+        <div className="flex items-center gap-2">
           <span>800×600</span>
-          <span className="text-neutral-700 select-none">|</span>
-          <span className="flex items-center gap-1">
-            <Layers className="w-3 h-3 text-neutral-500" />
-            {activeFormat === "svg" ? "Vector Layer" : "300 DPI Grid"}
+          <span className="text-neutral-700/80 select-none">|</span>
+          <span className="flex items-center gap-1 text-[9px]">
+            <Layers className="w-2.5 h-2.5 text-neutral-500" />
+            {activeFormat === "svg" ? "Vector" : "Grid (300dpi)"}
           </span>
-          <span className="text-neutral-700 select-none">|</span>
+          <span className="text-neutral-700/80 select-none">|</span>
           <span className="font-semibold text-neutral-300">{getFileSizeString()}</span>
         </div>
       </div>

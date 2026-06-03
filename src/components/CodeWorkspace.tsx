@@ -310,6 +310,12 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (autoClearLogs) {
       clearLogs();
     }
+    // Automatically make terminal visible when executing, and activate the Console tab
+    if (terminalState === "hidden") {
+      setTerminalState("normal");
+    }
+    setActiveTab("console");
+
     if (isTs) {
       setJsNodeCodeOverride(currentFilePath, activeCodeValue);
       updateNodeValue(currentFilePath, activeCodeValue);
@@ -566,7 +572,7 @@ declare const console: {
               target: (monaco.languages as any).typescript.ScriptTarget?.Latest ?? 99,
               module: (monaco.languages as any).typescript.ModuleKind?.ESNext ?? 99,
               moduleResolution: (monaco.languages as any).typescript.ModuleResolutionKind?.NodeJs ?? 2,
-              allowNonTsExtensions: true,
+              allowNonTsExtensions: false,
               isolatedModules: true,
               moduleDetection: 3,
             });
@@ -1324,10 +1330,10 @@ declare const console: {
                         }
                       }}
                       onClick={() => openWorkspaceTab(tab.path, tab.isPreview)}
-                      className={`flex items-center gap-1.5 px-4 py-2 border-r border-slate-200 dark:border-slate-800 text-xs font-mono transition-colors cursor-pointer shrink-0 group ${
+                      className={`flex items-center gap-1.5 px-4 py-2 border-r border-r-slate-200 dark:border-r-slate-800 text-xs font-mono transition-colors cursor-pointer shrink-0 group border-t-2 ${
                         isActive
-                          ? "bg-white dark:bg-[#0d1117] border-t-2 border-t-[#eab308] font-semibold text-slate-800 dark:text-slate-100"
-                          : "text-slate-500 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
+                          ? "bg-white dark:bg-[#0d1117] !border-t-blue-500 font-semibold text-slate-800 dark:text-slate-100"
+                          : "border-t-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
                       }`}
                     >
                       {getTabIcon(tab.path, isActive)}
@@ -1468,12 +1474,12 @@ declare const console: {
                 <div className="flex">
                   <button
                     onClick={() => setActiveTab("console")}
-                    className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-slate-200 dark:border-slate-800 transition-colors shrink-0 flex items-center gap-1.5 ${activeTab === "console" ? "bg-white dark:bg-[#0d1117] text-yellow-600 dark:text-yellow-400 border-t-2 border-t-yellow-400 font-semibold" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent hover:text-slate-800 dark:hover:text-slate-200"}`}
+                    className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-r-slate-200 dark:border-r-slate-800 transition-colors shrink-0 flex items-center gap-1.5 ${activeTab === "console" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 border-t-2 !border-t-blue-500 font-semibold" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent hover:text-slate-800 dark:hover:text-slate-200"}`}
                   >
                     <TerminalIcon size={13} className="shrink-0" />
                     <span>Console</span>
                     {logCount > 0 && (
-                      <span className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                      <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
                         {logCount}
                       </span>
                     )}
@@ -1481,7 +1487,7 @@ declare const console: {
 
                   <button
                     onClick={() => setActiveTab("result")}
-                    className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-slate-200 dark:border-slate-800 transition-colors shrink-0 ${activeTab === "result" ? "bg-white dark:bg-[#0d1117] text-yellow-600 dark:text-yellow-400 border-t-2 border-t-yellow-400" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent"}`}
+                    className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-r-slate-200 dark:border-r-slate-800 transition-colors shrink-0 ${activeTab === "result" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 border-t-2 !border-t-blue-500 font-semibold" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent hover:text-slate-800 dark:hover:text-slate-200"}`}
                   >
                     Output Result
                   </button>
