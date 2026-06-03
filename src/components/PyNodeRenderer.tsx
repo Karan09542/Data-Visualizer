@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
 import { ExpandableJSON } from "./ExpandableJSON";
+import { safeStringify } from "../utils/safeStringify";
+import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import { TerminalInputPrompt } from "./TerminalInputPrompt";
@@ -298,9 +300,13 @@ export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProp
                                 {log.args.map((a: any, idx: number) => (
                                   <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
                                     {typeof a === 'string' ? (
-                                       <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
+                                      (a.startsWith("__MATPLOTLIB_IMAGE__:") || a.startsWith("__MATPLOTLIB_IMAGE_JSON__:")) ? (
+                                        <MatplotlibPlotViewer imageData={a} />
+                                      ) : (
+                                        <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
+                                      )
                                     ) : (
-                                       <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{JSON.stringify(a)}</span>
+                                      <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{safeStringify(a)}</span>
                                     )}
                                   </span>
                                 ))}

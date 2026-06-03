@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { ExpandableJSON } from "./ExpandableJSON";
+import { safeStringify } from "../utils/safeStringify";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import { Virtuoso } from "react-virtuoso";
 import { TerminalInputPrompt } from "./TerminalInputPrompt";
@@ -300,7 +301,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                                     {typeof a === 'string' ? (
                                        <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
                                     ) : (
-                                       <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{JSON.stringify(a)}</span>
+                                       <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{safeStringify(a)}</span>
                                     )}
                                   </span>
                                 ))}

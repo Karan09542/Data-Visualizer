@@ -3,6 +3,7 @@ import { useStore } from "../store/useStore";
 import { Terminal as TerminalIcon, Trash2 } from "lucide-react";
 import { ExpandableJSON } from "./ExpandableJSON";
 import { renderClickableErrorText } from "../utils/errorParser";
+import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { Virtuoso } from "react-virtuoso";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
@@ -119,8 +120,13 @@ export function PyNodeTerminalRenderer({
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-start gap-1.5 w-full">
-                            {log.args.map((arg: any, argIdx: number) =>
-                              typeof arg === "string" ? (
+                            {log.args.map((arg: any, argIdx: number) => {
+                              if (typeof arg === "string" && (arg.startsWith("__MATPLOTLIB_IMAGE__:") || arg.startsWith("__MATPLOTLIB_IMAGE_JSON__:"))) {
+                                return (
+                                  <MatplotlibPlotViewer key={argIdx} imageData={arg} />
+                                );
+                              }
+                              return typeof arg === "string" ? (
                                 <span
                                   key={argIdx}
                                   className="whitespace-pre-wrap break-all font-medium text-slate-800 dark:text-slate-300 leading-[1.2]"
@@ -134,8 +140,8 @@ export function PyNodeTerminalRenderer({
                                   defaultExpanded={log.type === "error"}
                                   level={0}
                                 />
-                              ),
-                            )}
+                              );
+                            })}
                           </div>
                         </div>
                         {log.pos && (

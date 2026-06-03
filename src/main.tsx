@@ -15,6 +15,177 @@ if (typeof window !== 'undefined') {
     env: { DEBUG: undefined },
   };
 
+  // Safely define toJSON on prototypes to intercept JSON.stringify crashes globally
+  if (!(Error.prototype as any).toJSON) {
+    Object.defineProperty(Error.prototype, 'toJSON', {
+      value: function() {
+        const alt: any = {};
+        const seen = new WeakSet();
+        const safeSerialize = (obj: any): any => {
+          if (obj === null || obj === undefined) return obj;
+          if (typeof obj !== "object") return obj;
+          if (seen.has(obj)) return "[Circular]";
+          seen.add(obj);
+
+          if (obj instanceof Error) {
+            return {
+              name: obj.name,
+              message: obj.message,
+              stack: obj.stack
+            };
+          }
+          if (typeof HTMLElement !== "undefined" && obj instanceof HTMLElement) {
+             const tagName = obj.nodeName ? obj.nodeName.toLowerCase() : 'element';
+             const idStr = obj.id ? '#' + obj.id : '';
+             return `[HTMLElement <${tagName}${idStr}>]`;
+          }
+          if (Array.isArray(obj)) {
+            return obj.map(item => {
+               try { return safeSerialize(item); } catch { return "[Unreadable]"; }
+            });
+          }
+          const clean: any = {};
+          for (const key of Object.keys(obj)) {
+            if (key.startsWith('__reactFiber') || key.startsWith('__reactProp') || key.startsWith('__reactEvent')) {
+              clean[key] = "[ReactInternal]";
+              continue;
+            }
+            try {
+              clean[key] = safeSerialize(obj[key]);
+            } catch {
+              clean[key] = "[Unreadable]";
+            }
+          }
+          return clean;
+        };
+
+        Object.getOwnPropertyNames(this).forEach((key) => {
+          if (key.startsWith('__reactFiber') || key.startsWith('__reactProp') || key.startsWith('__reactEvent')) {
+             return;
+          }
+          try {
+             alt[key] = safeSerialize((this as any)[key]);
+          } catch {
+             alt[key] = "[Unreadable]";
+          }
+        });
+        return alt;
+      },
+      configurable: true,
+      writable: true
+    });
+  }
+
+  if (typeof HTMLElement !== "undefined" && !(HTMLElement.prototype as any).toJSON) {
+     Object.defineProperty(HTMLElement.prototype, 'toJSON', {
+        value: function() {
+           const idStr = this.id ? '#' + this.id : '';
+           const tagName = this.nodeName ? this.nodeName.toLowerCase() : 'element';
+           return `[HTMLElement <${tagName}${idStr}>]`;
+        },
+        configurable: true,
+        writable: true
+     });
+  }
+
+  // Safely intercept console calls to sanitize circular structures and prevent iframe/platform crashes
+  const originalError = window.console.error;
+  const originalWarn = window.console.warn;
+  const originalLog = window.console.log;
+
+  const sanitizeArg = (val: any, seen = new WeakSet()): any => {
+    if (val === null || val === undefined) return val;
+    if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") return val;
+    if (typeof val === "bigint") return val.toString() + "n";
+    if (typeof val === "function") return `[Function: ${val.name || "anonymous"}]`;
+    
+    if (typeof val === "object") {
+      if (
+        (typeof Node !== "undefined" && val instanceof Node) || 
+        (typeof val.nodeType === "number" && typeof val.nodeName === "string")
+      ) {
+        const tagName = val.nodeName ? val.nodeName.toLowerCase() : "element";
+        const idStr = val.id ? `#${val.id}` : "";
+        return `[HTMLElement <${tagName}${idStr}>]`;
+      }
+
+      if (val === window || val === globalThis) {
+         return "[GlobalWindow]";
+      }
+
+      if (seen.has(val)) {
+         return "[Circular]";
+      }
+      seen.add(val);
+
+      if (val instanceof Error) {
+         return {
+            message: val.message,
+            name: val.name,
+            stack: val.stack
+         };
+      }
+
+      if (Array.isArray(val)) {
+         return val.map(item => {
+            try {
+               return sanitizeArg(item, seen);
+            } catch {
+               return "[UnreadableItem]";
+            }
+         });
+      }
+
+      const cleanObj: any = {};
+      for (const key of Object.keys(val)) {
+         if (key.startsWith("__reactFiber") || key.startsWith("__reactProps") || key.startsWith("__reactEvents")) {
+            cleanObj[key] = "[ReactInternal]";
+            continue;
+         }
+         try {
+            cleanObj[key] = sanitizeArg(val[key], seen);
+         } catch {
+            cleanObj[key] = "[Unreadable]";
+         }
+      }
+      return cleanObj;
+    }
+    return val;
+  };
+
+  window.console.error = function(...args: any[]) {
+     const cleanArgs = args.map(arg => {
+        try {
+           return sanitizeArg(arg);
+        } catch {
+           return String(arg);
+        }
+     });
+     return originalError.apply(this, cleanArgs);
+  };
+
+  window.console.warn = function(...args: any[]) {
+     const cleanArgs = args.map(arg => {
+        try {
+           return sanitizeArg(arg);
+        } catch {
+           return String(arg);
+        }
+     });
+     return originalWarn.apply(this, cleanArgs);
+  };
+
+  window.console.log = function(...args: any[]) {
+     const cleanArgs = args.map(arg => {
+        try {
+           return sanitizeArg(arg);
+        } catch {
+           return String(arg);
+        }
+     });
+     return originalLog.apply(this, cleanArgs);
+  };
+
   // Register Stdin/I/O Service Worker
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

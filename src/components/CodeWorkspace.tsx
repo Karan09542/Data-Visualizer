@@ -37,7 +37,13 @@ import {
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
+import { usePyPackageStore } from "../store/usePyPackageStore";
+import { PyPackagesPanel } from "./PyPackagesPanel";
+import { PyMissingPromptModal } from "./PyMissingPromptModal";
+import { appendLogs } from "../utils/executionStore";
+import { safeStringify } from "../utils/safeStringify";
 import { ExpandableJSON } from "./ExpandableJSON";
+import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
@@ -114,6 +120,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     closeWorkspaceTab,
     markWorkspaceTabDirty,
     setWorkspaceTabs,
+    activePrompts,
+    setActivePrompt,
   } = useStore();
   const [monaco, setMonaco] = useState<any>(null);
 
@@ -321,6 +329,164 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     }
   };
 
+  const submitActivePrompt = async (valueToSend: any) => {
+    const currentPrompt = activePrompts[currentFilePath];
+    if (!currentPrompt) return;
+
+    // 1. Post to the Service Worker Synchronous I/O Bridge
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'STDIN_SUBMIT',
+        sessionId: currentPrompt.sessionId,
+        value: valueToSend
+      });
+    }
+
+    // 2. Append standard terminal log of the input
+    let logText = String(valueToSend);
+    if (currentPrompt.type === 'confirm') {
+      logText = valueToSend ? "Yes" : "No";
+    } else if (currentPrompt.type === 'alert') {
+      logText = "[Dismissed Alert]";
+    }
+
+    await appendLogs(currentFilePath, [{
+      type: 'log',
+      args: [logText],
+      time: new Date().toISOString()
+    }]);
+
+    setTerminalInput("");
+    // 3. Clear prompt state to dismiss expectations
+    setActivePrompt(currentFilePath, null);
+  };
+
+  const handleTerminalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Check if there is an active running prompt awaiting input for the current file
+    const currentPrompt = activePrompts[currentFilePath];
+    if (currentPrompt) {
+      let finalValue: any = terminalInput;
+      if (currentPrompt.type === 'confirm') {
+        const normalized = terminalInput.trim().toLowerCase();
+        // If empty or y/yes/true/ok/1, it means affirmative. Otherwise negative.
+        const isYes = normalized === "" || normalized === "y" || normalized === "yes" || normalized === "true" || normalized === "1" || normalized === "ok";
+        finalValue = isYes;
+      } else if (currentPrompt.type === 'alert') {
+        finalValue = null;
+      }
+
+      await submitActivePrompt(finalValue);
+      return;
+    }
+
+    const command = terminalInput.trim();
+    if (!command) return;
+
+    setTerminalInput("");
+
+    await appendLogs(currentFilePath, [{
+      type: "log",
+      args: [`$ ${command}`],
+      time: new Date().toISOString()
+    }]);
+
+    const parts = command.split(/\s+/);
+    const cmd = parts[0];
+
+    if (cmd === "pip") {
+      const action = parts[1];
+      if (action === "install") {
+        const pkgs = parts.slice(2);
+        if (pkgs.length === 0) {
+          await appendLogs(currentFilePath, [{
+            type: "error",
+            args: ["ERROR: You must specify at least one package to install."],
+            time: new Date().toISOString()
+          }]);
+          return;
+        }
+
+        for (const pkg of pkgs) {
+          const cleanPkg = pkg.trim();
+          if (cleanPkg) {
+            await usePyPackageStore.getState().installPackage(cleanPkg, currentFilePath);
+          }
+        }
+      } else if (action === "uninstall" || action === "remove") {
+        const pkgs = parts.slice(2);
+        if (pkgs.length === 0) {
+          await appendLogs(currentFilePath, [{
+            type: "error",
+            args: ["ERROR: You must specify a package to uninstall."],
+            time: new Date().toISOString()
+          }]);
+          return;
+        }
+
+        for (const pkg of pkgs) {
+          const cleanPkg = pkg.trim();
+          if (cleanPkg) {
+            await usePyPackageStore.getState().uninstallPackage(cleanPkg, currentFilePath);
+          }
+        }
+      } else if (action === "list") {
+        const pkgs = usePyPackageStore.getState().installedPackages;
+        if (pkgs.length === 0) {
+          await appendLogs(currentFilePath, [{
+            type: "log",
+            args: ["No packages installed in this workspace."],
+            time: new Date().toISOString()
+          }]);
+          return;
+        }
+
+        let output = "Package        Version\n";
+        output += "-------------- -------\n";
+        pkgs.forEach(p => {
+          output += `${p.name.padEnd(14)} ${p.version}\n`;
+        });
+
+        await appendLogs(currentFilePath, [{
+          type: "log",
+          args: [output],
+          time: new Date().toISOString()
+        }]);
+      } else {
+        await appendLogs(currentFilePath, [{
+          type: "error",
+          args: [`ERROR: Unknown pip command "pip ${action}". Try: pip install, pip uninstall, pip list`],
+          time: new Date().toISOString()
+        }]);
+      }
+    } else if (cmd === "python") {
+      const activeCodeValue = jsNodeCodeOverrides[currentFilePath] || getValueAtPath(parsedData, currentFilePath) || "";
+      onExecute(activeCodeValue);
+    } else if (cmd === "clear") {
+      clearLogs();
+    } else if (cmd === "help") {
+      await appendLogs(currentFilePath, [{
+        type: "log",
+        args: [
+          "Interactive Python Console Shell Commands:\n" +
+          "  pip install <pkgs>   - Install libraries from Pyodide prebuilds or PyPI\n" +
+          "  pip uninstall <pkg>  - Delete a package from the persisted workspace\n" +
+          "  pip list             - Display installed dependencies\n" +
+          "  python               - Run the active Python workbook file\n" +
+          "  clear                - Erase all terminal text"
+        ],
+        time: new Date().toISOString()
+      }]);
+    } else {
+      await appendLogs(currentFilePath, [{
+        type: "error",
+        args: [`Command error: "${cmd}" is not recognized. Type "help" for a list of valid commands.`],
+        time: new Date().toISOString()
+      }]);
+    }
+  };
+
   const onAbort = () => {
     if (isTs) {
       abortTsNode(currentFilePath);
@@ -424,11 +590,7 @@ declare const console: {
     if (typeof arg === "number") return `\x1b[33m${arg}\x1b[0m`; // yellow
     if (typeof arg === "boolean") return `\x1b[35m${arg}\x1b[0m`; // magenta
     if (typeof arg === "object") {
-      try {
-        return JSON.stringify(arg);
-      } catch {
-        return "[Unserializable Object]";
-      }
+      return safeStringify(arg);
     }
     return String(arg);
   };
@@ -461,6 +623,11 @@ declare const console: {
 
   const renderArgElement = (arg: any, index: number) => {
     if (typeof arg === "string") {
+      if (arg.startsWith("__MATPLOTLIB_IMAGE__:") || arg.startsWith("__MATPLOTLIB_IMAGE_JSON__:")) {
+        return (
+          <MatplotlibPlotViewer key={index} imageData={arg} />
+        );
+      }
       const colorized = renderColorizedOutput(arg);
       return <span key={index} className="whitespace-pre-wrap break-all">{colorized}</span>;
     }
@@ -493,12 +660,7 @@ declare const console: {
       );
     }
     if (typeof arg === "object") {
-      let displayed = "";
-      try {
-        displayed = JSON.stringify(arg, null, 2);
-      } catch {
-        displayed = "[Unserializable Object]";
-      }
+      const displayed = safeStringify(arg, 2);
       return (
         <span key={index} className="text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all font-mono">
           {displayed}
@@ -538,9 +700,34 @@ declare const console: {
   });
 
   const [activeTab, setActiveTab] = useState<"result" | "console">("console");
+  const [sidebarTab, setSidebarTab] = useState<"files" | "packages">("files");
+  const [terminalInput, setTerminalInput] = useState("");
+  const [copiedConsole, setCopiedConsole] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"bottom" | "right">("bottom");
   const [terminalState, setTerminalState] = useState<"normal" | "maximized" | "hidden">("normal");
   const [wordWrap, setWordWrap] = useState<"on" | "off">("on");
+
+  const terminalInputRef = useRef<HTMLInputElement>(null);
+  const currentPrompt = activePrompts[currentFilePath];
+
+  // Auto-focus terminal input whenever a STDIN or alert/prompt/confirm prompt details are activated
+  useEffect(() => {
+    if (currentPrompt) {
+      setTimeout(() => {
+        if (terminalInputRef.current) {
+          terminalInputRef.current.focus();
+          terminalInputRef.current.select();
+        }
+      }, 50);
+    }
+  }, [currentPrompt]);
+
+  // Reset sidebar tab back to explorer files when not looking at a Python workbook file
+  useEffect(() => {
+    if (!isPy && sidebarTab !== "files") {
+      setSidebarTab("files");
+    }
+  }, [isPy, sidebarTab]);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -1007,8 +1194,34 @@ declare const console: {
             style={{ width: `${settings.sidebarWidth || 260}px` }}
             className="absolute md:relative top-0 bottom-0 left-0 max-w-[85vw] md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
           >
+            {/* Elegant Header Sidebar Tabs to switch between Files Explorer and Python Packages Panel */}
+            {isPy ? (
+              <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 p-2 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
+                <button 
+                  onClick={() => setSidebarTab("files")}
+                  className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "files" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                >
+                  Explorer
+                </button>
+                <button 
+                  onClick={() => setSidebarTab("packages")}
+                  className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "packages" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                >
+                  Packages
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-4 py-3.5 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
+                <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">Explorer</span>
+              </div>
+            )}
+
             <div className="flex-1 flex flex-col overflow-hidden">
-              <FileExplorerPanel />
+              {sidebarTab === "files" ? (
+                <FileExplorerPanel />
+              ) : (
+                <PyPackagesPanel />
+              )}
             </div>
             
             {/* Draggable Resizer */}
@@ -1275,14 +1488,44 @@ declare const console: {
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center px-2 border-l border-slate-200 dark:border-slate-800 gap-1 my-1">
+                <div className="flex items-center px-3 border-l border-slate-200 dark:border-slate-800 gap-2 py-1">
+                  {activeTab === "console" && logCount > 0 && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const logsToCopy = [];
+                          for (let i = 0; i < logCount; i++) {
+                            const lg = getLog(i);
+                            if (lg && lg.args) {
+                              logsToCopy.push(lg.args.map((a: any) => typeof a === "object" ? safeStringify(a) : String(a)).join(" "));
+                            }
+                          }
+                          await navigator.clipboard.writeText(logsToCopy.join("\n"));
+                          setCopiedConsole(true);
+                          setTimeout(() => setCopiedConsole(false), 2000);
+                        } catch (err) {
+                          console.error("Failed to copy console logs", err);
+                        }
+                      }}
+                      className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
+                        copiedConsole
+                          ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                      }`}
+                      title="Copy all console logs"
+                    >
+                      {copiedConsole ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                      <span className="hidden sm:inline">{copiedConsole ? "Copied" : "Copy Output"}</span>
+                    </button>
+                  )}
+
                   {activeTab === "console" && logCount > 0 && (
                     <button
                       onClick={clearLogs}
-                      className="p-1 px-2 text-[10px] uppercase font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/15 rounded flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                      className="py-1 px-2.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-550/10 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none"
                       title="Clear console logs"
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={13} />
                       <span className="hidden sm:inline">Clear</span>
                     </button>
                   )}
@@ -1291,36 +1534,42 @@ declare const console: {
                   {activeTab === "console" && (
                     <button
                       onClick={() => setAutoClearLogs(!autoClearLogs)}
-                      className={`p-1 px-1.5 md:px-2 rounded text-[10px] uppercase font-bold flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 ${autoClearLogs ? "text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                      className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
+                        autoClearLogs
+                          ? "text-blue-600 dark:text-blue-400 bg-blue-550/10 hover:bg-blue-550/20"
+                          : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                      }`}
                       title="Auto clear logs on execution run"
                     >
-                      <Clock size={12} />
-                      <span className="hidden sm:inline">Auto-clear</span>
+                      <Clock size={13} />
+                      <span className="hidden sm:inline">Auto-Clear</span>
                     </button>
                   )}
 
                   {/* Toggle terminal State buttons */}
-                  <div className="border-l border-slate-200 dark:border-slate-800 pl-1 flex gap-0.5 items-center">
+                  <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+
+                  <div className="flex gap-0.5 items-center">
                     <button
                       onClick={() => setLayoutMode(layoutMode === "bottom" ? "right" : "bottom")}
-                      className="p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors hidden sm:block"
+                      className="p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors hidden sm:block outline-none"
                       title={layoutMode === "bottom" ? "Layout to Right Side" : "Layout to Bottom"}
                     >
-                      {layoutMode === "bottom" ? <PanelRight size={12} /> : <PanelBottom size={12} />}
+                      {layoutMode === "bottom" ? <PanelRight size={13} /> : <PanelBottom size={13} />}
                     </button>
                     <button
                       onClick={() => setTerminalState(terminalState === "maximized" ? "normal" : "maximized")}
-                      className={`p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors ${terminalState === "maximized" ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200" : ""}`}
+                      className={`p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors outline-none ${terminalState === "maximized" ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200" : ""}`}
                       title={terminalState === "maximized" ? "Restore Pane Size" : "Maximize Console View"}
                     >
-                      <Maximize size={12} />
+                      <Maximize size={13} />
                     </button>
                     <button
                       onClick={() => setTerminalState("hidden")}
-                      className="p-1 rounded text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 transition-colors"
+                      className="p-1 rounded text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 transition-colors outline-none"
                       title="Hide Output Pane"
                     >
-                      <X size={12} />
+                      <X size={13} />
                     </button>
                   </div>
                 </div>
@@ -1355,50 +1604,143 @@ declare const console: {
                 )}
 
                 <div
-                  className={`absolute inset-0 custom-scrollbar ${activeTab === "console" ? "block" : "hidden"}`}
+                  className={`absolute inset-0 select-text ${activeTab === "console" ? "flex flex-col" : "hidden"}`}
                 >
-                  {logCount === 0 && !lastError ? (
-                    <div className="h-full flex items-center justify-center text-slate-500 italic text-sm">
-                      No console output.
-                    </div>
-                  ) : (
-                    <div className="font-mono text-[13px] bg-white dark:bg-[#0d1117] h-full overflow-hidden custom-scrollbar">
-                      <Virtuoso
-                        totalCount={logCount + (lastError ? 1 : 0)}
-                        firstItemIndex={startOffset}
-                        className="h-full custom-scrollbar overflow-x-hidden w-full"
-                        followOutput="auto"
-                        itemContent={(index) => {
-                          if (index === logCount && lastError) {
+                  <div className="flex-1 min-h-0 relative overflow-hidden">
+                    {logCount === 0 && !lastError ? (
+                      <div className="h-full flex items-center justify-center text-slate-500 italic text-sm absolute inset-0">
+                        No console output.
+                      </div>
+                    ) : (
+                      <div className="font-mono text-[13px] bg-white dark:bg-[#0d1117] h-full overflow-hidden custom-scrollbar">
+                        <Virtuoso
+                          totalCount={logCount + (lastError ? 1 : 0)}
+                          firstItemIndex={startOffset}
+                          className="h-full custom-scrollbar overflow-x-hidden w-full"
+                          followOutput="auto"
+                          itemContent={(index) => {
+                            if (index === logCount && lastError) {
+                              return (
+                                <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-4 w-full">
+                                  <div className="flex-1 min-w-0 font-bold whitespace-pre-wrap flex items-start gap-2">
+                                    <span className="shrink-0 mt-0.5">✖</span>
+                                    <span>{renderClickableErrorText(typeof lastError === "object" && lastError !== null ? (lastError as any).message : String(lastError), currentFilePath, setJsNodeFocusLine)}</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            const log = getLog(index);
+                            if (!log) {
+                              return <div className="px-4 py-0 text-slate-400 text-xs italic">Loading...</div>;
+                            }
                             return (
-                              <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-4 w-full">
-                                <div className="flex-1 min-w-0 font-bold whitespace-pre-wrap flex items-start gap-2">
-                                  <span className="shrink-0 mt-0.5">✖</span>
-                                  <span>{renderClickableErrorText(typeof lastError === "object" && lastError !== null ? (lastError as any).message : String(lastError), currentFilePath, setJsNodeFocusLine)}</span>
+                              <div
+                                className={`px-4 py-0 flex gap-4 w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
+                              >
+                                <div className="flex-1 min-w-0 font-mono">
+                                  <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
+                                    {log.args.map((arg: any, argIdx: number) =>
+                                      renderArgElement(arg, argIdx)
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             );
-                          }
-                          const log = getLog(index);
-                          if (!log) {
-                            return <div className="px-4 py-0 text-slate-400 text-xs italic">Loading...</div>;
-                          }
-                          return (
-                            <div
-                              className={`px-4 py-0 flex gap-4 w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
-                            >
-                              <div className="flex-1 min-w-0 font-mono">
-                                <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
-                                  {log.args.map((arg: any, argIdx: number) =>
-                                    renderArgElement(arg, argIdx)
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }}
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Terminal CLI Shell Prompt line for execution environments and unified native prompt input */}
+                  {(isPy || !!currentPrompt) && (
+                    <form
+                      onSubmit={handleTerminalSubmit}
+                      className={`border-t px-4 py-2 flex items-center gap-3 font-mono text-xs shrink-0 select-text transition-colors duration-200 ${
+                        currentPrompt
+                          ? "bg-amber-500/10 dark:bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20"
+                          : "bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-slate-800 text-slate-455"
+                      }`}
+                    >
+                      {currentPrompt ? (
+                        <span className="text-amber-500 font-bold select-none shrink-0 flex items-center gap-1.5 animate-pulse">
+                          {currentPrompt.type === 'confirm' ? 'Confirm (y/n) ›' : currentPrompt.type === 'alert' ? 'Alert ›' : 'Input ›'}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-500 font-bold select-none shrink-0">$</span>
+                      )}
+
+                      <input
+                        ref={terminalInputRef}
+                        type="text"
+                        value={terminalInput}
+                        onChange={(e) => setTerminalInput(e.target.value)}
+                        placeholder={
+                          currentPrompt
+                            ? currentPrompt.type === 'confirm'
+                              ? "Type 'y' or 'n' (or click controls) and press Enter..."
+                              : currentPrompt.type === 'alert'
+                                ? "Press Enter (or click OK) to acknowledge..."
+                                : "Type response and press Enter... " + (currentPrompt.promptText && currentPrompt.promptText !== "Python input requested" ? `(${currentPrompt.promptText})` : "")
+                            : "pip install <package>, pip list, clear, help, python..."
+                        }
+                        className="flex-1 bg-transparent border-0 outline-none p-0 focus:outline-none focus:ring-0 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 leading-normal text-xs font-mono"
+                        autoComplete="off"
                       />
-                    </div>
+
+                      {currentPrompt && currentPrompt.type === 'confirm' && (
+                        <div className="flex gap-1.5 shrink-0 select-none items-center">
+                          <button
+                            type="button"
+                            onClick={() => submitActivePrompt(true)}
+                            className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-600 dark:text-emerald-450 font-semibold active:scale-95 transition-all cursor-pointer text-[10px] uppercase tracking-wider font-sans"
+                          >
+                            Yes [y]
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => submitActivePrompt(false)}
+                            className="px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-600 dark:text-red-450 font-semibold active:scale-95 transition-all cursor-pointer text-[10px] uppercase tracking-wider font-sans"
+                          >
+                            No [n]
+                          </button>
+                        </div>
+                      )}
+
+                      {currentPrompt && currentPrompt.type === 'alert' && (
+                        <button
+                          type="button"
+                          onClick={() => submitActivePrompt(null)}
+                          className="px-2.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-700 dark:text-amber-405 font-semibold active:scale-95 transition-all cursor-pointer text-[10px] uppercase tracking-wider font-sans shrink-0 select-none"
+                        >
+                          OK [Enter]
+                        </button>
+                      )}
+
+                      {currentPrompt && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                              navigator.serviceWorker.controller.postMessage({
+                                type: 'STDIN_CANCEL',
+                                sessionId: currentPrompt.sessionId
+                              });
+                            }
+                            await appendLogs(currentFilePath, [{
+                              type: 'warn',
+                              args: ['[Cancelled]'],
+                              time: new Date().toISOString()
+                            }]);
+                            setActivePrompt(currentFilePath, null);
+                          }}
+                          className="p-1 px-2.5 hover:bg-red-500/10 hover:text-red-600 text-slate-400 dark:hover:text-red-400 cursor-pointer shrink-0 border border-dashed border-slate-350 dark:border-slate-800 hover:border-red-500/40 rounded text-[10px] font-bold uppercase tracking-wider font-sans select-none"
+                          title="Cancel input/abort prompt"
+                        >
+                          Abort
+                        </button>
+                      )}
+                    </form>
                   )}
                 </div>
               </div>
@@ -1406,6 +1748,7 @@ declare const console: {
           </div>
         </div>
       </div>
+      <PyMissingPromptModal />
     </div>,
     document.body
   );

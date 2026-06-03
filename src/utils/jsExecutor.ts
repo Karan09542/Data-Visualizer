@@ -17,6 +17,9 @@ export const abortJsNode = (path: string) => { abortExecutionQueue(path);
 };
 
 export const executeJsNode = async (path: string, codeToRun: string) => {
+    // Safely abort any previous execution first to prevent concurrent overlapping state and solve execution sequence conflicts.
+    abortJsNode(path);
+
     const startTime = performance.now();
     const store = useStore.getState();
     const { parsedData, setJsNodeLoading, setJsNodeError, setJsNodeResponse, setJsNodeLogs } = store;

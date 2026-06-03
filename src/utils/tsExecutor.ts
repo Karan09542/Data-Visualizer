@@ -18,6 +18,9 @@ export const abortTsNode = (path: string) => { abortExecutionQueue(path);
 };
 
 export const executeTsNode = async (path: string, codeToRun: string, monacoInstance?: any) => {
+    // Safely abort any previous execution first to prevent concurrent overlapping state and solve execution sequence conflicts.
+    abortTsNode(path);
+
     const store = useStore.getState();
     const { parsedData, setJsNodeLoading, setJsNodeError, setJsNodeResponse, setJsNodeLogs } = store;
 

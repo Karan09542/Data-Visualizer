@@ -40,6 +40,7 @@ import {
   generateSchemaFromData,
 } from "../utils/dataFormats";
 import { TableView } from "./TableView";
+import { safeStringify } from "../utils/safeStringify";
 
 import NodeQueryEngine from "./NodeQueryEngine";
 
@@ -1430,7 +1431,7 @@ export default function GraphVisualizer() {
                       const raw = contextMenu.node.rawValue;
                       valToCopy =
                         typeof raw === "object" && raw !== null
-                          ? JSON.stringify(raw, null, 2)
+                          ? safeStringify(raw, 2)
                           : String(raw);
                     } else {
                       valToCopy =
@@ -1613,7 +1614,7 @@ export default function GraphVisualizer() {
                       let valStr = "";
                       if (contextMenu.node.rawValue !== undefined) {
                          if (typeof contextMenu.node.rawValue === "object" && contextMenu.node.rawValue !== null) {
-                            valStr = JSON.stringify(contextMenu.node.rawValue);
+                            valStr = safeStringify(contextMenu.node.rawValue);
                          } else {
                             valStr = String(contextMenu.node.rawValue);
                          }
@@ -1828,7 +1829,7 @@ export default function GraphVisualizer() {
                       if (raw !== undefined) {
                         valToEdit =
                           typeof raw === "object" && raw !== null
-                            ? JSON.stringify(raw, null, 2)
+                            ? safeStringify(raw, 2)
                             : String(raw);
                       } else {
                         valToEdit =
@@ -1864,7 +1865,7 @@ export default function GraphVisualizer() {
                     if (raw !== undefined) {
                       valToEdit =
                         typeof raw === "object" && raw !== null
-                          ? JSON.stringify(raw, null, 2)
+                          ? safeStringify(raw, 2)
                           : String(raw);
                     } else {
                       valToEdit =
