@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
+import { getVirtualPath } from "../utils/vfs";
 import { usePyPackageStore } from "../store/usePyPackageStore";
 import { PyPackagesPanel } from "./PyPackagesPanel";
 import { PyMissingPromptModal } from "./PyMissingPromptModal";
@@ -221,10 +222,10 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const mainCleanName = useMemo(() => getCleanName(path), [path]);
   const activeCleanName = useMemo(() => getCleanName(currentFilePath), [currentFilePath]);
 
-  // Run button visibility check: Show ONLY for .js, .ts, .py, and .api files
+  // Run button visibility check: Show ONLY for .js, .ts, .py files
   const isExecutable = useMemo(() => {
-    return isTs || isJs || isPy || isApi;
-  }, [isTs, isJs, isPy, isApi]);
+    return isTs || isJs || isPy;
+  }, [isTs, isJs, isPy]);
 
   // Input data check
   const getJsNodeInputData = (pData: any, nPath: string): any => {
@@ -1417,7 +1418,7 @@ declare const console: {
                     } catch (err) {
                       console.warn("Could not register Ctrl+G command in Monaco", err);
                     }
-                    editor.addCommand(m.KeyMod.Shift | m.KeyCode.Enter, () => {
+                    editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
                       if (latestRefs.current.isExecutable) {
                         latestRefs.current.onExecute(editor.getValue());
                         if (latestRefs.current.terminalState === "hidden") {
@@ -1431,8 +1432,102 @@ declare const console: {
                       latestRefs.current.markWorkspaceTabDirty(latestRefs.current.currentFilePath, false);
                       // Visual confirmation can be added here if needed
                     });
-                    editor.addCommand(m.KeyCode.Escape, () => {
-                      latestRefs.current.onClose();
+
+                    // Ctrl+Click to open imported file
+                    editor.onMouseDown((e) => {
+                      if (e.event.ctrlKey || e.event.metaKey) {
+                        const position = e.target.position;
+                        if (!position) return;
+                        const model = editor.getModel();
+                        if (!model) return;
+                        const lineContent = model.getLineContent(position.lineNumber);
+                        
+                        let packageName = "";
+                        const importMatch = lineContent.match(/from\s+['"]?([a-zA-Z0-9_.\/-]+)['"]?\s+import/);
+                        const importMatch2 = lineContent.match(/import\s+['"]?([a-zA-Z0-9_.\/-]+)['"]?/);
+                        if (importMatch && lineContent.includes("from")) {
+                          packageName = importMatch[1];
+                        } else if (importMatch2 && lineContent.includes("import")) {
+                          packageName = importMatch2[1];
+                        }
+                        
+                        if (packageName) {
+                          const state = useStore.getState();
+                          if (!state.parsedData) return;
+                          
+                          const currentVirtualPath = getVirtualPath(latestRefs.current.currentFilePath, state.parsedData);
+                          const currentDir = currentVirtualPath.substring(0, currentVirtualPath.lastIndexOf('/')) || '/';
+                          
+                          let resolvedPackage = packageName;
+                          if (packageName.startsWith('.')) {
+                             const dotGroups = packageName.match(/^(\.+)(.*)/);
+                             if (dotGroups) {
+                               const dots = dotGroups[1].length;
+                               const rest = dotGroups[2];
+                               const parts = currentDir.split('/').filter(Boolean);
+                               const back = dots - 1; // . = same, .. = up 1, ... = up 2
+                               const resolvedParts = parts.slice(0, parts.length - back);
+                               if (rest) {
+                                 resolvedPackage = [...resolvedParts, ...rest.split('.')].join('/');
+                               } else {
+                                 resolvedPackage = resolvedParts.join('/');
+                               }
+                             }
+                          } else {
+                             resolvedPackage = packageName.split('.').join('/');
+                          }
+                          
+                          if (!resolvedPackage.startsWith('/')) {
+                             resolvedPackage = '/' + resolvedPackage;
+                          }
+                          
+                          const possibleVFSPaths = [
+                             `${resolvedPackage}.py`,
+                             `${resolvedPackage}/__init__.py`,
+                             `${resolvedPackage}.ts`,
+                             `${resolvedPackage}.js`
+                          ];
+
+                          let foundFsPath = "";
+                          let foundObjectPath = "";
+                          
+                          function traverseFind(obj: any, parentFsPath: string, parentObjPath: string) {
+                            if (typeof obj !== 'object' || obj === null) return;
+                            for (const [key, val] of Object.entries(obj)) {
+                              const currObjPath = parentObjPath ? `${parentObjPath}.${key}` : `root.${key}`;
+                              if (typeof val === 'string') {
+                                let ext = '';
+                                if (key.endsWith('.ts') || key.endsWith('_ts_node')) ext = '.ts';
+                                else if (key.endsWith('.js') || key.endsWith('_js_node')) ext = '.js';
+                                else if (key.endsWith('.py') || key.endsWith('_py_node')) ext = '.py';
+                                else if (key.endsWith('.json') || key.endsWith('_json_node')) ext = '.json';
+                                
+                                if (ext) {
+                                   let baseName = key;
+                                   if (baseName.endsWith('_ts_node')) baseName = baseName.replace(/_ts_node$/, '');
+                                   else if (baseName.endsWith('_js_node')) baseName = baseName.replace(/_js_node$/, '');
+                                   else if (baseName.endsWith('_py_node')) baseName = baseName.replace(/_py_node$/, '');
+                                   if (!baseName.endsWith(ext)) baseName += ext;
+                                   
+                                   const fsPath = parentFsPath ? `${parentFsPath}/${baseName}` : `/${baseName}`;
+                                   if (possibleVFSPaths.includes(fsPath)) {
+                                      foundFsPath = fsPath;
+                                      foundObjectPath = currObjPath;
+                                   }
+                                }
+                              } else if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                                const nextPath = parentFsPath ? `${parentFsPath}/${key}` : `/${key}`;
+                                traverseFind(val, nextPath, currObjPath);
+                              }
+                            }
+                          }
+                          
+                          traverseFind(state.parsedData, '', '');
+                          if (foundObjectPath) {
+                            latestRefs.current.openWorkspaceTab(foundObjectPath, false);
+                          }
+                        }
+                      }
                     });
                   }}
                 />
@@ -1495,7 +1590,7 @@ declare const console: {
 
                 {/* Right controls */}
                 <div className="flex items-center px-3 border-l border-slate-200 dark:border-slate-800 gap-2 py-1">
-                  {activeTab === "console" && logCount > 0 && (
+                  {activeTab === "console" && (
                     <button
                       onClick={async () => {
                         try {
@@ -1516,20 +1611,28 @@ declare const console: {
                       className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
                         copiedConsole
                           ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                          : logCount > 0
+                            ? "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                            : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
                       }`}
                       title="Copy all console logs"
+                      disabled={logCount === 0}
                     >
                       {copiedConsole ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                       <span className="hidden sm:inline">{copiedConsole ? "Copied" : "Copy Output"}</span>
                     </button>
                   )}
 
-                  {activeTab === "console" && logCount > 0 && (
+                  {activeTab === "console" && (
                     <button
                       onClick={clearLogs}
-                      className="py-1 px-2.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-550/10 rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none"
+                      className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 outline-none ${
+                        logCount > 0
+                          ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
+                          : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                      }`}
                       title="Clear console logs"
+                      disabled={logCount === 0}
                     >
                       <Trash2 size={13} />
                       <span className="hidden sm:inline">Clear</span>

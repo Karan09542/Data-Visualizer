@@ -802,7 +802,7 @@ function isFileSystemMeaningful(value: any): boolean {
     return items.map((item) => {
       const isFolder = item.type === "folder";
       const isExpanded = !!explorerExpandedPaths[item.id];
-      const isSelected = selectedExplorerFiles.includes(item.id) || activeExplorerFile === item.id;
+      const isSelected = selectedExplorerFiles.includes(item.id);
       const isEditing = editingPath === item.id;
       const isCreatingInside = creatingInPath === item.id;
 
@@ -1102,6 +1102,7 @@ function isFileSystemMeaningful(value: any): boolean {
       {/* CORE TREE CANVAS AREA */}
       <div 
         className="flex-1 overflow-y-auto custom-scrollbar p-1.5 space-y-[1px]" 
+        onClick={() => setSelectedExplorerFiles([])}
         onDoubleClick={(e) => {
           if (e.target === e.currentTarget) {
             handleCreatePrompt(resolvedRootPath, "primitive");

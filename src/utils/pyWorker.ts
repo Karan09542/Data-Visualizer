@@ -313,6 +313,67 @@ self.onmessage = async (e) => {
         }
 
         // Otherwise, execute standard user python script
+        if (e.data.vfs) {
+            try {
+                let pySysCode = `
+import sys
+import importlib
+import builtins
+
+if not hasattr(builtins, '_custom_import_installed'):
+    builtins._custom_import_installed = True
+    _orig_import = builtins.__import__
+    def _custom_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if level > 0 and globals and '__package__' in globals:
+            pkg = globals['__package__']
+            if pkg is None: pkg = ''
+            parts = pkg.split('.') if pkg else []
+            drop = level - 1
+            if drop >= len(parts):
+                absolute_name = name
+                return _orig_import(absolute_name, globals, locals, fromlist, 0)
+            else:
+                base = ".".join(parts[:len(parts)-drop])
+                absolute_name = base + "." + name if name else base
+                if absolute_name.startswith('.'): absolute_name = absolute_name[1:]
+                return _orig_import(absolute_name, globals, locals, fromlist, 0)
+        return _orig_import(name, globals, locals, fromlist, level)
+    builtins.__import__ = _custom_import
+
+if '/' not in sys.path:
+    sys.path.append('/')
+for k, m in list(sys.modules.items()):
+    f = getattr(m, '__file__', None)
+    if f and type(f) is str and f.startswith('/') and not f.startswith('/lib/'):
+        del sys.modules[k]
+importlib.invalidate_caches()
+`;
+                if (e.data.entryPath) {
+                    const scriptDir = e.data.entryPath.substring(0, e.data.entryPath.lastIndexOf('/')) || '/';
+                    pySysCode += `\nif '${scriptDir}' not in sys.path:\n    sys.path.append('${scriptDir}')`;
+                }
+                pyodide.runPython(pySysCode);
+                for (const [vPath, vCode] of Object.entries(e.data.vfs)) {
+                    if (vPath.endsWith('.py') || vPath.endsWith('.json')) {
+                        const parts = vPath.split('/').filter(Boolean);
+                        let dir = '';
+                        for (let i = 0; i < parts.length - 1; i++) {
+                            dir += '/' + parts[i];
+                            try { pyodide.FS.mkdir(dir); } catch {}
+                            try {
+                                if (!e.data.vfs[dir + '/__init__.py']) {
+                                    pyodide.FS.writeFile(dir + '/__init__.py', '');
+                                }
+                            } catch {}
+                        }
+                        try { pyodide.FS.writeFile('/' + parts.join('/'), vCode); } catch(err) { console.warn(err) }
+                    }
+                }
+            } catch (err) {
+                console.warn("[Pyodide]: Virtual FS setup failed", err);
+            }
+        }
+
         pyodide.globals.set("input_data", input || {});
 
         let codeWithPatch = code;
@@ -380,6 +441,12 @@ except Exception:
     pass
 
 ` + code;
+        }
+
+        if (e.data.entryPath) {
+            let p = e.data.entryPath.replace(/^\//, '').replace(/\.py$/, '').split('/');
+            let packageName = p.length > 1 ? p.slice(0, p.length - 1).join('.') : '';
+            codeWithPatch = `__package__ = "${packageName}"\n__file__ = "${e.data.entryPath}"\n` + codeWithPatch;
         }
 
         const result = await pyodide.runPythonAsync(codeWithPatch);

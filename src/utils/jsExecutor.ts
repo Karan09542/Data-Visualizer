@@ -1,6 +1,8 @@
 import { useStore } from '../store/useStore';
 import lodashGet from 'lodash.get';
+import { transform } from 'sucrase';
 import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionStore';
+import { buildVirtualFS, getVirtualPath, resolveVirtualPath } from './vfs';
 
 export const activeWorkers: Record<string, Worker> = {};
 export const activeRejectors: Record<string, (reason?: any) => void> = {};
@@ -68,6 +70,36 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
       const sessionId = Date.now().toString() + Math.random().toString(36).substring(7);
       if (store.autoClearLogs) {
           await resetNodeSession(path, sessionId);
+      }
+
+      // Setup Virtual Filesystem
+      const vfs = buildVirtualFS(parsedData);
+      const state = useStore.getState();
+      for (const [objPath, codeOverride] of Object.entries(state.jsNodeCodeOverrides)) {
+          if (codeOverride !== undefined) {
+              const vPath = getVirtualPath(objPath, parsedData);
+              if (vPath) vfs[vPath] = codeOverride;
+          }
+      }
+      const entryPath = getVirtualPath(path, parsedData);
+      vfs[entryPath] = codeToRun; // Override with the current edited code
+
+      // Transpilation Phase (JS -> JS with CommonJS imports via Sucrase)
+      const compiledVfs: Record<string, string> = {};
+      for (const [vPath, vCode] of Object.entries(vfs)) {
+          if (vPath.endsWith('.ts') || vPath.endsWith('.js')) {
+              try {
+                  // even JS files might use 'import', so we use sucrase to convert to CJS
+                  compiledVfs[vPath] = transform(vCode, { transforms: ['typescript', 'imports'] }).code;
+              } catch (compileErr: any) {
+                  if (vPath === entryPath) {
+                      throw new Error(`Compilation Failed: ${compileErr.message}`);
+                  }
+                  console.warn(`Failed to compile ${vPath}:`, compileErr);
+              }
+          } else if (vPath.endsWith('.json')) {
+              compiledVfs[vPath] = `module.exports = ${vCode};`;
+          }
       }
 
        const workerCode = `
@@ -179,9 +211,63 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                     return null;
                 };
 
-                const executionFunc = new Function('input', 'console', "return (async () => {\\n" + code + "\\n})();");
-               
-               const result = await executionFunc(input, customConsole);
+                const customRequire = (request, currentPath) => {
+                    if (!request.startsWith('.')) {
+                        throw new Error(\`Absolute and package imports are not supported yet ('\${request}')\`);
+                    }
+                    const parts = currentPath.substring(0, currentPath.lastIndexOf('/')).split('/').filter(Boolean);
+                    for (const part of request.split('/')) {
+                        if (part === '.') continue;
+                        if (part === '..') parts.pop();
+                        else parts.push(part);
+                    }
+                    let resolved = '/' + parts.join('/');
+                    const vfsData = e.data.vfs;
+                    
+                    let targetPaths = [];
+                    if (resolved.endsWith('.js') || resolved.endsWith('.ts') || resolved.endsWith('.json')) {
+                        targetPaths.push(resolved); // Exact match
+                        if (resolved.endsWith('.js')) targetPaths.push(resolved.substring(0, resolved.length - 3) + '.ts'); // Fallback to .ts if .js requested
+                        if (resolved.endsWith('.ts')) targetPaths.push(resolved.substring(0, resolved.length - 3) + '.js'); // Fallback to .js if .ts requested
+                    } else {
+                        targetPaths.push(resolved + '.ts');
+                        targetPaths.push(resolved + '.js');
+                        targetPaths.push(resolved + '.json');
+                        targetPaths.push(resolved + '/index.ts');
+                        targetPaths.push(resolved + '/index.js');
+                    }
+                    
+                    let finalResolved = null;
+                    for (const p of targetPaths) {
+                        if (vfsData[p] !== undefined) {
+                            finalResolved = p;
+                            break;
+                        }
+                    }
+                    if (finalResolved !== null) resolved = finalResolved;
+                    
+                    if (!vfsData[resolved]) throw new Error(\`Cannot resolve module '\${request}' from '\${currentPath}'\`);
+                    
+                    if (self.__modules__[resolved]) return self.__modules__[resolved].exports;
+                    
+                    const module = { exports: {} };
+                    self.__modules__[resolved] = module;
+                    
+                    const localRequire = (req) => customRequire(req, resolved);
+                    const wrapper = new Function('require', 'exports', 'module', 'console', 'input', vfsData[resolved]);
+                    wrapper(localRequire, module.exports, module, customConsole, input);
+                    return module.exports;
+                };
+
+                self.__modules__ = {};
+                
+                // Polyfill async execution for the entry point
+                const entryModule = { exports: {} };
+                self.__modules__[e.data.entryPath] = entryModule;
+                const localRequire = (req) => customRequire(req, e.data.entryPath);
+                
+                const executionFunc = new Function('require', 'exports', 'module', 'console', 'input', "return (async () => {\\n" + e.data.vfs[e.data.entryPath] + "\\n})();");
+                const result = await executionFunc(localRequire, entryModule.exports, entryModule, customConsole, input);
                clearInterval(flushInterval);
                flushLogs();
                self.postMessage({ success: true, result });
@@ -262,7 +348,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
              }
           }, timeoutMs);
 
-          worker.postMessage({ code: codeToRun, input: inputData });
+          worker.postMessage({ vfs: compiledVfs, entryPath, input: inputData });
        });
 
        const response: any = await executionPromise;

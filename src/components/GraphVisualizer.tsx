@@ -493,10 +493,8 @@ export default function GraphVisualizer() {
       const target = e.target as HTMLElement;
       if (!target) return;
 
-      // Check if clicking inside a node, button, input etc.
-      // All node bodies reside inside ".nodes-layer" or have class ".pointer-events-auto", or form components.
+      // Check if clicking inside dynamic forms, toolbar, buttons etc.
       if (
-        target.closest(".pointer-events-auto") ||
         target.closest("button") ||
         target.closest("input") ||
         target.closest("select") ||
@@ -510,6 +508,17 @@ export default function GraphVisualizer() {
         target.closest(".editor-panel")
       ) {
         return;
+      }
+
+      // Safe pointer-events-auto check, excluding the empty graph background itself (.graph-g)
+      const closestPointerEventsAuto = target.closest(".pointer-events-auto");
+      if (closestPointerEventsAuto) {
+        if (closestPointerEventsAuto.classList.contains("graph-g")) {
+          // Empty graph background! Let selection clear proceed
+        } else {
+          // This must be an actual node card or item, so we do not clear selection
+          return;
+        }
       }
 
       // If clicked inside our wrapper (empty canvas space)

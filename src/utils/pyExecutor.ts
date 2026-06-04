@@ -2,12 +2,13 @@ import { useStore } from '../store/useStore';
 import { usePyPackageStore } from '../store/usePyPackageStore';
 import lodashGet from 'lodash.get';
 import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionStore';
+import { buildVirtualFS, getVirtualPath } from './vfs';
 
 export function detectImports(pyCode: string): string[] {
   const imports: string[] = [];
   const lines = pyCode.split('\n');
-  const importRegex = /^\s*import\s+([a-zA-Z0-9_, ]+)/;
-  const fromRegex = /^\s*from\s+([a-zA-Z0-9_]+)\s+import/;
+  const importRegex = /^\s*import\s+([a-zA-Z0-9_,\. ]+)/;
+  const fromRegex = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import/;
 
   for (const line of lines) {
     if (line.trim().startsWith('#')) continue;
@@ -16,7 +17,7 @@ export function detectImports(pyCode: string): string[] {
     if (importMatch) {
       const names = importMatch[1].split(',');
       for (let name of names) {
-        name = name.trim().split(/\s+as\s+/)[0].trim().split(/\s+/)[0].trim();
+        name = name.trim().split(/\s+as\s+/)[0].trim().split(/\s+/)[0].split('.')[0].trim();
         if (name && !imports.includes(name)) {
           imports.push(name);
         }
@@ -25,7 +26,7 @@ export function detectImports(pyCode: string): string[] {
 
     const fromMatch = line.match(fromRegex);
     if (fromMatch) {
-      const name = fromMatch[1].trim();
+      const name = fromMatch[1].trim().split('.')[0];
       if (name && !imports.includes(name)) {
         imports.push(name);
       }
@@ -121,7 +122,35 @@ export const executePyNode = async (path: string, codeToRun: string) => {
     const codeImports = detectImports(codeToRun);
     const packageStore = usePyPackageStore.getState();
     const installed = packageStore.installedPackages.map(p => p.name.toLowerCase());
-    const missing = codeImports.filter(pkg => !installed.includes(pkg.toLowerCase()));
+    
+    const vfs = buildVirtualFS(parsedData);
+    const state = useStore.getState();
+    for (const [objPath, codeOverride] of Object.entries(state.jsNodeCodeOverrides)) {
+        if (codeOverride !== undefined) {
+            const vPath = getVirtualPath(objPath, parsedData);
+            if (vPath) vfs[vPath] = codeOverride;
+        }
+    }
+    const entryPath = getVirtualPath(path, parsedData);
+    const scriptDir = entryPath.substring(0, entryPath.lastIndexOf('/')) || '/';
+    
+    const isLocalModule = (pkg: string) => {
+        // Also check if pkg exists relative to scriptDir
+        if (vfs[`${scriptDir === '/' ? '' : scriptDir}/${pkg}.py`] !== undefined) return true;
+        if (vfs[`${scriptDir === '/' ? '' : scriptDir}/${pkg}/__init__.py`] !== undefined) return true;
+
+        if (vfs[`/${pkg}.py`] !== undefined) return true;
+        if (vfs[`/${pkg}/__init__.py`] !== undefined) return true;
+        
+        const prefix1 = `${scriptDir === '/' ? '' : scriptDir}/${pkg}/`;
+        const prefix2 = `/${pkg}/`;
+        for (const vfsPath in vfs) {
+            if (vfsPath.startsWith(prefix1) || vfsPath.startsWith(prefix2)) return true;
+        }
+        return false;
+    };
+
+    const missing = codeImports.filter(pkg => !installed.includes(pkg.toLowerCase()) && !isLocalModule(pkg));
 
     if (missing.length > 0) {
       if (packageStore.autoInstallMissing) {
@@ -262,10 +291,21 @@ export const executePyNode = async (path: string, codeToRun: string) => {
          worker.addEventListener("message", messageHandler);
          worker.addEventListener("error", errorHandler);
 
+         const vfs = buildVirtualFS(parsedData);
+         const state = useStore.getState();
+         for (const [objPath, codeOverride] of Object.entries(state.jsNodeCodeOverrides)) {
+             if (codeOverride !== undefined) {
+                 const vPath = getVirtualPath(objPath, parsedData);
+                 if (vPath) vfs[vPath] = codeOverride;
+             }
+         }
+         const entryPath = getVirtualPath(path, parsedData);
          worker.postMessage({ 
             code: codeToRun, 
             input: inputData, 
             id: executionId,
+            vfs,
+            entryPath,
             cacheEnabled: usePyPackageStore.getState().pyPackageCacheEnabled
          });
       });
