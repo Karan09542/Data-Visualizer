@@ -11,8 +11,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { PythonIcon } from "./FileIcons";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
-import { ExpandableJSON } from "./ExpandableJSON";
 import { safeStringify } from "../utils/safeStringify";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { Virtuoso } from "react-virtuoso";
@@ -134,7 +134,7 @@ export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProp
   return (
     <div
       ref={containerRef}
-      className="relative rounded-2xl p-[1.5px] bg-gradient-to-br from-[#10b981]/40 via-[#1e2330] to-[#794bff]/40 shadow-2xl pointer-evenpy-auto select-none group resize overflow-hidden nodrag"
+      className="relative rounded-2xl p-[1.5px] bg-gradient-to-br from-[#10b981]/40 via-[#1e2330] to-[#794bff]/40 shadow-2xl pointer-events-auto select-none group resize overflow-hidden nodrag"
       style={{
         width: width ? `${width}px` : "100%",
         height: height ? `${height}px` : "100%",
@@ -174,8 +174,8 @@ export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProp
           {/* Identity & Status */}
           <div className="flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-[42px] h-[42px] shrink-0 rounded-[10px] bg-[#10b981] text-white font-bold flex items-center justify-center text-lg shadow-sm">
-                PY
+              <div className="w-[42px] h-[42px] shrink-0 rounded-[10px] bg-[#fff] font-bold flex items-center justify-center text-lg shadow-sm">
+                <PythonIcon size={24} />
               </div>
               <div className="flex flex-col leading-tight min-w-0">
                 <span className="font-bold text-[15px] text-white truncate">

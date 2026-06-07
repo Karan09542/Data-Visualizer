@@ -26,6 +26,7 @@ import {
   Terminal,
   FileCode,
   Code,
+  CheckSquare
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import {
@@ -50,7 +51,7 @@ interface ExplorerItem {
   id: string; // E.g., 'root.src.user_ts_node'
   name: string; // E.g., 'user.ts'
   realKey: string; // E.g., 'user_ts_node'
-  type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "primitive";
+  type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "primitive";
   parentPath: string; // E.g., 'root.src'
   children?: ExplorerItem[];
 }
@@ -87,7 +88,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [creatingInPath, setCreatingInPath] = useState<string | null>(null);
-  const [creatingType, setCreatingType] = useState<"js_node" | "ts_node" | "py_node" | "api_node" | "folder" | "primitive" | null>(null);
+  const [creatingType, setCreatingType] = useState<"js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "folder" | "primitive" | null>(null);
   const [creatingValue, setCreatingValue] = useState("");
   
   // Context Menu State
@@ -95,7 +96,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
     x: number;
     y: number;
     id: string;
-    type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "primitive";
+    type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "primitive";
     name: string;
   } | null>(null);
 
@@ -227,6 +228,14 @@ function isFileSystemMeaningful(value: any): boolean {
             name: key.replace(/_api_node$/i, ".api"),
             realKey: key,
             type: "api_node",
+            parentPath: path,
+          });
+        } else if (keyLower.endsWith("_todo_node") || keyLower.endsWith(".todo")) {
+          items.push({
+            id: currentPath,
+            name: keyLower.endsWith(".todo") ? key : key.replace(/_todo_node$/i, ".todo"),
+            realKey: key,
+            type: "todo_node",
             parentPath: path,
           });
         } else if (keyLower.endsWith("_json")) {
@@ -448,7 +457,7 @@ function isFileSystemMeaningful(value: any): boolean {
   };
 
   // Creation Actions
-  const handleCreatePrompt = (folderPath: string, type: "js_node" | "ts_node" | "py_node" | "api_node" | "folder" | "primitive") => {
+  const handleCreatePrompt = (folderPath: string, type: "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "folder" | "primitive") => {
     setCreatingInPath(folderPath);
     setCreatingType(type);
     setCreatingValue("");
@@ -503,6 +512,11 @@ function isFileSystemMeaningful(value: any): boolean {
         finalKey = `${baseName}_api_node`;
         initialValue = "https://jsonplaceholder.typicode.com/todos/1";
         actualType = "api_node";
+      } else if (rawVal.endsWith(".todo") || rawVal.endsWith("_todo_node")) {
+        const baseName = rawVal.replace(/\.todo$/, "").replace(/_todo_node$/, "");
+        finalKey = `${baseName}_todo_node`;
+        initialValue = JSON.stringify({ title: baseName, tasks: [] });
+        actualType = "todo_node";
       } else if (rawVal.endsWith(".json") || rawVal.endsWith("_json")) {
         const baseName = rawVal.replace(/\.json$/, "").replace(/_json$/, "");
         finalKey = `${baseName}_json`;
@@ -622,6 +636,9 @@ function isFileSystemMeaningful(value: any): boolean {
     } else if (newValue.endsWith(".api") || newValue.endsWith("_api_node")) {
       const baseName = newValue.replace(/\.api$/, "").replace(/_api_node$/, "");
       finalNewKey = `${baseName}_api_node`;
+    } else if (newValue.endsWith(".todo") || newValue.endsWith("_todo_node")) {
+      const baseName = newValue.replace(/\.todo$/, "").replace(/_todo_node$/, "");
+      finalNewKey = `${baseName}_todo_node`;
     } else {
       // Keep old type if no new extension specified
       if (editingPath.includes("_js_node")) {
@@ -636,6 +653,9 @@ function isFileSystemMeaningful(value: any): boolean {
       } else if (editingPath.includes("_api_node")) {
         const baseName = newValue.replace(/\.api$/, "").replace(/_api_node$/, "");
         finalNewKey = `${baseName}_api_node`;
+      } else if (editingPath.includes("_todo_node")) {
+        const baseName = newValue.replace(/\.todo$/, "").replace(/_todo_node$/, "");
+        finalNewKey = `${baseName}_todo_node`;
       } else {
         finalNewKey = newValue;
       }
@@ -697,9 +717,22 @@ function isFileSystemMeaningful(value: any): boolean {
 
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
+      const menuWidth = 192; // Assuming w-48
+      const menuHeight = 280; // approximate menu height
+      
+      let x = e.clientX - rect.left;
+      let y = e.clientY - rect.top;
+
+      if (x + menuWidth > rect.width) {
+        x = rect.width - menuWidth - 5;
+      }
+      if (y + menuHeight > rect.height) {
+        y = Math.max(5, rect.height - menuHeight - 5);
+      }
+
       setContextMenu({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x,
+        y,
         id: item.id,
         type: item.type,
         name: item.name,
@@ -815,6 +848,8 @@ function isFileSystemMeaningful(value: any): boolean {
         fileIcon = <TypeScriptIcon />;
       } else if (item.type === "api_node" || item.name.endsWith(".api")) {
         fileIcon = <Globe size={16} className="text-sky-500 dark:text-sky-400 shrink-0" />;
+      } else if (item.type === "todo_node" || item.name.endsWith(".todo")) {
+        fileIcon = <CheckSquare size={16} className="text-blue-500 dark:text-blue-400 shrink-0" />;
       } else if (item.type === "primitive") {
         if (item.name.endsWith(".json")) {
           fileIcon = <JsonIcon />;
@@ -921,9 +956,22 @@ function isFileSystemMeaningful(value: any): boolean {
                   const targetRect = e.currentTarget.getBoundingClientRect();
                   if (containerRef.current) {
                     const rect = containerRef.current.getBoundingClientRect();
+                    const menuWidth = 192;
+                    const menuHeight = 280;
+                    
+                    let x = targetRect.left - rect.left - 120;
+                    let y = targetRect.top - rect.top + 20;
+
+                    if (x + menuWidth > rect.width) {
+                      x = rect.width - menuWidth - 5;
+                    }
+                    if (y + menuHeight > rect.height) {
+                      y = Math.max(5, rect.height - menuHeight - 5);
+                    }
+
                     setContextMenu({
-                      x: targetRect.left - rect.left - 120,
-                      y: targetRect.top - rect.top + 20,
+                      x,
+                      y,
                       id: item.id,
                       type: item.type,
                       name: item.name,
@@ -1019,8 +1067,18 @@ function isFileSystemMeaningful(value: any): boolean {
   return (
     <div
       ref={containerRef}
+      onKeyDown={(e) => {
+        if ((e.key === "Delete" || e.key === "Backspace") && selectedExplorerFiles.length > 0) {
+          // Check if an input is active
+          if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+            return;
+          }
+          setDeleteItemsConfirm(selectedExplorerFiles);
+        }
+      }}
+      tabIndex={-1}
       onClick={() => setSelectedExplorerFiles([])}
-      className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0a0d16] text-slate-700 dark:text-slate-300 relative overflow-hidden flex-1 select-none border-t border-slate-200 dark:border-slate-800/70"
+      className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0a0d16] text-slate-700 dark:text-slate-300 relative overflow-hidden flex-1 select-none border-t border-slate-200 dark:border-slate-800/70 outline-none"
     >
       {/* Visual File Explorer Header controls */}
       <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b101c]/90 flex items-center justify-between shrink-0 shadow-xs">
@@ -1307,6 +1365,7 @@ function isFileSystemMeaningful(value: any): boolean {
                 onClick={() => {
                   setSelectedNodeId(activeNodeMenu.id);
                   setContextMenu(null);
+                  setExpandedJsNodeId(null);
                   toastNotification(`Highlighted ${activeNodeMenu.name} in graph`);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"

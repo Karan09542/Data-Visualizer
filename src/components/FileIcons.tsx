@@ -12,14 +12,46 @@ export const TypeScriptIcon = () => (
   </div>
 );
 
-export const PythonIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 110 110" className="shrink-0" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '14px', height: '14px' }}>
-    <path d="M51.8 1.4C30.6 1.4 32.2 10.5 32.2 14.8v10.1h20.4V28H23.8C9.5 28 1.4 34.6 1.4 51.7c0 17 8.3 22.4 18.5 22.4h11V58c0-8.9 7.7-16.7 16.7-16.7H75V25c0-14.8-10.7-23.6-23.2-23.6z" fill="#387EB8"/>
-    <path d="M58.2 108.6C79.4 108.6 77.8 99.5 77.8 95.2V85.1H57.4V82h28.8c14.3 0 22.4-6.6 22.4-23.7C108.6 41.3 100.3 36 90.1 36h-11v16.1c0 8.9-7.7 16.7-16.7 16.7H35V85c0 14.8 10.7 23.6 23.2 23.6z" fill="#FFE052"/>
-    <circle cx="41.3" cy="11.4" r="5.5" fill="#F4F4F4"/>
-    <circle cx="68.8" cy="98.6" r="5.5" fill="#387EBA"/>
-  </svg>
-);
+interface PythonIconProps extends React.SVGProps<SVGSVGElement> {
+  size?: number | string;
+  className?: string;
+}
+
+export const PythonIcon = ({
+  size = 14,
+  className,
+  ...props
+}: PythonIconProps) => {
+  return (
+    <svg 
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-label="Python"
+      {...props}
+    >
+    <g id="SVGRepo_bgCarrier" strokeWidth="0"/>
+    <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"/>
+    <g id="SVGRepo_iconCarrier">
+    <path fillRule="evenodd" clipRule="evenodd" d="M13.0164 2C10.8193 2 9.03825 3.72453 9.03825 5.85185V8.51852H15.9235V9.25926H5.97814C3.78107 9.25926 2 10.9838 2 13.1111L2 18.8889C2 21.0162 3.78107 22.7407 5.97814 22.7407H8.27322V19.4815C8.27322 17.3542 10.0543 15.6296 12.2514 15.6296H19.5956C21.4547 15.6296 22.9617 14.1704 22.9617 12.3704V5.85185C22.9617 3.72453 21.1807 2 18.9836 2H13.0164ZM12.0984 6.74074C12.8589 6.74074 13.4754 6.14378 13.4754 5.40741C13.4754 4.67103 12.8589 4.07407 12.0984 4.07407C11.3378 4.07407 10.7213 4.67103 10.7213 5.40741C10.7213 6.14378 11.3378 6.74074 12.0984 6.74074Z" fill="url(#paint0_linear_87_8204)"/>
+    <path fillRule="evenodd" clipRule="evenodd" d="M18.9834 30C21.1805 30 22.9616 28.2755 22.9616 26.1482V23.4815L16.0763 23.4815L16.0763 22.7408L26.0217 22.7408C28.2188 22.7408 29.9998 21.0162 29.9998 18.8889V13.1111C29.9998 10.9838 28.2188 9.25928 26.0217 9.25928L23.7266 9.25928V12.5185C23.7266 14.6459 21.9455 16.3704 19.7485 16.3704L12.4042 16.3704C10.5451 16.3704 9.03809 17.8296 9.03809 19.6296L9.03809 26.1482C9.03809 28.2755 10.8192 30 13.0162 30H18.9834ZM19.9015 25.2593C19.1409 25.2593 18.5244 25.8562 18.5244 26.5926C18.5244 27.329 19.1409 27.9259 19.9015 27.9259C20.662 27.9259 21.2785 27.329 21.2785 26.5926C21.2785 25.8562 20.662 25.2593 19.9015 25.2593Z" fill="url(#paint1_linear_87_8204)"/>
+    <defs>
+      <linearGradient id="paint0_linear_87_8204" x1="12.4809" y1="2" x2="12.4809" y2="22.7407" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#327EBD"/>
+        <stop offset="1" stopColor="#1565A7"/>
+      </linearGradient>
+      <linearGradient id="paint1_linear_87_8204" x1="19.519" y1="9.25928" x2="19.519" y2="30" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FFDA4B"/>
+        <stop offset="1" stopColor="#F9C600"/>
+      </linearGradient>
+    </defs>
+    </g>
+    </svg>
+  );
+};
 
 export const JsonIcon = () => (
   <div className="w-[14px] h-[14px] rounded bg-[#cb7c0a] text-white font-sans font-bold text-[8px] flex items-center justify-center select-none shrink-0" style={{ width: '14px', height: '14px' }}>

@@ -34,8 +34,27 @@ export const PyMissingPromptModal: React.FC = () => {
     }
 
     // Success! Automatically run the code and close modal
-    const activeCodeValue = store.jsNodeCodeOverrides[path] || "";
-    executePyNode(path, activeCodeValue);
+    let activeCodeValue = store.jsNodeCodeOverrides[path];
+    if (activeCodeValue === undefined) {
+      // Fallback to value from parsedData
+      const getValueByPath = (parsedData: any, path: string): string => {
+        if (!parsedData || !path) return "";
+        const parts = path.replace(/root\.?/, "").split(/\.|(?=\[)/).filter(Boolean);
+        let current = parsedData;
+        for (let i = 0; i < parts.length; i++) {
+          if (current === undefined || current === null) return "";
+          let part = parts[i];
+          if (part.startsWith("[")) {
+            part = part.slice(1, -1);
+          }
+          current = current[part];
+        }
+        return typeof current === "string" ? current : "";
+      };
+      activeCodeValue = getValueByPath(store.parsedData, path);
+    }
+    
+    executePyNode(path, activeCodeValue || "");
     
     // Close modal
     setShowMissingModal(null);
@@ -47,7 +66,7 @@ export const PyMissingPromptModal: React.FC = () => {
   };
 
   return (
-    <div id="py-missing-prompt-modal" className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
+    <div id="py-missing-prompt-modal" className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 flex items-center justify-center p-4 z-[9999] animate-fade-in backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-xl bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden transform scale-95 transition-all text-slate-800 dark:text-slate-100">
         
         {/* Header */}
@@ -58,7 +77,6 @@ export const PyMissingPromptModal: React.FC = () => {
           </div>
           <button
             onClick={handleClose}
-            disabled={installing}
             className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition"
           >
             <X className="w-4 h-4" />
@@ -126,7 +144,6 @@ export const PyMissingPromptModal: React.FC = () => {
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22]/50">
           <button
             onClick={handleClose}
-            disabled={installing}
             className="px-3.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
           >
             Cancel

@@ -40,6 +40,18 @@ export const transformToTree = (
     isPyNode = true;
   }
 
+  let isTodoNode = false;
+  if (typeof name === 'string' && (name.endsWith('_todo_node') || name.endsWith('.todo'))) {
+    isTodoNode = true;
+  }
+
+  if (isTodoNode) {
+    node.value = data; // Keep raw data in value
+    // Explicitly return to avoid rendering children (or set children = undefined)
+    node.children = undefined;
+    return node;
+  }
+
   if (type === 'object' && data !== null) {
     node.children = Object.entries(data).map(([key, val]) => 
       transformToTree(val, key, `${path}.${key}`, apiNodeResponses, jsNodeResponses, jsNodeVisibility)

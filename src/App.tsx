@@ -21,6 +21,7 @@ import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
 import { CodeWorkspace } from "./components/CodeWorkspace";
 import { initDexieSync } from "./store/dexieSync";
+import { PyMissingPromptModal } from "./components/PyMissingPromptModal";
 
 function getValueByPath(parsedData: any, path: string): string {
   if (!parsedData || !path) return "";
@@ -457,6 +458,7 @@ export default function App() {
       />
       <TextPreviewPopup />
       <MediaPreviewPopup />
+      <PyMissingPromptModal />
 
       {isFileProcessing && (
         <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">

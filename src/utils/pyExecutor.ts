@@ -150,7 +150,44 @@ export const executePyNode = async (path: string, codeToRun: string) => {
         return false;
     };
 
-    const missing = codeImports.filter(pkg => !installed.includes(pkg.toLowerCase()) && !isLocalModule(pkg));
+    const PIP_PACKAGE_MAP: Record<string, string> = {
+      'sklearn': 'scikit-learn',
+      'cv2': 'opencv-python',
+      'pil': 'pillow',
+      'bs4': 'beautifulsoup4',
+      'yaml': 'pyyaml',
+      'crypto': 'pycryptodome',
+      'dotenv': 'python-dotenv',
+      'jose': 'python-jose',
+      'dateutil': 'python-dateutil',
+      'fitz': 'pymupdf',
+      'docx': 'python-docx',
+      'github': 'pygithub',
+      'latexify': 'latexify-py'
+    };
+
+    const PYTHON_STDLIB = new Set([
+      'abc', 'argparse', 'array', 'ast', 'asyncio', 'base64', 'bisect', 'builtins', 'calendar',
+      'cmath', 'collections', 'concurrent', 'contextlib', 'copy', 'csv', 'ctypes', 'dataclasses',
+      'datetime', 'decimal', 'difflib', 'enum', 'functools', 'glob', 'hashlib', 'heapq', 'hmac',
+      'html', 'http', 'importlib', 'inspect', 'io', 'itertools', 'json', 'logging', 'math',
+      'multiprocessing', 'os', 'pathlib', 'pickle', 'pprint', 'queue', 'random', 're', 'secrets',
+      'shutil', 'socket', 'sqlite3', 'statistics', 'string', 'subprocess', 'sys', 'tempfile',
+      'threading', 'time', 'typing', 'unittest', 'urllib', 'uuid', 'warnings', 'xml', 'zipfile',
+      'zoneinfo'
+    ]);
+
+    // Filter out local modules and map to correct pip package names
+    let missing = codeImports
+        .filter(pkg => !isLocalModule(pkg) && !PYTHON_STDLIB.has(pkg.toLowerCase()))
+        .map(pkg => {
+             const lower = pkg.toLowerCase();
+             return PIP_PACKAGE_MAP[lower] || lower;
+        })
+        .filter(pkg => !installed.includes(pkg));
+
+    // Remove duplicates
+    missing = Array.from(new Set(missing));
 
     if (missing.length > 0) {
       if (packageStore.autoInstallMissing) {

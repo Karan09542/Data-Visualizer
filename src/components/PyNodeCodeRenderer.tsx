@@ -129,7 +129,7 @@ export function PyNodeCodeRenderer({ code, path, width, height }: PyNodeCodeRend
     <>
       <div 
         ref={containerRef}
-        className="flex flex-col nodrag resize overflow-hidden rounded-[14px] bg-[#0d1218] border border-[#30363d]/50 shadow-2xl relative pointer-evenpy-auto pb-[14px] pr-[14px]" 
+        className="flex flex-col nodrag resize overflow-hidden rounded-[14px] bg-[#0d1218] border border-[#30363d]/50 shadow-2xl relative pointer-events-auto pb-[14px] pr-[14px]" 
         style={{ minHeight: '100px', minWidth: '200px', width: width ? `${width}px` : '100%', height: height ? `${height}px` : '100%' }}
         onClick={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, ArrowRight, CheckCircle2, FileJson, Terminal } from 'lucide-react';
+import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, ArrowRight, CheckCircle2, FileJson, Terminal, ListTodo } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface NodeHelpModalProps {
@@ -11,7 +11,7 @@ interface NodeHelpModalProps {
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   const { code, setCode, appTheme } = useStore();
-  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'todo'>('api');
 
   const handleInsertExample = async () => {
     try {
@@ -24,7 +24,25 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         ip_lookup_api_node: "https://ipapi.co/json/",
         calculator_js_node: "console.log('JS calculation node executing!');\nconsole.log('namaste');",
         greeting_ts_node: "const name: string = 'World';\nconsole.log(`Hello ${name}!`);\nconsole.log('namaste');",
-        greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")'
+        greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
+        "project_tasks.todo": JSON.stringify({
+          title: "Project Tasks",
+          tasks: [
+            { id: "dt1", text: "Design Database Schema", completed: true, status: "Completed", priority: "High" },
+            { 
+              id: "dt2", 
+              text: "Setup Authentication Flow", 
+              completed: false, 
+              status: "Todo", 
+              priority: "High",
+              tasks: [
+                { id: "dt2-1", text: "Integrate OAuth Callback", completed: true, status: "Completed", priority: "Medium" },
+                { id: "dt2-2", text: "Validate Session Tokens", completed: false, status: "Todo", priority: "High" }
+              ]
+            },
+            { id: "dt3", text: "Write API endpoints & tests", completed: false, status: "Todo", priority: "Low" }
+          ]
+        }, null, 2)
       };
 
       const demoNodes = {
@@ -36,7 +54,25 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
           ip_lookup_api_node: "https://ipapi.co/json/",
           run_calc_js_node: "console.log('Math calculation:', Math.random() * 100);\nconsole.log('namaste');",
           format_date_ts_node: "console.log('Current ISO Date:', new Date().toISOString());\nconsole.log('namaste');",
-          greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")'
+          greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
+          "project_tasks.todo": JSON.stringify({
+            title: "Project Tasks",
+            tasks: [
+              { id: "dt1", text: "Design Database Schema", completed: true, status: "Completed", priority: "High" },
+              { 
+                id: "dt2", 
+                text: "Setup Authentication Flow", 
+                completed: false, 
+                status: "Todo", 
+                priority: "High",
+                tasks: [
+                  { id: "dt2-1", text: "Integrate OAuth Callback", completed: true, status: "Completed", priority: "Medium" },
+                  { id: "dt2-2", text: "Validate Session Tokens", completed: false, status: "Todo", priority: "High" }
+                ]
+              },
+              { id: "dt3", text: "Write API endpoints & tests", completed: false, status: "Todo", priority: "Low" }
+            ]
+          }, null, 2)
         }
       };
 
@@ -163,6 +199,16 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                   }`}
                 >
                   <Terminal size={16} /> Python Nodes
+                </button>
+                <button
+                  onClick={() => setActiveTab('todo')}
+                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                    activeTab === 'todo' 
+                      ? 'border-purple-500 text-purple-600 dark:text-purple-400' 
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <ListTodo size={16} /> Todo Nodes
                 </button>
               </div>
             </div>
@@ -373,6 +419,83 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 {`{
   "project_name": "Python execution",
   "greet_py_node": "text = 'Python Rules'\\nprint(text)\\nresult = {'message': text}\\nresult"
+}`}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'todo' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className={`p-4 rounded-xl border flex gap-3 ${
+                    appTheme === 'dark' ? 'bg-purple-950/20 border-purple-900/40 text-purple-200' : 'bg-purple-50/50 border-purple-100 text-purple-850'
+                  }`}>
+                    <ListTodo className="shrink-0 mt-0.5 text-purple-500" size={18} />
+                    <div>
+                      <span className="font-semibold block mb-0.5">What are Todo Nodes?</span>
+                      Keys or files ending with either <code className="font-mono bg-purple-500/10 dark:bg-purple-500/20 px-1 py-0.5 rounded text-xs font-bold">.todo</code> or <code className="font-mono bg-purple-500/10 dark:bg-purple-500/20 px-1 py-0.5 rounded text-xs font-bold">_todo_node</code> render fully interactive checklists directly in your workspace graphs! Use them to manage priorities, project tasks, and roadmap items.
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <CheckCircle2 size={16} className="text-purple-500" />
+                        <span>Interactive Nesting & Tree</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Todo Nodes dynamically support nested hierarchies. You can expand/collapse sections and view interactive indicators mapping out your milestones.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Play size={16} className="text-purple-500" />
+                        <span>Smart Checks Propagation</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Checking a parent item automatically sets checkboxes on all descendants recursively, while completing all sub-tasks auto-completes parent milestones.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Edit size={16} className="text-purple-500" />
+                        <span>Rename & Priority Cycling</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Double-click any list item text (or click the edit button) to rename it. Click the priority pill to cycle weights (<span className="text-rose-500 font-semibold">High</span> → <span className="text-amber-500 font-semibold">Medium</span> → <span className="text-blue-500 font-semibold">Low</span>).
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Plus size={16} className="text-purple-500" />
+                        <span>Creation & Deletion</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Quickly add new items or nested sub-tasks from raw input fields, and easily remove items with instant synchronization across views and persistent code.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="font-bold flex items-center gap-1.5 mb-2.5">
+                      <Code size={16} className="text-purple-500" /> Defining a Todo Node
+                    </span>
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border ${
+                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-purple-300' : 'bg-purple-50/30 border-purple-100 text-purple-700'
+                    }`}>
+{`{
+  "title": "Project Deliverables",
+  "tasks": [
+    {
+      "id": "t1",
+      "text": "Task Name",
+      "completed": false,
+      "priority": "High"
+    }
+  ]
 }`}
                     </pre>
                   </div>

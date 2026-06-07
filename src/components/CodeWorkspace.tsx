@@ -1,3 +1,4 @@
+import katex from 'katex';
 import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
@@ -34,16 +35,17 @@ import {
   Info,
   FileCode2,
   FileText,
+  CheckSquare
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
 import { getVirtualPath } from "../utils/vfs";
 import { usePyPackageStore } from "../store/usePyPackageStore";
 import { PyPackagesPanel } from "./PyPackagesPanel";
-import { PyMissingPromptModal } from "./PyMissingPromptModal";
 import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
 import { ExpandableJSON } from "./ExpandableJSON";
+import { TodoWorkspace } from "./TodoWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
@@ -60,6 +62,26 @@ import {
 import { getValueAtPath } from "../utils/pathUtils";
 import { editorThemes } from "../utils/editorThemes";
 import { renderClickableErrorText } from "../utils/errorParser";
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      type="button"
+      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer shrink-0"
+      title={copied ? "Copied" : "Copy error text"}
+    >
+      {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+    </button>
+  );
+}
 
 interface CodeWorkspaceProps {
   path: string; // The main root node path representing this workspace context
@@ -124,6 +146,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     activePrompts,
     setActivePrompt,
   } = useStore();
+  const [copied, setCopied] = useState(false);
   const [monaco, setMonaco] = useState<any>(null);
 
   // Active open file in the workspace
@@ -165,6 +188,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const isJs = useMemo(() => fileExt.endsWith('_js_node') || fileExt === 'js', [fileExt]);
   const isPy = useMemo(() => fileExt.endsWith('_py_node') || fileExt === 'py', [fileExt]);
   const isApi = useMemo(() => fileExt.endsWith('_api_node') || fileExt === 'api', [fileExt]);
+  const isTodo = useMemo(() => fileExt.endsWith('_todo_node') || fileExt === 'todo', [fileExt]);
   const isJson = useMemo(() => fileExt.endsWith('_json') || fileExt === 'json', [fileExt]);
   const isYaml = useMemo(() => fileExt.endsWith('_yaml') || fileExt === 'yaml' || fileExt.endsWith('_yml') || fileExt === 'yml', [fileExt]);
   const isCsv = useMemo(() => fileExt.endsWith('_csv') || fileExt === 'csv', [fileExt]);
@@ -176,12 +200,12 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (isPy) return "python";
     if (isTs) return "typescript";
     if (isJs) return "javascript";
-    if (isJson) return "json";
+    if (isJson || isTodo) return "json";
     if (isYaml) return "yaml";
     if (isXml) return "xml";
     if (isMd) return "markdown";
     return "plaintext";
-  }, [isPy, isTs, isJs, isJson, isYaml, isXml, isMd]);
+  }, [isPy, isTs, isJs, isJson, isYaml, isXml, isMd, isTodo]);
 
   const getTabIcon = (filePath: string, isActive: boolean) => {
     if (typeof filePath !== 'string') return <FileText size={13} className="text-slate-400 dark:text-slate-500 shrink-0" />;
@@ -191,12 +215,14 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     const isTs = lowerPath.endsWith('_ts_node') || lowerPath.endsWith('.ts');
     const isJs = lowerPath.endsWith('_js_node') || lowerPath.endsWith('.js');
     const isJson = lowerPath.endsWith('_json') || lowerPath.endsWith('.json');
+    const isTodo = lowerPath.endsWith('_todo_node') || lowerPath.endsWith('.todo');
     const isMd = lowerPath.endsWith('_md') || lowerPath.endsWith('.md');
     
     if (isPy) return <PythonIcon />;
     if (isTs) return <TypeScriptIcon />;
     if (isJs) return <JavaScriptIcon />;
     if (isJson) return <JsonIcon />;
+    if (isTodo) return <CheckSquare size={13} className="text-blue-500 shrink-0" />;
     if (isMd) return <MarkdownIcon />;
 
     return <FileText size={13} className={isActive ? "text-yellow-500 shrink-0" : "text-slate-400 dark:text-slate-500 shrink-0"} />;
@@ -209,6 +235,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (rawName.endsWith("_js_node")) return rawName.replace("_js_node", ".js");
     if (rawName.endsWith("_py_node")) return rawName.replace("_py_node", ".py");
     if (rawName.endsWith("_api_node")) return rawName.replace("_api_node", ".api");
+    if (rawName.endsWith("_todo_node")) return rawName.replace("_todo_node", ".todo");
     if (rawName.endsWith("_json")) return rawName.replace("_json", ".json");
     if (rawName.endsWith("_yaml")) return rawName.replace("_yaml", ".yaml");
     if (rawName.endsWith("_yml")) return rawName.replace("_yml", ".yml");
@@ -635,6 +662,30 @@ declare const console: {
           <MatplotlibPlotViewer key={index} imageData={arg} />
         );
       }
+      
+      // Auto-detect LaTeX patterns
+      const isLatex = /^[\s\n]*\\(mathrm|frac|sqrt|begin|sum|int|mathbf|left|right|alpha|beta|gamma|Delta|pi|mu|sigma|theta|omega|rho|lambda)/.test(arg) || 
+                      /^[\s\n]*\$\$.*\$\$[\s\n]*$/s.test(arg) || 
+                      /^[\s\n]*\\\[.*\\\][\s\n]*$/s.test(arg);
+                      
+      if (isLatex) {
+        try {
+           let tex = arg.trim();
+           if (tex.startsWith('$$') && tex.endsWith('$$')) {
+              tex = tex.slice(2, -2);
+           } else if (tex.startsWith('\\[') && tex.endsWith('\\]')) {
+              tex = tex.slice(2, -2);
+           }
+           return (
+              <div key={index} className="w-full overflow-x-auto py-2 katex-display-wrapper">
+                <div dangerouslySetInnerHTML={{ __html: katex.renderToString(tex, { displayMode: true, throwOnError: false }) }} />
+              </div>
+           );
+        } catch (e) {
+           // Fallback to text if error
+        }
+      }
+
       const colorized = renderColorizedOutput(arg);
       return <span key={index} className="whitespace-pre-wrap break-all">{colorized}</span>;
     }
@@ -939,6 +990,7 @@ declare const console: {
     terminalState,
     setIsGoToLineOpen,
     setGoToLineValue,
+    openWorkspaceTab,
   });
 
   useEffect(() => {
@@ -953,6 +1005,7 @@ declare const console: {
       terminalState,
       setIsGoToLineOpen,
       setGoToLineValue,
+      openWorkspaceTab,
     };
   });
 
@@ -1102,11 +1155,13 @@ declare const console: {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(editorRef.current ? editorRef.current.getValue() : code);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
                 }}
-                className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
+                className="p-1.5 flex items-center justify-center min-w-[28px] rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
                 title="Copy Contents"
               >
-                <Copy size={14} />
+                {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
               </button>
 
               {/* Advanced Minimap/Editor Config */}
@@ -1358,7 +1413,7 @@ declare const console: {
               </div>
 
               {/* Editor Component frame */}
-              <div className="flex-1 relative">
+              <div className="flex-1 relative flex flex-col min-h-0">
                 {isGoToLineOpen && (
                   <div className="absolute top-2 right-4 z-50 bg-slate-50 dark:bg-[#161b22] border border-slate-300 dark:border-slate-700 shadow-xl rounded-md p-1.5 flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-100">
                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400 font-mono pl-1 shrink-0">Go to:</span>
@@ -1395,6 +1450,9 @@ declare const console: {
                     </button>
                   </div>
                 )}
+                {isTodo ? (
+                  <TodoWorkspace path={currentFilePath} />
+                ) : (
                 <SafeEditor
                   path={currentFilePath}
                   height="100%"
@@ -1531,6 +1589,7 @@ declare const console: {
                     });
                   }}
                 />
+                )}
               </div>
             </div>
 
@@ -1689,10 +1748,19 @@ declare const console: {
                 {activeTab === "result" && (
                   <div className="p-4 h-full">
                     {lastError ? (
-                      <div className="p-4 bg-red-50 dark:bg-red-500/10 border-l-4 border-red-500 text-red-700 dark:text-red-400 text-sm font-mono whitespace-pre-wrap rounded-r">
-                        {typeof lastError === "object" && lastError !== null
-                          ? (lastError as any).userMessage || (lastError as any).message
-                          : String(lastError)}
+                      <div className="p-4 bg-red-50 dark:bg-red-500/10 border-l-4 border-red-500 text-red-700 dark:text-red-400 text-sm font-mono whitespace-pre-wrap rounded-r flex justify-between items-start gap-2 group/err">
+                        <span className="flex-1 min-w-0">
+                          {typeof lastError === "object" && lastError !== null
+                            ? (lastError as any).userMessage || (lastError as any).message
+                            : String(lastError)}
+                        </span>
+                        <CopyButton
+                          text={
+                            typeof lastError === "object" && lastError !== null
+                              ? (lastError as any).userMessage || (lastError as any).message
+                              : String(lastError)
+                          }
+                        />
                       </div>
                     ) : hasData ? (
                       <pre className="font-mono text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
@@ -1729,12 +1797,14 @@ declare const console: {
                           followOutput="auto"
                           itemContent={(index) => {
                             if (index === logCount && lastError) {
+                              const errorStr = typeof lastError === "object" && lastError !== null ? (lastError as any).message : String(lastError);
                               return (
-                                <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex gap-4 w-full">
+                                <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex justify-between items-start gap-4 w-full group/err">
                                   <div className="flex-1 min-w-0 font-bold whitespace-pre-wrap flex items-start gap-2">
                                     <span className="shrink-0 mt-0.5">✖</span>
-                                    <span>{renderClickableErrorText(typeof lastError === "object" && lastError !== null ? (lastError as any).message : String(lastError), currentFilePath, setJsNodeFocusLine)}</span>
+                                    <span>{renderClickableErrorText(errorStr, currentFilePath, setJsNodeFocusLine)}</span>
                                   </div>
+                                  <CopyButton text={errorStr} />
                                 </div>
                               );
                             }
@@ -1744,7 +1814,7 @@ declare const console: {
                             }
                             return (
                               <div
-                                className={`px-4 py-0 flex gap-4 w-full ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
+                                className={`px-4 py-0.5 flex items-start gap-4 w-full group/log ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
                               >
                                 <div className="flex-1 min-w-0 font-mono">
                                   <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
@@ -1753,6 +1823,11 @@ declare const console: {
                                     )}
                                   </div>
                                 </div>
+                                {log.type === "error" && (
+                                  <div className="opacity-0 group-hover/log:opacity-100 focus-within:opacity-100 transition-opacity self-start shrink-0">
+                                    <CopyButton text={log.args.map((arg: any) => typeof arg === "string" ? arg : JSON.stringify(arg)).join(" ")} />
+                                  </div>
+                                )}
                               </div>
                             );
                           }}
@@ -1857,7 +1932,6 @@ declare const console: {
           </div>
         </div>
       </div>
-      <PyMissingPromptModal />
     </div>,
     document.body
   );

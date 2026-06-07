@@ -319,6 +319,10 @@ self.onmessage = async (e) => {
 import sys
 import importlib
 import builtins
+import types
+
+if '__main__' not in sys.modules:
+    sys.modules['__main__'] = types.ModuleType('__main__')
 
 if not hasattr(builtins, '_custom_import_installed'):
     builtins._custom_import_installed = True
@@ -343,6 +347,8 @@ if not hasattr(builtins, '_custom_import_installed'):
 if '/' not in sys.path:
     sys.path.append('/')
 for k, m in list(sys.modules.items()):
+    if k == '__main__':
+        continue
     f = getattr(m, '__file__', None)
     if f and type(f) is str and f.startswith('/') and not f.startswith('/lib/'):
         del sys.modules[k]

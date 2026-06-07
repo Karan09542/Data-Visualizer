@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { usePyPackageStore } from "../store/usePyPackageStore";
-import { Search, Loader2, CheckCircle2, AlertCircle, Trash2, RefreshCw, Layers, ChevronDown, ChevronUp, Play } from "lucide-react";
+import { Search, Loader2, CheckCircle2, AlertCircle, Trash2, RefreshCw, Layers, ChevronDown, ChevronUp, Play, Check } from "lucide-react";
 
 export const PyPackagesPanel: React.FC = () => {
   const {
@@ -77,31 +77,49 @@ export const PyPackagesPanel: React.FC = () => {
 
       {/* Main scrollable body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
-        {/* Auto install checkbox setting */}
+        {/* Auto install & Cache settings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22]/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/20 cursor-pointer transition select-none">
-            <input
-              type="checkbox"
-              checked={autoInstallMissing}
-              onChange={(e) => setAutoInstallMissing(e.target.checked)}
-              className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500 focus:ring-emerald-500"
-            />
+          <label className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer select-none group
+            ${autoInstallMissing 
+              ? "border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-500/10 dark:border-emerald-500/30 shadow-sm" 
+              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22]/50 hover:bg-slate-50 dark:hover:bg-slate-800/30"}`}
+          >
+            <div className="relative flex items-center justify-center shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                checked={autoInstallMissing}
+                onChange={(e) => setAutoInstallMissing(e.target.checked)}
+                className="peer appearance-none w-4 h-4 rounded border-2 border-slate-300 dark:border-slate-600 checked:bg-emerald-500 checked:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:ring-offset-1 dark:focus:ring-offset-[#161b22] transition-all cursor-pointer"
+              />
+              <Check className="absolute w-3 h-3 text-white pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={3} />
+            </div>
             <div className="text-xs">
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Auto-install missing imports</p>
-              <p className="text-slate-500 dark:text-slate-400 mt-0.5">Automatically pull imports from PyPI before executing Python scripts.</p>
+              <p className={`font-semibold mb-0.5 transition-colors ${autoInstallMissing ? "text-emerald-700 dark:text-emerald-400" : "text-slate-800 dark:text-slate-200"}`}>
+                Auto-install imports
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">Automatically pull packages from PyPI before execution.</p>
             </div>
           </label>
 
-          <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22]/50 hover:bg-slate-100/50 dark:hover:bg-slate-800/20 cursor-pointer transition select-none">
-            <input
-              type="checkbox"
-              checked={pyPackageCacheEnabled}
-              onChange={(e) => setPyPackageCacheEnabled(e.target.checked)}
-              className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-emerald-500 focus:ring-emerald-500"
-            />
+          <label className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer select-none group
+            ${pyPackageCacheEnabled 
+              ? "border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-500/10 dark:border-emerald-500/30 shadow-sm" 
+              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22]/50 hover:bg-slate-50 dark:hover:bg-slate-800/30"}`}
+          >
+            <div className="relative flex items-center justify-center shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                checked={pyPackageCacheEnabled}
+                onChange={(e) => setPyPackageCacheEnabled(e.target.checked)}
+                className="peer appearance-none w-4 h-4 rounded border-2 border-slate-300 dark:border-slate-600 checked:bg-emerald-500 checked:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:ring-offset-1 dark:focus:ring-offset-[#161b22] transition-all cursor-pointer"
+              />
+              <Check className="absolute w-3 h-3 text-white pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={3} />
+            </div>
             <div className="text-xs">
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Persistent package cache (Dexie.js)</p>
-              <p className="text-slate-500 dark:text-slate-400 mt-0.5">Cache and restore wheel files from IndexedDB instantly on next loads.</p>
+              <p className={`font-semibold mb-0.5 transition-colors ${pyPackageCacheEnabled ? "text-emerald-700 dark:text-emerald-400" : "text-slate-800 dark:text-slate-200"}`}>
+                Persistent cache
+              </p>
+              <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">Cache wheel layers in IndexedDB for instant reload speeds.</p>
             </div>
           </label>
         </div>

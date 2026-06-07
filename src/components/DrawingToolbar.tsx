@@ -8,12 +8,60 @@ import {
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
   Sigma, X, ChevronUp, Palette, FunctionSquare, Eye, EyeOff, Copy, Check, Plus
 } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HexAlphaColorPicker } from 'react-colorful';
 import katex from 'katex';
 import * as math from 'mathjs';
+
+function Popover({ children, open, onOpenChange }: any) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined;
+  const isOpen = isControlled ? open : internalOpen;
+  const setIsOpen = isControlled ? onOpenChange : setInternalOpen;
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    if (isOpen) {
+      setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, setIsOpen]);
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      {React.Children.map(children, child => {
+        if (!child) return null;
+        if (child.type === PopoverTrigger) {
+          return React.cloneElement(child, { onClick: (e: any) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); } });
+        }
+        if (child.type === PopoverContent && isOpen) {
+          return child;
+        }
+        return null;
+      })}
+    </div>
+  );
+}
+
+function PopoverTrigger({ children, onClick, className }: any) {
+  return <div onClick={onClick} className={className}>{children}</div>;
+}
+
+function PopoverContent({ children, className, side, align, sideOffset }: any) {
+  let posClass = "absolute z-[400] ";
+  if (side === "top") posClass += "bottom-[100%] mb-2 ";
+  else posClass += "top-[100%] mt-2 ";
+  
+  if (align === "end") posClass += "right-0 ";
+  else if (align === "center") posClass += "left-1/2 -translate-x-1/2 ";
+  else posClass += "left-0 ";
+
+  return <div className={`${posClass} ${className || ''}`} onClick={e => e.stopPropagation()}>{children}</div>;
+}
 
 const LaTeXPreview = React.memo(({ expression, className = "", onSelect }: { expression: string, className?: string, onSelect?: () => void }) => {
   const [tex, setTex] = useState('');
