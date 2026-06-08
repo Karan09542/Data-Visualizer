@@ -768,6 +768,12 @@ declare const console: {
   const terminalInputRef = useRef<HTMLInputElement>(null);
   const currentPrompt = activePrompts[currentFilePath];
 
+  useEffect(() => {
+    if (isTodo) {
+      setTerminalState("hidden");
+    }
+  }, [isTodo]);
+
   // Auto-focus terminal input whenever a STDIN or alert/prompt/confirm prompt details are activated
   useEffect(() => {
     if (currentPrompt) {

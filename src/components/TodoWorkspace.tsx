@@ -1457,9 +1457,14 @@ export function TodoWorkspace({ path }: { path: string }) {
         </div>
 
         {/* Scrollable list viewport wrapper */}
-        <div className="flex-1 overflow-y-auto w-full custom-scrollbar bg-slate-50/30 dark:bg-[#090d12]/20">
-          <div className="p-5 max-w-6xl mx-auto min-h-full flex flex-col">
-            <TodoWorkspaceList
+        <div className="flex-1 overflow-y-auto w-full custom-scrollbar bg-slate-50/30 dark:bg-[#090d12]/20" onClick={(e) => {
+          if (e.target === e.currentTarget || (e.target as Element).closest && !(e.target as Element).closest('.task-list-item')) {
+            setSelectedTaskId(null);
+          }
+        }}>
+          <div className="p-5 max-w-6xl mx-auto min-h-full flex flex-col pointer-events-none">
+            <div className="pointer-events-auto flex flex-col flex-1">
+              <TodoWorkspaceList
               tasks={todoData.tasks || []}
               onUpdate={updateTask}
               onRemove={removeTask}
@@ -1482,6 +1487,7 @@ export function TodoWorkspace({ path }: { path: string }) {
               setDraggedId={setDraggedId}
               todoTasks={todoData.tasks || []}
             />
+            </div>
           </div>
         </div>
       </div>
@@ -1711,6 +1717,7 @@ function TodoWorkspaceItem({
   const [isNotesExpanded, setIsNotesExpanded] = useState(false);
   const [isEditingNotesInline, setIsEditingNotesInline] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Drag and Drop support
   const [isDraggable, setIsDraggable] = useState(false);
@@ -1789,7 +1796,7 @@ function TodoWorkspaceItem({
   const isOverdue = isTaskOverdue(task.dueDate, isCompleted);
 
   return (
-    <div className="flex flex-col select-none relative">
+    <div className="task-list-item flex flex-col select-none relative">
       {/* Drop Indicator Lines */}
       {dropIndicator === "before" && (
         <div 
@@ -2169,6 +2176,25 @@ function TodoWorkspaceItem({
         >
           {/* Desktop/Wide View Actions */}
           <div className="hidden md:flex items-center gap-1 pr-1">
+            {/* Copy Task Icon */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                navigator.clipboard.writeText(task.text);
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+              }}
+              title={isCopied ? "Copied!" : "Copy Task text"}
+              className={`p-1 rounded transition-colors outline-none cursor-pointer ${
+                isCopied 
+                  ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10" 
+                  : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-blue-500"
+              }`}
+            >
+              {isCopied ? <Check size={13} /> : <Copy size={13} />}
+            </button>
+
             {/* Notes inline toggle */}
             <button
               onClick={() => setIsNotesExpanded(!isNotesExpanded)}
@@ -2233,6 +2259,23 @@ function TodoWorkspaceItem({
             >
               {({ close }: any) => (
                 <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      navigator.clipboard.writeText(task.text);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                      // Don't close so the user can see the feedback? Or keep it closing.
+                      // Actually, if we show inline feedback, keeping the popup briefly might be nice, but closing immediately is also OK.
+                      // I'll close it here because the user's focus is on the main list item's copy button mostly
+                      close();
+                    }}
+                    className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                  >
+                    <Copy size={13} />
+                    <span>{isCopied ? "Copied!" : "Copy Task"}</span>
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

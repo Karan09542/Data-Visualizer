@@ -16,7 +16,9 @@ import {
   Pencil,
   Sparkles,
   RefreshCw,
-  ListFilter
+  ListFilter,
+  Copy,
+  Check
 } from "lucide-react";
 import { setValueAtPath } from "../utils/pathUtils";
 
@@ -45,7 +47,7 @@ interface TodoNodeProps {
 }
 
 export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNodeProps) {
-  const { parsedData, setCode, codeFormat, setExpandedJsNodeId, setCustomNodeSize, nodeSizes, setSelectedNodeId } = useStore();
+  const { parsedData, setCode, codeFormat, setExpandedJsNodeId, setCustomNodeSize, nodeSizes, setSelectedNodeId, setNotification } = useStore();
   const customSize = nodeSizes[nodeId];
   const [todoData, setTodoData] = useState<TodoNodeData>({ title: "Tasks", tasks: [] });
   
@@ -55,6 +57,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const [newTaskText, setNewTaskText] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -598,6 +601,28 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
                 {/* Action Controls Container */}
                 <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0">
+                  {/* Copy Task Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(task.text);
+                      setCopiedTaskId(task.id);
+                      setTimeout(() => {
+                        setCopiedTaskId(prev => prev === task.id ? null : prev);
+                      }, 2000);
+                      setNotification({ type: 'success', message: 'Task text copied' });
+                    }}
+                    className={`p-1 rounded cursor-pointer transition-colors ${
+                      copiedTaskId === task.id
+                        ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
+                        : "text-slate-400 hover:text-blue-400 hover:bg-slate-800/40"
+                    }`}
+                    title={copiedTaskId === task.id ? "Copied!" : "Copy Task"}
+                  >
+                    {copiedTaskId === task.id ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+
                   {/* Edit/Rename button */}
                   <button
                     type="button"

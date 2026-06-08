@@ -29,6 +29,10 @@ import {
   Eye,
   EyeOff,
   Menu,
+  Globe,
+  FileCode,
+  Calculator,
+  CheckSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -70,7 +74,7 @@ export default function GuiEditorPanel() {
 
   // Selected Type for new field
   const [newKeyType, setNewKeyType] = useState<
-    "string" | "number" | "boolean" | "array" | "object"
+    "string" | "number" | "boolean" | "array" | "object" | "api_node" | "js_node" | "ts_node" | "py_node" | "math_node" | "todo_node"
   >("string");
   const [newParentPath, setNewParentPath] = useState<string>("root");
   const [newKeyName, setNewKeyName] = useState<string>("");
@@ -406,11 +410,18 @@ export default function GuiEditorPanel() {
     if (e) e.preventDefault();
     setFormError("");
 
-    const key = newKeyName.trim();
+    let key = newKeyName.trim();
     if (!key) {
       setFormError("Key name is required");
       return;
     }
+
+    if (newKeyType === "api_node" && !key.endsWith("_api_node")) key += "_api_node";
+    if (newKeyType === "js_node" && !key.endsWith("_js_node")) key += "_js_node";
+    if (newKeyType === "ts_node" && !key.endsWith("_ts_node")) key += "_ts_node";
+    if (newKeyType === "py_node" && !key.endsWith("_py_node")) key += "_py_node";
+    if (newKeyType === "math_node" && !key.endsWith("_math_node")) key += "_math_node";
+    if (newKeyType === "todo_node" && !key.endsWith("_todo_node")) key += "_todo_node";
 
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
       setFormError(
@@ -457,6 +468,7 @@ export default function GuiEditorPanel() {
     else if (newKeyType === "boolean") finalValue = booleanValue;
     else if (newKeyType === "array") finalValue = [];
     else if (newKeyType === "object") finalValue = {};
+    else if (["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node"].includes(newKeyType)) finalValue = "";
 
     targetParent[key] = finalValue;
 
@@ -932,6 +944,45 @@ export default function GuiEditorPanel() {
                       );
                     })}
                   </div>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-3 border-t border-slate-200 dark:border-slate-800/50 pt-2 block">
+                    Special Nodes
+                  </span>
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    {[
+                      { type: "api_node", icon: Globe, label: "API Node" },
+                      { type: "js_node", icon: FileCode, label: "JS Node" },
+                      { type: "ts_node", icon: FileCode, label: "TS Node" },
+                      { type: "py_node", icon: FileCode, label: "Py Node" },
+                      { type: "math_node", icon: Calculator, label: "Math Node" },
+                      { type: "todo_node", icon: CheckSquare, label: "Todo Node" },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      const isSelected = newKeyType === item.type;
+                      return (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => setNewKeyType(item.type as any)}
+                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-md border text-[10px] gap-1.5 transition-all ${
+                            isSelected
+                              ? "bg-blue-600/10 text-blue-500 dark:text-blue-400 border-blue-500 shadow-lg shadow-blue-500/5 scale-102"
+                              : "border-slate-200 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/30 text-slate-500 dark:text-slate-400"
+                          }`}
+                          title={`Select as ${item.label}`}
+                        >
+                          <Icon
+                            size={14}
+                            className={
+                              isSelected ? "text-blue-500 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"
+                            }
+                          />
+                          <span className="scale-[0.85] font-semibold leading-none">
+                            {item.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Contextual description input depending on selected model */}
@@ -1014,6 +1065,12 @@ export default function GuiEditorPanel() {
                         {"{}"}
                       </code>{" "}
                       where children keys can reside.
+                    </p>
+                  )}
+
+                  {["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node"].includes(newKeyType) && (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
+                      Creates a <strong className="text-blue-500 dark:text-blue-400">{newKeyType.replace("_", " ").toUpperCase()}</strong>. It will be injected into the data structure as an empty <code className="font-mono text-slate-700 dark:text-slate-300">""</code> string with the required suffix for the canvas engine to recognize it automatically. You can edit the node content fully through the interactive canvas.
                     </p>
                   )}
                 </div>
@@ -1123,6 +1180,32 @@ export default function GuiEditorPanel() {
                       </button>
                     ))}
                   </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2 border-t border-slate-800 pt-2 block">
+                    Special Nodes
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5 mt-1">
+                    {[
+                      { type: "api_node", icon: Globe, label: "API" },
+                      { type: "js_node", icon: FileCode, label: "JS" },
+                      { type: "ts_node", icon: FileCode, label: "TS" },
+                      { type: "py_node", icon: FileCode, label: "Py" },
+                      { type: "math_node", icon: Calculator, label: "Math" },
+                      { type: "todo_node", icon: CheckSquare, label: "Todo" },
+                    ].map((item) => (
+                      <button
+                        key={item.type}
+                        onClick={() => setNewKeyType(item.type as any)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-md border text-[10px] gap-1 ${
+                          newKeyType === item.type
+                            ? "bg-blue-600/20 text-blue-400 border-blue-500"
+                            : "bg-[#121824] border-slate-800 text-slate-400"
+                        }`}
+                      >
+                        <item.icon size={13} />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="p-3 bg-[#121824] border border-slate-800 rounded">
@@ -1173,6 +1256,11 @@ export default function GuiEditorPanel() {
                     <span className="text-[10px] text-slate-400">
                       Installs nested checklist array/objects container
                       instantly.
+                    </span>
+                  )}
+                  {["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node"].includes(newKeyType) && (
+                    <span className="text-[10px] text-slate-400">
+                      Installs a {newKeyType.replace("_", " ").toUpperCase()} ready to be configured via visual canvas.
                     </span>
                   )}
                 </div>

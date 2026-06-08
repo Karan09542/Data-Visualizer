@@ -829,7 +829,7 @@ function NodeRenderer({
 
   let fWidth = customSize
     ? customSize.width
-    : isApiNode ? 340 : isTodoNode ? 385 : isMathNode ? 600
+    : isApiNode ? 340 : isTodoNode ? 385 : isMathNode ? (isExpanded ? 600 : 320)
       : (isJsNode || isTsNode || isPyNode)
         ? 440
         : (isJsCode || isTsCode || isPyCode)
@@ -844,7 +844,7 @@ function NodeRenderer({
   let fHeight = customSize
     ? customSize.height
     : isTodoNode ? (isExpanded ? 360 : 140)
-    : isMathNode ? (isExpanded ? 400 : 140)
+    : isMathNode ? (isExpanded ? 350 : 250)
     : isMedia
       ? mediaType === "audio"
         ? 140
@@ -1115,14 +1115,14 @@ function NodeRenderer({
     }
   }
 
-  if (!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode)) {
+  if (!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode)) {
     fWidth *= nodeSize;
     fHeight *= nodeSize;
   }
 
   let foWidth = fWidth + 100;
   let foHeight = fHeight + 100;
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode) {
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) {
     foWidth += 200;
     foHeight += 200;
   }
@@ -1231,7 +1231,7 @@ function NodeRenderer({
             style={{
               ...shapeStyle,
               transform:
-                isJsCode || isJsTerminal ? undefined : `scale(${nodeSize})`,
+                isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode ? undefined : `scale(${nodeSize})`,
               transformOrigin: "center",
               touchAction: "none",
             }}
@@ -1765,6 +1765,8 @@ function NodeRenderer({
                     nodeId={data.id} 
                     data={data} 
                     isExpanded={isExpanded}
+                    width={fWidth}
+                    height={fHeight}
                   />
                 )}
                 {hasChildren && isCollapsed && (
