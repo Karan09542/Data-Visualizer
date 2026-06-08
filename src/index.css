@@ -44,7 +44,7 @@
   }
 
   .custom-scrollbar, select {
-    scrollbar-gutter: stable both-edges;
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: #cbd5e1 transparent;
   }

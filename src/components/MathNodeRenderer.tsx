@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Minimize2, Play, Pause, Square, SkipBack, Repeat, Layers, Plus, Trash2, Settings, Crosshair, HelpCircle, X, Search, ChevronDown, ChevronRight, ChevronUp, Edit2, Copy, CopyPlus, RotateCcw, GripVertical, Folder, FolderPlus, Menu, MoreVertical } from "lucide-react";
+import { Maximize2, Minimize2, Play, Pause, Square, SkipBack, Repeat, Layers, Plus, Trash2, Settings, Crosshair, HelpCircle, X, Search, ChevronDown, ChevronRight, ChevronUp, Edit2, Copy, CopyPlus, RotateCcw, GripVertical, Folder, FolderPlus, Menu, MoreVertical, Bookmark, Save, FileText, Check, Eye, Heart, Sparkles } from "lucide-react";
 import { Mafs, Coordinates, Plot, Transform, Point, Vector, Polygon, Circle, MovablePoint, Text, Line, LaTeX, usePaneContext } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
@@ -9,6 +9,8 @@ import katex from "katex";
 import * as mathjs from "mathjs";
 import { useStore } from "../store/useStore";
 import { HexAlphaColorPicker } from "react-colorful";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "../lib/db";
 
 const InsertAboveIcon = ({ size = 14, className = "" }: { size?: number, className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -365,28 +367,114 @@ export const getVarColor = (name: string) => {
 };
 
 const MATH_COMPLETIONS = [
+  // Basic & Algebraic
   { name: "sin", desc: "Sine of x", insert: "sin(" },
   { name: "cos", desc: "Cosine of x", insert: "cos(" },
   { name: "tan", desc: "Tangent of x", insert: "tan(" },
-  { name: "asin", desc: "Inverse sine", insert: "asin(" },
-  { name: "acos", desc: "Inverse cosine", insert: "acos(" },
-  { name: "atan", desc: "Inverse tangent", insert: "atan(" },
+  { name: "asin", desc: "Inverse sine (arcsin)", insert: "asin(" },
+  { name: "acos", desc: "Inverse cosine (arccos)", insert: "acos(" },
+  { name: "atan", desc: "Inverse tangent (arctan)", insert: "atan(" },
+  { name: "atan2", desc: "Four-quadrant inverse tangent", insert: "atan2(" },
   { name: "exp", desc: "Exponential e^x", insert: "exp(" },
-  { name: "log", desc: "Natural logarithm", insert: "log(" },
+  { name: "log", desc: "Natural logarithm (ln)", insert: "log(" },
+  { name: "ln", desc: "Natural logarithm", insert: "ln(" },
   { name: "log10", desc: "Base 10 logarithm", insert: "log10(" },
+  { name: "log2", desc: "Base 2 logarithm", insert: "log2(" },
   { name: "sqrt", desc: "Square root", insert: "sqrt(" },
   { name: "cbrt", desc: "Cube root", insert: "cbrt(" },
   { name: "abs", desc: "Absolute value", insert: "abs(" },
-  { name: "pi", desc: "Constant π (3.14159...)", insert: "pi" },
-  { name: "e", desc: "Constant e (2.71828...)", insert: "e" },
-  { name: "phi", desc: "Golden ratio (1.618...)", insert: "phi" },
-  { name: "mean", desc: "Mean of values", insert: "mean(" },
+  { name: "sign", desc: "Sign of a value (-1, 0, 1)", insert: "sign(" },
+  { name: "signum", desc: "Signum / sign of a value", insert: "sign(" },
+  { name: "pow", desc: "Calculate base to exponent power", insert: "pow(" },
+  { name: "mod", desc: "Modulus/remainder of division", insert: "mod(" },
+
+  // Hyperbolic
+  { name: "sinh", desc: "Hyperbolic sine", insert: "sinh(" },
+  { name: "cosh", desc: "Hyperbolic cosine", insert: "cosh(" },
+  { name: "tanh", desc: "Hyperbolic tangent", insert: "tanh(" },
+  { name: "asinh", desc: "Inverse hyperbolic sine", insert: "asinh(" },
+  { name: "acosh", desc: "Inverse hyperbolic cosine", insert: "acosh(" },
+  { name: "atanh", desc: "Inverse hyperbolic tangent", insert: "atanh(" },
+
+  // Reciprocal Trig
+  { name: "sec", desc: "Secant of x", insert: "sec(" },
+  { name: "csc", desc: "Cosecant of x", insert: "csc(" },
+  { name: "cot", desc: "Cotangent of x", insert: "cot(" },
+  { name: "asec", desc: "Inverse secant of x", insert: "asec(" },
+  { name: "acsc", desc: "Inverse cosecant of x", insert: "acsc(" },
+  { name: "acot", desc: "Inverse cotangent of x", insert: "acot(" },
+
+  // Hyperbolic Reciprocals
+  { name: "sech", desc: "Hyperbolic secant", insert: "sech(" },
+  { name: "csch", desc: "Hyperbolic cosecant", insert: "csch(" },
+  { name: "coth", desc: "Hyperbolic cotangent", insert: "coth(" },
+
+  // Matrices & Linear Algebra
+  { name: "det", desc: "Matrix determinant (e.g. [[x,y,1],[2,3,1],[-1,-3,1]])", insert: "det(" },
+  { name: "matrix", desc: "Create a matrix / 2D array", insert: "matrix(" },
+  { name: "cross", desc: "Cross product of 2 vectors", insert: "cross(" },
+  { name: "dot", desc: "Dot product of 2 vectors", insert: "dot(" },
+  { name: "transpose", desc: "Transpose a matrix (flip rows/columns)", insert: "transpose(" },
+  { name: "inv", desc: "Inverse of a square matrix", insert: "inv(" },
+  { name: "identity", desc: "Create an identity matrix of size n", insert: "identity(" },
+  { name: "ones", desc: "Create a matrix filled with ones", insert: "ones(" },
+  { name: "zeros", desc: "Create a matrix filled with zeros", insert: "zeros(" },
+  { name: "size", desc: "Get matrix dimensions/length", insert: "size(" },
+  { name: "concat", desc: "Concatenate matrices along an axis", insert: "concat(" },
+  { name: "subset", desc: "Get or set a subset of a matrix", insert: "subset(" },
+  { name: "flatten", desc: "Flatten a multi-dimensional matrix", insert: "flatten(" },
+  { name: "diag", desc: "Extract diagonal or create diagonal matrix", insert: "diag(" },
+  { name: "trace", desc: "Calculate trace of a matrix", insert: "trace(" },
+  { name: "kron", desc: "Kronecker product of two matrices", insert: "kron(" },
+
+  // Statistics & Sampling
+  { name: "mean", desc: "Mean / average of values", insert: "mean(" },
   { name: "median", desc: "Median of values", insert: "median(" },
-  { name: "std", desc: "Standard deviation", insert: "std(" },
-  { name: "derivative", desc: "Derivative of expression", insert: "derivative(" },
+  { name: "std", desc: "Standard deviation of values", insert: "std(" },
+  { name: "variance", desc: "Variance of values", insert: "variance(" },
+  { name: "sum", desc: "Sum of values or matrix", insert: "sum(" },
+  { name: "prod", desc: "Product of values or matrix", insert: "prod(" },
+  { name: "min", desc: "Minimum value", insert: "min(" },
+  { name: "max", desc: "Maximum value", insert: "max(" },
+
+  // Probability, Calculus & Higher Math
+  { name: "derivative", desc: "Symbolic/numerical derivative", insert: "derivative(" },
+  { name: "factorial", desc: "Factorial of an integer", insert: "factorial(" },
+  { name: "gamma", desc: "Euler gamma function", insert: "gamma(" },
+  { name: "gcd", desc: "Greatest common divisor", insert: "gcd(" },
+  { name: "lcm", desc: "Least common multiple", insert: "lcm(" },
+  { name: "random", desc: "Generate a random float in [0, 1)", insert: "random(" },
+  { name: "randomInt", desc: "Generate a random integer", insert: "randomInt(" },
+  { name: "combinations", desc: "Number of combinations (nCr)", insert: "combinations(" },
+  { name: "permutations", desc: "Number of permutations (nPr)", insert: "permutations(" },
+
+  // Numeric Utility Functions
   { name: "round", desc: "Round to nearest integer", insert: "round(" },
   { name: "floor", desc: "Round down", insert: "floor(" },
-  { name: "ceil", desc: "Round up", insert: "ceil(" }
+  { name: "ceil", desc: "Round up", insert: "ceil(" },
+  { name: "fix", desc: "Round towards zero", insert: "fix(" },
+  { name: "square", desc: "Square of x (x^2)", insert: "square(" },
+  { name: "cube", desc: "Cube of x (x^3)", insert: "cube(" },
+  { name: "isPrime", desc: "Checks if number is prime", insert: "isPrime(" },
+
+  // Complex numbers
+  { name: "complex", desc: "Create a complex number", insert: "complex(" },
+  { name: "conj", desc: "Conjugate of a complex number", insert: "conj(" },
+  { name: "re", desc: "Real part of complex number", insert: "re(" },
+  { name: "im", desc: "Imaginary part of complex number", insert: "im(" },
+  { name: "arg", desc: "Argument / phase of complex number", insert: "arg(" },
+
+  // Constants
+  { name: "pi", desc: "Constant π (3.14159...)", insert: "pi" },
+  { name: "e", desc: "Constant e (2.71828...)", insert: "e" },
+  { name: "phi", desc: "Golden ratio (1.61803...)", insert: "phi" },
+  { name: "i", desc: "Imaginary unit constant", insert: "i" },
+  { name: "LN2", desc: "Natural log of 2", insert: "LN2" },
+  { name: "LN10", desc: "Natural log of 10", insert: "LN10" },
+  { name: "LOG2E", desc: "Log base 2 of e", insert: "LOG2E" },
+  { name: "LOG10E", desc: "Log base 10 of e", insert: "LOG10E" },
+  { name: "SQRT1_2", desc: "Square root of 1/2", insert: "SQRT1_2" },
+  { name: "SQRT2", desc: "Square root of 2", insert: "SQRT2" }
 ];
 
 const EquationInput = ({ value, onChange, variables, hoveredVar, error, onAddEnter }: any) => {
@@ -412,8 +500,21 @@ const EquationInput = ({ value, onChange, variables, hoveredVar, error, onAddEnt
         ...variables.map((v: any) => ({ name: v.name, desc: v.displayName || `Variable ${v.name}`, insert: v.name })),
         { name: "theta", desc: "Polar angle", insert: "theta" }
       ];
-      const filtered = dynamicCompletions.filter(c => c.name.startsWith(search));
-      setSuggestions(filtered);
+      
+      const filtered = dynamicCompletions.filter(c => 
+        c.name.toLowerCase().includes(search) || 
+        c.desc.toLowerCase().includes(search)
+      );
+      
+      const sorted = [...filtered].sort((a, b) => {
+        const aStarts = a.name.toLowerCase().startsWith(search);
+        const bStarts = b.name.toLowerCase().startsWith(search);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      
+      setSuggestions(sorted.slice(0, 8));
       setSelIndex(0);
     } else {
       setSuggestions([]);
@@ -421,21 +522,34 @@ const EquationInput = ({ value, onChange, variables, hoveredVar, error, onAddEnt
     if (containerRef.current) {
        setInputRect(containerRef.current.getBoundingClientRect());
     }
-  }, [value, cursorPos, isFocused]);
+  }, [value, cursorPos, isFocused, variables]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
+    const search = match ? match[0].toLowerCase() : "";
+    
     const dynamicCompletions = [
       ...MATH_COMPLETIONS,
-      ...variables.map(v => ({ name: v.name, desc: v.displayName || `Variable ${v.name}`, insert: v.name })),
+      ...variables.map((v: any) => ({ name: v.name, desc: v.displayName || `Variable ${v.name}`, insert: v.name })),
       { name: "theta", desc: "Polar angle", insert: "theta" }
     ];
 
+    const filtered = dynamicCompletions.filter(c => 
+      c.name.toLowerCase().includes(search) || 
+      c.desc.toLowerCase().includes(search)
+    );
+    
+    const sortedCompletions = [...filtered].sort((a, b) => {
+      const aStarts = a.name.toLowerCase().startsWith(search);
+      const bStarts = b.name.toLowerCase().startsWith(search);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      return a.name.localeCompare(b.name);
+    }).slice(0, 8);
+
     if (e.ctrlKey && e.key === " ") {
       e.preventDefault();
-      const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
-      const search = match ? match[0].toLowerCase() : "";
-      const filtered = dynamicCompletions.filter(c => c.name.startsWith(search));
-      setSuggestions(filtered);
+      setSuggestions(sortedCompletions);
       setSelIndex(0);
       return;
     }
@@ -449,12 +563,12 @@ const EquationInput = ({ value, onChange, variables, hoveredVar, error, onAddEnt
          const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
          const before = match ? value.slice(0, cursorPos - match[0].length) : value.slice(0, cursorPos);
          const after = value.slice(cursorPos);
-         const insert = suggestions[selIndex].insert;
-         onChange(before + insert + after);
+         const s = suggestions[selIndex];
+         onChange(before + s.insert + after);
          setSuggestions([]);
          setTimeout(() => {
             if (inputRef.current) {
-              const newPos = before.length + insert.length;
+              const newPos = before.length + s.insert.length;
               inputRef.current.selectionStart = newPos;
               inputRef.current.selectionEnd = newPos;
               setCursorPos(newPos);
@@ -906,8 +1020,37 @@ const ImplicitPlot: React.FC<{
 
     const evalF = (x: number, y: number): number => {
       try {
-        const lhs = Number(compiledLHS.evaluate({ ...baseScope, x: x - tx, y: y - ty }));
-        const rhs = compiledRHS ? Number(compiledRHS.evaluate({ ...baseScope, x: x - tx, y: y - ty })) : 0;
+        const lhsRaw = compiledLHS.evaluate({ ...baseScope, x: x - tx, y: y - ty });
+        const rhsRaw = compiledRHS ? compiledRHS.evaluate({ ...baseScope, x: x - tx, y: y - ty }) : 0;
+
+        let lhsVal = lhsRaw;
+        let rhsVal = rhsRaw;
+
+        // Helper to check if a value is a matrix or 2D array
+        const isMatrixLike = (val: any) => {
+          if (!val) return false;
+          if (Array.isArray(val)) return true;
+          if (typeof val === 'object' && (val.isMatrix || val.constructor?.name === 'Matrix' || Array.isArray(val.toArray?.()))) return true;
+          return false;
+        };
+
+        if (isMatrixLike(lhsVal)) {
+          try {
+            lhsVal = mathjs.det(lhsVal);
+          } catch {
+            // fallback if not a square matrix or det fails
+          }
+        }
+        if (isMatrixLike(rhsVal)) {
+          try {
+            rhsVal = mathjs.det(rhsVal);
+          } catch {
+            // fallback
+          }
+        }
+
+        const lhs = Number(lhsVal);
+        const rhs = Number(rhsVal);
         return lhs - rhs;
       } catch {
         return NaN;
@@ -1196,6 +1339,31 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [activeColorPickerType, setActiveColorPickerType] = useState<"outline" | "fill" | null>(null);
   const [activeColorPickerTriggerEl, setActiveColorPickerTriggerEl] = useState<HTMLElement | null>(null);
   const [expandedSettingsFnId, setExpandedSettingsFnId] = useState<string | null>(null);
+  
+  const [savingFormulaFnId, setSavingFormulaFnId] = useState<string | null>(null);
+  const [formulaName, setFormulaName] = useState("");
+  const [formulaDesc, setFormulaDesc] = useState("");
+  const [previewCopied, setPreviewCopied] = useState(false);
+  const [showPreviewLatex, setShowPreviewLatex] = useState(true);
+  const savedFormulas = useLiveQuery(() => db.customFormulas.toArray()) || [];
+  const [localFormulas, setLocalFormulas] = useState<any[]>([]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [draggedGroup, setDraggedGroup] = useState<"favorite" | "regular" | null>(null);
+  const [dragEnabledFormulaId, setDragEnabledFormulaId] = useState<number | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [hoveredGroup, setHoveredGroup] = useState<"favorite" | "regular" | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<"top" | "bottom" | null>(null);
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
+  const [copiedFormulaId, setCopiedFormulaId] = useState<number | null>(null);
+  const [formulaSearchQuery, setFormulaSearchQuery] = useState("");
+  const [editingFormulaFieldId, setEditingFormulaFieldId] = useState<number | null>(null);
+  const [editingFormulaExpr, setEditingFormulaExpr] = useState("");
+
+  useEffect(() => {
+    if (draggedIndex === null && draggedGroup === null) {
+      setLocalFormulas(savedFormulas);
+    }
+  }, [savedFormulas, draggedIndex, draggedGroup]);
   
   const [functions, setFunctions] = useState<MathFunction[]>(() => {
     if (typeof data.value === "string") {
@@ -1762,6 +1930,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
          { id: "v1", name: "mu", displayName: "Mean", description: "Center of distribution", value: 0, defaultValue: 0, min: -10, max: 10, step: 0.5, groupId: "default" },
          { id: "v2", name: "sigma", displayName: "Standard Dev", description: "Spread of distribution", value: 1, defaultValue: 1, min: 0.1, max: 5, step: 0.1, groupId: "default" },
        ]);
+    } else if (exampleName === 'Matrix') {
+       setFunctions([
+         { id: "f1", expr: "A = [2, 3]", type: "point", color: COLORS[0], visible: true, isDraggable: true },
+         { id: "f2", expr: "B = [-2, -1]", type: "point", color: COLORS[1], visible: true, isDraggable: true },
+         { id: "f3", expr: "[[x, y, 1], [A[1], A[2], 1], [B[1], B[2], 1]] = 0", type: "implicit", color: COLORS[2], visible: true }
+       ]);
+       setVariables([]);
     }
   };
 
@@ -1777,6 +1952,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 cursor-move drag-handle">
         <div className="flex items-center gap-2">
+          {isFullscreen && (
+            <button
+              onClick={() => {
+                setIsPanelVisible(!isPanelVisible);
+                setIsMobileSidebarOpen(!isMobileSidebarOpen);
+              }}
+              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center"
+              title="Toggle Function Input Panel"
+            >
+              <Menu size={16} />
+            </button>
+          )}
           <Layers size={16} className="hidden md:block text-blue-500 dark:text-blue-400" />
           <span className="font-semibold text-sm text-slate-800 dark:text-slate-300 truncate">Advanced Math Graph</span>
         </div>
@@ -1811,7 +1998,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         {isMobileSidebarOpen && (
           <div 
             className="absolute inset-0 bg-slate-900/20 dark:bg-slate-900/40 z-10 md:hidden nodrag"
-            onClick={() => setIsMobileSidebarOpen(false)}
+            onClick={() => {
+              setIsMobileSidebarOpen(false);
+              setIsPanelVisible(false);
+            }}
           />
         )}
         
@@ -1939,6 +2129,178 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                            onAddEnter={handleAddFunction}
                         />
                       </div>
+                      {savingFormulaFnId === f.id && createPortal(
+                        <div className="fixed inset-0 z-[100000] bg-[#070b13]/85 backdrop-blur-md flex items-center justify-center p-4">
+                          <div className="bg-[#090e18] border border-[#1e2e4e]/40 w-full max-w-[340px] rounded-xl flex flex-col gap-3 p-4 shadow-2xl text-slate-200 animate-fadeIn cursor-default nodrag">
+                            
+                            {/* Header Row */}
+                            <div className="flex items-center justify-between pb-1.5 border-b border-[#1e293b]/50">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Bookmark size={15} className="text-amber-500 fill-amber-500" />
+                                <h2 className="text-xs font-bold text-slate-100 font-sans tracking-wide truncate">Save Formula</h2>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="bg-[#132A4A]/60 text-[#7bb4ec] font-mono text-[9px] font-semibold px-2 py-0.5 rounded border border-[#214374]/30 max-w-[110px] truncate" title={f.expr}>
+                                  {f.type === 'polar' ? 'r = ' : f.type === 'parametric' ? '[x,y] = ' : 'y = '}{f.expr}
+                                </span>
+                                <button 
+                                  type="button"
+                                  onClick={() => setSavingFormulaFnId(null)}
+                                  className="text-slate-400 hover:text-slate-105 transition-colors p-0.5 rounded"
+                                >
+                                  <X size={13} className="stroke-[2.5]" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Inputs */}
+                            <div className="flex flex-col gap-3">
+                              {/* Formula Name */}
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest font-sans">Formula Name</label>
+                                <div className="flex items-stretch bg-[#0D1527]/75 border border-[#1E2E4E]/40 focus-within:border-blue-500 rounded-lg overflow-hidden h-8 px-2 transition-all relative">
+                                  <input 
+                                    type="text" 
+                                    maxLength={60}
+                                    value={formulaName} 
+                                    onChange={e => setFormulaName(e.target.value)} 
+                                    placeholder="e.g., Polar Rose" 
+                                    className="flex-1 bg-transparent border-none text-slate-100 placeholder:text-slate-500 text-[11px] h-full w-full outline-none focus:outline-none focus:ring-0 font-sans font-medium"
+                                    required 
+                                  />
+                                  <div className="flex items-center gap-1 select-none pointer-events-none pl-1">
+                                    <span className="text-[8px] font-mono text-slate-500">
+                                      {formulaName.length}/60
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Description */}
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest font-sans">Description (optional)</label>
+                                <div className="flex bg-[#0D1527]/75 border border-[#1E2E4E]/40 focus-within:border-blue-500 rounded-lg overflow-hidden transition-all relative p-1.5">
+                                  <textarea 
+                                    maxLength={200}
+                                    value={formulaDesc} 
+                                    onChange={e => setFormulaDesc(e.target.value)} 
+                                    placeholder="A curve resembling a rose with petals..." 
+                                    className="flex-1 bg-transparent border-none text-slate-100 placeholder:text-slate-500 text-[10.5px] h-10 w-full outline-none resize-none focus:outline-none focus:ring-0 leading-normal font-sans font-medium"
+                                    rows={1}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Formula Preview with actions at top right */}
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest font-sans">Formula Preview</label>
+                                  <div className="flex items-center gap-1.5 select-none">
+                                    {/* Small Eye button to toggle raw / rendered */}
+                                    <button 
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setShowPreviewLatex(!showPreviewLatex);
+                                      }}
+                                      className={`p-0.5 rounded border flex items-center justify-center h-5 w-5 cursor-pointer transition-colors ${
+                                        showPreviewLatex 
+                                          ? 'bg-blue-600/10 text-blue-405 border-blue-500/20 hover:bg-blue-600/20' 
+                                          : 'bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-700/45'
+                                      }`}
+                                      title={showPreviewLatex ? "Show Raw Text Code" : "Show LaTeX Math Layout"}
+                                    >
+                                      <Eye size={11} className="stroke-[2]" />
+                                    </button>
+
+                                    {/* Compact Copy action */}
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(f.expr);
+                                        setPreviewCopied(true);
+                                        setTimeout(() => setPreviewCopied(false), 2000);
+                                      }}
+                                      className="h-5 px-1.5 bg-[#16273e] hover:bg-slate-850 text-blue-450 hover:text-blue-300 font-semibold rounded border border-[#2b4260] cursor-pointer transition-colors shadow-xs text-[9px] flex items-center gap-1"
+                                    >
+                                      <Copy size={9} />
+                                      <span>{previewCopied ? "Saved!" : "Copy"}</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="bg-[#0B101D]/75 border border-[#1e293b]/50 rounded-lg p-2.5 flex flex-col shadow-inner">
+                                  <div className="bg-[#111A2E] border border-[#1E2E4E]/30 rounded-lg p-2 min-h-[3rem] flex flex-col justify-center items-center overflow-x-auto">
+                                    <div className="w-full flex items-center justify-center select-all">
+                                      {showPreviewLatex ? (() => {
+                                        try {
+                                          const parsed = mathjs.parse(f.expr);
+                                          const texStr = parsed.toTex();
+                                          let prefix = "";
+                                          if (f.type === 'polar') prefix = "r = ";
+                                          else if (f.type === 'parametric') prefix = "[x,y] = ";
+                                          else prefix = "y = ";
+                                          
+                                          const fullTex = prefix + texStr;
+                                          const html = katex.renderToString(fullTex, { throwOnError: true, displayMode: false });
+                                          return <div className="text-slate-100 [&_.katex]:text-xs font-sans tracking-normal text-center" dangerouslySetInnerHTML={{ __html: html }} />;
+                                        } catch (err) {
+                                          return (
+                                            <div className="font-mono text-[10px] text-blue-400 font-bold">
+                                              {f.type === 'polar' ? 'r = ' : f.type === 'parametric' ? '[x,y] = ' : 'y = '}{f.expr}
+                                            </div>
+                                          );
+                                        }
+                                      })() : (
+                                        <div className="font-mono text-[10px] text-slate-300 bg-[#090e18]/80 px-2 py-1 rounded border border-[#1e2e4e]/30 select-all max-w-full overflow-x-auto break-all tracking-wide text-center">
+                                          {f.type === 'polar' ? 'r = ' : f.type === 'parametric' ? '[x,y] = ' : 'y = '}{f.expr}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Footer Actions */}
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e293b]/50">
+                              <button 
+                                type="button" 
+                                onClick={() => setSavingFormulaFnId(null)} 
+                                className="text-slate-400 hover:text-slate-205 transition-colors font-semibold text-[10px] font-sans px-3 py-1 rounded-md cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={async () => {
+                                  if (!formulaName.trim()) return;
+                                  try {
+                                    await db.customFormulas.add({
+                                      name: formulaName.trim(),
+                                      description: formulaDesc.trim() || undefined,
+                                      expr: f.expr,
+                                      type: f.type,
+                                      createdAt: Date.now()
+                                    });
+                                    setSavingFormulaFnId(null);
+                                  } catch (err) {
+                                    console.error("Error saving formula: ", err);
+                                  }
+                                }} 
+                                disabled={!formulaName.trim()}
+                                className="bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[10px] font-bold font-sans rounded-lg px-3.5 h-7.5 flex items-center justify-center gap-1 cursor-pointer transition-all active:scale-[0.98] select-none shadow-md"
+                              >
+                                <Save size={11} className="text-white fill-none" />
+                                <span>Save</span>
+                              </button>
+                            </div>
+
+                          </div>
+                        </div>,
+                        document.body
+                      )}
                       {expandedSettingsFnId === f.id && (
                           <div className="flex flex-col mt-2 pl-[48px] gap-2.5 text-[11px] pb-1 animate-fadeIn">
                             {/* General Behaviors */}
@@ -2310,6 +2672,22 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         >
                           <CopyPlus size={14} strokeWidth={2} />
                         </button>
+                        <button 
+                          onClick={() => { 
+                            setActiveActionMenuId(null); 
+                            setFormulaName(f.name || "");
+                            setFormulaDesc("");
+                            setSavingFormulaFnId(savingFormulaFnId === f.id ? null : f.id); 
+                          }}
+                          className={`p-1.5 md:p-1 rounded transition-all flex items-center justify-center ${
+                            savingFormulaFnId === f.id 
+                              ? 'opacity-100 bg-amber-500/10 text-amber-500 dark:text-amber-400' 
+                              : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 animate-pulse-subtle'
+                          }`}
+                          title="Save to My Formula Library (IndexedDB)"
+                        >
+                          <Bookmark size={14} fill={savingFormulaFnId === f.id ? "currentColor" : "none"} />
+                        </button>
                         <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity hidden md:block"></div>
                         <button 
                           onClick={() => { setActiveActionMenuId(null); handleRemoveFunction(f.id); }}
@@ -2323,6 +2701,551 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   </div>
                 ))}
               </div>
+
+              {/* My Custom Formulas Library (IndexedDB) */}
+              {(() => {
+                // Use standard savedFormulas for stable ordering during the drag
+                const activeFormulas = savedFormulas;
+
+                // Filter by search text
+                const filteredFormulas = activeFormulas.filter(f => 
+                  f.name.toLowerCase().includes(formulaSearchQuery.toLowerCase())
+                );
+
+                // Group and sort
+                const favoriteFormulas = filteredFormulas
+                  .filter(f => f.isFavorite)
+                  .sort((a, b) => {
+                    const orderA = (a as any).sortOrder !== undefined ? (a as any).sortOrder : (a.id || 0);
+                    const orderB = (b as any).sortOrder !== undefined ? (b as any).sortOrder : (b.id || 0);
+                    return orderA - orderB;
+                  });
+
+                const nonFavoriteFormulas = filteredFormulas
+                  .filter(f => !f.isFavorite)
+                  .sort((a, b) => {
+                    const orderA = (a as any).sortOrder !== undefined ? (a as any).sortOrder : (a.id || 0);
+                    const orderB = (b as any).sortOrder !== undefined ? (b as any).sortOrder : (b.id || 0);
+                    return orderA - orderB;
+                  });
+
+                const renderDropIndicator = (insertIndex: number, currentGroup: "favorite" | "regular") => {
+                  let show = false;
+                  if (draggedIndex !== null && hoveredIndex !== null && hoveredGroup === currentGroup && draggedGroup === currentGroup && dragOverPosition !== null) {
+                    let computedIndex = hoveredIndex;
+                    if (dragOverPosition === "bottom") {
+                      computedIndex = hoveredIndex + 1;
+                    }
+                    show = computedIndex === insertIndex;
+                  }
+                  
+                  const isFav = currentGroup === "favorite";
+                  
+                  return (
+                    <div 
+                      className={`relative w-full transition-all duration-300 ease-out flex items-center pointer-events-none select-none z-30 ${
+                        show ? "h-6 my-1 opacity-100 scale-y-100" : "h-0 my-0 opacity-0 scale-y-0"
+                      }`}
+                    >
+                      <div className="absolute inset-x-0 h-1 flex items-center pr-1.5 pl-0.5">
+                        <div className={`h-0.5 w-full rounded-full relative ${
+                          isFav 
+                            ? "bg-rose-500 shadow-[0_0_12px_#f43f5e] dark:shadow-[0_0_15px_#f43f5e]" 
+                            : "bg-blue-500 shadow-[0_0_12px_#3b82f6] dark:shadow-[0_0_15px_#3b82f6]"
+                        }`}>
+                          <div className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rounded-full ring-[4px] transition-all duration-300 ${
+                            isFav 
+                              ? "bg-rose-450 ring-rose-500/30" 
+                              : "bg-blue-450 ring-blue-500/30"
+                          } ${show ? "scale-100 opacity-100" : "scale-0 opacity-0"}`} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+
+                const handleDragStart = (e: React.DragEvent, index: number, group: "favorite" | "regular") => {
+                  setDraggedIndex(index);
+                  setDraggedGroup(group);
+                  e.dataTransfer.effectAllowed = "move";
+                };
+
+                const handleDragOver = (e: React.DragEvent, hoverIndex: number, group: "favorite" | "regular") => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const relativeY = e.clientY - rect.top;
+                  const isTopHalf = relativeY < rect.height / 2;
+                  setHoveredIndex(hoverIndex);
+                  setHoveredGroup(group);
+                  setDragOverPosition(isTopHalf ? "top" : "bottom");
+                };
+
+                const handleDragLeave = () => {
+                  setHoveredIndex(null);
+                  setHoveredGroup(null);
+                  setDragOverPosition(null);
+                };
+
+                const handleDragEnd = async () => {
+                  if (draggedIndex !== null && hoveredIndex !== null && draggedGroup !== null && draggedGroup === hoveredGroup && dragOverPosition !== null) {
+                    const isFav = draggedGroup === "favorite";
+                    const groupItems = savedFormulas
+                      .filter(f => isFav ? f.isFavorite : !f.isFavorite)
+                      .sort((a, b) => {
+                        const orderA = (a as any).sortOrder !== undefined ? (a as any).sortOrder : (a.id || 0);
+                        const orderB = (b as any).sortOrder !== undefined ? (b as any).sortOrder : (b.id || 0);
+                        return orderA - orderB;
+                      });
+
+                    if (draggedIndex >= 0 && draggedIndex < groupItems.length && hoveredIndex >= 0 && hoveredIndex < groupItems.length) {
+                      const draggedItem = groupItems[draggedIndex];
+                      let targetIndex = hoveredIndex;
+                      if (dragOverPosition === "bottom") {
+                        targetIndex = hoveredIndex + 1;
+                      }
+                      if (targetIndex > draggedIndex) {
+                        targetIndex--;
+                      }
+                      groupItems.splice(draggedIndex, 1);
+                      groupItems.splice(targetIndex, 0, draggedItem);
+
+                      for (let i = 0; i < groupItems.length; i++) {
+                        if (groupItems[i].id) {
+                          await db.customFormulas.update(groupItems[i].id, { sortOrder: i } as any);
+                        }
+                      }
+                    }
+                  }
+
+                  setDraggedIndex(null);
+                  setDraggedGroup(null);
+                  setHoveredIndex(null);
+                  setHoveredGroup(null);
+                  setDragOverPosition(null);
+                  setDragEnabledFormulaId(null);
+                };
+
+                const toggleFavorite = async (formula: any) => {
+                  if (formula.id) {
+                    await db.customFormulas.update(formula.id, { isFavorite: !formula.isFavorite });
+                  }
+                };
+
+                const handleSaveExpr = async (id: number) => {
+                  if (editingFormulaExpr.trim()) {
+                    await db.customFormulas.update(id, { expr: editingFormulaExpr.trim() });
+                  }
+                  setEditingFormulaFieldId(null);
+                };
+
+                const renderFormulaLaTeX = (expr: string, type: string) => {
+                  try {
+                    const parsed = mathjs.parse(expr);
+                    const texStr = parsed.toTex();
+                    let prefix = "";
+                    if (type === 'polar') prefix = "r = ";
+                    else if (type === 'parametric') prefix = "[x,y] = ";
+                    else prefix = "y = ";
+                    
+                    const fullTex = prefix + texStr;
+                    const html = katex.renderToString(fullTex, { throwOnError: true, displayMode: false });
+                    return <div className="text-blue-600 dark:text-blue-400 font-sans tracking-wide select-all text-xs" dangerouslySetInnerHTML={{ __html: html }} />;
+                  } catch (err) {
+                    return <span className="font-mono text-xs">{expr}</span>;
+                  }
+                };
+
+                return (
+                  <div className="flex flex-col gap-3.5 pt-4.5 pb-2 border-t border-slate-200 dark:border-slate-800/80">
+                    <div 
+                      onClick={() => setLibraryCollapsed(!libraryCollapsed)}
+                      className="flex items-center justify-between cursor-pointer select-none group/lib-header"
+                    >
+                      <div className="flex flex-col">
+                        <h3 className="font-bold text-xs text-slate-800 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2 font-sans">
+                          <Bookmark size={15} className="text-amber-500 fill-amber-500 transition-transform group-hover/lib-header:scale-110" /> 
+                          <span>My Formulas Library</span>
+                        </h3>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-450 mt-0.5 font-sans">
+                          All your saved formulas in one place
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-[#121B2D] border border-blue-200/50 dark:border-[#213554]/30 px-2.5 py-0.5 rounded-md shadow-xs font-bold transition-all">
+                          {savedFormulas.length} {savedFormulas.length === 1 ? 'formula' : 'formulas'}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-slate-200 transition-colors p-0.5 rounded"
+                        >
+                          {libraryCollapsed ? (
+                            <ChevronDown size={14} className="stroke-[2.5]" />
+                          ) : (
+                            <ChevronUp size={14} className="stroke-[2.5]" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {!libraryCollapsed && (
+                      <div className="flex flex-col gap-3 animate-fadeIn">
+                        {/* Search Bar */}
+                        <div className="relative">
+                          <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                            <Search size={13} className="text-blue-500 dark:text-blue-400" />
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="Search saved formulas by name..."
+                            value={formulaSearchQuery}
+                            onChange={(e) => setFormulaSearchQuery(e.target.value)}
+                            className="w-full pl-8 pr-7 py-1.5 bg-white dark:bg-[#070b13] border border-slate-200 dark:border-[#1e293b]/70 hover:border-blue-300 dark:hover:border-blue-500/40 focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg outline-none text-[11px] font-sans font-medium text-slate-800 dark:text-slate-100 transition-all placeholder:text-slate-450 dark:placeholder:text-slate-500 shadow-sm"
+                          />
+                          {formulaSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setFormulaSearchQuery("")}
+                              className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                            >
+                              <X size={12} className="stroke-[2.5]" />
+                            </button>
+                          )}
+                        </div>
+
+                        {savedFormulas.length === 0 ? (
+                          <div className="text-[11px] text-slate-450 dark:text-slate-550 italic p-3 text-center rounded-xl bg-slate-50/50 dark:bg-slate-900/10 border border-slate-200/50 dark:border-slate-800/30 select-none">
+                            No custom formulas saved yet. Click the <Bookmark size={11} className="inline mx-0.5 text-slate-400" /> icon on any function card to save it.
+                          </div>
+                        ) : filteredFormulas.length === 0 ? (
+                          <div className="text-[11px] text-slate-450 dark:text-slate-550 italic py-4 text-center rounded-xl bg-slate-50/50 dark:bg-slate-900/10 border border-slate-200/50 dark:border-slate-800/30 select-none">
+                            No formulas match "{formulaSearchQuery}"
+                          </div>
+                        ) : (
+                          <div 
+                            className="flex flex-col gap-3.5 max-h-[380px] overflow-y-auto custom-scrollbar pr-1"
+                            style={{ scrollbarGutter: "stable" }}
+                          >
+                                                      {/* Favorite Formulas list (Always on Top) */}
+                            {favoriteFormulas.length > 0 && (
+                              <div className="flex flex-col gap-1.5 animate-fadeIn">
+                                <div className="text-[9px] font-semibold text-rose-500 dark:text-rose-450 tracking-wider uppercase flex items-center gap-1 mb-0.5 px-0.5 font-sans">
+                                  <Heart size={10} className="fill-rose-500 text-rose-500 animate-pulse" />
+                                  <span>Favorites ({favoriteFormulas.length})</span>
+                                </div>
+                                 {favoriteFormulas.map((formula, index) => (
+                                  <React.Fragment key={formula.id}>
+                                    {renderDropIndicator(index, "favorite")}
+                                    <div 
+                                      draggable={dragEnabledFormulaId === formula.id}
+                                      onDragStart={(e) => handleDragStart(e, index, "favorite")}
+                                      onDragOver={(e) => handleDragOver(e, index, "favorite")}
+                                      onDragLeave={handleDragLeave}
+                                      onDragEnd={handleDragEnd}
+                                      className={`p-3 border border-rose-200/40 dark:border-rose-500/15 bg-rose-50/15 dark:bg-[#0D1527]/90 hover:bg-rose-50/25 dark:hover:bg-[#131f3c] rounded-xl flex flex-col gap-2 group/formula transition-all duration-200 shadow-[0_0_15px_rgba(244,63,94,0.02)] relative lg:hover:shadow-[0_0_15px_rgba(244,63,94,0.05)] ${
+                                        draggedIndex === index && draggedGroup === "favorite" 
+                                          ? 'opacity-15 border-dashed border-rose-500 bg-rose-550/5 scale-[0.98] shadow-inner scale-y-95 transition-all duration-200' 
+                                          : ''
+                                      }`}
+                                    >
+                                      {/* Header Row */}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          {/* Grip handle */}
+                                          <div 
+                                            onMouseDown={() => setDragEnabledFormulaId(formula.id || null)}
+                                            onMouseUp={() => setDragEnabledFormulaId(null)}
+                                            onMouseLeave={() => setDragEnabledFormulaId(null)}
+                                            className="cursor-grab active:cursor-grabbing text-rose-450 hover:text-rose-500 p-0.5 -ml-1 select-none flex items-center justify-center animate-pulse"
+                                          >
+                                            <GripVertical size={13} className="opacity-80 group-hover/formula:opacity-100" />
+                                          </div>
+                                          
+                                          {/* Clickable Heart button (active favorited) */}
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleFavorite(formula)}
+                                            className="text-[#F43F5E] hover:scale-115 transition-transform p-0.5 cursor-pointer flex items-center justify-center"
+                                            title="Remove from favorites"
+                                          >
+                                            <Heart size={14} className="text-[#F43F5E] fill-[#F43F5E] stroke-[2.5]" />
+                                          </button>
+                                          
+                                          {/* Name */}
+                                          <span className="font-bold text-xs text-rose-950 dark:text-rose-100 truncate" title={formula.name}>
+                                            {formula.name}
+                                          </span>
+                                          
+                                          {/* Tag */}
+                                          <span className="text-[8px] tracking-wider uppercase font-extrabold select-none bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded font-sans leading-none ml-1">
+                                            {formula.type === 'polar' ? 'POLAR' : formula.type === 'parametric' ? 'PARAMETRIC' : 'FUNCTION'}
+                                          </span>
+                                        </div>
+                                        
+                                        {/* Quick insertion & delete actions */}
+                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                          <button 
+                                            onClick={() => {
+                                              setActiveExample(null);
+                                              setFunctions(prev => [...prev, { 
+                                                id: Math.random().toString(36).substring(7), 
+                                                expr: formula.expr, 
+                                                color: COLORS[prev.length % COLORS.length], 
+                                                type: (formula.type as any) || 'function', 
+                                                visible: true 
+                                              }]);
+                                            }}
+                                            className="h-7 w-7 bg-rose-500/10 hover:bg-rose-500/20 hover:scale-105 border border-rose-500/25 text-rose-500 rounded-md flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                                            title="Insert Formula Into Graph"
+                                          >
+                                            <Plus size={14} className="stroke-[2.5]" />
+                                          </button>
+                                          
+                                          <button 
+                                            onClick={async () => {
+                                              if (formula.id) {
+                                                await db.customFormulas.delete(formula.id);
+                                              }
+                                            }}
+                                            className="h-7 w-7 bg-red-500/10 hover:bg-red-500/25 text-red-550 rounded-md border border-red-555/20 flex items-center justify-center transition-all opacity-40 group-hover/formula:opacity-100 hover:scale-105 cursor-pointer shadow-xs"
+                                            title="Delete Formula"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </div>
+                                      </div>
+   
+                                      {/* Formula Description */}
+                                      {formula.description && (
+                                        <p className="text-[10px] text-rose-700 dark:text-rose-300 leading-normal pl-5 pr-2">
+                                          {formula.description}
+                                        </p>
+                                      )}
+   
+                                      {/* Edit or Latex field */}
+                                      {editingFormulaFieldId === formula.id ? (
+                                        <div className="pl-5 pr-1 mt-0.5">
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={editingFormulaExpr}
+                                            onChange={(e) => setEditingFormulaExpr(e.target.value)}
+                                            onBlur={() => handleSaveExpr(formula.id!)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") handleSaveExpr(formula.id!);
+                                              if (e.key === "Escape") setEditingFormulaFieldId(null);
+                                            }}
+                                            className="w-full bg-[#070b13] border border-blue-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-450 rounded-lg h-8 px-2.5 outline-none font-mono text-xs text-blue-300 font-bold"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div 
+                                          onClick={() => {
+                                            setEditingFormulaFieldId(formula.id!);
+                                            setEditingFormulaExpr(formula.expr);
+                                          }}
+                                          className="ml-5 flex items-center justify-between bg-white dark:bg-[#070b13]/60 border border-rose-100/60 dark:border-rose-900/20 hover:border-rose-300 dark:hover:border-rose-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
+                                          title="Click to Edit Formula"
+                                        >
+                                          <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
+                                            {renderFormulaLaTeX(formula.expr, formula.type || "function")}
+                                          </div>
+                                          <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 opacity-0 group-hover/math-block:opacity-100 transition-opacity">
+                                            <Edit2 size={11} className="text-pink-400" />
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigator.clipboard.writeText(formula.expr);
+                                                setCopiedFormulaId(formula.id || null);
+                                                setTimeout(() => setCopiedFormulaId(null), 2000);
+                                              }}
+                                              className="p-0.5 hover:bg-pink-500/10 dark:hover:bg-pink-500/20 text-pink-400 rounded transition-all cursor-pointer flex items-center justify-center h-5 w-5"
+                                              title="Copy Raw Expression String"
+                                            >
+                                              {copiedFormulaId === formula.id ? (
+                                                <Check size={11} className="text-emerald-450 stroke-[3]" />
+                                              ) : (
+                                                <Copy size={11} />
+                                              )}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+   
+                                    </div>
+                                  </React.Fragment>
+                                ))}
+                                {renderDropIndicator(favoriteFormulas.length, "favorite")}
+                              </div>
+                            )}
+ 
+                            {/* Standard Formulas list */}
+                            <div className="flex flex-col gap-2">
+                              {favoriteFormulas.length > 0 && nonFavoriteFormulas.length > 0 && (
+                                <div className="text-[9px] font-semibold text-slate-400 dark:text-slate-450 tracking-wider uppercase mt-2 mb-0.5 px-0.5 border-t border-slate-200/40 dark:border-slate-800/40 pt-2.5">
+                                  <span>Other Formulas ({nonFavoriteFormulas.length})</span>
+                                </div>
+                              )}
+                              {nonFavoriteFormulas.map((formula, index) => (
+                                <React.Fragment key={formula.id}>
+                                  {renderDropIndicator(index, "regular")}
+                                  <div 
+                                    draggable={dragEnabledFormulaId === formula.id}
+                                    onDragStart={(e) => handleDragStart(e, index, "regular")}
+                                    onDragOver={(e) => handleDragOver(e, index, "regular")}
+                                    onDragLeave={handleDragLeave}
+                                    onDragEnd={handleDragEnd}
+                                    className={`p-3 border border-slate-200 dark:border-slate-800/40 bg-white dark:bg-[#0D1527]/30 hover:bg-slate-50/70 dark:hover:bg-[#0D1527]/60 rounded-xl flex flex-col gap-2 group/formula transition-all duration-200 shadow-xs relative ${
+                                      draggedIndex === index && draggedGroup === "regular" 
+                                        ? 'opacity-15 border-dashed border-blue-500 bg-blue-500/5 scale-[0.98] shadow-inner scale-y-95 transition-all duration-200' 
+                                        : ''
+                                    }`}
+                                  >
+                                    {/* Header Row */}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        {/* Grip handle */}
+                                        <div 
+                                          onMouseDown={() => setDragEnabledFormulaId(formula.id || null)}
+                                          onMouseUp={() => setDragEnabledFormulaId(null)}
+                                          onMouseLeave={() => setDragEnabledFormulaId(null)}
+                                          className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-300 p-0.5 -ml-1 select-none flex items-center justify-center"
+                                        >
+                                          <GripVertical size={13} className="opacity-60 group-hover/formula:opacity-100 transition-opacity" />
+                                        </div>
+                                        
+                                        {/* Clickable Heart outline button to set favorite */}
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleFavorite(formula)}
+                                          className="text-slate-400 hover:text-[#F43F5E] dark:text-slate-500 dark:hover:text-[#F43F5E] hover:scale-115 transition-transform p-0.5 cursor-pointer flex items-center justify-center"
+                                          title="Add to favorites"
+                                        >
+                                          <Heart size={14} className="fill-none stroke-[2.5]" />
+                                        </button>
+                                        
+                                        {/* Name */}
+                                        <span className="font-bold text-xs text-slate-850 dark:text-slate-100 truncate" title={formula.name}>
+                                          {formula.name}
+                                        </span>
+                                        
+                                        {/* Tag */}
+                                        <span className="text-[8px] tracking-wider uppercase font-extrabold select-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-sans leading-none ml-1">
+                                          {formula.type === 'polar' ? 'POLAR' : formula.type === 'parametric' ? 'PARAMETRIC' : 'FUNCTION'}
+                                        </span>
+                                      </div>
+                                      
+                                      {/* Action row */}
+                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        <button 
+                                          onClick={() => {
+                                            setActiveExample(null);
+                                            setFunctions(prev => [...prev, { 
+                                              id: Math.random().toString(36).substring(7), 
+                                              expr: formula.expr, 
+                                              color: COLORS[prev.length % COLORS.length], 
+                                              type: (formula.type as any) || 'function', 
+                                              visible: true 
+                                            }]);
+                                          }}
+                                          className="h-7 w-7 bg-blue-600/10 hover:bg-blue-600/20 hover:scale-105 border border-blue-500/25 text-blue-500 dark:text-blue-400 rounded-md flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                                          title="Insert Formula Into Graph"
+                                        >
+                                          <Plus size={14} className="stroke-[2.5]" />
+                                        </button>
+                                        
+                                        <button 
+                                          onClick={async () => {
+                                            if (formula.id) {
+                                              await db.customFormulas.delete(formula.id);
+                                            }
+                                          }}
+                                          className="h-7 w-7 bg-red-500/10 hover:bg-red-500/25 text-red-500 rounded-md border border-red-500/15 flex items-center justify-center transition-all opacity-40 group-hover/formula:opacity-100 hover:scale-105 cursor-pointer shadow-xs"
+                                          title="Delete Formula"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </div>
+   
+                                    {/* Formula Description */}
+                                    {formula.description && (
+                                      <p className="text-[10px] text-slate-500 dark:text-slate-450 leading-normal pl-5 pr-2">
+                                        {formula.description}
+                                      </p>
+                                    )}
+   
+                                    {/* Click to Edit / Blur to LaTeX Block */}
+                                    {editingFormulaFieldId === formula.id ? (
+                                      <div className="pl-5 pr-1 mt-0.5">
+                                        <input
+                                          type="text"
+                                          autoFocus
+                                          value={editingFormulaExpr}
+                                          onChange={(e) => setEditingFormulaExpr(e.target.value)}
+                                          onBlur={() => handleSaveExpr(formula.id!)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleSaveExpr(formula.id!);
+                                            if (e.key === "Escape") setEditingFormulaFieldId(null);
+                                          }}
+                                          className="w-full bg-[#0D1527] border border-blue-500 hover:border-blue-400 focus:ring-1 focus:ring-blue-450 rounded-lg h-8 px-2.5 outline-none font-mono text-xs text-blue-300 font-bold"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div 
+                                        onClick={() => {
+                                          setEditingFormulaFieldId(formula.id!);
+                                          setEditingFormulaExpr(formula.expr);
+                                        }}
+                                        className="ml-5 flex items-center justify-between bg-slate-50 dark:bg-[#0D1527]/20 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
+                                        title="Click to Edit Formula"
+                                      >
+                                        <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
+                                          {renderFormulaLaTeX(formula.expr, formula.type || "function")}
+                                        </div>
+                                        <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 opacity-0 group-hover/math-block:opacity-100 transition-opacity">
+                                          <Edit2 size={11} className="text-blue-400" />
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigator.clipboard.writeText(formula.expr);
+                                              setCopiedFormulaId(formula.id || null);
+                                              setTimeout(() => setCopiedFormulaId(null), 2000);
+                                            }}
+                                            className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-300 rounded transition-all cursor-pointer flex items-center justify-center h-5 w-5"
+                                            title="Copy Raw Expression String"
+                                          >
+                                            {copiedFormulaId === formula.id ? (
+                                              <Check size={11} className="text-emerald-450 stroke-[3]" />
+                                            ) : (
+                                              <Copy size={11} />
+                                            )}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+   
+                                  </div>
+                                </React.Fragment>
+                              ))}
+                              {renderDropIndicator(nonFavoriteFormulas.length, "regular")}
+                            </div>
+
+                          </div>
+                        )}
+                        
+                        {/* Informative Notion Footer */}
+                        <div className="flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-slate-400/90 dark:text-slate-500 font-sans tracking-wide select-none font-semibold text-center border-t border-slate-200/40 dark:border-slate-800/40 mt-1">
+                          <Sparkles size={11} className="text-blue-400 animate-pulse fill-blue-400/10" />
+                          <span>Drag to reorder • Click + to add a new formula</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Popular & Examples */}
               <div className="flex flex-col gap-4 pt-3 border-t border-slate-200 dark:border-slate-700/50">
@@ -2338,7 +3261,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         { label: 'Circle', fn: '1', type: 'polar' },
                         { label: 'Spiral', fn: 'a * theta', type: 'polar' },
                         { label: 'Animated Rose', fn: 'sin(3 * theta + t)', type: 'polar' },
-                        { label: 'Ellipse (Implicit)', fn: 'x^2/a^2 + y^2/b^2 = 1', type: 'implicit' }
+                        { label: 'Ellipse (Implicit)', fn: 'x^2/a^2 + y^2/b^2 = 1', type: 'implicit' },
+                        { label: 'Matrix Eq. (Line)', fn: '[[x, y, 1], [2, 3, 1], [-1, -3, 1]] = 0', type: 'implicit' }
                       ].map(tmpl => (
                          <button 
                            key={tmpl.label} 
@@ -2434,6 +3358,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                        >
                           <span className="text-[10px] text-pink-600 font-semibold dark:text-pink-400 group-hover:text-pink-700 dark:group-hover:text-pink-300">Geometry</span>
                           <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">Vectors & Polygons</span>
+                       </button>
+
+                       <button 
+                         onClick={() => handleLoadExample('Matrix')} 
+                         className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
+                           activeExample === 'Matrix'
+                             ? 'bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50'
+                             : 'bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700'
+                         }`}
+                       >
+                          <span className="text-[10px] text-indigo-600 font-semibold dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300">Matrices</span>
+                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">Matrix & Det. Eq.</span>
                        </button>
                    </div>
                 </div>
@@ -3412,7 +4348,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                        <li><strong className="text-blue-400">y = (Function)</strong> Standard Cartesian functions. Example: <code>sin(x)</code></li>
                        <li><strong className="text-blue-400">r = (Polar)</strong> Polar coordinates using 't' or 'theta'. Example: <code>sin(5*t)</code></li>
                        <li><strong className="text-blue-400">[x,y] = (Parametric)</strong> Parametric curves. Example: <code>[cos(t), sin(t)]</code></li>
-                       <li><strong className="text-blue-400">XY = (Implicit)</strong> Not supported dynamically yet. (Placeholder)</li>
+                       <li><strong className="text-blue-400">XY = (Implicit)</strong> Express planar curves, conic sections, or <strong>matrix equations</strong> set to 0. Example: <code>[[x,y,1],[3,4,1],[2,4,1]]=0</code></li>
                        <li><strong className="text-blue-400">V = (Vector)</strong> Draw a directed vector. Example: <code>[3, 1]</code> or <code>A - B</code></li>
                        <li><strong className="text-blue-400">P = (Point)</strong> Plot points on the graph. Example: <code>[2, 3]</code></li>
                        <li><strong className="text-blue-400">Poly = (Polygon)</strong> Draw a filled polygon connecting points. Example: <code>[A, B, C]</code></li>
@@ -3437,6 +4373,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       <li><strong><code className="text-blue-400 font-mono">a, b, c...</code></strong>: Custom variables automatically generate adjustable sliders.</li>
                       <li><strong><code className="text-blue-400 font-mono">x</code></strong>: The built-in horizontal axis space.</li>
                       <li><strong><code className="text-blue-400 font-mono">t</code></strong>: The built-in timeline space. Link it to expressions like <code className="text-blue-400 font-mono">sin(x + t)</code> to create animations!</li>
+                    </ul>
+                  </section>
+                  <section>
+                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">Matrix Determinant Equations</h4>
+                    <p className="mb-2">
+                      Now you can write equations involving the <strong>determinants of matrices</strong> containing variables <code>x</code> and <code>y</code>! Set them to <code>0</code> as an <strong>Implicit</strong> relation to plot complex shapes directly:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1.5 marker:text-slate-500">
+                      <li><strong>Collinear Lines:</strong> <code>[[x, y, 1], [x1, y1, 1], [x2, y2, 1]] = 0</code> evaluates the determinant. If it equates to zero, it defines the line passing through those points.</li>
+                      <li><strong>Dynamic Nodes:</strong> You can reference other draggable coordinates (e.g. <code>A[1]</code> and <code>A[2]</code> representing point <code>A</code>) so your curves and shapes dynamically transform as you drag nodes on the graph!</li>
                     </ul>
                   </section>
                   <section>
