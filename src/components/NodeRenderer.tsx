@@ -32,6 +32,7 @@ import { TsNodeTerminalRenderer } from "./TsNodeTerminalRenderer";
 import { PyNodeRenderer } from "./PyNodeRenderer";
 import { PyNodeCodeRenderer } from "./PyNodeCodeRenderer";
 import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
+import { MathNodeRenderer } from "./MathNodeRenderer";
 import { TodoNodeRenderer } from "./TodoNodeRenderer";
 
 import { SafeModelViewer } from "./SafeModelViewer";
@@ -287,6 +288,7 @@ function NodeRenderer({
   const isPyTerminal = data.type === "py_terminal";
 
   const isTodoNode = typeof data.name === "string" && (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
+  const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
 
   const isManuallyRendered =
     manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
@@ -827,7 +829,7 @@ function NodeRenderer({
 
   let fWidth = customSize
     ? customSize.width
-    : isApiNode ? 340 : isTodoNode ? 385
+    : isApiNode ? 340 : isTodoNode ? 385 : isMathNode ? 600
       : (isJsNode || isTsNode || isPyNode)
         ? 440
         : (isJsCode || isTsCode || isPyCode)
@@ -842,6 +844,7 @@ function NodeRenderer({
   let fHeight = customSize
     ? customSize.height
     : isTodoNode ? (isExpanded ? 360 : 140)
+    : isMathNode ? (isExpanded ? 400 : 140)
     : isMedia
       ? mediaType === "audio"
         ? 140
@@ -864,10 +867,10 @@ function NodeRenderer({
 
   const isDefaultShape = nodeShape === "default";
 
-  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : "max-w-[260px]"}`;
+  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isMathNode ? "max-w-[600px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
 
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode) {
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) {
     shapeClasses = `p-0 !bg-transparent !border-transparent !shadow-none overflow-visible`;
   }
 
@@ -1559,9 +1562,9 @@ function NodeRenderer({
               </div>
             )}
             <div
-              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode ? "p-0" : ""}`}
+              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode ? "p-0" : ""}`}
             >
-              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode) && (
+              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) && (
                 <div className="flex-shrink-0 mr-2 flex items-center">
                   {hasChildren && (
                     <div
@@ -1583,7 +1586,7 @@ function NodeRenderer({
               )}
 
               <div
-                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
+                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
                 style={{
                   ...(isCustom ? { color: nodeTextColor } : {}),
                   ...(nodeTheme === "peepal" ||
@@ -1593,7 +1596,7 @@ function NodeRenderer({
                     : {}),
                 }}
               >
-                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode) && (
+                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) && (
                   <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                     <span
                       className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
@@ -1632,7 +1635,8 @@ function NodeRenderer({
                   !isPyNode &&
                   !isPyCode &&
                   !isPyTerminal &&
-                  !isTodoNode && (
+                  !isTodoNode &&
+                  !isMathNode && (
                     <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
                       <div
                         className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}
@@ -1751,6 +1755,13 @@ function NodeRenderer({
                 )}
                 {isTodoNode && (
                   <TodoNodeRenderer 
+                    nodeId={data.id} 
+                    data={data} 
+                    isExpanded={isExpanded}
+                  />
+                )}
+                {isMathNode && (
+                  <MathNodeRenderer 
                     nodeId={data.id} 
                     data={data} 
                     isExpanded={isExpanded}

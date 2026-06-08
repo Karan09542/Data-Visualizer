@@ -53,7 +53,7 @@ function TextareaFallback(props: EditorProps) {
   );
 }
 
-export function SafeEditor(props: EditorProps) {
+function SafeEditor(props: EditorProps) {
   const componentId = React.useId().replace(/:/g, "-");
   const lang = props.language || props.defaultLanguage || "javascript";
   let ext = "js";

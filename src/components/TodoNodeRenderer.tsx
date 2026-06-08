@@ -270,6 +270,11 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     setIsMenuOpen(false);
   };
 
+  const clearAllTasks = () => {
+    saveTodoData({ ...todoData, tasks: [] });
+    setIsMenuOpen(false);
+  };
+
   const addSampleTasks = () => {
     const samples: TodoTask[] = [
       { 
@@ -379,10 +384,6 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       className="w-[360px] sm:w-[380px] select-none pointer-events-auto cursor-default overflow-hidden bg-[#0a0f1d]/95 backdrop-blur-md border border-[#1e293b] rounded-[20px] shadow-2xl transition-all nodrag"
       onClick={(e) => {
         e.stopPropagation();
-        const selectedId = useStore.getState().selectedNodeId;
-        if (selectedId !== nodeId) {
-          setSelectedNodeId(nodeId);
-        }
       }}
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
@@ -392,7 +393,16 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       }}
     >
       {/* Header Panel */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#1b2230] bg-[#111625]/60 shrink-0 drag-handle cursor-move">
+      <div 
+        className="flex items-center justify-between px-4 py-3.5 border-b border-[#1b2230] bg-[#111625]/60 shrink-0 drag-handle cursor-move"
+        onClick={(e) => {
+          e.stopPropagation();
+          const selectedId = useStore.getState().selectedNodeId;
+          if (selectedId !== nodeId) {
+            setSelectedNodeId(nodeId);
+          }
+        }}
+      >
         <div className="flex items-center gap-3 max-w-[65%]">
           {/* List Indicator with Blue glow */}
           <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-[#1e40af]/20 border border-[#3b82f6]/30 shadow-[0_0_12px_rgba(59,130,246,0.25)] text-blue-400 shrink-0">
@@ -477,6 +487,13 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
               >
                 <RefreshCw size={12} className="text-blue-400" />
                 <span>Reset All Tasks</span>
+              </button>
+              <button
+                onClick={clearAllTasks}
+                className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors border-t border-slate-800/60"
+              >
+                <Trash2 size={12} className="text-rose-500" />
+                <span>Clear All Tasks</span>
               </button>
             </div>
           )}

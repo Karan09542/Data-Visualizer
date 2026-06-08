@@ -1936,5 +1936,3 @@ declare const console: {
     document.body
   );
 }
-
-export default CodeWorkspace;

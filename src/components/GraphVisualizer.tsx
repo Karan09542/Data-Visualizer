@@ -1309,21 +1309,6 @@ export default function GraphVisualizer() {
 
           <g className="nodes-layer" style={{ zIndex: 100 }}>
             {nodes
-              .slice()
-              .sort((a, b) => {
-                const getPriority = (n: any) => {
-                  if (n.data.id === activeMatchId) return 4;
-                  if (searchMatches.has(n.data.id)) return 3;
-                  if (n.data.id === selectedNodeId) return 2;
-                  if (
-                    selectedPathNodes.has(n.data.id) ||
-                    searchAncestors.has(n.data.id)
-                  )
-                    return 1;
-                  return 0;
-                };
-                return getPriority(a) - getPriority(b);
-              })
               .map((node) => (
                 <NodeRenderer
                   key={`node-${node.data.id}`}

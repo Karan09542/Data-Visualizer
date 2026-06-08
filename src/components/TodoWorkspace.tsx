@@ -381,6 +381,53 @@ export function isTaskOverdue(
   return targetDate.getTime() < today.getTime();
 }
 
+export function isDescendant(
+  parentId: string | null,
+  childId: string | null,
+  tasks: TodoTask[]
+): boolean {
+  if (!parentId || !childId || !tasks) return false;
+
+  const findParent = (list: TodoTask[]): TodoTask | null => {
+    for (const t of list) {
+      if (t.id === parentId) return t;
+      if (t.tasks) {
+        const found = findParent(t.tasks);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const parentTask = findParent(tasks);
+  if (!parentTask || !parentTask.tasks) return false;
+
+  const check = (list: TodoTask[]): boolean => {
+    for (const t of list) {
+      if (t.id === childId) return true;
+      if (t.tasks && check(t.tasks)) return true;
+    }
+    return false;
+  };
+
+  return check(parentTask.tasks);
+}
+
+export function getDropPosition(
+  e: React.DragEvent<HTMLElement>,
+  rect: DOMRect
+): "before" | "after" | "inside" {
+  const relativeY = e.clientY - rect.top;
+  const height = rect.height;
+  if (relativeY < height * 0.25) {
+    return "before";
+  } else if (relativeY > height * 0.75) {
+    return "after";
+  } else {
+    return "inside";
+  }
+}
+
 export function parseTodoSearch(query: string) {
   if (!query)
     return {
@@ -481,6 +528,7 @@ export function TodoWorkspace({ path }: { path: string }) {
   const [detailsWidth, setDetailsWidth] = useState(380);
   const [toast, setToast] = useState<string | null>(null);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
 
   const isResizing = useRef(false);
   const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
@@ -891,6 +939,78 @@ export function TodoWorkspace({ path }: { path: string }) {
     }
   };
 
+  const handleMoveTask = (draggedId: string, targetId: string, position: "before" | "after" | "inside" | null) => {
+    if (!draggedId || !targetId || !position || draggedId === targetId) return;
+
+    if (isDescendant(draggedId, targetId, todoData.tasks || [])) {
+      showToast("Cannot move a task into its own subtasks");
+      return;
+    }
+
+    let draggedItem: TodoTask | null = null;
+
+    // Remove first
+    const removeAndExtract = (tList: TodoTask[]): TodoTask[] => {
+      const result: TodoTask[] = [];
+      for (const t of tList) {
+        if (t.id === draggedId) {
+          draggedItem = t;
+          continue;
+        }
+        if (t.tasks && t.tasks.length > 0) {
+          result.push({
+            ...t,
+            tasks: removeAndExtract(t.tasks)
+          });
+        } else {
+          result.push(t);
+        }
+      }
+      return result;
+    };
+
+    const cleanTree = removeAndExtract(todoData.tasks || []);
+
+    if (!draggedItem) return;
+
+    // Insert next
+    const insertAfterBeforeInside = (tList: TodoTask[]): TodoTask[] => {
+      const result: TodoTask[] = [];
+      for (const t of tList) {
+        if (t.id === targetId) {
+          if (position === "before") {
+            result.push(draggedItem!);
+            result.push(t);
+          } else if (position === "after") {
+            result.push(t);
+            result.push(draggedItem!);
+          } else if (position === "inside") {
+            result.push({
+              ...t,
+              tasks: [...(t.tasks || []), draggedItem!]
+            });
+            // Auto-expand target parent
+            setCollapsedTaskIds((prev) => prev.filter((x) => x !== t.id));
+          }
+        } else {
+          if (t.tasks && t.tasks.length > 0) {
+            result.push({
+              ...t,
+              tasks: insertAfterBeforeInside(t.tasks)
+            });
+          } else {
+            result.push(t);
+          }
+        }
+      }
+      return result;
+    };
+
+    const finalTree = insertAfterBeforeInside(cleanTree);
+    saveTodoData({ ...todoData, tasks: finalTree });
+    showToast("Task reordered");
+  };
+
   const duplicateTaskDeep = (task: TodoTask): TodoTask => {
     const newId = Math.random().toString(36).substring(2, 9);
     return {
@@ -1273,6 +1393,17 @@ export function TodoWorkspace({ path }: { path: string }) {
               )}
             </button>
             <button
+              onClick={() => {
+                saveTodoData({ ...todoData, tasks: [] });
+                showToast("Cleared all tasks");
+              }}
+              className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-2 md:px-2.5 h-7 md:h-7 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/30 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 rounded-md text-[10px] md:text-[11px] font-semibold border border-slate-200 dark:border-slate-700/80 hover:border-rose-200 dark:hover:border-rose-900/50 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer active:scale-95"
+              title="Clear All Tasks"
+            >
+              <Trash2 size={11.5} />
+              <span className="hidden sm:inline">Clear All</span>
+            </button>
+            <button
               onClick={addTask}
               className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-2 md:px-2.5 h-7 md:h-7 bg-blue-600 hover:bg-blue-700 text-white text-[10px] md:text-[11px] font-bold uppercase tracking-wider rounded-md shadow-sm active:scale-95 transition-all outline-none shrink-0 whitespace-nowrap cursor-pointer"
             >
@@ -1346,6 +1477,10 @@ export function TodoWorkspace({ path }: { path: string }) {
               collapsedTaskIds={collapsedTaskIds}
               onToggleCollapse={toggleCollapseTask}
               showToast={showToast}
+              onMoveTask={handleMoveTask}
+              draggedId={draggedId}
+              setDraggedId={setDraggedId}
+              todoTasks={todoData.tasks || []}
             />
           </div>
         </div>
@@ -1417,6 +1552,10 @@ function TodoWorkspaceList({
   collapsedTaskIds,
   onToggleCollapse,
   showToast,
+  onMoveTask,
+  draggedId,
+  setDraggedId,
+  todoTasks,
 }: any) {
   const parsedSearch = React.useMemo(
     () => parseTodoSearch(searchTerm),
@@ -1518,6 +1657,10 @@ function TodoWorkspaceList({
               onToggleCollapse={onToggleCollapse}
               showToast={showToast}
               isFlatList={isFlatList}
+              onMoveTask={onMoveTask}
+              draggedId={draggedId}
+              setDraggedId={setDraggedId}
+              todoTasks={todoTasks}
             />
           ))}
         </div>
@@ -1553,6 +1696,10 @@ function TodoWorkspaceItem({
   onToggleCollapse,
   showToast,
   isFlatList,
+  onMoveTask,
+  draggedId,
+  setDraggedId,
+  todoTasks,
 }: any) {
   const isSelected = selectedTaskId === task.id;
   const isCompleted = task.completed || task.status === "Completed";
@@ -1564,6 +1711,54 @@ function TodoWorkspaceItem({
   const [isNotesExpanded, setIsNotesExpanded] = useState(false);
   const [isEditingNotesInline, setIsEditingNotesInline] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Drag and Drop support
+  const [isDraggable, setIsDraggable] = useState(false);
+  const [dropIndicator, setDropIndicator] = useState<"before" | "after" | "inside" | null>(null);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (setDraggedId) {
+      setDraggedId(task.id);
+    }
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", task.id);
+  };
+
+  const handleDragEnd = () => {
+    if (setDraggedId) {
+      setDraggedId(null);
+    }
+    setIsDraggable(false);
+    setDropIndicator(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (draggedId === task.id || isDescendant(draggedId, task.id, todoTasks || [])) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = getDropPosition(e, rect);
+    setDropIndicator(pos);
+  };
+
+  const handleDragLeave = () => {
+    setDropIndicator(null);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedId && draggedId !== task.id) {
+      if (!isDescendant(draggedId, task.id, todoTasks || [])) {
+        if (onMoveTask) {
+          onMoveTask(draggedId, task.id, dropIndicator);
+        }
+      }
+    }
+    setDropIndicator(null);
+  };
 
   const priorityInfo =
     PRIORITY_OPTIONS.find((p) => p.value === task.priority) ||
@@ -1594,19 +1789,61 @@ function TodoWorkspaceItem({
   const isOverdue = isTaskOverdue(task.dueDate, isCompleted);
 
   return (
-    <div className="flex flex-col select-none">
+    <div className="flex flex-col select-none relative">
+      {/* Drop Indicator Lines */}
+      {dropIndicator === "before" && (
+        <div 
+          className="absolute top-0 left-0 right-0 h-[3px] bg-blue-500 dark:bg-blue-400 rounded-full z-45 animate-pulse"
+          style={{ marginLeft: `${level * 1.5}rem` }}
+        />
+      )}
+      {dropIndicator === "after" && (
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-500 dark:bg-blue-400 rounded-full z-45 animate-pulse"
+          style={{ marginLeft: `${level * 1.5}rem` }}
+        />
+      )}
+
       <div
+        draggable={isDraggable}
         className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border border-transparent relative",
           isSelected
             ? "bg-blue-50/70 dark:bg-blue-950/20 border-blue-200/50 dark:border-blue-900/40 ring-1 ring-blue-500/10 dark:ring-blue-500/20 shadow-xs"
             : "hover:bg-slate-100/50 dark:hover:bg-slate-800/40",
+          dropIndicator === "inside" && "bg-blue-50/40 dark:bg-blue-950/20 border-blue-400 dark:border-blue-800 text-blue-900 dark:text-blue-100 ring-2 ring-blue-500/15"
         )}
         style={{ marginLeft: `${level * 1.5}rem` }}
         onClick={() => onSelectTask(task.id)}
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseLeave={() => {
+          setIsHovered(false);
+          setIsDraggable(false);
+        }}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {/* Grab Grip handle like Notion (visible only on hover of the row) */}
+        {!isFlatList && (
+          <div
+            className={cn(
+              "w-5 h-5 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing text-slate-350 dark:text-slate-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all",
+              isHovered ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+            onMouseDown={() => {
+              setIsDraggable(true);
+            }}
+            onMouseUp={() => {
+              setIsDraggable(false);
+            }}
+          >
+            <GripVertical size={14} />
+          </div>
+        )}
+
         {/* Collapse chevron */}
         {hasSubtasks ? (
           <button
@@ -2127,6 +2364,11 @@ function TodoWorkspaceItem({
               collapsedTaskIds={collapsedTaskIds}
               onToggleCollapse={onToggleCollapse}
               showToast={showToast}
+              isFlatList={isFlatList}
+              onMoveTask={onMoveTask}
+              draggedId={draggedId}
+              setDraggedId={setDraggedId}
+              todoTasks={todoTasks}
             />
           ))}
         </div>

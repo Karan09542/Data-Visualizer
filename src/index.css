@@ -458,3 +458,25 @@ input[type="number"] {
   background: rgba(200, 200, 200, 0.2) !important;
   border-left: 2px solid rgba(59, 130, 246, 0.7) !important; /* Blue-500 accent */
 }
+
+/* Make polygon custom color pickers adjust fully without overflow */
+.polygon-picker .react-colorful {
+  width: 100% !important;
+  height: 165px !important;
+}
+.polygon-picker .react-colorful__saturation {
+  border-bottom: 6px solid transparent !important;
+  border-radius: 4px 4px 0 0 !important;
+}
+.polygon-picker .react-colorful__hue,
+.polygon-picker .react-colorful__alpha {
+  height: 10px !important;
+  border-radius: 3px !important;
+}
+.polygon-picker .react-colorful__alpha {
+  margin-top: 6px !important;
+}
+.polygon-picker .react-colorful__pointer {
+  width: 16px !important;
+  height: 16px !important;
+}
