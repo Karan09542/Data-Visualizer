@@ -2043,7 +2043,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         )}
         
         {/* Sidebar */}
-        {(isExpanded || isFullscreen) && isPanelVisible && (
+        {(isExpanded || isFullscreen || isMobileSidebarOpen) && isPanelVisible && (
           <div 
             ref={sidebarRef}
             className={`bg-slate-50 dark:bg-slate-800 flex flex-col border-r border-slate-200 dark:border-slate-700 nodrag z-20 absolute inset-y-0 left-0 md:relative transition-transform duration-300 md:translate-x-0 max-w-[85vw] ${isMobileSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`} 

@@ -839,7 +839,7 @@ export default function ProductivityLayer() {
                     type="text"
                     value={fileSearch}
                     onChange={(e) => {
-                      setFileSearch(e.target.value);
+                      setFileSearch(e.target.value.replace(/^~/, ''));
                       setSelectedFileIdx(0);
                     }}
                     onKeyDown={handleFileKeyDown}

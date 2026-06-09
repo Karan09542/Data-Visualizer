@@ -21,7 +21,8 @@ import {
   Clock,
   FolderOpen,
   FileText,
-  CheckSquare
+  CheckSquare,
+  Image as ImageIcon
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
@@ -31,6 +32,7 @@ import { PyPackagesPanel } from "./PyPackagesPanel";
 import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
 import { TodoWorkspace } from "./TodoWorkspace";
+import ImageWorkspace from "./ImageWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
@@ -174,6 +176,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const isPy = useMemo(() => fileExt.endsWith('_py_node') || fileExt === 'py', [fileExt]);
   const isApi = useMemo(() => fileExt.endsWith('_api_node') || fileExt === 'api', [fileExt]);
   const isTodo = useMemo(() => fileExt.endsWith('_todo_node') || fileExt === 'todo', [fileExt]);
+  const isImg = useMemo(() => fileExt.endsWith('_image_node') || fileExt === 'img', [fileExt]);
   const isJson = useMemo(() => fileExt.endsWith('_json') || fileExt === 'json', [fileExt]);
   const isYaml = useMemo(() => fileExt.endsWith('_yaml') || fileExt === 'yaml' || fileExt.endsWith('_yml') || fileExt === 'yml', [fileExt]);
   const isCsv = useMemo(() => fileExt.endsWith('_csv') || fileExt === 'csv', [fileExt]);
@@ -201,6 +204,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     const isJs = lowerPath.endsWith('_js_node') || lowerPath.endsWith('.js');
     const isJson = lowerPath.endsWith('_json') || lowerPath.endsWith('.json');
     const isTodo = lowerPath.endsWith('_todo_node') || lowerPath.endsWith('.todo');
+    const isImg = lowerPath.endsWith('_image_node') || lowerPath.endsWith('.img');
     const isMd = lowerPath.endsWith('_md') || lowerPath.endsWith('.md');
     
     if (isPy) return <PythonIcon />;
@@ -208,6 +212,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (isJs) return <JavaScriptIcon />;
     if (isJson) return <JsonIcon />;
     if (isTodo) return <CheckSquare size={13} className="text-blue-500 shrink-0" />;
+    if (isImg) return <ImageIcon size={13} className="text-purple-500 shrink-0" />;
     if (isMd) return <MarkdownIcon />;
 
     return <FileText size={13} className={isActive ? "text-yellow-500 shrink-0" : "text-slate-400 dark:text-slate-500 shrink-0"} />;
@@ -1453,6 +1458,8 @@ declare const console: {
                 )}
                 {isTodo ? (
                   <TodoWorkspace path={currentFilePath} />
+                ) : isImg ? (
+                  <ImageWorkspace path={currentFilePath} />
                 ) : (
                 <SafeEditor
                   path={currentFilePath}

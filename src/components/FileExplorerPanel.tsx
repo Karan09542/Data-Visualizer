@@ -20,7 +20,8 @@ import {
   X,
   FileText,
   Maximize2,
-  CheckSquare
+  CheckSquare,
+  Image
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import {
@@ -45,7 +46,7 @@ interface ExplorerItem {
   id: string; // E.g., 'root.src.user_ts_node'
   name: string; // E.g., 'user.ts'
   realKey: string; // E.g., 'user_ts_node'
-  type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "primitive";
+  type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "image_node" | "primitive";
   parentPath: string; // E.g., 'root.src'
   children?: ExplorerItem[];
 }
@@ -82,7 +83,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [creatingInPath, setCreatingInPath] = useState<string | null>(null);
-  const [creatingType, setCreatingType] = useState<"js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "folder" | "primitive" | null>(null);
+  const [creatingType, setCreatingType] = useState<"js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "image_node" | "folder" | "primitive" | null>(null);
   const [creatingValue, setCreatingValue] = useState("");
   
   // Context Menu State
@@ -90,7 +91,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
     x: number;
     y: number;
     id: string;
-    type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "primitive";
+    type: "folder" | "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "image_node" | "primitive";
     name: string;
   } | null>(null);
 
@@ -222,6 +223,14 @@ function isFileSystemMeaningful(value: any): boolean {
             name: key.replace(/_api_node$/i, ".api"),
             realKey: key,
             type: "api_node",
+            parentPath: path,
+          });
+        } else if (keyLower.endsWith("_image_node") || keyLower.endsWith(".img")) {
+          items.push({
+            id: currentPath,
+            name: keyLower.endsWith(".img") ? key : key.replace(/_image_node$/i, ".img"),
+            realKey: key,
+            type: "image_node",
             parentPath: path,
           });
         } else if (keyLower.endsWith("_todo_node") || keyLower.endsWith(".todo")) {
@@ -451,7 +460,7 @@ function isFileSystemMeaningful(value: any): boolean {
   };
 
   // Creation Actions
-  const handleCreatePrompt = (folderPath: string, type: "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "folder" | "primitive") => {
+  const handleCreatePrompt = (folderPath: string, type: "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "image_node" | "folder" | "primitive") => {
     setCreatingInPath(folderPath);
     setCreatingType(type);
     setCreatingValue("");
@@ -511,6 +520,11 @@ function isFileSystemMeaningful(value: any): boolean {
         finalKey = `${baseName}_todo_node`;
         initialValue = JSON.stringify({ title: baseName, tasks: [] });
         actualType = "todo_node";
+      } else if (rawVal.endsWith(".img") || rawVal.endsWith("_image_node")) {
+        const baseName = rawVal.replace(/\.img$/, "").replace(/_image_node$/, "");
+        finalKey = `${baseName}_image_node`;
+        initialValue = ""; // Base64 or URL will be stored here later
+        actualType = "image_node";
       } else if (rawVal.endsWith(".json") || rawVal.endsWith("_json")) {
         const baseName = rawVal.replace(/\.json$/, "").replace(/_json$/, "");
         finalKey = `${baseName}_json`;
@@ -879,6 +893,8 @@ function isFileSystemMeaningful(value: any): boolean {
         fileIcon = <Globe size={16} className="text-sky-500 dark:text-sky-400 shrink-0" />;
       } else if (item.type === "todo_node" || item.name.endsWith(".todo")) {
         fileIcon = <CheckSquare size={16} className="text-blue-500 dark:text-blue-400 shrink-0" />;
+      } else if (item.type === "image_node" || item.name.endsWith(".img")) {
+        fileIcon = <Image size={16} className="text-purple-500 dark:text-purple-400 shrink-0" />;
       } else if (item.type === "primitive") {
         if (item.name.endsWith(".json")) {
           fileIcon = <JsonIcon />;
@@ -1097,12 +1113,19 @@ function isFileSystemMeaningful(value: any): boolean {
     <div
       ref={containerRef}
       onKeyDown={(e) => {
-        if ((e.key === "Delete" || e.key === "Backspace") && selectedExplorerFiles.length > 0) {
-          // Check if an input is active
-          if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+        if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
             return;
-          }
+        }
+        if ((e.key === "Delete" || e.key === "Backspace") && selectedExplorerFiles.length > 0) {
           setDeleteItemsConfirm(selectedExplorerFiles);
+        }
+        if (e.key === "F2" && selectedExplorerFiles.length === 1) {
+          e.preventDefault();
+          const targetId = selectedExplorerFiles[0];
+          const node = fullExplorerTree.find(n => n.id === targetId);
+          if (node) {
+            startRename(targetId, node.name);
+          }
         }
       }}
       tabIndex={-1}
