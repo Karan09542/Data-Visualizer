@@ -1346,7 +1346,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [previewCopied, setPreviewCopied] = useState(false);
   const [showPreviewLatex, setShowPreviewLatex] = useState(true);
   const savedFormulas = useLiveQuery(() => db.customFormulas.toArray()) || [];
-  const [localFormulas, setLocalFormulas] = useState<any[]>([]);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [draggedGroup, setDraggedGroup] = useState<"favorite" | "regular" | null>(null);
   const [dragEnabledFormulaId, setDragEnabledFormulaId] = useState<number | null>(null);
@@ -1359,12 +1358,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [editingFormulaFieldId, setEditingFormulaFieldId] = useState<number | null>(null);
   const [editingFormulaExpr, setEditingFormulaExpr] = useState("");
 
-  useEffect(() => {
-    if (draggedIndex === null && draggedGroup === null) {
-      setLocalFormulas(savedFormulas);
-    }
-  }, [savedFormulas, draggedIndex, draggedGroup]);
-  
   const [functions, setFunctions] = useState<MathFunction[]>(() => {
     if (typeof data.value === "string") {
       try {
@@ -1488,6 +1481,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   useEffect(() => {
     if (!isResizingSidebar) return;
+
+    // Prevent selection and selection styling by setting dynamic styles on body
+    document.body.style.userSelect = 'none';
+    document.body.style.webkitUserSelect = 'none';
+
+    // Clear any active selection immediately
+    window.getSelection()?.removeAllRanges();
+
     const handleMouseMove = (e: MouseEvent) => {
        if (sidebarRef.current) {
           const rect = sidebarRef.current.getBoundingClientRect();
@@ -1495,12 +1496,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           setSidebarWidth(newWidth);
        }
     };
-    const handleMouseUp = () => setIsResizingSidebar(false);
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+    };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
        window.removeEventListener('mousemove', handleMouseMove);
        window.removeEventListener('mouseup', handleMouseUp);
+       document.body.style.userSelect = '';
+       document.body.style.webkitUserSelect = '';
     }
   }, [isResizingSidebar]);
 
@@ -1520,6 +1527,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   // Debounced auto-save of state to node data
   const lastSavedValue = useRef<string | null>(null);
+  
+  const serializedValue = typeof data?.value === "object" && data?.value !== null
+    ? JSON.stringify(data.value)
+    : (data?.value || "");
   
   useEffect(() => {
     if (data && data.value) {
@@ -1546,7 +1557,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         }
       } catch(e) {}
     }
-  }, [data.value]);
+  }, [serializedValue]);
 
   useEffect(() => {
     if (!data || !data.path) return;

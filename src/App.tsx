@@ -153,6 +153,9 @@ export default function App() {
     (e: React.MouseEvent | React.TouchEvent) => {
       isDragging.current = true;
       document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.body.style.webkitUserSelect = "none";
+      window.getSelection()?.removeAllRanges();
     },
     [],
   );
@@ -161,6 +164,8 @@ export default function App() {
     if (isDragging.current) {
       isDragging.current = false;
       document.body.style.cursor = "default";
+      document.body.style.userSelect = "";
+      document.body.style.webkitUserSelect = "";
     }
   }, []);
 

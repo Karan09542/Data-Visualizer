@@ -1838,12 +1838,18 @@ function TodoWorkspaceItem({
           <div
             className={cn(
               "w-5 h-5 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing text-slate-350 dark:text-slate-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all",
-              isHovered ? "opacity-100" : "opacity-0 pointer-events-none"
+              isHovered ? "opacity-100 pointer-events-auto" : "opacity-100 md:opacity-0 md:pointer-events-none"
             )}
             onMouseDown={() => {
               setIsDraggable(true);
             }}
             onMouseUp={() => {
+              setIsDraggable(false);
+            }}
+            onTouchStart={() => {
+              setIsDraggable(true);
+            }}
+            onTouchEnd={() => {
               setIsDraggable(false);
             }}
           >

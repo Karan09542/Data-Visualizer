@@ -60,6 +60,10 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const serializedValue = typeof data?.value === "object" && data?.value !== null
+    ? JSON.stringify(data.value)
+    : (data?.value || "");
+
   useEffect(() => {
     try {
       if (typeof data.value === "string") {
@@ -70,7 +74,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     } catch (e) {
       setTodoData({ title: "Tasks", tasks: [] });
     }
-  }, [data.value]);
+  }, [serializedValue]);
 
   // Handle click outside to close options menu
   useEffect(() => {
