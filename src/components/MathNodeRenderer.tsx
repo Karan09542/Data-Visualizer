@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Minimize2, Play, Pause, Square, SkipBack, Repeat, Layers, Plus, Trash2, Settings, Crosshair, HelpCircle, X, Search, ChevronDown, ChevronRight, ChevronUp, Edit2, Copy, CopyPlus, RotateCcw, GripVertical, Folder, FolderPlus, Menu, MoreVertical, Bookmark, Save, FileText, Check, Eye, Heart, Sparkles } from "lucide-react";
-import { Mafs, Coordinates, Plot, Transform, Point, Vector, Polygon, Circle, MovablePoint, Text, Line, LaTeX, usePaneContext } from "mafs";
+import { Maximize2, Minimize2, Play, Pause, SkipBack, Layers, Plus, Trash2, Settings, Crosshair, HelpCircle, X, Search, ChevronDown, ChevronRight, ChevronUp, Edit2, Copy, CopyPlus, RotateCcw, GripVertical, Folder, FolderPlus, Menu, MoreVertical, Bookmark, Save, Check, Eye, Heart, Sparkles } from "lucide-react";
+import { Mafs, Coordinates, Plot, Transform, Point, Vector, Polygon, MovablePoint, Text, Line, LaTeX, usePaneContext } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
 import "katex/dist/katex.min.css";
@@ -1988,18 +1988,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 cursor-move drag-handle">
         <div className="flex items-center gap-2">
-          {isFullscreen && (
-            <button
-              onClick={() => {
-                setIsPanelVisible(!isPanelVisible);
-                setIsMobileSidebarOpen(!isMobileSidebarOpen);
-              }}
-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center"
-              title="Toggle Function Input Panel"
-            >
-              <Menu size={16} />
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (window.innerWidth < 768) {
+                setIsMobileSidebarOpen(prev => !prev);
+                setIsPanelVisible(true);
+              } else {
+                setIsPanelVisible(prev => !prev);
+              }
+            }}
+            className={`p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center ${!isFullscreen ? 'md:hidden' : ''}`}
+            title="Toggle Function Input Panel"
+          >
+            <Menu size={16} />
+          </button>
           <Layers size={16} className="hidden md:block text-blue-500 dark:text-blue-400" />
           <span className="font-semibold text-sm text-slate-800 dark:text-slate-300 truncate">Advanced Math Graph</span>
         </div>
@@ -2036,7 +2038,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             className="absolute inset-0 bg-slate-900/20 dark:bg-slate-900/40 z-10 md:hidden nodrag"
             onClick={() => {
               setIsMobileSidebarOpen(false);
-              setIsPanelVisible(false);
             }}
           />
         )}

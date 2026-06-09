@@ -5,7 +5,6 @@ import {
   FolderOpen,
   FileCode2,
   Globe,
-  FileJson,
   Search,
   Plus,
   FolderPlus,
@@ -20,12 +19,7 @@ import {
   Check,
   X,
   FileText,
-  RotateCcw,
   Maximize2,
-  Braces,
-  Terminal,
-  FileCode,
-  Code,
   CheckSquare
 } from "lucide-react";
 import { useStore } from "../store/useStore";
@@ -389,7 +383,7 @@ function isFileSystemMeaningful(value: any): boolean {
   // Helper Toast for visual confirmation
   const toastNotification = (msg: string) => {
     // Rely on global styles or show a standard micro-toast inside panel
-    console.log(`[Explorer File System]: ${msg}`);
+    // console.log(`[Explorer File System]: ${msg}`);
   };
 
   // Drag operations
@@ -495,7 +489,7 @@ function isFileSystemMeaningful(value: any): boolean {
       if (rawVal.endsWith(".js") || rawVal.endsWith("_js_node")) {
         const baseName = rawVal.replace(/\.js$/, "").replace(/_js_node$/, "");
         finalKey = `${baseName}_js_node`;
-        initialValue = "console.log('JS execution starts here!');";
+        initialValue = "// JS execution starts here!";
         actualType = "js_node";
       } else if (rawVal.endsWith(".py") || rawVal.endsWith("_py_node")) {
         const baseName = rawVal.replace(/\.py$/, "").replace(/_py_node$/, "");
@@ -505,7 +499,7 @@ function isFileSystemMeaningful(value: any): boolean {
       } else if (rawVal.endsWith(".ts") || rawVal.endsWith("_ts_node")) {
         const baseName = rawVal.replace(/\.ts$/, "").replace(/_ts_node$/, "");
         finalKey = `${baseName}_ts_node`;
-        initialValue = "const msg: string = 'TS execution starts here!';\nconsole.log(msg);";
+        initialValue = "const msg: string = 'TS execution starts here!';\n";
         actualType = "ts_node";
       } else if (rawVal.endsWith(".api") || rawVal.endsWith("_api_node")) {
         const baseName = rawVal.replace(/\.api$/, "").replace(/_api_node$/, "");
@@ -607,6 +601,41 @@ function isFileSystemMeaningful(value: any): boolean {
     // Strip extensions in editing if suffix was customized
     setEditingValue(displayName);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Look at selectedExplorerFiles instead of activeExplorerFile (which is just the opened tab)
+      const targetRenameId = selectedExplorerFiles && selectedExplorerFiles.length > 0 ? selectedExplorerFiles[0] : activeExplorerFile;
+      
+      if (e.key === "F2" && targetRenameId && !editingPath) {
+        // Prevent default browser behavior for F2 (though usually safe)
+        e.preventDefault();
+        
+        // Find the node
+        function findNode(nodes: ExplorerItem[], id: string): ExplorerItem | null {
+          for (const n of nodes) {
+            if (n.id === id) return n;
+            if (n.children) {
+              const found = findNode(n.children, id);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
+        
+        const activeNode = findNode(fullExplorerTree, targetRenameId);
+        if (activeNode) {
+          handleRenamePrompt(activeNode);
+        }
+      }
+    };
+    
+    // Only bind if we're not globally focused in some other input?
+    // We'll rely on whether activeExplorerFile is focused or they just press F2.
+    // If they are in Monaco editor, Monaco might consume the event, which is fine or maybe not.
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeExplorerFile, selectedExplorerFiles, editingPath, fullExplorerTree]);
 
   const handleRenameSubmit = async () => {
     if (!editingPath) return;

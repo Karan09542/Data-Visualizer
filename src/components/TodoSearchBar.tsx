@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Search, X, Circle, Clock, CheckCircle2, AlertCircle, Eye, Tag, Plus, Check, Settings2, Hash, Command, ChevronDown } from "lucide-react";
+import { Search, X, Circle, AlertCircle, Tag, Plus, Command } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TodoTask } from "./TodoNodeRenderer";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, PREDEFINED_TAGS, getTagColorClass } from "./TodoWorkspace";

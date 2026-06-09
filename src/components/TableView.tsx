@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -11,8 +11,8 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
-  Search, ChevronDown, ChevronUp, Hash, Calendar, Mail, FileText, 
-  Link as LinkIcon, DollarSign, Smartphone, X, Filter, Check, Copy 
+  Search, ChevronDown, ChevronUp, Mail, 
+  Link as LinkIcon, X, Filter, Check, Copy 
 } from 'lucide-react';
 
 interface TableViewProps {

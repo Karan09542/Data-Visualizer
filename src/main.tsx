@@ -1,8 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import "react-date-picker/dist/DatePicker.css";
-import "react-calendar/dist/Calendar.css";
+// import DatePicker css and other app css
 import App from './App';
 import PagesLayout from './pages/PagesLayout';
 import About from './pages/About';
@@ -192,7 +191,7 @@ if (typeof window !== 'undefined') {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
-        console.log('App I/O ServiceWorker registered successfully:', reg.scope);
+        // console.log('App I/O ServiceWorker registered successfully:', reg.scope);
       }).catch((err) => {
         console.warn('App I/O ServiceWorker registration failed:', err);
       });

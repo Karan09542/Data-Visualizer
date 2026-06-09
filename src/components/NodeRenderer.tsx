@@ -3,7 +3,6 @@ import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore, NodeTheme } from "../store/useStore";
-import { useShallow } from "zustand/react/shallow";
 import {
   ChevronRight,
   ChevronDown,
@@ -21,7 +20,6 @@ import {
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
-import SafeIframe from "./SafeIframe";
 import { ApiNodeRenderer } from "./ApiNodeRenderer";
 import { JsNodeRenderer } from "./JsNodeRenderer";
 import { JsNodeCodeRenderer } from "./JsNodeCodeRenderer";

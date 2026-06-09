@@ -10,13 +10,10 @@ import {
   MoreVertical,
   Layers,
   FolderTree,
-  ChevronDown,
-  ChevronRight,
   Trash2,
   Pencil,
   Sparkles,
   RefreshCw,
-  ListFilter,
   Copy,
   Check
 } from "lucide-react";
@@ -529,13 +526,13 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             <span className="text-[10px] text-slate-600">Type below to create one instantly!</span>
           </div>
         ) : (
-          tasksToRender.map(({ task, depth }) => {
+          tasksToRender.map(({ task, depth }, idx) => {
             const isDone = task.completed || task.status === "Completed";
             const meta = priorityMeta(task);
             
             return (
               <div 
-                key={task.id}
+                key={`${task.id}-${idx}`}
                 className="flex items-center gap-3 py-2 px-4 hover:bg-slate-800/10 group transition-all duration-150"
                 style={{ paddingLeft: !nodeIsFlat ? `${depth * 1.1 + 1}rem` : "1rem" }}
               >

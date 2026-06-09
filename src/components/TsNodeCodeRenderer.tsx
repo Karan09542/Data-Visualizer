@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { useMonaco } from '@monaco-editor/react';
 import SafeEditor from './SafeEditor';
-import { Play, Loader2, Code2, Maximize2, Hash, X, Square } from 'lucide-react';
+import { Play, Code2, Maximize2, Hash, X, Square } from 'lucide-react';
 import { executeTsNode, abortTsNode } from '../utils/tsExecutor';
 
 interface TsNodeCodeRendererProps {

@@ -3,37 +3,23 @@ import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { useMonaco } from "@monaco-editor/react";
 import {
   Play,
   Square,
   Trash2,
-  AlignLeft,
   Copy,
   Maximize,
   X,
   Loader2,
-  Braces,
   Terminal as TerminalIcon,
-  LayoutPanelLeft,
-  LayoutPanelTop,
   Settings2,
   Check,
   ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  PanelBottomInactive,
   PanelBottom,
-  PanelBottomClose,
   PanelRight,
-  PanelRightClose,
-  PanelLeftClose,
   PanelLeft,
   Clock,
-  Hash,
   FolderOpen,
-  Info,
-  FileCode2,
   FileText,
   CheckSquare
 } from "lucide-react";
@@ -44,7 +30,6 @@ import { usePyPackageStore } from "../store/usePyPackageStore";
 import { PyPackagesPanel } from "./PyPackagesPanel";
 import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
-import { ExpandableJSON } from "./ExpandableJSON";
 import { TodoWorkspace } from "./TodoWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/tsExecutor";
@@ -57,7 +42,6 @@ import {
   PythonIcon,
   JsonIcon,
   MarkdownIcon,
-  TextIcon,
 } from "./FileIcons";
 import { getValueAtPath } from "../utils/pathUtils";
 import { editorThemes } from "../utils/editorThemes";

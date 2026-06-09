@@ -1,4 +1,4 @@
-import { Phone, Mail, Link, MapPin, Image as ImageIcon, Video, Calendar, Globe, Code, FileJson, Youtube, Github, Search, Coins, Download, Eye } from 'lucide-react';
+import { Phone, Mail, Link, MapPin, Youtube, Github, Search, Coins } from 'lucide-react';
 import React from 'react';
 
 export interface ContextAction {

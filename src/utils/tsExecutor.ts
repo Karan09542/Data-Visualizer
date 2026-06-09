@@ -2,7 +2,7 @@ import { useStore } from '../store/useStore';
 import lodashGet from 'lodash.get';
 import { transform } from 'sucrase';
 import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionStore';
-import { buildVirtualFS, getVirtualPath, resolveVirtualPath } from './vfs';
+import { buildVirtualFS, getVirtualPath } from './vfs';
 
 export const activeWorkers: Record<string, Worker> = {};
 export const activeRejectors: Record<string, (reason?: any) => void> = {};

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store/useStore';
-import { Server, RefreshCw, XCircle, AlertCircle, PlayCircle, Loader2, Edit3 } from 'lucide-react';
+import { Server, RefreshCw, XCircle, AlertCircle, PlayCircle, Edit3 } from 'lucide-react';
 
 interface ApiNodeRendererProps {
   url: string;

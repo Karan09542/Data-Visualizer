@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, forwardRef } from "react";
 import { useStore } from "../store/useStore";
 import { setValueAtPath, getValueAtPath } from "../utils/pathUtils";
 import {
@@ -6,11 +6,7 @@ import {
   Circle,
   Plus,
   Trash2,
-  Search,
-  Filter,
   Calendar as CalendarIcon,
-  Tag,
-  MoreVertical,
   MoreHorizontal,
   GripVertical,
   Clock,
@@ -21,10 +17,8 @@ import {
   ChevronDown,
   Check,
   AlignLeft,
-  PlayCircle,
   Eye,
   AlertCircle,
-  AlertTriangle,
   Layers,
   X,
   Info,
@@ -38,13 +32,17 @@ import {
   Sliders,
   Sun,
   Rocket,
+  ArrowUp,
+  ArrowDown,
+  Minus,
 } from "lucide-react";
 import { TodoNodeData, TodoTask } from "./TodoNodeRenderer";
-import { format, isToday, isTomorrow, isPast } from "date-fns";
-import DatePicker from "react-date-picker";
+import { format } from "date-fns";
+import { parseISO } from "date-fns";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import { TodoSearchBar } from "./TodoSearchBar";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Markdown from "react-markdown";
 import katex from "katex";
@@ -60,6 +58,12 @@ console.error = (...args) => {
   if (typeof args[0] === "string" && args[0].includes("<Fit />")) return;
   originalError(...args);
 };
+
+const CustomDateInput = forwardRef<HTMLDivElement, any>(({ value, onClick, className, children }, ref) => (
+  <div onClick={onClick} ref={ref} className={className}>
+    {children}
+  </div>
+));
 
 export function LatexMarkdownRenderer({ content }: { content: string }) {
   if (!content) return null;
@@ -180,12 +184,12 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
                     </p>
                   ),
                   h1: ({ children }) => (
-                    <h1 className="text-xl font-extrabold text-slate-900 dark:text-white mt-4 mb-2 pb-1 border-b border-slate-200 dark:border-slate-800 tracking-tight block leading-tight">
+                    <h1 className="text-lg font-bold text-slate-900 dark:text-white mt-3 mb-1.5 tracking-tight block leading-tight">
                       {children}
                     </h1>
                   ),
                   h2: ({ children }) => (
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-3 mb-1.5 block leading-tight">
+                    <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mt-2 mb-1 block leading-tight">
                       {children}
                     </h2>
                   ),
@@ -337,30 +341,37 @@ export const PRIORITY_OPTIONS = [
   {
     value: "Normal",
     label: "Normal",
-    color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+    icon: Minus,
+    color: "text-slate-500",
+    bgColor: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
   },
   {
     value: "Low",
     label: "Low",
-    color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    icon: ArrowDown,
+    color: "text-blue-500",
+    bgColor: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   },
   {
     value: "Medium",
     label: "Medium",
-    color:
-      "bg-amber-100 text-amber-700 dark:bg-amber-905/30 dark:text-amber-400",
+    icon: ArrowRight,
+    color: "text-amber-500",
+    bgColor: "bg-amber-100 text-amber-700 dark:bg-amber-905/30 dark:text-amber-400",
   },
   {
     value: "High",
     label: "High",
-    color:
-      "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    icon: ArrowUp,
+    color: "text-orange-500",
+    bgColor: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
   },
   {
     value: "Critical",
     label: "Critical",
-    color:
-      "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-bold",
+    icon: AlertCircle,
+    color: "text-red-500",
+    bgColor: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-bold",
   },
 ];
 
@@ -1644,9 +1655,9 @@ function TodoWorkspaceList({
         </div>
       ) : (
         <div className="flex flex-col pb-24 gap-1">
-          {filteredTasks.map((task: TodoTask) => (
+          {filteredTasks.map((task: TodoTask, i) => (
             <TodoWorkspaceItem
-              key={task.id}
+              key={`${task.id}-${i}`}
               task={task}
               level={0}
               onUpdate={onUpdate}
@@ -1987,7 +1998,7 @@ function TodoWorkspaceItem({
                       <span
                         className={cn(
                           "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider hover:scale-95 transition-all block",
-                          priorityInfo.color,
+                          priorityInfo.bgColor,
                         )}
                       >
                         {priorityInfo.label}
@@ -2109,41 +2120,25 @@ function TodoWorkspaceItem({
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">
                           Custom
                         </span>
-                        <DatePicker
-                          className="custom-date-picker"
-                          value={task.dueDate ? new Date(task.dueDate) : null}
-                          clearIcon={
-                            <X
-                              size={14}
-                              className="text-slate-400 dark:text-slate-500 hover:text-red-500 transition-colors"
-                            />
-                          }
-                          calendarIcon={
-                            <CalendarIcon
-                              size={14}
-                              className="text-slate-400 dark:text-slate-500 hover:text-blue-500 transition-colors"
-                            />
-                          }
-                          onChange={(val) => {
-                            if (val && !Array.isArray(val)) {
-                              const date = val as Date;
-                              const utcDate = new Date(
-                                Date.UTC(
-                                  date.getFullYear(),
-                                  date.getMonth(),
-                                  date.getDate(),
-                                ),
-                              );
-                              onUpdate(task.id, {
-                                dueDate: utcDate.toISOString().split("T")[0],
-                              });
-                            } else {
-                              onUpdate(task.id, { dueDate: undefined });
+                        <div className="relative group w-[110px]">
+                          <DatePicker
+                            selected={task.dueDate ? parseISO(task.dueDate) : null}
+                            onChange={(date: Date | null) => {
+                              const dateString = date ? format(date, "yyyy-MM-dd") : undefined;
+                              onUpdate(task.id, { dueDate: dateString });
+                              close();
+                            }}
+                            customInput={
+                              <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
+                                <span className={cn(!task.dueDate && "text-slate-400 group-hover:text-slate-500")}>
+                                  {task.dueDate ? format(parseISO(task.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
+                                </span>
+                              </CustomDateInput>
                             }
-                            close();
-                          }}
-                          format="MM/dd/yyyy"
-                        />
+                            withPortal
+                            portalId="todo-datepicker-portal"
+                          />
+                        </div>
                       </div>
                     </>
                   )}
@@ -2155,7 +2150,7 @@ function TodoWorkspaceItem({
                 <div className="flex items-center gap-1 ml-1">
                   {task.tags.map((tag, i) => (
                     <span
-                      key={i}
+                      key={`${tag}-${i}`}
                       className={cn(
                         "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
                         getTagColorClass(tag),
@@ -2395,9 +2390,9 @@ function TodoWorkspaceItem({
       {/* Subtasks levels tree loops */}
       {task.tasks && task.tasks.length > 0 && !isCollapsed && (
         <div className="flex flex-col gap-0.5 border-l-2 border-slate-100 dark:border-slate-800/60 ml-[1.65rem] pl-1 relative">
-          {task.tasks.map((subtask: TodoTask) => (
+          {task.tasks.map((subtask: TodoTask, i) => (
             <TodoWorkspaceItem
-              key={subtask.id}
+              key={`${subtask.id}-${i}`}
               task={subtask}
               level={level + 1}
               onUpdate={onUpdate}
@@ -2672,7 +2667,7 @@ function TodoTaskDetails({
                   <span
                     className={cn(
                       "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shadow-sm",
-                      priorityInfo.color,
+                      priorityInfo.bgColor,
                     )}
                   >
                     {priorityInfo.label}
@@ -2806,44 +2801,25 @@ function TodoTaskDetails({
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">
                       Custom
                     </span>
-                    <DatePicker
-                      className="custom-date-picker"
-                      value={
-                        foundTask.dueDate ? new Date(foundTask.dueDate) : null
-                      }
-                      clearIcon={
-                        <X
-                          size={14}
-                          className="text-slate-400 dark:text-slate-500 hover:text-red-500 transition-colors"
-                        />
-                      }
-                      calendarIcon={
-                        <CalendarIcon
-                          size={14}
-                          className="text-slate-400 dark:text-slate-500 hover:text-blue-500 transition-colors"
-                        />
-                      }
-                      onChange={(val) => {
-                        if (val && !Array.isArray(val)) {
-                          const date = val as Date;
-                          const utcDate = new Date(
-                            Date.UTC(
-                              date.getFullYear(),
-                              date.getMonth(),
-                              date.getDate(),
-                            ),
-                          );
-                          onUpdate(foundTask!.id, {
-                            dueDate: utcDate.toISOString().split("T")[0],
-                          });
-                        } else {
-                          onUpdate(foundTask!.id, { dueDate: undefined });
+                    <div className="relative group w-[110px]">
+                      <DatePicker
+                        selected={foundTask.dueDate ? parseISO(foundTask.dueDate) : null}
+                        onChange={(date: Date | null) => {
+                          const dateString = date ? format(date, "yyyy-MM-dd") : undefined;
+                          onUpdate(foundTask!.id, { dueDate: dateString });
+                          close();
+                        }}
+                        customInput={
+                          <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
+                            <span className={cn(!foundTask.dueDate && "text-slate-400 group-hover:text-slate-500")}>
+                              {foundTask.dueDate ? format(parseISO(foundTask.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
+                            </span>
+                          </CustomDateInput>
                         }
-
-                        close();
-                      }}
-                      format="MM/dd/yyyy"
-                    />
+                        withPortal
+                        portalId="todo-datepicker-portal"
+                      />
+                    </div>
                   </div>
                 </>
               )}
@@ -2859,7 +2835,7 @@ function TodoTaskDetails({
           <div className="flex flex-wrap gap-1.5 w-full">
             {(foundTask.tags || []).map((tag, i) => (
               <div
-                key={i}
+                key={`${tag}-${i}`}
                 className={cn(
                   "flex items-center gap-1 border px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider group",
                   getTagColorClass(tag),

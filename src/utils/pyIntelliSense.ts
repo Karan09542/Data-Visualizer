@@ -131,7 +131,7 @@ export function registerPyIntelliSense(monaco: any) {
   if (isPyIntelliSenseRegistered || !monaco) return;
   isPyIntelliSenseRegistered = true;
 
-  console.log("[PyIntelliSense]: Registering Python language assistance providers on Monaco...");
+  // console.log("[PyIntelliSense]: Registering Python language assistance providers on Monaco...");
 
   // Subscribe to packaging store revisions to synchronize completions dynamically inside background threads
   try {

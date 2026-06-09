@@ -12,7 +12,6 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { executeTsNode, abortTsNode } from "../utils/tsExecutor";
-import { ExpandableJSON } from "./ExpandableJSON";
 import { safeStringify } from "../utils/safeStringify";
 import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";

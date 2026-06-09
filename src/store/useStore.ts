@@ -4,11 +4,8 @@ import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree } from "../utils/transformer";
 import SearchWorker from "../utils/searchWorker?worker";
-import {
-  parseSearchQuery,
-  buildSearchContext,
-  evaluateQuery,
-} from "../utils/searchEngine";
+
+
 
 let searchWorkerInstance: Worker | null = null;
 if (typeof window !== "undefined") {
@@ -432,8 +429,8 @@ const initialCode = `{
   "version": "2.0.0",
   "dataSources": {
      "my_data_api_node": "https://api.github.com/users",
-     "transform_users_js_node": "console.log('JS calculation node executing!');\\nconsole.log('Namaste');",
-     "typescript_filtering_ts_node": "const greet: string = 'Hello from TypeSafe compiling!';\\nconsole.log(greet);\\nconsole.log('Namaste');"
+     "transform_users_js_node": "// JS calculation node executing!\\n// Namaste",
+     "typescript_filtering_ts_node": "const greet: string = 'Hello from TypeSafe compiling!';\\n// greet\\n// Namaste"
   },
   "settings": {
     "theme": "dark",

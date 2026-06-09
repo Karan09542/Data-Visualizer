@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Download, Image, FileText, ChevronDown, LineChart, RefreshCw, Layers } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Image, FileText, ChevronDown, LineChart, RefreshCw, Layers } from "lucide-react";
 
 interface MatplotlibPlotViewerProps {
   imageData: string; // "data:image/png;base64,..." OR "__MATPLOTLIB_IMAGE_JSON__:..."

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, HelpCircle, Variable, FunctionSquare, Zap, Waves, Disc } from 'lucide-react';
+import { X, HelpCircle, Variable, FunctionSquare, Zap, Waves } from 'lucide-react';
 
 interface MathHelpPopupProps {
   isOpen: boolean;

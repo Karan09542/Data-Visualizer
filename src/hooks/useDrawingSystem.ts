@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useAnnotationStore, Point, Annotation, DrawingTool } from '../store/useAnnotationStore';
 import { detectShape } from '../utils/shapeDetection';

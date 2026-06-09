@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Check, Type, Eye, Edit3, Save, FileText, Layout, Globe } from 'lucide-react';
+import { X, Copy, Check, Type, Edit3, Save, FileText, Layout, Globe } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';

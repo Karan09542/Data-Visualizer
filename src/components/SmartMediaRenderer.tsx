@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getProxiedUrl } from '../utils/mediaUtils';
 import SafeIframe from './SafeIframe';
 import { useStore } from '../store/useStore';
@@ -54,7 +54,7 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
 
     let fetchPromise = ongoingRequests.get(url);
     if (!fetchPromise) {
-      console.log("New Inspector Request", url);
+      // console.log("New Inspector Request", url);
       fetchPromise = fetch(`https://api.urlmediainspector.dev/api/v1/inspect?profile=embed&expand=html`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,7 +66,7 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
       });
       ongoingRequests.set(url, fetchPromise);
     } else {
-      console.log("Reusing Existing Promise", url);
+      // console.log("Reusing Existing Promise", url);
     }
 
     fetchPromise

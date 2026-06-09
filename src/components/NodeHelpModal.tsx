@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, ArrowRight, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair } from 'lucide-react';
+import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface NodeHelpModalProps {
@@ -22,8 +22,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         github_profile_api_node: "https://api.github.com/users/octocat",
         posts_api_node: "https://jsonplaceholder.typicode.com/posts/1",
         ip_lookup_api_node: "https://ipapi.co/json/",
-        calculator_js_node: "console.log('JS calculation node executing!');\nconsole.log('namaste');",
-        greeting_ts_node: "const name: string = 'World';\nconsole.log(`Hello ${name}!`);\nconsole.log('namaste');",
+        calculator_js_node: "// JS calculation node executing!\n// namaste",
+        greeting_ts_node: "const name: string = 'World';\n// Hello ${name}!\n// namaste",
         greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
         waveform_math_node: "f(x) = a * sin(b * x + c)",
         "project_tasks.todo": JSON.stringify({
@@ -53,8 +53,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         meta: {
           api_status: "online",
           ip_lookup_api_node: "https://ipapi.co/json/",
-          run_calc_js_node: "console.log('Math calculation:', Math.random() * 100);\nconsole.log('namaste');",
-          format_date_ts_node: "console.log('Current ISO Date:', new Date().toISOString());\nconsole.log('namaste');",
+          run_calc_js_node: "// Math calculation:\n// namaste",
+          format_date_ts_node: "// Current ISO Date:\n// namaste",
           greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
           waveform_math_node: "f(x) = a * sin(b * x + c)",
           "project_tasks.todo": JSON.stringify({
@@ -303,7 +303,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     }`}>
 {`{
   "project_name": "JS execution",
-  "math_calc_js_node": "const result = 50 * 20;\\nconsole.log('Result:', result);\\nconsole.log('namaste');"
+  "math_calc_js_node": "const result = 50 * 20;\\n// Result: result\\n// namaste"
 }`}
                     </pre>
                   </div>
@@ -353,7 +353,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     }`}>
 {`{
   "project_name": "TS execution",
-  "greet_ts_node": "const msg: string = 'Typescript Rules';\\nconsole.log(msg);\\nconsole.log('namaste');"
+  "greet_ts_node": "const msg: string = 'Typescript Rules';\\n// msg\\n// namaste"
 }`}
                     </pre>
                   </div>

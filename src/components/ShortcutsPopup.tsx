@@ -7,6 +7,8 @@ export default function ShortcutsPopup() {
   if (!isShortcutsOpen) return null;
 
   const shortcuts = [
+    { keys: ['Shift', '~'], desc: 'Quick search files' },
+    { keys: ['Alt', 'T'], desc: 'Todo Center' },
     { keys: ['Shift', 'D'], desc: 'Toggle Drawing Toolbar' },
     { keys: ['Shift', 'V'], desc: 'Select Tool' },
     { keys: ['Shift', 'P'], desc: 'Pen Tool' },

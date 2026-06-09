@@ -1,4 +1,4 @@
-import { X, Image as ImageIcon, Expand, Maximize, LayoutTemplate, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, Share2, MousePointer2, ChevronDown, ChevronUp, AlignLeft } from 'lucide-react';
+import { X, Image as ImageIcon, Expand, Maximize, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, ChevronDown, ChevronUp, AlignLeft } from 'lucide-react';
 import { useStore, CanvasTheme, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { RgbaColorPicker } from 'react-colorful';

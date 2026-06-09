@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { 
   AlertTriangle, 
-  AlertCircle, 
   Clock, 
   HelpCircle, 
   ShieldAlert, 
@@ -17,7 +16,6 @@ import {
   Music as MusicIcon,
   FileText as PdfIcon,
   Download,
-  ExternalLink,
   Code2,
   LayoutTemplate
 } from 'lucide-react';

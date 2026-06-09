@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Download, Music, Video, Image as ImageIcon, FileText, Globe, Move, Box } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Music, Video, Image as ImageIcon, FileText, Globe, Move, Box } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';

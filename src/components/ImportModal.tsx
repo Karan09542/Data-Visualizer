@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   Key,
   Sparkles,
-  Hash,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { parseCsv, parseCsvArray } from "../utils/dataFormats";

@@ -1,5 +1,5 @@
 import { loadPyodide } from "pyodide";
-import { getInstalledPackages, pyDb } from "./pyDb";
+import { getInstalledPackages } from "./pyDb";
 
 let pyodide: any = null;
 let isInitializing = false;
@@ -13,12 +13,12 @@ async function initPyodide() {
   isInitializing = true;
   
   try {
-    console.log("[PyIntelliSense Worker]: Booting Pyodide engine...");
+    // console.log("[PyIntelliSense Worker]: Booting Pyodide engine...");
     pyodide = await loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.4/full/"
     });
     
-    console.log("[PyIntelliSense Worker]: Loading Jedi and dependencies...");
+    // console.log("[PyIntelliSense Worker]: Loading Jedi and dependencies...");
     await pyodide.loadPackage(["jedi"]);
     
     // Register Jedi scripts in Python context
@@ -147,13 +147,13 @@ def get_diagnostics(code, path="main.py"):
 
     // Synchronize workspace packages
     try {
-      console.log("[PyIntelliSense Worker]: Synchronizing installed libraries...");
+      // console.log("[PyIntelliSense Worker]: Synchronizing installed libraries...");
       const installedPkgs = await getInstalledPackages();
       const readyPkgs = installedPkgs.filter(p => p.status === "installed");
       if (readyPkgs.length > 0) {
         for (const pkg of readyPkgs) {
           try {
-            console.log(`[PyIntelliSense Worker]: Mapping package completions for "${pkg.name}"...`);
+            // console.log(`[PyIntelliSense Worker]: Mapping package completions for "${pkg.name}"...`);
             await pyodide.loadPackage(pkg.name);
           } catch (pkgErr) {
             console.warn(`[PyIntelliSense Worker]: Optional preload of package ${pkg.name} failed:`, pkgErr);
@@ -164,7 +164,7 @@ def get_diagnostics(code, path="main.py"):
       console.warn("[PyIntelliSense Worker]: Could not read local Dexie packages:", gErr);
     }
 
-    console.log("[PyIntelliSense Worker]: Python IntelliSense is now ONLINE!");
+    // console.log("[PyIntelliSense Worker]: Python IntelliSense is now ONLINE!");
     isReady = true;
     isInitializing = false;
     
@@ -189,7 +189,7 @@ async function processRequest(e: MessageEvent) {
   if (type === "sync_packages" && packages) {
     try {
       for (const p of packages) {
-        console.log(`[PyIntelliSense Worker]: Dynamically aligning package completions for "${p}"...`);
+        // console.log(`[PyIntelliSense Worker]: Dynamically aligning package completions for "${p}"...`);
         await pyodide.loadPackage(p);
       }
     } catch (err) {

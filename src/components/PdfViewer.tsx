@@ -38,11 +38,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
       // Attempt 1: Direct Fetch
       try {
-        console.log("PDF loading attempt 0: Direct fetch...");
+        // console.log("PDF loading attempt 0: Direct fetch...");
         const response = await fetch(cleanUrl);
         if (response.ok) {
           arrayBuffer = await response.arrayBuffer();
-          console.log("PDF loaded directly as ArrayBuffer!");
+          // console.log("PDF loaded directly as ArrayBuffer!");
         } else {
           throw new Error(`Server returned status code: ${response.status} (${response.statusText || "Forbidden/CORS Block"})`);
         }
@@ -55,11 +55,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
       if (!arrayBuffer && active) {
         try {
           const proxyUrl = `https://go.data-visualizer.workers.dev/?url=${encodeURIComponent(cleanUrl)}`;
-          console.log("PDF loading attempt 1: Proxy go.data-visualizer.workers.dev...");
+          // console.log("PDF loading attempt 1: Proxy go.data-visualizer.workers.dev...");
           const response = await fetch(proxyUrl);
           if (response.ok) {
             arrayBuffer = await response.arrayBuffer();
-            console.log("PDF loaded via go.data-visualizer.workers.dev proxy!");
+            // console.log("PDF loaded via go.data-visualizer.workers.dev proxy!");
           } else {
             throw new Error(`Workers proxy returned status code: ${response.status} (${response.statusText})`);
           }

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
 import { Search, Database, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings, RefreshCw, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { parseSearchQuery } from '../utils/searchEngine';
 
 export default function NodeQueryEngine() {
   const { searchQuery, setSearchQuery, searchMatches, activeMatchIndex, treeData, appTheme, setIsAdvancedPanelOpen, searchEngineMode, globalSearchErrors, globalSearchSuggestions } = useStore();

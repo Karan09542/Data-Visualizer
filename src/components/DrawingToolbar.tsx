@@ -2,11 +2,10 @@ import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { useAnnotationStore, DrawingTool, BrushStyle } from '../store/useAnnotationStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  PenTool, Highlighter, Type, Square, Circle, Triangle,
-  Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity, Pentagon, Hexagon,
-  Settings, Zap, CheckSquare, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
+  PenTool, Highlighter, Square, Circle, Triangle,
+  Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity, Pentagon, Hexagon, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
-  Sigma, X, ChevronUp, Palette, FunctionSquare, Eye, EyeOff, Copy, Check, Plus
+  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';

@@ -1,5 +1,5 @@
 import { loadPyodide } from "pyodide";
-import { getInstalledPackages, saveInstalledPackage, pyDb } from "./pyDb";
+import { getInstalledPackages, pyDb } from "./pyDb";
 
 // Set up shims for window and document so python scripts can import them and perform actions like downloads
 (self as any).window = self;

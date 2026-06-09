@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { getInstalledPackages, saveInstalledPackage, removeInstalledPackage, PyPackageMetadata } from "../utils/pyDb";
-import { useStore } from "./useStore";
 import { appendLogs } from "../utils/executionStore";
 
 export interface PyPackageStore {

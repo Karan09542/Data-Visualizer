@@ -24,7 +24,7 @@ import dagre from 'dagre';
 import * as d3 from 'd3';
 import { useStore } from '../store/useStore';
 import { extractSchema, SchemaNodeData, SchemaField } from '../utils/schemaEngine';
-import { ChevronRight, ChevronDown, Eye, EyeOff, GripVertical, Focus } from 'lucide-react';
+import { ChevronRight, ChevronDown, Eye, EyeOff, Focus } from 'lucide-react';
 import { getEdgePath } from '../utils/layout';
 import NodeQueryEngine from './NodeQueryEngine';
 

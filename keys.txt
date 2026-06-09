@@ -1,0 +1,165 @@
+src/components/PyPackagesPanel.tsx:168:                key={name}
+src/components/PyPackagesPanel.tsx:198:                      <div key={idx} className="whitespace-pre-wrap">{log}</div>
+src/components/PyPackagesPanel.tsx:227:                  key={pkg.name}
+src/components/PyPackagesPanel.tsx:308:                  key={pkg.name}
+src/components/Toolbar.tsx:853:                  <option key={m} value={m}>
+src/components/Toolbar.tsx:880:                  <option key={m} value={m}>
+src/components/Toolbar.tsx:898:                    <option key={m} value={m}>
+src/components/Toolbar.tsx:923:                  <option key={m} value={m}>
+src/components/Toolbar.tsx:1011:                  key={Date.now()}
+src/components/Toolbar.tsx:1202:                    <option key={m} value={m}>
+src/components/Toolbar.tsx:1219:                    <option key={m} value={m}>
+src/components/Toolbar.tsx:1236:                    <option key={m} value={m}>
+src/components/Toolbar.tsx:1285:                    <option key={m} value={m}>
+src/components/CodeWorkspace.tsx:652:        <span key={index} style={currentStyle} className="whitespace-pre-wrap break-all">
+src/components/CodeWorkspace.tsx:663:          <MatplotlibPlotViewer key={index} imageData={arg} />
+src/components/CodeWorkspace.tsx:681:              <div key={index} className="w-full overflow-x-auto py-2 katex-display-wrapper">
+src/components/CodeWorkspace.tsx:691:      return <span key={index} className="whitespace-pre-wrap break-all">{colorized}</span>;
+src/components/CodeWorkspace.tsx:695:        <span key={index} className="text-slate-400 dark:text-slate-500 italic whitespace-pre-wrap break-all">
+src/components/CodeWorkspace.tsx:702:        <span key={index} className="text-cyan-500 dark:text-cyan-400 font-bold whitespace-pre-wrap break-all">
+src/components/CodeWorkspace.tsx:709:        <span key={index} className="text-amber-600 dark:text-amber-400 whitespace-pre-wrap break-all">
+src/components/CodeWorkspace.tsx:716:        <span key={index} className="text-purple-500 dark:text-purple-400 whitespace-pre-wrap break-all">
+src/components/CodeWorkspace.tsx:724:        <span key={index} className="text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all font-mono">
+src/components/CodeWorkspace.tsx:729:    return <span key={index} className="whitespace-pre-wrap break-all">{String(arg)}</span>;
+src/components/CodeWorkspace.tsx:1234:                            key={t}
+src/components/CodeWorkspace.tsx:1352:                      key={tab.path}
+src/components/NodeHelpModal.tsx:178:                        key={tab.id}
+src/components/SchemaVisualizer.tsx:508:          <mark key={index} className="bg-amber-200 dark:bg-amber-500/50 text-slate-950 dark:text-amber-100 font-semibold px-0.5 rounded-sm shadow-[0_0_8px_rgba(245,158,11,0.25)]">
+src/components/SchemaVisualizer.tsx:663:              <FieldRow key={child.id} field={child} searchQuery={searchQuery} layoutMode={layoutMode} />
+src/components/SchemaVisualizer.tsx:749:            <FieldRow key={field.id} field={field} searchQuery={searchQuery} layoutMode={data.layoutMode} />
+src/components/TodoWorkspace.tsx:134:                key={index}
+src/components/TodoWorkspace.tsx:142:                key={index}
+src/components/TodoWorkspace.tsx:157:                key={index}
+src/components/TodoWorkspace.tsx:165:                key={index}
+src/components/TodoWorkspace.tsx:174:            <div key={index} className="markdown-body inline select-text">
+src/components/TodoWorkspace.tsx:1431:                  key={f}
+src/components/TodoWorkspace.tsx:1649:              key={task.id}
+src/components/TodoWorkspace.tsx:1959:                            key={opt.value}
+src/components/TodoWorkspace.tsx:2003:                          key={opt.value}
+src/components/TodoWorkspace.tsx:2158:                      key={i}
+src/components/TodoWorkspace.tsx:2400:              key={subtask.id}
+src/components/TodoWorkspace.tsx:2639:                        key={opt.value}
+src/components/TodoWorkspace.tsx:2689:                      key={opt.value}
+src/components/TodoWorkspace.tsx:2862:                key={i}
+src/components/TodoWorkspace.tsx:2941:                        key={t}
+src/components/TodoSearchBar.tsx:258:                key={i} 
+src/components/TodoSearchBar.tsx:321:                   key={tag}
+src/components/TodoSearchBar.tsx:354:                   key={p.value}
+src/components/TodoSearchBar.tsx:377:                       key={s.value}
+src/components/TodoSearchBar.tsx:398:                        key={i}
+src/components/TodoSearchBar.tsx:414:                        key={kw}
+src/components/EditorPanel.tsx:426:              key="raw-editor"
+src/components/EditorPanel.tsx:513:                  key="api-headers-editor"
+src/components/EditorPanel.tsx:554:                    key="api-body-editor"
+src/components/PyNodeRenderer.tsx:301:                                  <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
+src/components/AnnotationRenderer.tsx:728:          key={anno.id} 
+src/components/AnnotationRenderer.tsx:762:            key={`tb-${anno.id}`} 
+src/components/DrawingToolbar.tsx:425:                            key={t.id}
+src/components/DrawingToolbar.tsx:464:                             key={c}
+src/components/DrawingToolbar.tsx:563:                                        <button key={c} onClick={() => store.setFillColor(c)} className="w-5 h-5 rounded-full border border-transparent hover:border-white shadow-sm" style={{ backgroundColor: c }} />
+src/components/DrawingToolbar.tsx:638:                                 key={preset.label}
+src/components/DrawingToolbar.tsx:690:                                      <div key={group.group} className="flex flex-col gap-1.5">
+src/components/DrawingToolbar.tsx:695:                                              key={item.label}
+src/components/DrawingToolbar.tsx:725:                                              key={fn}
+src/components/DrawingToolbar.tsx:764:                             <div key={item.label} className="bg-[#121A2F] p-4 rounded-xl border border-slate-800/80 flex flex-col gap-3">
+src/components/DrawingToolbar.tsx:829:                                     key={preset.label}
+src/components/DrawingToolbar.tsx:876:                                     key={preset.label}
+src/components/DrawingToolbar.tsx:907:                             key={b.id}
+src/components/DrawingToolbar.tsx:1468:                key={t.id}
+src/components/DrawingToolbar.tsx:1607:                      key={c}
+src/components/DrawingToolbar.tsx:1728:                    <option key={b.id} value={b.id} className="bg-white dark:bg-[#0b1120] text-slate-900 dark:text-slate-100">{b.label}</option>
+src/components/DrawingToolbar.tsx:1780:                                  key={c} 
+src/components/DrawingToolbar.tsx:1945:                         key={preset.label}
+src/components/DrawingToolbar.tsx:2004:                         key={preset.label}
+src/components/DrawingToolbar.tsx:2161:                      key={p.label}
+src/components/DrawingToolbar.tsx:2216:                          <div key={group.group} className="flex flex-col gap-2">
+src/components/DrawingToolbar.tsx:2221:                                  key={item.label}
+src/components/DrawingToolbar.tsx:2251:                                  key={fn}
+src/components/AnnotationControls.tsx:139:                  key={u}
+src/components/AnnotationControls.tsx:285:            key={deg}
+src/components/TsNodeTerminalRenderer.tsx:148:                                  key={argIdx}
+src/components/TsNodeTerminalRenderer.tsx:155:                                  key={argIdx}
+src/components/ShortcutsPopup.tsx:50:            <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-1">
+src/components/ShortcutsPopup.tsx:54:                  <span key={j} className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-xs font-mono text-slate-700 dark:text-slate-300">
+src/components/FileExplorerPanel.tsx:868:        <div key={item.id} className="select-none">
+src/components/JsNodeRenderer.tsx:300:                                  <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
+src/components/ExpandableJSON.tsx:27:                    <div key={i} className="flex gap-2">
+src/components/ExpandableJSON.tsx:61:                    <div key={k} className="flex gap-2">
+src/components/JsNodeTerminalRenderer.tsx:148:                                  key={argIdx}
+src/components/JsNodeTerminalRenderer.tsx:155:                                  key={argIdx}
+src/components/SafeEditor.tsx:142:        key={activeKey}
+src/components/PyMissingPromptModal.tsx:96:                    key={pkg}
+src/components/PyMissingPromptModal.tsx:127:                  <div key={pkg} className="flex items-center gap-1.5 capitalize">
+src/components/AdvancedPanel.tsx:264:                          key={t}
+src/components/AdvancedPanel.tsx:304:                          key={s}
+src/components/AdvancedPanel.tsx:413:                             key={type}
+src/components/AdvancedPanel.tsx:456:                     <button key={c} onClick={() => { setNodeColor(c); setNodeTheme('custom'); }} className="w-8 h-8 rounded-md border border-white/10 hover:scale-110 transition-transform" style={{ backgroundColor: c }} />
+src/components/AdvancedPanel.tsx:474:                     <button key={c} onClick={() => { setNodeTextColor(c); setNodeTheme('custom'); }} className="w-8 h-8 rounded-md border border-white/10 hover:scale-110 transition-transform" style={{ backgroundColor: c }} />
+src/components/AdvancedPanel.tsx:526:                    key={c} 
+src/components/AdvancedPanel.tsx:825:                  key={t}
+src/components/NodeRenderer.tsx:1863:                      key={strVal}
+src/components/GraphVisualizer.tsx:1294:                  key={`link-${link.source.data.id}-${link.target.data.id}`}
+src/components/GraphVisualizer.tsx:1314:                  key={`node-${node.data.id}`}
+src/components/GraphVisualizer.tsx:1337:                key={inlineApiEditor.nodeId}
+src/components/GraphVisualizer.tsx:1581:                  key={action.id}
+src/components/PyNodeTerminalRenderer.tsx:150:                                  <MatplotlibPlotViewer key={argIdx} imageData={arg} />
+src/components/PyNodeTerminalRenderer.tsx:168:                                        <div key={argIdx} className="w-full overflow-x-auto py-1 katex-display-wrapper">
+src/components/PyNodeTerminalRenderer.tsx:179:                                    key={argIdx}
+src/components/PyNodeTerminalRenderer.tsx:188:                                  key={argIdx}
+src/components/GuiEditorPanel.tsx:858:                        key={op.path}
+src/components/GuiEditorPanel.tsx:924:                          key={item.type}
+src/components/GuiEditorPanel.tsx:963:                          key={item.type}
+src/components/GuiEditorPanel.tsx:1137:                      <option key={op.path} value={op.path}>
+src/components/GuiEditorPanel.tsx:1170:                        key={item.type}
+src/components/GuiEditorPanel.tsx:1196:                        key={item.type}
+src/components/GuiEditorPanel.tsx:1447:                    key={field.path}
+src/components/GuiEditorPanel.tsx:1756:                                <option key={op.path} value={op.path}>
+src/components/GuiEditorPanel.tsx:1949:                                    key={itemPath}
+src/components/GuiEditorPanel.tsx:2094:                                key={t}
+src/components/TableView.tsx:45:          <mark key={i} className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded-sm px-0.5">{part}</mark>
+src/components/TableView.tsx:47:          <span key={i}>{part}</span>
+src/components/TableView.tsx:260:              <React.Fragment key={headerGroup.id}>
+src/components/TableView.tsx:263:                    key={header.id}
+src/components/TableView.tsx:306:                    key={row.id}
+src/components/TableView.tsx:314:                        key={cell.id} 
+src/components/SavedDocumentsModal.tsx:77:                <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors group">
+src/components/MathNodeRenderer.tsx:314:                      <option key={g.id} value={g.id} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+src/components/MathNodeRenderer.tsx:598:              return <span key={i} style={{ color, textShadow: hoveredVar === tok ? `0 0 8px ${color}` : 'none', fontWeight: hoveredVar === tok ? 'bold' : 'normal', transition: 'all 0.2s' }}>{tok}</span>
+src/components/MathNodeRenderer.tsx:601:              return <span key={i} style={{ color: isDark ? '#eab308' : '#b45309' }}>{tok}</span>;
+src/components/MathNodeRenderer.tsx:604:        return <span key={i} style={{ color: isDark ? '#cbd5e1' : '#334155' }}>{tok}</span>;
+src/components/MathNodeRenderer.tsx:687:                <div key={s.name} className={`px-3 py-1.5 flex flex-col cursor-pointer transition-colors ${idx === selIndex ? 'bg-slate-100 dark:bg-slate-700' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'}`} onClick={() => {
+src/components/MathNodeRenderer.tsx:1201:      key={idx}
+src/components/MathNodeRenderer.tsx:2070:                    key={f.id} 
+src/components/MathNodeRenderer.tsx:2466:                                    key={c}
+src/components/MathNodeRenderer.tsx:2562:                                        key={c}
+src/components/MathNodeRenderer.tsx:2677:                                    key={style.value}
+src/components/MathNodeRenderer.tsx:3014:                                  <React.Fragment key={formula.id}>
+src/components/MathNodeRenderer.tsx:3168:                                <React.Fragment key={formula.id}>
+src/components/MathNodeRenderer.tsx:3345:                           key={tmpl.label} 
+src/components/MathNodeRenderer.tsx:3364:                           key={fn} 
+src/components/MathNodeRenderer.tsx:3486:                       <button key={mv} className="bg-blue-600/80 hover:bg-blue-500 text-white px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 shadow-sm" onClick={() => handleAutoAddVar(mv)}>
+src/components/MathNodeRenderer.tsx:3506:                    <div key={group.id} className="flex flex-col gap-2">
+src/components/MathNodeRenderer.tsx:3566:                           key={v.id} 
+src/components/MathNodeRenderer.tsx:3761:                          key={m}
+src/components/MathNodeRenderer.tsx:3904:              key={viewResetKey}
+src/components/MathNodeRenderer.tsx:4011:                          <React.Fragment key={f.id}>
+src/components/MathNodeRenderer.tsx:4022:                                 <React.Fragment key={i}>
+src/components/MathNodeRenderer.tsx:4046:                               <Vector key={i} tail={[0,0]} tip={p} color={f.color} />
+src/components/MathNodeRenderer.tsx:4220:                        <React.Fragment key={f.id}>
+src/components/MathNodeRenderer.tsx:4252:                          key={f.id}
+src/components/MathNodeRenderer.tsx:4269:                        <React.Fragment key={f.id}>
+src/components/MathNodeRenderer.tsx:4342:                      <React.Fragment key={f.id}>
+src/components/MathNodeRenderer.tsx:4397:                           return <div key={f.id} className="flex gap-2"><span style={{color: f.color}}>f({(time % 10 - 5).toFixed(1)})</span>: {y}</div>
+src/components/MathNodeRenderer.tsx:4413:                             return <div key={f.id} className="flex gap-2"><span style={{color: f.color}}>r({tVal.toFixed(1)})</span>: {r.toFixed(2)}</div>
+src/components/MathNodeRenderer.tsx:4418:                               return <div key={f.id} className="flex gap-2"><span style={{color: f.color}}>[x,y]({tVal.toFixed(1)})</span>: [{Number(arr[0]).toFixed(2)}, {Number(arr[1]).toFixed(2)}]</div>
+src/components/MathNodeRenderer.tsx:4428:                               return <div key={f.id} className="flex gap-2"><span style={{color: f.color}}>{f.type === 'point' ? 'P' : 'V'}</span>: [{Number(pt[0]).toFixed(2)}, {Number(pt[1]).toFixed(2)}]</div>
+src/components/TsNodeRenderer.tsx:300:                                  <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
+src/components/TodoNodeRenderer.tsx:538:                key={`${task.id}-${idx}`}
+src/components/ProductivityLayer.tsx:640:                          key={`${file.id}-${idx}`}
+src/components/ProductivityLayer.tsx:770:                          key={`${todo.nodePath}-${todo.id}-${idx}`}
+src/components/ProductivityLayer.tsx:825:                              <span key={`${tag}-${tagIdx}`} className={cn("text-[8px] font-bold uppercase tracking-wider border px-1 py-0.5 rounded font-mono select-none", isSelected ? "bg-white/20 text-white border-transparent" : "text-slate-400 bg-slate-100 dark:bg-slate-900 border-slate-250 dark:border-slate-800/80")}>
+src/components/ProductivityLayer.tsx:1032:                          key={`${tag}-${tagIdx}`}
+src/utils/errorParser.tsx:59:          key={`link-${matchIndex}`}
+src/pages/Examples.tsx:119:                <div key={i} {...getLineProps({ line })} className="table-row">
+src/pages/Examples.tsx:123:                      <span key={key} {...getTokenProps({ token })} />
+src/pages/Examples.tsx:172:          <div key={idx} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col transition-shadow hover:shadow-md">

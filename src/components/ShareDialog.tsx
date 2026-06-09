@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Copy, Check, AlertTriangle, Info, Share2, FileJson, Zap, Link as LinkIcon, Download, Trash2 } from 'lucide-react';
+import { X, Copy, Check, AlertTriangle, Info, Share2, Zap, Link as LinkIcon, Download } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { estimateShareSize, getShareUrl, compressState, serializeState, simplifyAnnotations } from '../utils/shareUtils';

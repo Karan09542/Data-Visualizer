@@ -22,8 +22,6 @@ import {
   Edit2,
   Trash2,
   X,
-  Search,
-  Settings,
   Eye,
   Network,
   TableProperties,
