@@ -1084,6 +1084,16 @@ declare const console: {
             >
               <PanelLeft size={15} className={settings.isSidebarOpen === false ? "opacity-60" : ""} />
             </button>
+
+            {/* Terminal Toggle Button */}
+            <button
+              onClick={() => setTerminalState(terminalState === "hidden" ? "normal" : "hidden")}
+              className={`p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors ${terminalState !== "hidden" ? "bg-slate-200/50 dark:bg-slate-800/80 text-blue-500 dark:text-blue-400" : ""}`}
+              title="Toggle Terminal Panel"
+            >
+              <TerminalIcon size={15} />
+            </button>
+
             <div className="w-px h-5 bg-slate-300 dark:bg-slate-700 hidden sm:block mx-0.5" />
 
             {/* Run Button (Executable files only) */}
@@ -1630,8 +1640,8 @@ declare const console: {
               )}
 
               {/* Console/Result Pane tabs header */}
-              <div className="flex justify-between items-center bg-slate-100/80 dark:bg-[#11161d] border-b border-slate-200 dark:border-slate-800 select-none shrink-0 overflow-x-auto scrollbar-none">
-                <div className="flex">
+              <div className="flex justify-between items-center bg-slate-100/80 dark:bg-[#11161d] border-b border-slate-200 dark:border-slate-800 select-none shrink-0 w-full overflow-hidden">
+                <div className="flex flex-1 overflow-x-auto scrollbar-none min-w-0">
                   <button
                     onClick={() => setActiveTab("console")}
                     className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-r-slate-200 dark:border-r-slate-800 transition-colors shrink-0 flex items-center gap-1.5 ${activeTab === "console" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 border-t-2 !border-t-blue-500 font-semibold" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent hover:text-slate-800 dark:hover:text-slate-200"}`}
@@ -1654,7 +1664,7 @@ declare const console: {
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center px-3 border-l border-slate-200 dark:border-slate-800 gap-2 py-1">
+                <div className="flex items-center px-1.5 md:px-3 border-l border-slate-200 dark:border-slate-800 gap-1 md:gap-2 py-1 shrink-0 bg-slate-100/80 dark:bg-[#11161d]">
                   {activeTab === "console" && (
                     <button
                       onClick={async () => {
@@ -1673,7 +1683,7 @@ declare const console: {
                           console.error("Failed to copy console logs", err);
                         }
                       }}
-                      className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
+                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
                         copiedConsole
                           ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold"
                           : logCount > 0
@@ -1691,7 +1701,7 @@ declare const console: {
                   {activeTab === "console" && (
                     <button
                       onClick={clearLogs}
-                      className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 outline-none ${
+                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${
                         logCount > 0
                           ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
                           : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
@@ -1708,7 +1718,7 @@ declare const console: {
                   {activeTab === "console" && (
                     <button
                       onClick={() => setAutoClearLogs(!autoClearLogs)}
-                      className={`py-1 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
+                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
                         autoClearLogs
                           ? "text-blue-600 dark:text-blue-400 bg-blue-550/10 hover:bg-blue-550/20"
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
