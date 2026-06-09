@@ -74,6 +74,15 @@
       scrollbar-width: none;  /* Firefox */
     }
   }
+
+  /* Utility to completely hide scrollbars */
+  .scrollbar-none::-webkit-scrollbar {
+    display: none !important;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none !important;  /* IE and Edge */
+    scrollbar-width: none !important;  /* Firefox */
+  }
 }
 
 @keyframes blink {

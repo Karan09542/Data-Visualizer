@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, ArrowRight, CheckCircle2, FileJson, Terminal, ListTodo } from 'lucide-react';
+import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, ArrowRight, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface NodeHelpModalProps {
@@ -11,7 +11,7 @@ interface NodeHelpModalProps {
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   const { code, setCode, appTheme } = useStore();
-  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'todo'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo'>('api');
 
   const handleInsertExample = async () => {
     try {
@@ -25,6 +25,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         calculator_js_node: "console.log('JS calculation node executing!');\nconsole.log('namaste');",
         greeting_ts_node: "const name: string = 'World';\nconsole.log(`Hello ${name}!`);\nconsole.log('namaste');",
         greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
+        waveform_math_node: "f(x) = a * sin(b * x + c)",
         "project_tasks.todo": JSON.stringify({
           title: "Project Tasks",
           tasks: [
@@ -55,6 +56,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
           run_calc_js_node: "console.log('Math calculation:', Math.random() * 100);\nconsole.log('namaste');",
           format_date_ts_node: "console.log('Current ISO Date:', new Date().toISOString());\nconsole.log('namaste');",
           greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
+          waveform_math_node: "f(x) = a * sin(b * x + c)",
           "project_tasks.todo": JSON.stringify({
             title: "Project Tasks",
             tasks: [
@@ -159,62 +161,45 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
               </div>
               
               {/* Tabs */}
-              <div className="flex px-4 gap-4 mt-2">
-                <button
-                  onClick={() => setActiveTab('api')}
-                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-                    activeTab === 'api' 
-                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' 
-                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <Network size={16} /> API Nodes
-                </button>
-                <button
-                  onClick={() => setActiveTab('js')}
-                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-                    activeTab === 'js' 
-                      ? 'border-amber-500 text-amber-600 dark:text-amber-400' 
-                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <FileJson size={16} /> JS Nodes
-                </button>
-                <button
-                  onClick={() => setActiveTab('ts')}
-                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-                    activeTab === 'ts' 
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400' 
-                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <Code size={16} /> TS Nodes
-                </button>
-                <button
-                  onClick={() => setActiveTab('py')}
-                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-                    activeTab === 'py' 
-                      ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' 
-                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <Terminal size={16} /> Python Nodes
-                </button>
-                <button
-                  onClick={() => setActiveTab('todo')}
-                  className={`pb-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-                    activeTab === 'todo' 
-                      ? 'border-purple-500 text-purple-600 dark:text-purple-400' 
-                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <ListTodo size={16} /> Todo Nodes
-                </button>
+              <div className="px-4 border-b dark:border-slate-800/50">
+                <div className="flex gap-2 overflow-x-auto scrollbar-none py-2 shrink-0 min-w-0 max-w-full">
+                  {([
+                    { id: 'api', label: 'API Nodes', icon: Network, color: 'indigo' },
+                    { id: 'js', label: 'JS Nodes', icon: FileJson, color: 'amber' },
+                    { id: 'ts', label: 'TS Nodes', icon: Code, color: 'blue' },
+                    { id: 'py', label: 'Python Nodes', icon: Terminal, color: 'emerald' },
+                    { id: 'math', label: 'Math Nodes', icon: Calculator, color: 'rose' },
+                    { id: 'todo', label: 'Todo Nodes', icon: ListTodo, color: 'purple' },
+                  ] as const).map(tab => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer flex items-center gap-1.5 border shrink-0 ${
+                          isActive
+                            ? tab.color === 'indigo' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-bold shadow-xs'
+                              : tab.color === 'amber' ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold shadow-xs'
+                              : tab.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold shadow-xs'
+                              : tab.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
+                              : tab.color === 'rose' ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-450 font-bold shadow-xs'
+                              : 'bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400 font-bold shadow-xs'
+                            : 'bg-slate-50/50 dark:bg-slate-900/10 border-slate-100 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
+                        }`}
+                      >
+                        <Icon size={14} className={isActive ? 'opacity-100' : 'opacity-70'} />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
             {/* Content */}
-            <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-6 text-sm">
+            <div className="p-6 max-h-[60vh] overflow-y-auto scrollbar-none space-y-6 text-sm">
               {activeTab === 'api' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className={`p-4 rounded-xl border flex gap-3 ${
@@ -263,7 +248,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-blue-500" /> Defining an API Node in JSON
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border ${
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-indigo-300' : 'bg-slate-50 border-slate-200 text-indigo-600'
                     }`}>
 {`{
@@ -313,7 +298,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-amber-500" /> Defining a JS Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border ${
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'
                     }`}>
 {`{
@@ -363,7 +348,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-blue-500" /> Defining a TS Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border ${
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
                     }`}>
 {`{
@@ -400,7 +385,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
                     <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
                       <div className="flex items-center gap-2 mb-2 font-semibold">
-                        <Terminal size={16} className="text-emerald-550" />
+                        <Terminal size={16} className="text-emerald-555" />
                         <span>Console Output</span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -413,12 +398,83 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-emerald-500" /> Defining a Python Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border ${
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-emerald-300' : 'bg-[#f0fdf4] border-emerald-100 text-emerald-700'
                     }`}>
 {`{
   "project_name": "Python execution",
   "greet_py_node": "text = 'Python Rules'\\nprint(text)\\nresult = {'message': text}\\nresult"
+}`}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'math' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className={`p-4 rounded-xl border flex gap-3 ${
+                    appTheme === 'dark' ? 'bg-rose-950/20 border-rose-900/40 text-rose-200' : 'bg-rose-50/50 border-rose-100 text-rose-850'
+                  }`}>
+                    <Calculator className="shrink-0 mt-0.5 text-rose-500" size={18} />
+                    <div>
+                      <span className="font-semibold block mb-0.5">What are Math Nodes?</span>
+                      Keys or files ending with either <code className="font-mono bg-rose-500/10 dark:bg-rose-500/20 px-1 py-0.5 rounded text-xs font-bold">.math</code> or <code className="font-mono bg-rose-500/10 dark:bg-rose-500/20 px-1 py-0.5 rounded text-xs font-bold">_math_node</code> evaluate advanced math equations and plot functions dynamically in an interactive coordinate visualizer!
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Crosshair size={16} className="text-rose-555" />
+                        <span>Interactive Coordinate Grid</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Visualize coordinate plots like Cartesian, polar coordinates, and parametric curves using our interactive graphing stage. Enjoy rich fluid pan, zoom, and live point manipulation.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Settings size={16} className="text-rose-555" />
+                        <span>Dynamic Slider Controls</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Declare slider variables like <code className="font-mono">a</code>, <code className="font-mono">b</code> or <code className="font-mono">k</code>. Watch your functions, derivatives, tangents and shapes update instantly as you shift boundaries.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Bookmark size={16} className="text-rose-555" />
+                        <span>Matrix / Vector Math</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Solve equations, define matrices (<code className="font-mono">[[1, 2], [3, 4]]</code>), compute determinants, plot vectors, draw polygons, and analyze transformations right in your workspace.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Plus size={16} className="text-rose-555" />
+                        <span>KaTeX & Typeset Notation</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Your custom equations, matrices, and variables are automatically parsed and formatted into textbook mathematical print via beautiful KaTeX typeset.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="font-bold flex items-center gap-1.5 mb-2.5">
+                      <Code size={16} className="text-rose-555" /> Defining a Math Node in JSON
+                    </span>
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
+                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-700'
+                    }`}>
+{`{
+  "project_name": "Calculus and Algebra Nodes",
+  "sine_oscillations_math_node": "f(x) = a * sin(b * x + c)",
+  "archimedean_spiral.math": "r = theta * k"
 }`}
                     </pre>
                   </div>
@@ -483,7 +539,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-purple-500" /> Defining a Todo Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto border ${
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-purple-300' : 'bg-purple-50/30 border-purple-100 text-purple-700'
                     }`}>
 {`{

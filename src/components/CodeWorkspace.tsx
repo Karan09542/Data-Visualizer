@@ -131,6 +131,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     parsedData,
     jsNodeLoading,
     jsNodeErrors,
+    setJsNodeError,
     jsNodeResponses,
     setApiNodeLoading,
     setApiNodeError,
@@ -1700,14 +1701,22 @@ declare const console: {
 
                   {activeTab === "console" && (
                     <button
-                      onClick={clearLogs}
+                      onClick={() => {
+                        clearLogs();
+                        if (setJsNodeError) {
+                          setJsNodeError(currentFilePath, null);
+                        }
+                        if (setApiNodeError) {
+                          setApiNodeError(currentFilePath, null);
+                        }
+                      }}
                       className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${
-                        logCount > 0
+                        (logCount > 0 || lastError)
                           ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
                           : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
                       }`}
-                      title="Clear console logs"
-                      disabled={logCount === 0}
+                      title="Clear console logs and errors"
+                      disabled={logCount === 0 && !lastError}
                     >
                       <Trash2 size={13} />
                       <span className="hidden sm:inline">Clear</span>

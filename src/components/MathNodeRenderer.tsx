@@ -28,6 +28,10 @@ const InsertBelowIcon = ({ size = 14, className = "" }: { size?: number, classNa
   </svg>
 );
 
+const generateSafeId = () => {
+  return "id_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now().toString(36);
+};
+
 interface MathFunction {
   id: string;
   name?: string;
@@ -43,6 +47,7 @@ interface MathFunction {
   label?: string;
   fillColor?: string;
   fillOpacity?: number;
+  lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
 
   // Behaviors
   isDraggable?: boolean;
@@ -85,7 +90,7 @@ const VariableEditorModal = ({ variable, groups, existingVariables, onSave, onCl
       return { showSlider: variable.showSlider !== false, ...variable };
     }
     return {
-      id: Math.random().toString(36).substring(7),
+      id: generateSafeId(),
       name: "",
       displayName: "",
       description: "",
@@ -136,7 +141,7 @@ const VariableEditorModal = ({ variable, groups, existingVariables, onSave, onCl
       if (existingGroup) {
         onSave({ ...finalVar, groupId: existingGroup.id });
       } else {
-        const newGroupId = `group_${Math.random().toString(36).substring(7)}`;
+        const newGroupId = `group_${generateSafeId()}`;
         const newGroup = {
           id: newGroupId,
           name: trimmedGroup,
@@ -727,6 +732,13 @@ const stripAlpha = (hex: string) => {
   return hex;
 };
 
+const getStrokeDasharray = (style?: string) => {
+  if (style === "dashed") return "8, 6";
+  if (style === "dotted") return "2, 4";
+  if (style === "dashdot") return "10, 4, 2, 4";
+  return undefined; // solid or undefined
+};
+
 const ReadableColorBadge = ({ color }: { color: string }) => {
   const [copied, setCopied] = useState(false);
 
@@ -991,7 +1003,8 @@ const ImplicitPlot: React.FC<{
   opacity?: number;
   tx?: number;
   ty?: number;
-}> = ({ compiledLHS, compiledRHS, baseScope, color, weight = 3, opacity = 1, tx = 0, ty = 0 }) => {
+  lineStyle?: string;
+}> = ({ compiledLHS, compiledRHS, baseScope, color, weight = 3, opacity = 1, tx = 0, ty = 0, lineStyle }) => {
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
 
@@ -1180,18 +1193,30 @@ const ImplicitPlot: React.FC<{
     return localSegments;
   }, [compiledLHS, compiledRHS, baseScope, xRange[0], xRange[1], yRange[0], yRange[1]]);
 
+  const isSpecialDashed = lineStyle && lineStyle !== "solid";
+  const customDashPattern = getStrokeDasharray(lineStyle);
+
+  const renderedSegments = segments.map((s, idx) => (
+    <Line.Segment
+      key={idx}
+      point1={s.p1}
+      point2={s.p2}
+      color={color}
+      weight={weight}
+      opacity={opacity}
+      style={isSpecialDashed ? "dashed" : "solid"}
+    />
+  ));
+
   return (
     <React.Fragment>
-      {segments.map((s, idx) => (
-        <Line.Segment
-          key={idx}
-          point1={s.p1}
-          point2={s.p2}
-          color={color}
-          weight={weight}
-          opacity={opacity}
-        />
-      ))}
+      {isSpecialDashed ? (
+        <g style={{ "--mafs-line-stroke-dash-style": customDashPattern } as React.CSSProperties}>
+          {renderedSegments}
+        </g>
+      ) : (
+        renderedSegments
+      )}
     </React.Fragment>
   );
 };
@@ -1766,7 +1791,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   const handleAutoAddVar = (name: string) => {
     const newVar: MathVariable = {
-      id: Math.random().toString(36).substring(7),
+      id: generateSafeId(),
       name,
       displayName: "",
       description: "",
@@ -1790,7 +1815,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   const handleAddFunction = () => {
     setFunctions(prev => [...prev, {
-      id: Math.random().toString(36).substring(7),
+      id: generateSafeId(),
       expr: "x",
       color: COLORS[prev.length % COLORS.length],
       visible: true,
@@ -1804,7 +1829,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       if (targetIndex === -1) return prev;
 
       const newFn = {
-        id: Math.random().toString(36).substring(7),
+        id: generateSafeId(),
         expr: "x",
         color: COLORS[(prev.length) % COLORS.length],
         visible: true,
@@ -1826,7 +1851,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       const targetFn = prev[targetIndex];
       const newFn = {
         ...targetFn,
-        id: Math.random().toString(36).substring(7),
+        id: generateSafeId(),
         color: COLORS[(prev.length) % COLORS.length]
       };
 
@@ -1862,7 +1887,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       }
       
       const newVar: MathVariable = {
-        id: Math.random().toString(36).substring(7),
+        id: generateSafeId(),
         name: chosenName,
         displayName: `${chosenName.toUpperCase()} Parameter`,
         description: "",
@@ -2637,6 +2662,47 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 <span className="text-[9px] text-slate-400 font-mono">1.0</span>
                               </div>
                             </div>
+
+                            {/* Line Style Selection */}
+                            <div className="flex flex-col gap-1 mt-1 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                              <span className="text-slate-550 dark:text-slate-400 font-semibold mb-1">Line Style</span>
+                              <div className="grid grid-cols-4 gap-1.5 mt-0.5">
+                                {([
+                                  { value: "solid", label: "Solid", dash: "none" },
+                                  { value: "dashed", label: "Dashed", dash: "5,3" },
+                                  { value: "dotted", label: "Dotted", dash: "1,2" },
+                                  { value: "dashdot", label: "Dash-Dot", dash: "8,3,1,3" }
+                                ] as const).map(style => (
+                                  <button
+                                    key={style.value}
+                                    type="button"
+                                    onClick={() => {
+                                      setFunctions(prev => prev.map(fn => fn.id === f.id ? { ...fn, lineStyle: style.value } : fn));
+                                    }}
+                                    className={`px-1 rounded-md h-9 flex flex-col items-center justify-center gap-1 transition-all w-full select-none cursor-pointer border ${
+                                      (f.lineStyle || "solid") === style.value
+                                        ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-sm"
+                                        : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-50/50 dark:bg-slate-900/30"
+                                    }`}
+                                  >
+                                    <span className="text-[10px] truncate leading-none">{style.label}</span>
+                                    {/* Visual Line pattern representation */}
+                                    <svg width="24" height="4" className="text-current opacity-85 overflow-visible">
+                                      <line
+                                        x1="0"
+                                        y1="2"
+                                        x2="24"
+                                        y2="2"
+                                        stroke="currentColor"
+                                        strokeWidth="1.5"
+                                        strokeDasharray={style.dash === "none" ? undefined : style.dash}
+                                        strokeLinecap="round"
+                                      />
+                                    </svg>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                       )}
                     </div>
@@ -2999,7 +3065,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             onClick={() => {
                                               setActiveExample(null);
                                               setFunctions(prev => [...prev, { 
-                                                id: Math.random().toString(36).substring(7), 
+                                                id: generateSafeId(), 
                                                 expr: formula.expr, 
                                                 color: COLORS[prev.length % COLORS.length], 
                                                 type: (formula.type as any) || 'function', 
@@ -3153,7 +3219,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           onClick={() => {
                                             setActiveExample(null);
                                             setFunctions(prev => [...prev, { 
-                                              id: Math.random().toString(36).substring(7), 
+                                              id: generateSafeId(), 
                                               expr: formula.expr, 
                                               color: COLORS[prev.length % COLORS.length], 
                                               type: (formula.type as any) || 'function', 
@@ -3279,7 +3345,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                            key={tmpl.label} 
                            onClick={() => {
                              setActiveExample(null); // Clear example highlight when custom item is inserted
-                             setFunctions(prev => [...prev, { id: Math.random().toString(36).substring(7), expr: tmpl.fn, color: COLORS[prev.length%COLORS.length], type: (tmpl.type as any) || 'function', visible: true }]);
+                             setFunctions(prev => [...prev, { id: generateSafeId(), expr: tmpl.fn, color: COLORS[prev.length%COLORS.length], type: (tmpl.type as any) || 'function', visible: true }]);
                            }} 
                            className="px-2 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[10px] rounded border border-slate-200 dark:border-slate-700 transition-colors shadow-sm"
                            title={tmpl.type === 'polar' ? `r = ${tmpl.fn}` : tmpl.type === 'implicit' ? `${tmpl.fn}` : `y = ${tmpl.fn}`}
@@ -3298,7 +3364,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                            key={fn} 
                            onClick={() => {
                              setActiveExample(null); // Clear example highlight when custom equation is inserted
-                             setFunctions(prev => [...prev, { id: Math.random().toString(36).substring(7), expr: fn, color: COLORS[prev.length%COLORS.length], type:'function', visible: true }]);
+                             setFunctions(prev => [...prev, { id: generateSafeId(), expr: fn, color: COLORS[prev.length%COLORS.length], type:'function', visible: true }]);
                            }} 
                            className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-300 font-mono text-[10px] rounded border border-blue-200 dark:border-blue-800/50 transition-colors shadow-sm"
                          >
@@ -3593,7 +3659,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                    </button>
                                    <button className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100" onClick={() => { setActiveActionMenuId(null); handleUpdateVar(v.id, { value: v.defaultValue }); }} title="Reset"><RotateCcw size={12}/></button>
                                    <button className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100" onClick={() => { setActiveActionMenuId(null); setEditingVar(v); setShowVarEditor(true); }} title="Edit"><Edit2 size={12}/></button>
-                                   <button className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100" onClick={() => { setActiveActionMenuId(null); setEditingVar({...v, id: Math.random().toString(36).substring(7), name: v.name + "_copy"}); setShowVarEditor(true); }} title="Duplicate"><Copy size={12}/></button>
+                                   <button className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100" onClick={() => { setActiveActionMenuId(null); setEditingVar({...v, id: generateSafeId(), name: v.name + "_copy"}); setShowVarEditor(true); }} title="Duplicate"><Copy size={12}/></button>
                                    <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity hidden md:block"></div>
                                    <button className="p-1.5 md:p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded flex items-center justify-center transition-all opacity-100" onClick={() => { setActiveActionMenuId(null); handleDeleteVar(v.id); }} title="Delete"><Trash2 size={12}/></button>
                                 </div>
@@ -3993,8 +4059,24 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                />
                              )}
                              {f.type === "line" && points.length >= 2 && (
-                               <Line.Segment point1={points[0]} point2={points[1]} color={f.color} />
-                             )}
+                                f.lineStyle && f.lineStyle !== "solid" ? (
+                                  <g style={{ "--mafs-line-stroke-dash-style": getStrokeDasharray(f.lineStyle) } as React.CSSProperties}>
+                                    <Line.Segment 
+                                      point1={points[0]} 
+                                      point2={points[1]} 
+                                      color={f.color} 
+                                      style="dashed"
+                                    />
+                                  </g>
+                                ) : (
+                                  <Line.Segment 
+                                    point1={points[0]} 
+                                    point2={points[1]} 
+                                    color={f.color} 
+                                    style="solid"
+                                  />
+                                )
+                              )}
                                         </Transform>
                                       </Transform>
                                     </Transform>
@@ -4153,6 +4235,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             color={f.color}
                             weight={hoveredVar && new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 6 : 3}
                             opacity={hoveredVar ? (new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 1 : 0.3) : 1}
+                            style={f.lineStyle && f.lineStyle !== "solid" ? "dashed" : "solid"}
+                            svgPathProps={{
+                              style: {
+                                strokeDasharray: getStrokeDasharray(f.lineStyle)
+                              }
+                            }}
                           />
                         </React.Fragment>
                       );
@@ -4170,6 +4258,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           opacity={hoveredVar ? (new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 1 : 0.3) : 1}
                           tx={tx}
                           ty={ty}
+                          lineStyle={f.lineStyle}
                         />
                       );
                     }
@@ -4201,6 +4290,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             color={f.color}
                             weight={hoveredVar && new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 6 : 3}
                             opacity={hoveredVar ? (new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 1 : 0.3) : 1}
+                            style={f.lineStyle && f.lineStyle !== "solid" ? "dashed" : "solid"}
+                            svgPathProps={{
+                              style: {
+                                strokeDasharray: getStrokeDasharray(f.lineStyle)
+                              }
+                            }}
                           />
                           {tracePoints && (
                              <Point 
@@ -4259,6 +4354,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           color={f.color}
                           weight={hoveredVar && new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 6 : 3}
                           opacity={hoveredVar ? (new RegExp(`\\b${hoveredVar}\\b`).test(f.expr) ? 1 : 0.3) : 1}
+                          style={f.lineStyle && f.lineStyle !== "solid" ? "dashed" : "solid"}
+                          svgPathProps={{
+                            style: {
+                              strokeDasharray: getStrokeDasharray(f.lineStyle)
+                            }
+                          }}
                         />
                         {/* Trace Point Support */}
                         {tracePoints && (
