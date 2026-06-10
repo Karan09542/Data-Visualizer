@@ -180,10 +180,11 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
        <img 
         src={currentUrl} 
         alt="Preview" 
+        draggable={false}
         referrerPolicy="no-referrer" 
         crossOrigin={crossOrigin as any}
         onError={handleError}
-        className="max-w-full max-h-full object-contain rounded"
+        className="max-w-full max-h-full object-contain rounded select-none"
       />
     );
   } else if (mediaData.strategy === 'video' || (mediaData.html && mediaData.html.startsWith('<video'))) {

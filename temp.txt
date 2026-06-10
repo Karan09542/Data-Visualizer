@@ -1,0 +1,21 @@
+                               <div className="text-[10px] font-bold text-[#808080] uppercase tracking-wide">Guides & Overlays</div>
+                               <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
+                                  <label className="flex items-center gap-1.5 hover:text-white cursor-pointer text-[11px] text-[#8A8A8A]">
+                                     <input type="checkbox" checked={!!board.showGrid} onChange={e => updateArtboardProp(board.id, "showGrid", e.target.checked)} className="accent-blue-500" />
+                                     <span>Grid Patterns</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5 hover:text-white cursor-pointer text-[11px] text-[#8A8A8A]">
+                                     <input type="checkbox" checked={!!board.showSafeArea} onChange={e => updateArtboardProp(board.id, "showSafeArea", e.target.checked)} className="accent-blue-500" />
+                                     <span>Safe Area (5%)</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5 hover:text-white cursor-pointer text-[11px] text-[#8A8A8A]">
+                                     <input type="checkbox" checked={!!board.showMargins} onChange={e => updateArtboardProp(board.id, "showMargins", e.target.checked)} className="accent-blue-500" />
+                                     <span>Margins (10%)</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5 hover:text-white cursor-pointer text-[11px] text-[#8A8A8A]">
+                                     <input type="checkbox" checked={!!board.showBleed} onChange={e => updateArtboardProp(board.id, "showBleed", e.target.checked)} className="accent-blue-500" />
+                                     <span>Bleed (3%)</span>
+                                  </label>
+                                  <label className="flex items-center gap-1.5 hover:text-white cursor-pointer text-[11px] text-[#8A8A8A] col-span-2">
+                                     <input type="checkbox" checked={!!board.showCenter} onChange={e => updateArtboardProp(board.id, "showCenter", e.target.checked)} className="accent-blue-500" />
+                                     <span>Center Crosshair Guides</span>

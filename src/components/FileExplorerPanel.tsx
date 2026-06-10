@@ -1124,7 +1124,7 @@ function isFileSystemMeaningful(value: any): boolean {
           const targetId = selectedExplorerFiles[0];
           const node = fullExplorerTree.find(n => n.id === targetId);
           if (node) {
-            startRename(targetId, node.name);
+            handleRenamePrompt(node);
           }
         }
       }}

@@ -1,4 +1,5 @@
 import { useStore } from "../store/useStore";
+import { importFile } from "./assetManager";
 
 export const processFiles = async (files: File[]) => {
   if (files.length === 0) return;
@@ -26,25 +27,39 @@ export const processFiles = async (files: File[]) => {
   const isMedia = isImage || isVideo || isAudio || isPdf || !!is3dModel;
 
   if (isMedia) {
-    const hash = isImage
-      ? "#image"
-      : isVideo
-        ? "#video"
-        : isAudio
-          ? "#audio"
-          : isPdf
-            ? "#pdf"
-            : is3dModel
-              ? "#model"
-              : "";
-    const blobUrl = URL.createObjectURL(file) + hash;
-    useStore.getState().setPendingImport({
-      filename: name,
-      fileContext: "media",
-      mimeType: type,
-      fileSize: size,
-      blobUrl,
-    });
+    try {
+      const { assetId, thumbnailId } = await importFile(file);
+      useStore.getState().setPendingImport({
+        filename: name,
+        fileContext: "media",
+        mimeType: type,
+        fileSize: size,
+        assetId,
+        thumbnailId,
+        blobUrl: assetId,
+      });
+    } catch (e) {
+      console.error("Asset import failed, falling back to blob", e);
+      const hash = isImage
+        ? "#image"
+        : isVideo
+          ? "#video"
+          : isAudio
+            ? "#audio"
+            : isPdf
+              ? "#pdf"
+              : is3dModel
+                ? "#model"
+                : "";
+      const blobUrl = URL.createObjectURL(file) + hash;
+      useStore.getState().setPendingImport({
+        filename: name,
+        fileContext: "media",
+        mimeType: type,
+        fileSize: size,
+        blobUrl,
+      });
+    }
     return;
   }
 

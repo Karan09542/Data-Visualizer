@@ -202,7 +202,9 @@ export function ImportModal() {
         filename: pendingImport.filename,
         mimeType: pendingImport.mimeType || "unknown",
         size: pendingImport.fileSize,
-        url: pendingImport.blobUrl || "",
+        assetId: pendingImport.assetId,
+        thumbnailId: pendingImport.thumbnailId,
+        url: pendingImport.assetId || pendingImport.blobUrl || "",
       };
     } else if (importMode === "array") {
       if (pendingImport.filename.match(/\.(csv)$/i)) {

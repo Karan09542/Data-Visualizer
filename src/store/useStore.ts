@@ -3,6 +3,7 @@ import { startTransition } from "react";
 import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree } from "../utils/transformer";
+import { deleteUnusedAssets } from "../utils/assetManager";
 import SearchWorker from "../utils/searchWorker?worker";
 
 
@@ -383,6 +384,8 @@ export interface StoreState {
     mimeType?: string;
     blobUrl?: string;
     fileSize?: number;
+    assetId?: string;
+    thumbnailId?: string;
   } | null;
   setPendingImport: (
     importData: {
@@ -393,6 +396,8 @@ export interface StoreState {
       mimeType?: string;
       blobUrl?: string;
       fileSize?: number;
+      assetId?: string;
+      thumbnailId?: string;
     } | null,
   ) => void;
 
@@ -1122,6 +1127,11 @@ export const useStore = create<StoreState>()(
         } else {
           newCode = JSON.stringify(newData, null, 2);
         }
+
+        // Run asset garbage collection in the background
+        deleteUnusedAssets(newData).catch((err) => {
+          console.error("Asset GC failed", err);
+        });
 
         setCode(newCode);
       },

@@ -3,6 +3,8 @@ import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore, NodeTheme } from "../store/useStore";
+import { db } from "../lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
 import {
   ChevronRight,
   ChevronDown,
@@ -56,6 +58,8 @@ export const getMediaType = (val: string) => {
   if (
     val.startsWith("data:image/") ||
     (val.startsWith("blob:http") && val.includes("image")) ||
+    val.startsWith("img_") ||
+    val.startsWith("thumb_") ||
     val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)
   )
@@ -259,6 +263,24 @@ function NodeRenderer({
       useStore.getState().selectedNodeId != null);
 
   const strVal = data.value !== undefined ? String(data.value) : "";
+  
+  const actualAssetId = data.rawValue && typeof data.rawValue === "object"
+    ? (data.rawValue.assetId || data.rawValue.assetRef || (data.rawValue._type === "media" ? data.rawValue.assetId : null))
+    : (typeof data.value === "string" && (data.value.startsWith("img_") || data.value.startsWith("thumb_")))
+      ? data.value
+      : null;
+
+  const assetDetails = useLiveQuery(async () => {
+    if (!actualAssetId) return null;
+    let id = actualAssetId;
+    if (id.startsWith("thumb_")) {
+      const original = await db.assets.where("thumbnailId").equals(id).first();
+      if (original) return original;
+    }
+    return await db.assets.get(id);
+  }, [actualAssetId]);
+
+  const mediaSrc = assetDetails?.thumbnailId || actualAssetId || strVal;
   const isApiNode =
     data.type === "string" &&
     data.name &&
@@ -1803,29 +1825,30 @@ function NodeRenderer({
                   {mediaType === "image" && (
                     <SmartFallbackMedia
                       type="image"
-                      src={strVal}
+                      src={mediaSrc}
                       alt={data.name}
-                      className="max-w-full max-h-[160px] object-contain rounded"
+                      draggable={false}
+                      className="max-w-full max-h-[160px] object-contain rounded select-none"
                     />
                   )}
                   {mediaType === "audio" && (
                     <SmartFallbackMedia
                       type="audio"
-                      src={strVal}
+                      src={mediaSrc}
                       controls
                       className="w-full h-11 outline-none py-1"
                     />
                   )}
                   {mediaType === "video" && (
                     <video
-                      src={strVal}
+                      src={mediaSrc}
                       controls
                       className="max-w-full max-h-[160px] rounded focus:outline-none"
                     />
                   )}
                   {mediaType === "3d-model" && (
                     <SafeModelViewer
-                      src={strVal}
+                      src={mediaSrc}
                       alt={data.name || "3D Model"}
                       autoRotate
                       cameraControls
@@ -1858,19 +1881,38 @@ function NodeRenderer({
                   )}
                   {mediaType === "smart" && (
                     <SmartMediaRenderer
-                      key={strVal}
-                      url={strVal}
+                      key={mediaSrc}
+                      url={mediaSrc}
                       onMediaFailed={() => setSmartMediaFailed(true)}
                     />
                   )}
                 </div>
+
+                {assetDetails && (
+                  <div className="mt-1.5 px-1.5 py-1 bg-black/40 rounded border border-white/5 text-[9px] font-mono text-slate-400 space-y-0.5 select-none leading-normal font-sans">
+                    <div className="flex justify-between gap-2 overflow-hidden">
+                      <span className="text-slate-500 font-sans shrink-0">Name:</span>
+                      <span className="text-white font-medium truncate shrink" title={assetDetails.filename}>{assetDetails.filename || 'Unnamed'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-sans">Size:</span>
+                      <span className="text-slate-300 font-medium">{(assetDetails.size / 1024).toFixed(1)} KB</span>
+                    </div>
+                    {assetDetails.width && assetDetails.height && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-sans">Dims:</span>
+                        <span className="text-slate-300 font-medium">{assetDetails.width} × {assetDetails.height} px</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <button
                   className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 bg-black/60 hover:bg-indigo-600 backdrop-blur-md text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-white/10 z-20 whitespace-nowrap`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setActivePreviewMedia({
-                      url: strVal,
+                      url: actualAssetId || strVal,
                       type:
                         mediaType === "smart"
                           ? "smart"

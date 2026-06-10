@@ -759,10 +759,10 @@ declare const console: {
   const currentPrompt = activePrompts[currentFilePath];
 
   useEffect(() => {
-    if (isTodo) {
+    if (isTodo || isImg) {
       setTerminalState("hidden");
     }
-  }, [isTodo]);
+  }, [isTodo, isImg]);
 
   // Auto-focus terminal input whenever a STDIN or alert/prompt/confirm prompt details are activated
   useEffect(() => {
@@ -1457,9 +1457,9 @@ declare const console: {
                   </div>
                 )}
                 {isTodo ? (
-                  <TodoWorkspace path={currentFilePath} />
+                  <TodoWorkspace key={currentFilePath} path={currentFilePath} />
                 ) : isImg ? (
-                  <ImageWorkspace path={currentFilePath} />
+                  <ImageWorkspace key={currentFilePath} path={currentFilePath} />
                 ) : (
                 <SafeEditor
                   path={currentFilePath}
