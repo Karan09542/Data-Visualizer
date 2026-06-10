@@ -1035,9 +1035,9 @@ declare const console: {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-0 md:p-4 nodrag">
+    <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#0d1117] flex items-center justify-center p-0 nodrag">
       <div
-        className="w-full md:w-[95vw] h-full md:h-[95vh] bg-white dark:bg-[#0d1117] rounded-none md:rounded-xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-100 md:zoom-in-95 duration-200"
+        className="w-full h-full flex flex-col overflow-hidden animate-in zoom-in-100 duration-200"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}

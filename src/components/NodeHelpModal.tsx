@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair } from 'lucide-react';
+import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair, Image as ImageIcon, Layers } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface NodeHelpModalProps {
@@ -11,7 +11,7 @@ interface NodeHelpModalProps {
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   const { code, setCode, appTheme } = useStore();
-  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image'>('api');
 
   const handleInsertExample = async () => {
     try {
@@ -26,6 +26,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         greeting_ts_node: "const name: string = 'World';\n// Hello ${name}!\n// namaste",
         greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
         waveform_math_node: "f(x) = a * sin(b * x + c)",
+        "demo_asset.image": "https://images.unsplash.com/photo-1542393545-10f5cde2c810?q=80&w=600&auto=format&fit=crop",
         "project_tasks.todo": JSON.stringify({
           title: "Project Tasks",
           tasks: [
@@ -57,6 +58,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
           format_date_ts_node: "// Current ISO Date:\n// namaste",
           greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
           waveform_math_node: "f(x) = a * sin(b * x + c)",
+          "demo_asset.image": "https://images.unsplash.com/photo-1542393545-10f5cde2c810?q=80&w=600&auto=format&fit=crop",
           "project_tasks.todo": JSON.stringify({
             title: "Project Tasks",
             tasks: [
@@ -170,6 +172,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     { id: 'py', label: 'Python Nodes', icon: Terminal, color: 'emerald' },
                     { id: 'math', label: 'Math Nodes', icon: Calculator, color: 'rose' },
                     { id: 'todo', label: 'Todo Nodes', icon: ListTodo, color: 'purple' },
+                    { id: 'image', label: 'Image Nodes', icon: ImageIcon, color: 'cyan' },
                   ] as const).map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -554,6 +557,58 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   ]
 }`}
                     </pre>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'image' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className={`p-4 rounded-xl border flex gap-3 ${
+                    appTheme === 'dark' ? 'bg-cyan-950/20 border-cyan-900/40 text-cyan-200' : 'bg-cyan-50/50 border-cyan-100 text-cyan-850'
+                  }`}>
+                    <ImageIcon className="shrink-0 mt-0.5 text-cyan-500" size={18} />
+                    <div>
+                      <span className="font-semibold block mb-0.5">What are Image Nodes?</span>
+                      Keys or files ending with either <code className="font-mono bg-cyan-500/10 dark:bg-cyan-500/20 px-1 py-0.5 rounded text-xs font-bold">.image</code>, <code className="font-mono bg-cyan-500/10 dark:bg-cyan-500/20 px-1 py-0.5 rounded text-xs font-bold">.png</code>, <code className="font-mono bg-cyan-500/10 dark:bg-cyan-500/20 px-1 py-0.5 rounded text-xs font-bold">.jpg</code>, or <code className="font-mono bg-cyan-500/10 dark:bg-cyan-500/20 px-1 py-0.5 rounded text-xs font-bold">_image_node</code> render rich, interactive image editing workspaces. Use them to draw, add shapes, resize, apply filters, and manipulate visual assets directly in your graph!
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Edit className="text-cyan-500" size={16} />
+                        <span>Interactive Editing Toolset</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Enjoy a full suite of image editing tools: crop, pan, draw with customizable brushes, insert text, shapes, and apply filters non-destructively.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Layers size={16} className="text-cyan-500" />
+                        <span>Layers & Artboards</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Organize your creative workflow with multiple artboards and deep layer management supporting reordering, visibility toggling, and object locking.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-[#0d1117] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
+                       <Code size={16} className="text-cyan-500" /> Defining an Image Node
+                     </span>
+                     <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
+                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-cyan-300' : 'bg-cyan-50/30 border-cyan-100 text-cyan-700'
+                     }`}>
+{`{
+  "src": "https://example.com/image.png",
+  "alt": "An example image",
+  "filters": ["grayscale"],
+  "annotations": []
+}`}
+                     </pre>
                   </div>
                 </div>
               )}

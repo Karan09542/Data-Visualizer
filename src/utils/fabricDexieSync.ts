@@ -20,8 +20,8 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
   const toPutObjects: FabricObject[] = [];
 
   for (const obj of fabricObjects) {
-    if (!obj.id) (obj as any).id = Date.now().toString() + Math.random().toString();
-    const objId = obj.id as string;
+    if (!(obj as any).id) (obj as any).id = Date.now().toString() + Math.random().toString();
+    const objId = (obj as any).id as string;
     
     // Find artboard context
     // If object doesn't have an artboardId, try to assign it based on intersection, or active default

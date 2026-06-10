@@ -7,7 +7,7 @@ import { resolveAssetUrl, importFile } from "../utils/assetManager";
 import { getValueAtPath } from "../utils/pathUtils";
 import { 
   Type, Upload, Download, Undo, Redo, 
-  Layers, MousePointer2, Brush, Circle, Square, Minus, Edit2, RotateCw, Image as ImageIcon,
+  Layers, MousePointer2, Brush, Circle, Square, Minus, Edit2, RotateCw, RotateCcw, Image as ImageIcon,
   SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, FlipHorizontal, FlipVertical,
   Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand,
@@ -260,6 +260,10 @@ class TransformObjectsCommand implements Command {
       angle: number;
       width: number;
       height: number;
+      cropX?: number;
+      cropY?: number;
+      originX?: string;
+      originY?: string;
     };
     after: {
       left: number;
@@ -269,6 +273,10 @@ class TransformObjectsCommand implements Command {
       angle: number;
       width: number;
       height: number;
+      cropX?: number;
+      cropY?: number;
+      originX?: string;
+      originY?: string;
     };
   }[];
 
@@ -291,6 +299,10 @@ class TransformObjectsCommand implements Command {
         angle: t.before.angle ?? t.obj.angle ?? 0,
         width: t.before.width ?? t.obj.width ?? 0,
         height: t.before.height ?? t.obj.height ?? 0,
+        cropX: t.before.cropX,
+        cropY: t.before.cropY,
+        originX: t.before.originX,
+        originY: t.before.originY,
       },
       after: {
         left: t.after.left ?? t.obj.left ?? 0,
@@ -300,6 +312,10 @@ class TransformObjectsCommand implements Command {
         angle: t.after.angle ?? t.obj.angle ?? 0,
         width: t.after.width ?? t.obj.width ?? 0,
         height: t.after.height ?? t.obj.height ?? 0,
+        cropX: t.after.cropX,
+        cropY: t.after.cropY,
+        originX: t.after.originX,
+        originY: t.after.originY,
       }
     }));
   }
@@ -308,17 +324,26 @@ class TransformObjectsCommand implements Command {
     this.redo(canvas, updateLayers);
   }
 
+  private applyState(t: any) {
+    const props: any = {
+      left: t.left,
+      top: t.top,
+      scaleX: t.scaleX,
+      scaleY: t.scaleY,
+      angle: t.angle,
+      width: t.width,
+      height: t.height,
+    };
+    if (t.cropX !== undefined) props.cropX = t.cropX;
+    if (t.cropY !== undefined) props.cropY = t.cropY;
+    if (t.originX !== undefined) props.originX = t.originX;
+    if (t.originY !== undefined) props.originY = t.originY;
+    return props;
+  }
+
   undo(canvas: fabric.Canvas, updateLayers: () => void) {
     this.targetObjects.forEach(t => {
-      t.obj.set({
-        left: t.before.left,
-        top: t.before.top,
-        scaleX: t.before.scaleX,
-        scaleY: t.before.scaleY,
-        angle: t.before.angle,
-        width: t.before.width,
-        height: t.before.height,
-      });
+      t.obj.set(this.applyState(t.before));
       t.obj.setCoords();
     });
     canvas.renderAll();
@@ -327,15 +352,7 @@ class TransformObjectsCommand implements Command {
 
   redo(canvas: fabric.Canvas, updateLayers: () => void) {
     this.targetObjects.forEach(t => {
-      t.obj.set({
-        left: t.after.left,
-        top: t.after.top,
-        scaleX: t.after.scaleX,
-        scaleY: t.after.scaleY,
-        angle: t.after.angle,
-        width: t.after.width,
-        height: t.after.height,
-      });
+      t.obj.set(this.applyState(t.after));
       t.obj.setCoords();
     });
     canvas.renderAll();
@@ -1259,6 +1276,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
   const [snapTolerance, setSnapTolerance] = useState(10);
+  const [isCropping, setIsCropping] = useState(false);
+  const cropSessionRef = useRef<{
+    origObj: fabric.Image | null;
+    fullImg: fabric.Image | null;
+    cropRect: fabric.Rect | null;
+    dimRect: fabric.Rect | null;
+  }>({ origObj: null, fullImg: null, cropRect: null, dimRect: null });
   const [activeContextMenu, setActiveContextMenu] = useState<{
     x: number;
     y: number;
@@ -1501,7 +1525,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     }
   };
 
-  const viewportTransformRef = useRef<number[]>([1, 0, 0, 1, 0, 0]);
+  const viewportTransformRef = useRef<number[]>([1, 0, 0, 1, 0, 0] as any);
   const guidesRef = useRef<{ type: 'v' | 'h', pos: number }[]>([]);
 
   const getTargetArtboard = (obj: fabric.Object): Artboard => {
@@ -2738,6 +2762,12 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       }
     });
 
+    canvas.on('mouse:dblclick', (opt) => {
+      if (opt.target && opt.target.type === 'image' && !opt.target.isType?.('activeSelection') && !(opt.target as any).isCropHelper) {
+        enterCropMode(opt.target as fabric.Image);
+      }
+    });
+
     canvas.on('mouse:move', (opt) => {
       if (isPanning) {
         const e = opt.e as any;
@@ -3011,6 +3041,27 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       const isUndo = ctrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey;
       const isDelete = e.key === 'Delete' || e.key === 'Backspace';
 
+      if (e.key.toLowerCase() === 'c' && !ctrlOrCmd && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        if (!isCropping) {
+          const activeObj = fabricRef.current?.getActiveObject();
+          if (activeObj && activeObj.type === 'image') {
+            enterCropMode(activeObj as fabric.Image);
+          }
+        }
+      }
+
+      if (e.key === 'Enter' && isCropping) {
+        applyCrop();
+        e.preventDefault();
+      }
+
+      if (e.key === 'Escape') {
+        if (isCropping) {
+          cancelCrop();
+        }
+        closeContextMenu();
+      }
+
       if (isUndo || isRedo || isDelete) {
         if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
            return;
@@ -3119,15 +3170,285 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     if (tool === "brush" || tool === "eraser") {
       fabricRef.current.discardActiveObject();
       fabricRef.current.renderAll();
+    } else if (tool === "crop") {
+      // Don't discard active object yet, we might be transitioning into crop with a selection
+    } else if (isCropping) {
+      cancelCrop(); // automatically exit crop when switching tools
     }
     fabricRef.current.isDrawingMode = (tool === "brush" || tool === "eraser");
     applyBrushSettings(brushType);
   };
 
+  const enterCropMode = (target?: fabric.Image) => {
+    let imgTarget = target;
+    if (!imgTarget) {
+      const activeObjects = fabricRef.current?.getActiveObjects();
+      if (activeObjects?.length === 1 && activeObjects[0].type === 'image') {
+        imgTarget = activeObjects[0] as fabric.Image;
+      }
+    }
+    
+    if (!imgTarget || imgTarget.type !== 'image') {
+      alert("Please select a single image to crop.");
+      return;
+    }
+
+    const el = imgTarget.getElement() as HTMLImageElement;
+    if (!el) return;
+
+    imgTarget.setCoords();
+    const matrix = imgTarget.calcTransformMatrix();
+    
+    const origCenterH = imgTarget.originX === 'center' ? imgTarget.width! / 2 : 0;
+    const origCenterV = imgTarget.originY === 'center' ? imgTarget.height! / 2 : 0;
+
+    const localFullTl = new fabric.Point(
+      -origCenterH - (imgTarget.cropX || 0),
+      -origCenterV - (imgTarget.cropY || 0)
+    );
+    const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
+
+    const fullImg = new fabric.Image(el, {
+      left: canvasFullTl.x,
+      top: canvasFullTl.y,
+      originX: 'left',
+      originY: 'top',
+      scaleX: imgTarget.scaleX,
+      scaleY: imgTarget.scaleY,
+      angle: imgTarget.angle,
+      opacity: 0.5,
+      selectable: true,
+      evented: true,
+      lockRotation: true,
+      lockScalingX: true, 
+      lockScalingY: true,
+    });
+    
+    (fullImg as any).isCropHelper = true;
+
+    const cropRect = new fabric.Rect({
+      left: imgTarget.left,
+      top: imgTarget.top,
+      originX: imgTarget.originX,
+      originY: imgTarget.originY,
+      width: imgTarget.width,
+      height: imgTarget.height,
+      scaleX: imgTarget.scaleX,
+      scaleY: imgTarget.scaleY,
+      angle: imgTarget.angle,
+      fill: 'transparent',
+      stroke: '#3b82f6',
+      strokeWidth: 2 / fabricRef.current!.getZoom() || 1,
+      strokeDashArray: [6, 6],
+      cornerColor: '#ffffff',
+      cornerStrokeColor: '#3b82f6',
+      cornerSize: 12,
+      transparentCorners: false,
+      lockRotation: true,
+      borderColor: '#3b82f6',
+    });
+    (cropRect as any).isCropHelper = true;
+
+    imgTarget.set('visible', false);
+    
+    fabricRef.current!.add(fullImg);
+    fabricRef.current!.add(cropRect);
+    fabricRef.current!.setActiveObject(cropRect);
+    fabricRef.current!.renderAll();
+
+    cropSessionRef.current = {
+      origObj: imgTarget,
+      fullImg: fullImg,
+      cropRect: cropRect,
+      dimRect: null
+    };
+
+    setIsCropping(true);
+    setActiveTool('crop');
+  };
+
+  const applyCrop = () => {
+    const { origObj, fullImg, cropRect } = cropSessionRef.current;
+    if (!origObj || !fullImg || !cropRect || !fabricRef.current) {
+        cancelCrop();
+        return; 
+    }
+
+    const imgEl = fullImg.getElement() as HTMLImageElement;
+    if (!imgEl) {
+        cancelCrop();
+        return;
+    }
+    const imgWidth = imgEl.width || imgEl.naturalWidth;
+    const imgHeight = imgEl.height || imgEl.naturalHeight;
+
+    // Calculate unscaled crop dimensions by mapping from canvas space back to the source image space
+    const cropWCanvas = cropRect.width! * Math.abs(cropRect.scaleX!);
+    const cropHCanvas = cropRect.height! * Math.abs(cropRect.scaleY!);
+    
+    // original scale values of the full image
+    const fullImgScaleX = Math.abs(fullImg.scaleX!);
+    const fullImgScaleY = Math.abs(fullImg.scaleY!);
+    
+    let cropW = cropWCanvas / fullImgScaleX;
+    let cropH = cropHCanvas / fullImgScaleY;
+
+    // Calculate center offsets in source image space using reverse projection
+    const fullImgMatrix = fullImg.calcTransformMatrix();
+    const fullImgInverse = fabric.util.invertTransform(fullImgMatrix);
+    
+    const cropCenterCanvas = cropRect.getCenterPoint();
+    const fullImgCenterCanvas = fullImg.getCenterPoint();
+    
+    const cropCenterLocal = fabric.util.transformPoint(cropCenterCanvas, fullImgInverse);
+    const fullImgCenterLocal = fabric.util.transformPoint(fullImgCenterCanvas, fullImgInverse);
+    
+    const dx = cropCenterLocal.x - fullImgCenterLocal.x;
+    const dy = cropCenterLocal.y - fullImgCenterLocal.y;
+    
+    // Compute top-left of crop in source image space
+    let cropX = (imgWidth / 2) + dx - (cropW / 2);
+    let cropY = (imgHeight / 2) + dy - (cropH / 2);
+
+    // Bounds / Safety constraints to prevent NaN or blank imagery
+    if (cropX < 0) { cropW += cropX; cropX = 0; }
+    if (cropY < 0) { cropH += cropY; cropY = 0; }
+    if (cropX + cropW > imgWidth) cropW = imgWidth - cropX;
+    if (cropY + cropH > imgHeight) cropH = imgHeight - cropY;
+
+    if (cropW <= 1 || cropH <= 1) {
+        cancelCrop();
+        return;
+    }
+
+    origObj.set('visible', true);
+
+    const beforeState = {
+        left: origObj.left,
+        top: origObj.top,
+        scaleX: origObj.scaleX,
+        scaleY: origObj.scaleY,
+        angle: origObj.angle,
+        width: origObj.width,
+        height: origObj.height,
+        cropX: origObj.cropX || 0,
+        cropY: origObj.cropY || 0,
+        originX: origObj.originX,
+        originY: origObj.originY,
+    };
+
+    const afterState = {
+        left: cropRect.left,
+        top: cropRect.top,
+        scaleX: fullImg.scaleX, 
+        scaleY: fullImg.scaleY,
+        angle: cropRect.angle,
+        width: cropW,
+        height: cropH,
+        cropX: cropX,
+        cropY: cropY,
+        originX: cropRect.originX,
+        originY: cropRect.originY,
+    };
+
+    const cmd = new TransformObjectsCommand("Crop Image", [{
+        obj: origObj,
+        before: beforeState,
+        after: afterState
+    }]);
+
+    executeCommand(cmd);
+
+    fabricRef.current.remove(fullImg);
+    fabricRef.current.remove(cropRect);
+    fabricRef.current.setActiveObject(origObj);
+    fabricRef.current.renderAll();
+
+    updateLayersList();
+
+    cropSessionRef.current = { origObj: null, fullImg: null, cropRect: null, dimRect: null };
+    setIsCropping(false);
+    setActiveTool('select');
+  };
+
+  const cancelCrop = () => {
+    const { origObj, fullImg, cropRect } = cropSessionRef.current;
+    if (origObj) {
+      origObj.set('visible', true);
+      fabricRef.current?.setActiveObject(origObj);
+    }
+    if (fullImg) fabricRef.current?.remove(fullImg);
+    if (cropRect) fabricRef.current?.remove(cropRect);
+    fabricRef.current?.renderAll();
+
+    cropSessionRef.current = { origObj: null, fullImg: null, cropRect: null, dimRect: null };
+    setIsCropping(false);
+    setActiveTool('select');
+  };
+
+  const resetCrop = () => {
+    const activeObjects = fabricRef.current?.getActiveObjects();
+    if (!activeObjects || activeObjects.length !== 1) return;
+    const origObj = activeObjects[0] as fabric.Image;
+    if (origObj.type !== 'image') return;
+
+    const el = origObj.getElement() as HTMLImageElement;
+    if (!el) return;
+
+    origObj.setCoords();
+    const matrix = origObj.calcTransformMatrix();
+    const origCenterH = origObj.originX === 'center' ? origObj.width! / 2 : 0;
+    const origCenterV = origObj.originY === 'center' ? origObj.height! / 2 : 0;
+
+    const localFullTl = new fabric.Point(
+      -origCenterH - (origObj.cropX || 0),
+      -origCenterV - (origObj.cropY || 0)
+    );
+    const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
+
+    const beforeState = {
+      left: origObj.left,
+      top: origObj.top,
+      scaleX: origObj.scaleX,
+      scaleY: origObj.scaleY,
+      angle: origObj.angle,
+      width: origObj.width,
+      height: origObj.height,
+      cropX: origObj.cropX || 0,
+      cropY: origObj.cropY || 0,
+      originX: origObj.originX,
+      originY: origObj.originY,
+    };
+
+    const afterState = {
+      left: canvasFullTl.x,
+      top: canvasFullTl.y,
+      scaleX: origObj.scaleX,
+      scaleY: origObj.scaleY,
+      angle: origObj.angle,
+      width: el.width,
+      height: el.height,
+      cropX: 0,
+      cropY: 0,
+      originX: 'left',
+      originY: 'top',
+    };
+
+    const cmd = new TransformObjectsCommand("Reset Crop", [{
+      obj: origObj,
+      before: beforeState,
+      after: afterState
+    }]);
+
+    executeCommand(cmd);
+    updateLayersList();
+    fabricRef.current?.setActiveObject(origObj);
+  };
+
   const addRect = () => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
-    const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
     const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
     const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
 
@@ -3151,7 +3472,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   const addCircle = () => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
-    const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
     const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
     const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
 
@@ -3174,7 +3495,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   const addText = () => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
-    const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+    const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
     const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
     const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
 
@@ -3210,7 +3531,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
          
          if (fabricRef.current) {
            const canvas = fabricRef.current;
-           const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
+           const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
            
            // Center in visible viewport (not just canvas center)
            const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
@@ -3999,6 +4320,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         <div className="w-14 border-r border-[#2C2C2C] bg-[#1E1E1E] flex flex-col items-center py-4 gap-2 z-10 shrink-0 shadow-[4px_0_12px_rgba(0,0,0,0.1)]">
             <ToolBtn icon={MousePointer2} tool="select" current={activeTool} set={setTool} title="Move (V)"/>
             <ToolBtn icon={Move} tool="pan" current={activeTool} set={setTool} title="Pan Canvas (H / Hold Space)"/>
+            <ToolBtn icon={Crop} tool="crop" current={activeTool} set={() => enterCropMode()} title="Crop Image (C)"/>
             <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush (B)"/>
             
             <div className="w-8 h-px bg-[#3A3A3A] my-2" />
@@ -4137,6 +4459,34 @@ function dataURLtoFile(dataurl: string, filename: string): File {
               <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
                  <canvas ref={canvasRef} className="block" />
               </div>
+
+              {isCropping && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[50]">
+                   <div className="bg-[#1A1A1A]/90 backdrop-blur-md border border-[#2D2D2D] p-1.5 rounded-lg shadow-2xl flex items-center gap-3">
+                      <div className="px-3 text-xs font-semibold text-blue-400 flex items-center gap-1.5"><Crop size={14}/> Crop Mode</div>
+                      <div className="h-4 w-px bg-[#333]"></div>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => {
+                            const { cropRect } = cropSessionRef.current;
+                            if(cropRect) {
+                                cropRect.set({ width: cropRect.height, height: cropRect.height });
+                                fabricRef.current!.renderAll();
+                            }
+                        }} className="px-2 py-1 text-xs text-slate-300 hover:bg-[#333] hover:text-white rounded">1:1</button>
+                        <button onClick={() => {
+                            const { cropRect } = cropSessionRef.current;
+                            if(cropRect && cropRect.width && cropRect.height) {
+                                cropRect.set({ width: cropRect.height * (16/9) });
+                                fabricRef.current!.renderAll();
+                            }
+                        }} className="px-2 py-1 text-xs text-slate-300 hover:bg-[#333] hover:text-white rounded">16:9</button>
+                      </div>
+                      <div className="h-4 w-px bg-[#333]"></div>
+                      <button onClick={applyCrop} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-white text-xs font-medium transition">Apply (Enter)</button>
+                      <button onClick={cancelCrop} className="px-4 py-1.5 bg-transparent hover:bg-[#333] border border-[#444] text-[#C0C0C0] rounded text-xs font-medium transition">Cancel (Esc)</button>
+                   </div>
+                </div>
+              )}
 
           {/* Squoosh-like image comparison viewer */}
           {comparisonMode && (
@@ -4728,7 +5078,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                    <div className="flex items-center gap-2">
                                       <span className="text-xs text-[#8A8A8A] w-14 shrink-0">Font</span>
                                       <select 
-                                         className="flex-1 h-8 bg-[#181818] border border-[#3A3A3A] rounded text-xs px-2 outline-none text-white focus:border-blue-500" 
+                                         className="flex-1 w-full bg-[#181818] border border-[#3A3A3A] rounded text-xs px-2 py-1.5 outline-none text-white focus:border-blue-500" 
                                          value={textProps.fontFamily} 
                                          onChange={(e) => changeTextProp("fontFamily", e.target.value, "Change Font Family")}
                                       >
@@ -4754,7 +5104,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                          <span className="text-xs text-[#8A8A8A] w-10 shrink-0">Size</span>
                                          <input 
                                             type="number" 
-                                            className="w-full h-8 bg-[#181818] border border-[#3A3A3A] rounded text-xs px-2 outline-none text-white focus:border-blue-500" 
+                                            className="w-full bg-[#181818] border border-[#3A3A3A] rounded text-xs px-2 py-1.5 outline-none text-white focus:border-blue-500" 
                                             value={textProps.fontSize} 
                                             onChange={(e) => {
                                               const val = Math.max(1, Number(e.target.value));
@@ -4762,10 +5112,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                             }} 
                                          />
                                       </div>
-                                      <div className="flex items-center gap-2">
-                                         <span className="text-xs text-[#8A8A8A] w-12 shrink-0">Weight</span>
+                                      <div className="flex items-center gap-1.5">
+                                         <span className="text-xs text-[#8A8A8A] shrink-0">Weight</span>
                                          <select 
-                                            className="w-full h-8 bg-[#181818] border border-[#3A3A3A] rounded text-xs px-2 outline-none text-white focus:border-blue-500" 
+                                            className="flex-1 w-full bg-[#181818] border border-[#3A3A3A] rounded text-[11px] px-1 py-1.5 outline-none text-white focus:border-blue-500" 
                                             value={textProps.fontWeight} 
                                             onChange={(e) => changeTextProp("fontWeight", e.target.value, "Change Font Weight")}
                                          >
@@ -4905,13 +5255,34 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
                          {/* Image Adjustments Module */}
                          {selectionType === 'image' && (
-                            <div>
-                               <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 flex items-center gap-2"><Settings size={12}/> Adjustments Non-Destructive</div>
-                               <div className="space-y-4">
-                                  <FilterSlider label="Brightness" min="-0.5" max="0.5" step="0.01" onChange={(v) => applyFilter('brightness', v)} />
-                                  <FilterSlider label="Contrast" min="-0.5" max="0.5" step="0.01" onChange={(v) => applyFilter('contrast', v)} />
-                                  <FilterSlider label="Saturation" min="-1" max="1" step="0.01" onChange={(v) => applyFilter('saturation', v)} />
-                                  <FilterSlider label="Grayscale" min="0" max="1" step="0.01" onChange={(v) => applyFilter('grayscale', v)} />
+                            <div className="space-y-6">
+                               <div className="space-y-3">
+                                  <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2"><Crop size={12}/> Crop & Composition</div>
+                                  <div className="flex gap-2">
+                                     <button
+                                        onClick={() => enterCropMode()}
+                                        className="flex-1 bg-[#2C2C2C] hover:bg-[#3C3C3C] text-white border border-[#3A3A3A] hover:border-blue-500 rounded text-xs py-2 transition flex items-center justify-center gap-1.5"
+                                     >
+                                        <Crop size={14} /> Crop Image
+                                     </button>
+                                     <button
+                                        onClick={() => resetCrop()}
+                                        className="bg-[#2C2C2C] hover:bg-[#3C3C3C] text-[#808080] hover:text-white border border-[#3A3A3A] rounded px-3 py-2 transition flex items-center justify-center gap-1.5"
+                                        title="Reset Crop"
+                                     >
+                                        <RotateCcw size={14} />
+                                     </button>
+                                  </div>
+                               </div>
+
+                               <div>
+                                  <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 flex items-center gap-2"><Settings size={12}/> Adjustments Non-Destructive</div>
+                                  <div className="space-y-4">
+                                     <FilterSlider label="Brightness" min="-0.5" max="0.5" step="0.01" onChange={(v) => applyFilter('brightness', v)} />
+                                     <FilterSlider label="Contrast" min="-0.5" max="0.5" step="0.01" onChange={(v) => applyFilter('contrast', v)} />
+                                     <FilterSlider label="Saturation" min="-1" max="1" step="0.01" onChange={(v) => applyFilter('saturation', v)} />
+                                     <FilterSlider label="Grayscale" min="0" max="1" step="0.01" onChange={(v) => applyFilter('grayscale', v)} />
+                                  </div>
                                </div>
                             </div>
                          )}
@@ -5983,6 +6354,12 @@ function dataURLtoFile(dataurl: string, filename: string): File {
             {activeContextMenu.obj ? (
                <>
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
+                  {activeContextMenu.obj?.type === 'image' && (
+                     <>
+                        <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
+                        <div className="h-px bg-[#252525] my-1" />
+                     </>
+                  )}
                   <ContextMenuItem icon={AlignLeft} label="Align Left" onClick={() => { alignSelection('left'); closeContextMenu(); }} />
                   <ContextMenuItem icon={AlignCenter} label="Align Center H" onClick={() => { alignSelection('centerH'); closeContextMenu(); }} />
                   <ContextMenuItem icon={AlignRight} label="Align Right" onClick={() => { alignSelection('right'); closeContextMenu(); }} />
@@ -6003,12 +6380,20 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                       key={b.id} 
                       icon={SquareDashed} 
                       label={b.name} 
-                      onClick={() => { 
-                         const activeObjects = fabricRef.current?.getActiveObjects() || [];
-                         if (activeObjects.length > 0) {
-                             fabricRef.current?.discardActiveObject();
-                             activeObjects.forEach((o) => {
-                                 const obj = o as any;
+                           onClick={() => { 
+                             if (!fabricRef.current) return;
+                             const activeSelection = fabricRef.current.getActiveObject();
+                             if (!activeSelection) return;
+                             
+                             let objectsToProcess: any[] = [];
+                             if (activeSelection.type === 'activeSelection') {
+                                 objectsToProcess = (activeSelection as any).getObjects();
+                                 fabricRef.current.discardActiveObject();
+                             } else {
+                                 objectsToProcess = [activeSelection];
+                             }
+
+                             objectsToProcess.forEach(obj => {
                                  const prevArtboardId = obj.artboardId;
                                  if (prevArtboardId !== b.id) {
                                      const prevBoard = artboards.find(x => x.id === prevArtboardId) || artboards[0];
@@ -6022,17 +6407,21 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                             top: (obj.top ?? 0) + dy
                                          });
                                          if (typeof obj.setCoords === 'function') obj.setCoords();
-                                     } else {
-                                         obj.left = (obj.left ?? 0) + dx;
-                                         obj.top = (obj.top ?? 0) + dy;
                                      }
                                  }
                              });
-                             fabricRef.current?.renderAll();
+                             
+                             if (objectsToProcess.length > 1) {
+                                 const sel = new fabric.ActiveSelection(objectsToProcess, { canvas: fabricRef.current });
+                                 fabricRef.current.setActiveObject(sel);
+                             } else if (objectsToProcess.length === 1) {
+                                 fabricRef.current.setActiveObject(objectsToProcess[0]);
+                             }
+                             
+                             fabricRef.current.renderAll();
                              updateLayersList();
-                         }
-                         closeContextMenu(); 
-                      }} 
+                             closeContextMenu(); 
+                          }} 
                     />
                   ))}
                   <div className="h-px bg-[#252525] my-1" />
