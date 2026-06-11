@@ -20,6 +20,7 @@ import { AvifSettings } from './AvifSettings';
 import { PngSettings } from './PngSettings';
 import { ResizeSettings } from './ResizeSettings';
 import { MetricsPanel } from './MetricsPanel';
+import { PRESET_REGISTRY } from '../../lib/imagePresets';
 
 interface Props {
   settings: ExportSettings;
@@ -114,6 +115,10 @@ export const ExportStudio: React.FC<Props> = ({
     onChange(newSettings);
   };
 
+  const activeBoard = artboards.find(b => b.id === activeArtboardId);
+  const matchedPreset = activeBoard ? PRESET_REGISTRY.find(p => p.name === activeBoard.name) : null;
+  const recommendation = matchedPreset?.exportRecommendation;
+
   return (
     <div className="flex flex-col h-full bg-[#0D0D0D] border-l border-[#222] w-full overflow-y-auto custom-scrollbar">
       {/* Header */}
@@ -154,6 +159,38 @@ export const ExportStudio: React.FC<Props> = ({
 
       <div className="p-4 space-y-6 flex-1">
         
+        {/* Export Assistant */}
+        {recommendation && (
+          <div className="bg-blue-900/10 border border-blue-500/20 rounded-xl p-3 flex items-start gap-3 relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none" />
+             <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0 text-blue-400">
+               <Info size={16} />
+             </div>
+             <div className="flex-1 relative z-10">
+                <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-sans">{matchedPreset.name} Detected</div>
+                <div className="text-xs text-blue-100/80 mt-1 mb-2 font-medium font-sans">
+                  {recommendation.message}
+                </div>
+                <button 
+                  onClick={() => {
+                    const fmt = recommendation.format.replace('image/', '') as ExportFormat;
+                    onChange({
+                      ...settings,
+                      format: fmt,
+                      [fmt === 'jpeg' ? 'mozjpeg' : fmt]: {
+                        ...(settings[fmt === 'jpeg' ? 'mozjpeg' : fmt] as any),
+                        quality: recommendation.quality
+                      }
+                    });
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 rounded transition-colors shadow-sm"
+                >
+                  Apply Recommended {recommendation.format.split('/')[1].toUpperCase()} @ {recommendation.quality}%
+                </button>
+             </div>
+          </div>
+        )}
+
         {/* Export Range Targeting Selector */}
         <div className="space-y-4 bg-[#111111] p-3.5 rounded-2xl border border-[#222222]">
             <div className="flex items-center gap-2 mb-1">

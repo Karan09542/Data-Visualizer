@@ -71,7 +71,7 @@ export default function GuiEditorPanel() {
 
   // Selected Type for new field
   const [newKeyType, setNewKeyType] = useState<
-    "string" | "number" | "boolean" | "array" | "object" | "api_node" | "js_node" | "ts_node" | "py_node" | "math_node" | "todo_node"
+    "string" | "number" | "boolean" | "array" | "object" | "api_node" | "js_node" | "ts_node" | "py_node" | "math_node" | "todo_node" | "image_node"
   >("string");
   const [newParentPath, setNewParentPath] = useState<string>("root");
   const [newKeyName, setNewKeyName] = useState<string>("");

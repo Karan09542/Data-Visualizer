@@ -12,7 +12,7 @@ import {
   Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-  Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft
+  Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images
 } from "lucide-react";
 import JSZip from "jszip";
 import { RgbaStringColorPicker } from "react-colorful";
@@ -22,6 +22,7 @@ import { ExportSettings, DEFAULT_EXPORT_SETTINGS } from "../types/export";
 import { FontPicker } from "./FontPicker";
 import { TypographyPresets } from "./TypographyPresets";
 import { ExportStudio } from "./export/ExportStudio";
+import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../lib/imagePresets";
 
 // Cache to prevent multiple compilations
 let isPngInitialised = false;
@@ -178,6 +179,28 @@ interface Command {
   execute(canvas: fabric.Canvas, updateLayers: () => void): void;
   undo(canvas: fabric.Canvas, updateLayers: () => void): void;
   redo(canvas: fabric.Canvas, updateLayers: () => void): void;
+}
+
+class MacroCommand implements Command {
+  name: string;
+  private commands: Command[];
+
+  constructor(name: string, commands: Command[]) {
+    this.name = name;
+    this.commands = commands;
+  }
+
+  execute(canvas: fabric.Canvas, updateLayers: () => void) {
+    this.commands.forEach(cmd => cmd.execute(canvas, updateLayers));
+  }
+
+  undo(canvas: fabric.Canvas, updateLayers: () => void) {
+    [...this.commands].reverse().forEach(cmd => cmd.undo(canvas, updateLayers));
+  }
+
+  redo(canvas: fabric.Canvas, updateLayers: () => void) {
+    this.commands.forEach(cmd => cmd.redo(canvas, updateLayers));
+  }
 }
 
 class AddObjectCommand implements Command {
@@ -1497,7 +1520,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   
   // UI Panels
-  const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards">("properties");
+  const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards" | "quick">("properties");
 
   // Panel sizing
   const MIN_PANEL_WIDTH = 280;
@@ -2089,7 +2112,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     const active = fabricRef.current?.getActiveObject();
     if (active) {
       setSelectedLayerId((active as any).id);
-      setSelectionType(active.type);
+      setSelectionType(active.get('isFrameGroup') ? 'frameGroup' : active.type);
       
       if (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox') {
         const textObj = active as any;
@@ -2109,8 +2132,12 @@ function dataURLtoFile(dataurl: string, filename: string): File {
           flipX: textObj.flipX || false,
           flipY: textObj.flipY || false,
         });
-      } else if (active.type === 'image') {
-        const imgObj = active as any;
+      } else if (active.type === 'image' || active.get('isFrameGroup')) {
+        let imgObj = active as any;
+        if (imgObj.get('isFrameGroup')) {
+           const items = imgObj.getObjects();
+           imgObj = items.find((i: any) => i.type === 'image') || imgObj;
+        }
         setImageFilters(imgObj.customFilters || []);
         if (imgObj.lastFilterBenchmark) {
           setBenchmarkInfo(imgObj.lastFilterBenchmark);
@@ -2220,6 +2247,99 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       setHistoryNames(commandsListRef.current.map(c => c.name));
     }
     artboardFocusValueRef.current = null;
+  };
+
+  const createArtboardFromPreset = (presetId: string) => {
+    const preset = PRESET_REGISTRY.find(p => p.id === presetId);
+    if (!preset || !activeArtboardId || !fabricRef.current) {
+       alert("Please ensure an artboard is selected.");
+       return;
+    }
+    const canvas = fabricRef.current;
+    const dims = getDimensionsInPixels(preset);
+    
+    const boardIndex = artboards.findIndex(b => b.id === activeArtboardId);
+    if (boardIndex === -1) return;
+    const board = artboards[boardIndex];
+    
+    let targetImage = canvas.getActiveObject();
+    if (!targetImage || (targetImage.type !== 'image' && !targetImage.get('isFrameGroup'))) {
+        const objects = canvas.getObjects().filter(o => (o as any).artboardId === activeArtboardId);
+        const images = objects.filter(o => o.type === 'image' || o.get('isFrameGroup'));
+        if (images.length > 0) {
+            targetImage = images[0];
+            canvas.setActiveObject(targetImage);
+        } else {
+            targetImage = null;
+        }
+    }
+
+    const newBoards = [...artboards];
+    newBoards[boardIndex] = { 
+       ...board, 
+       width: dims.width, 
+       height: dims.height, 
+       name: preset.name,
+       showGrid: false,
+       showSafeArea: preset.category === 'document' || preset.category === 'print',
+       showMargins: preset.category === 'document' || preset.category === 'print'
+    };
+    
+    const commands: Command[] = [];
+    commands.push(new ArtboardStateCommand(
+       `Format Document: ${preset.name}`,
+       [...artboards],
+       newBoards,
+       activeArtboardId,
+       activeArtboardId,
+       setArtboards,
+       setActiveArtboardId
+    ));
+    
+    if (targetImage) {
+        const scaleX = dims.width / targetImage.getScaledWidth();
+        const scaleY = dims.height / targetImage.getScaledHeight();
+        const scale = Math.min(scaleX, scaleY) * 0.95; // 95% fit to preserve safe margins
+        
+        const nScaleX = (targetImage.scaleX || 1) * scale;
+        const nScaleY = (targetImage.scaleY || 1) * scale;
+        
+        const beforeState = { 
+            left: targetImage.left, top: targetImage.top, 
+            scaleX: targetImage.scaleX, scaleY: targetImage.scaleY, 
+            angle: targetImage.angle, originX: targetImage.originX, originY: targetImage.originY 
+        };
+        
+        targetImage.set({ scaleX: nScaleX, scaleY: nScaleY });
+        targetImage.setCoords();
+        
+        const center = targetImage.getCenterPoint();
+        const dx = (board.x + dims.width / 2) - center.x;
+        const dy = (board.y + dims.height / 2) - center.y;
+        
+        targetImage.set({
+            left: (targetImage.left || 0) + dx,
+            top: (targetImage.top || 0) + dy
+        });
+        targetImage.setCoords();
+        
+        const afterState = { 
+            left: targetImage.left, top: targetImage.top, 
+            scaleX: nScaleX, scaleY: nScaleY, 
+            angle: targetImage.angle, originX: targetImage.originX, originY: targetImage.originY 
+        };
+        
+        targetImage.set(beforeState);
+        targetImage.setCoords();
+        
+        commands.push(new TransformObjectsCommand(
+            "Format Image",
+            [{ obj: targetImage, before: beforeState, after: afterState }]
+        ));
+    }
+
+    const macro = new MacroCommand(`Convert to ${preset.name}`, commands);
+    executeCommand(macro);
   };
 
   const createArtboard = (presetName?: string, customW = 800, customH = 600) => {
@@ -2666,8 +2786,28 @@ function dataURLtoFile(dataurl: string, filename: string): File {
           showCenter: false,
         }]);
       }
+      
+      const rebuildRecursively = (objs: any[]) => {
+         const filtersObj = (fabric as any).Image?.filters || (fabric as any).filters;
+         objs.forEach(o => {
+             if (o.type === 'group' || o.get?.('isFrameGroup') || o.objects) {
+                 if (typeof o.getObjects === 'function') {
+                     rebuildRecursively(o.getObjects());
+                 } else if (Array.isArray(o.objects)) {
+                     rebuildRecursively(o.objects);
+                 }
+             }
+             if (o.customFilters && o.customFilters.length > 0) {
+                 rebuildFabricFilters(o, filtersObj);
+             }
+         });
+      };
+      if (fabricRef.current) rebuildRecursively(fabricRef.current.getObjects());
+      fabricRef.current?.requestRenderAll();
+      
       setIsLoaded(true);
       setTimeout(fitView, 100);
+      updateLayersList();
     }).catch(err => {
       console.error("Dexie load error", err);
       setIsLoaded(true);
@@ -3561,13 +3701,75 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     applyBrushSettings(brushType);
   };
 
-  const enterCropMode = (target?: fabric.Image) => {
+  const extractImageFromFrame = async (frameGroup: any) => {
+    isInternalChange.current = true;
+    const canvas = fabricRef.current;
+    if (!canvas) return null;
+    
+    const artboardId = frameGroup.artboardId;
+    const layerId = frameGroup.id || frameGroup.layerId;
+    
+    const clonedGroup = await frameGroup.clone([]);
+    canvas.add(clonedGroup);
+    
+    let items: any[] = [];
+    if (typeof clonedGroup.toActiveSelection === 'function') {
+        const sel = clonedGroup.toActiveSelection();
+        items = sel.getObjects();
+    } else {
+        items = clonedGroup.removeAll();
+        canvas.remove(clonedGroup);
+        items.forEach((i: any) => canvas.add(i));
+    }
+    
+    const img = items.find((o: any) => o.type === 'image');
+    const rect = items.find((o: any) => o.type === 'rect');
+    
+    if (rect) canvas.remove(rect);
+    if (img) canvas.remove(img);
+    
+    if (img) {
+        if (artboardId) (img as any).artboardId = artboardId;
+        if (layerId) (img as any).id = layerId;
+        img.set('isFrameGroup', false);
+        img.set('frameType', undefined);
+
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        
+        const cmd = new MacroCommand("Remove Frame for Crop", [
+            new DeleteObjectCommand("Remove Group", [frameGroup]),
+            new AddObjectCommand("Add Extracted Image", img)
+        ]);
+        executeCommand(cmd);
+        canvas.requestRenderAll();
+        updateLayersList();
+    }
+    isInternalChange.current = false;
+    return img;
+  };
+
+  const enterCropMode = async (target?: any) => {
     let imgTarget = target;
+    let canvas = fabricRef.current;
+    if (!canvas) return;
+    
     if (!imgTarget) {
-      const activeObjects = fabricRef.current?.getActiveObjects();
-      if (activeObjects?.length === 1 && activeObjects[0].type === 'image') {
-        imgTarget = activeObjects[0] as fabric.Image;
+      let activeObj = canvas.getActiveObject();
+      if (activeObj && activeObj.get('isFrameGroup')) {
+          const img = await extractImageFromFrame(activeObj);
+          if (img) imgTarget = img as fabric.Image;
+      } else {
+          const activeObjects = activeObj ? [activeObj] : [];
+          if (activeObjects?.length === 1 && activeObjects[0].type === 'image') {
+            imgTarget = activeObjects[0] as fabric.Image;
+          }
       }
+    } else {
+        if (imgTarget && imgTarget.get('isFrameGroup')) {
+            const img = await extractImageFromFrame(imgTarget);
+            if (img) imgTarget = img as fabric.Image;
+        }
     }
     
     if (!imgTarget || imgTarget.type !== 'image') {
@@ -3598,7 +3800,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       scaleX: imgTarget.scaleX,
       scaleY: imgTarget.scaleY,
       angle: imgTarget.angle,
-      opacity: 0.5,
+      opacity: 1, // Fixed: don't make the background totally transparent
       selectable: true,
       evented: true,
       lockRotation: true,
@@ -3769,9 +3971,16 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   };
 
   const resetCrop = () => {
-    const activeObjects = fabricRef.current?.getActiveObjects();
+    let activeObjects = fabricRef.current?.getActiveObjects();
     if (!activeObjects || activeObjects.length !== 1) return;
-    const origObj = activeObjects[0] as fabric.Image;
+    let origObj = activeObjects[0] as any;
+    
+    if (origObj.get('isFrameGroup')) {
+        const items = origObj.getObjects();
+        const img = items.find((i: any) => i.type === 'image');
+        if (img) origObj = img;
+    }
+    
     if (origObj.type !== 'image') return;
 
     const el = origObj.getElement() as HTMLImageElement;
@@ -4019,6 +4228,172 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     }
   };
 
+  const applyFrame = async (frameType: string) => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    let activeObj = canvas.getActiveObject();
+    
+    if (!activeObj) {
+      alert("Please select an image to apply a frame.");
+      return;
+    }
+
+    isInternalChange.current = true;
+    
+    let baseImageObj: any = activeObj;
+    let objectToRemove: any = activeObj;
+
+    if (activeObj.get('isFrameGroup')) {
+       const prevFrameType = activeObj.get('frameType');
+       
+       // Safely clone the group to extract the image without destroying the original (for history undo)
+       const clonedGroup = await activeObj.clone([]);
+       canvas.add(clonedGroup);
+       
+       let items: any[] = [];
+       const groupAsAny = clonedGroup as any;
+       if (typeof groupAsAny.toActiveSelection === 'function') {
+           const sel = groupAsAny.toActiveSelection();
+           items = sel.getObjects();
+       } else {
+           items = clonedGroup.removeAll();
+           canvas.remove(clonedGroup);
+           items.forEach((i: any) => canvas.add(i));
+       }
+       
+       const img = items.find((o: any) => o.type === 'image');
+       const rect = items.find((o: any) => o.type === 'rect');
+       
+       if (rect) canvas.remove(rect); // Clean up temp rect
+       if (img) canvas.remove(img);   // Temporarily remove temp img
+       
+       if (!img) {
+           alert("Could not extract image from frame.");
+           isInternalChange.current = false;
+           return;
+       }
+       
+       baseImageObj = img;
+       
+       if (prevFrameType === frameType) {
+           // Toggle off identical frame
+           canvas.add(baseImageObj);
+           canvas.setActiveObject(baseImageObj);
+           
+           const cmd = new MacroCommand("Remove Frame", [
+               new DeleteObjectCommand("Remove Group", [objectToRemove]),
+               new AddObjectCommand("Add Extracted Image", baseImageObj)
+           ]);
+           executeCommand(cmd);
+           canvas.requestRenderAll();
+           updateLayersList();
+           isInternalChange.current = false;
+           return;
+       }
+    }
+
+    if (baseImageObj.type !== 'image') {
+      alert("Please select an image to apply a frame.");
+      isInternalChange.current = false;
+      return;
+    }
+
+    // Default Frame Settings
+    let strokeColor = "#ffffff";
+    let strokeWidth = 20;
+    let strokeUniform = true;
+    let padding = 0;
+    
+    switch (frameType) {
+      case 'polaroid':
+        strokeColor = "#F9F9F9";
+        strokeWidth = 30; // base boundary
+        break;
+      case 'black':
+        strokeColor = "#111111";
+        strokeWidth = 15;
+        break;
+      case 'white':
+        strokeColor = "#FFFFFF";
+        strokeWidth = 15;
+        break;
+      case 'metallic':
+        strokeColor = "#D4AF37";
+        strokeWidth = 12;
+        break;
+      case 'vintage':
+        strokeColor = "#8B5A2B";
+        strokeWidth = 20;
+        break;
+    }
+
+    const originalAngle = baseImageObj.angle || 0;
+    baseImageObj.set({ angle: 0 }); // temporarily straighten to get clean bounds
+    baseImageObj.setCoords();
+
+    const center = baseImageObj.getCenterPoint();
+    const w = baseImageObj.getScaledWidth();
+    const h = baseImageObj.getScaledHeight();
+
+    const rect = new fabric.Rect({
+      originX: 'center',
+      originY: 'center',
+      left: center.x,
+      top: center.y + (frameType === 'polaroid' ? 30 : 0),
+      width: w,
+      height: h + (frameType === 'polaroid' ? 60 : 0),
+      fill: 'transparent',
+      stroke: strokeColor,
+      strokeWidth: strokeWidth,
+      strokeUniform: strokeUniform,
+      shadow: new fabric.Shadow({
+        color: 'rgba(0,0,0,0.3)',
+        blur: 10,
+        offsetX: 5,
+        offsetY: 5
+      }),
+      evented: true,
+      selectable: true,
+      artboardId: (baseImageObj as any).artboardId
+    });
+
+    if (frameType === 'polaroid') {
+       rect.set('fill', '#F9F9F9');
+       rect.set('strokeWidth', 0);
+    }
+    
+    // Group them
+    const objs = frameType === 'polaroid' ? [rect, baseImageObj] : [baseImageObj, rect];
+    const group = new fabric.Group(objs);
+    
+    group.set({
+       id: `frame_${Date.now()}`,
+       customName: `${frameType.charAt(0).toUpperCase() + frameType.slice(1)} Frame`,
+       artboardId: (baseImageObj as any).artboardId,
+       angle: originalAngle, // restore original angle
+       isFrameGroup: true, // special flag to allow formats and quick actions to identify this
+       frameType: frameType 
+    } as any);
+    
+    // We add the newly created frame group, and delete the original object/group
+    canvas.discardActiveObject();
+    canvas.add(group);
+    canvas.setActiveObject(group);
+    
+    const macroCmd = new MacroCommand(
+       `Apply ${frameType} frame`,
+       [
+          new DeleteObjectCommand("Remove Base", [objectToRemove]),
+          new AddObjectCommand("Add Frame Group", group)
+       ]
+    );
+
+    executeCommand(macroCmd);
+    canvas.requestRenderAll();
+    updateLayersList();
+    isInternalChange.current = false;
+  };
+
   const changeTextProp = (property: string, value: any, actionName: string) => {
     setTextProps(p => ({ ...p, [property]: value }));
     const active = fabricRef.current?.getActiveObject();
@@ -4124,11 +4499,22 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   };
 
   // Advanced Filters
+  const getTargetImageForFilters = () => {
+    let obj = fabricRef.current?.getActiveObject() as any;
+    if (obj && obj.get('isFrameGroup')) {
+       // Find the image inside the group
+       const items = obj.getObjects();
+       obj = items.find((i: any) => i.type === 'image') || obj;
+    }
+    return obj;
+  };
+
   const applyFilter = (filterType: string, value: number) => {
-    const obj = fabricRef.current?.getActiveObject() as any;
+    const obj = getTargetImageForFilters();
     if (obj && obj.type === 'image') {
       const filters = (fabric as any).Image?.filters || (fabric as any).filters;
       if (!filters) return;
+
       
       let filterIndex = -1;
       let beforeValue = 0;
@@ -4153,7 +4539,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
   // Filter Studio Pipeline Controls
   const applyFilterStack = (newStack: FilterConfig[], description = "Update Filter Studio Pipeline") => {
-    const obj = fabricRef.current?.getActiveObject() as any;
+    const obj = getTargetImageForFilters();
     if (obj && obj.type === 'image') {
       const beforeStack = obj.customFilters || [];
       const cmd = new FilterPipelineCommand(description, obj, beforeStack, newStack);
@@ -4743,11 +5129,11 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         
         {/* Action History Tools */}
         <div className="flex border border-[#3A3A3A] rounded shadow-sm bg-[#181818] shrink-0">
-          <button className={`h-8 w-8 flex items-center justify-center transition-colors ${commandIndex >= 0 ? 'text-[#E0E0E0] hover:bg-[#2C2C2C]' : 'text-[#4A4A4A]'}`} onClick={performUndo} title="Undo (Ctrl+Z)">
+          <button className={`h-8 w-8 flex items-center justify-center transition-colors border ${commandIndex >= 0 ? 'text-red-400 border-red-500 hover:bg-red-500/10' : 'text-[#4A4A4A] border-transparent'}`} onClick={performUndo} title="Undo (Ctrl+Z)" disabled={commandIndex < 0}>
              <Undo size={14} />
           </button>
           <div className="w-px h-8 bg-[#3A3A3A]" />
-          <button className={`h-8 w-8 flex items-center justify-center transition-colors ${commandIndex < historyNames.length - 1 ? 'text-[#E0E0E0] hover:bg-[#2C2C2C]' : 'text-[#4A4A4A]'}`} onClick={performRedo} title="Redo (Ctrl+Y)">
+          <button className={`h-8 w-8 flex items-center justify-center transition-colors border ${commandIndex < historyNames.length - 1 ? 'text-red-400 border-red-500 hover:bg-red-500/10' : 'text-[#4A4A4A] border-transparent'}`} onClick={performRedo} title="Redo (Ctrl+Y)" disabled={commandIndex >= historyNames.length - 1}>
              <Redo size={14} />
           </button>
         </div>
@@ -4930,18 +5316,19 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
               {/* Empty State Overlay */}
               {isLoaded && artboards.length === 0 && (
-                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4">
-                    <div className="flex flex-col items-center gap-3 md:gap-4 p-6 md:p-8 bg-[#1A1A1A] border border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-sm text-center">
-                       <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 md:mb-2 shadow-inner">
-                          <SquareDashed size={24} className="md:w-7 md:h-7" />
+                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
+                    <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-[#1A1A1A] border border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
+                       <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(45deg,transparent_25%,white_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]" />
+                       <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 shadow-inner relative z-10 ring-1 ring-blue-500/20">
+                          <SquareDashed size={24} className="w-5 h-5 md:w-7 md:h-7" />
                        </div>
-                       <div>
-                         <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-white mb-2">No active project</h3>
-                         <p className="text-[10px] md:text-xs text-slate-400 mb-5 md:mb-6 leading-relaxed">Create a new artboard to start placing elements, adding images, and building your composition.</p>
+                       <div className="relative z-10 w-full">
+                         <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-white mb-1.5 md:mb-2">No active project</h3>
+                         <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 leading-relaxed px-2">Create a new artboard to start placing elements and building your composition.</p>
                        </div>
                        <button
                           onClick={() => createArtboard()}
-                          className="flex items-center justify-center gap-2 px-5 md:px-6 h-9 md:h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition shadow-lg shadow-blue-600/20 active:scale-95"
+                          className="relative z-10 w-full flex items-center justify-center gap-2 px-5 md:px-6 h-10 md:h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition shadow-lg shadow-blue-600/20 active:scale-95"
                        >
                           <Plus size={16} /> Create Artboard
                        </button>
@@ -4950,29 +5337,96 @@ function dataURLtoFile(dataurl: string, filename: string): File {
               )}
 
               {isCropping && (
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[50]">
-                   <div className="bg-[#1A1A1A]/90 backdrop-blur-md border border-[#2D2D2D] p-1.5 rounded-lg shadow-2xl flex items-center gap-3">
-                      <div className="px-3 text-xs font-semibold text-blue-400 flex items-center gap-1.5"><Crop size={14}/> Crop Mode</div>
-                      <div className="h-4 w-px bg-[#333]"></div>
-                      <div className="flex gap-1.5">
-                        <button onClick={() => {
-                            const { cropRect } = cropSessionRef.current;
-                            if(cropRect) {
-                                cropRect.set({ width: cropRect.height, height: cropRect.height });
-                                fabricRef.current!.renderAll();
-                            }
-                        }} className="px-2 py-1 text-xs text-slate-300 hover:bg-[#333] hover:text-white rounded">1:1</button>
-                        <button onClick={() => {
-                            const { cropRect } = cropSessionRef.current;
-                            if(cropRect && cropRect.width && cropRect.height) {
-                                cropRect.set({ width: cropRect.height * (16/9) });
-                                fabricRef.current!.renderAll();
-                            }
-                        }} className="px-2 py-1 text-xs text-slate-300 hover:bg-[#333] hover:text-white rounded">16:9</button>
-                      </div>
-                      <div className="h-4 w-px bg-[#333]"></div>
-                      <button onClick={applyCrop} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-white text-xs font-medium transition">Apply (Enter)</button>
-                      <button onClick={cancelCrop} className="px-4 py-1.5 bg-transparent hover:bg-[#333] border border-[#444] text-[#C0C0C0] rounded text-xs font-medium transition">Cancel (Esc)</button>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm sm:max-w-none sm:w-auto z-[50]">
+                   <div className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-[#2D2D2D] p-1.5 rounded-xl shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center justify-between sm:justify-start gap-2 overflow-x-auto no-scrollbar">
+                       <div className="hidden sm:flex px-3 items-center gap-1.5 border-r border-[#333] pr-3 shrink-0">
+                           <Crop size={14} className="text-blue-400" />
+                           <span className="text-[11px] font-bold text-slate-200">Crop</span>
+                       </div>
+                       
+                       <select 
+                           className="bg-[#252525] hover:bg-[#333] text-slate-200 text-[10px] sm:text-[11px] px-2 py-1.5 rounded-md border border-[#3A3A3A] outline-none cursor-pointer appearance-none pr-6 bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%205%203%203%203-3%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[position:right_6px_center] bg-no-repeat w-24 sm:w-auto shrink-0"
+                           defaultValue="free"
+                           onChange={(e) => {
+                               const val = e.target.value;
+                               const { cropRect, origObj } = cropSessionRef.current;
+                               if (!cropRect || !origObj) return;
+
+                               if (val === 'free') {
+                                   cropRect.set({ lockUniScaling: false });
+                               } else {
+                                   let ratio = 1;
+                                   if (val === 'original') {
+                                       ratio = origObj.width! / origObj.height!;
+                                   } else {
+                                       ratio = parseFloat(val);
+                                   }
+                                   
+                                   const center = cropRect.getCenterPoint();
+                                   const curW = cropRect.getScaledWidth();
+                                   const curH = cropRect.getScaledHeight();
+                                   
+                                   let newW = curW;
+                                   let newH = newW / ratio;
+                                   
+                                   // Keep it somewhat within original bounds logic (simplified)
+                                   if (newH > origObj.getScaledHeight()) {
+                                       newH = origObj.getScaledHeight();
+                                       newW = newH * ratio;
+                                   }
+                                   if (newW > origObj.getScaledWidth()) {
+                                       newW = origObj.getScaledWidth();
+                                       newH = newW / ratio;
+                                   }
+                                   
+                                   cropRect.set({
+                                       width: newW,
+                                       height: newH,
+                                       scaleX: 1,
+                                       scaleY: 1,
+                                       lockUniScaling: true,
+                                   });
+                                   
+                                   cropRect.setPositionByOrigin(center, 'center', 'center');
+                                   cropRect.setCoords();
+                               }
+                               fabricRef.current?.renderAll();
+                           }}
+                       >
+                           <option value="free">Free Crop</option>
+                           <option value="original">Original Ratio</option>
+                           <optgroup label="Standard Dimensions">
+                               <option value="1">1:1 Square</option>
+                               <option value={4/3}>4:3 (Landscape)</option>
+                               <option value={16/9}>16:9 (Widescreen)</option>
+                               <option value={9/16}>9:16 (Vertical)</option>
+                               <option value={3/2}>3:2 (Classic)</option>
+                               <option value={210/297}>A4 (210x297mm)</option>
+                               <option value={8.5/11}>Letter (8.5x11")</option>
+                           </optgroup>
+                           <optgroup label="Document Presets">
+                               <option value={35/45}>India Passport (35x45mm)</option>
+                               <option value={1}>US Passport (2x2")</option>
+                               <option value={1}>Visa Photo (2x2")</option>
+                               <option value={86/54}>ID Card (86x54mm)</option>
+                               <option value={35/45}>Student Photo (35x45)</option>
+                               <option value={1}>Profile Pic (1:1)</option>
+                           </optgroup>
+                           <optgroup label="Social Media Presets">
+                               <option value={1}>Ig Post (1080x1080)</option>
+                               <option value={1080/1920}>Ig Story (1080x1920)</option>
+                               <option value={16/9}>YT Thumb (1280x720)</option>
+                               <option value={1}>LinkedIn (400x400)</option>
+                               <option value={820/312}>Fb Cover (820x312)</option>
+                           </optgroup>
+                       </select>
+
+                       <div className="hidden sm:block h-4 w-px bg-[#333] ml-1 mr-1"></div>
+                       
+                       <div className="flex items-center gap-1.5 shrink-0">
+                           <button onClick={applyCrop} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap"><Check size={12}/> <span className="hidden sm:inline">Apply</span></button>
+                           <button onClick={cancelCrop} className="px-3 py-1.5 bg-[#252525] hover:bg-[#333] text-slate-300 rounded-lg text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"><X size={12}/> <span className="hidden sm:inline">Cancel</span></button>
+                       </div>
                    </div>
                 </div>
               )}          {/* Squoosh-like image comparison viewer */}
@@ -5871,7 +6325,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
           <div className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] overflow-x-auto select-none no-scrollbar shrink-0">
              <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
-             <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Artboards" icon={SquareDashed} />
+             <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
+             <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
              <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
              <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
              <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
@@ -6262,7 +6717,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                           )}
 
                          {/* Image Adjustments Module */}
-                         {selectionType === 'image' && (
+                         {(selectionType === 'image' || selectionType === 'frameGroup') && (
                             <div className="space-y-6">
                                <div className="space-y-3">
                                   <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2"><Crop size={12}/> Crop & Composition</div>
@@ -6343,11 +6798,85 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                          </div>
                        </>
                    ) : (
-                       <div className="flex flex-col items-center justify-center py-20 text-center opacity-50">
-                           <MousePointer2 size={32} className="mb-4" />
-                           <span className="text-sm font-medium">No layer selected</span>
-                           <span className="text-xs mt-2 w-48">Select an object on the canvas to edit its properties.</span>
-                       </div>
+                       <>
+                           {artboards.find(b => b.id === activeArtboardId) ? (
+                             <div className="space-y-6">
+                               <div className="flex items-center justify-between">
+                                  <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2"><Square size={12}/> Artboard Properties</div>
+                               </div>
+
+                               {/* Smart Background Studio */}
+                               <div>
+                                  <div className="text-[10px] text-[#A0A0A0] mb-2 font-semibold flex items-center gap-1"><Droplets size={12}/> Smart Background</div>
+                                  <div className="flex gap-2 mb-2">
+                                    <div className="w-8 h-8 rounded shrink-0 border border-[#3A3A3A] overflow-hidden" style={{ backgroundColor: artboards.find(b => b.id === activeArtboardId)?.backgroundColor as string || '#ffffff' }}></div>
+                                    <div className="flex-1">
+                                      <ColorPickerTrigger 
+                                        color={artboards.find(b => b.id === activeArtboardId)?.backgroundColor as string || '#ffffff'} 
+                                        onChange={(c) => updateArtboardPropDirect(activeArtboardId, 'backgroundColor', c, true)} 
+                                      />
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-4 gap-1 mb-2">
+                                     {['#FFFFFF', '#000000', '#F3F4F6', '#E5E7EB', '#3B82F6', '#EF4444', '#10B981', '#F59E0B'].map(c => (
+                                        <button key={c} onClick={() => updateArtboardPropDirect(activeArtboardId, 'backgroundColor', c, true)} className="w-full h-8 rounded border border-[#3A3A3A] hover:border-blue-500" style={{ backgroundColor: c }} />
+                                     ))}
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-1.5 mt-2">
+                                     <button className="py-1.5 px-2 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-500/30 hover:border-blue-500/60 text-blue-400 text-[10px] rounded flex gap-1.5 justify-center items-center font-semibold transition-colors">
+                                        <Sparkles size={12} /> Auto-Remove BG
+                                     </button>
+                                     <button className="py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-center items-center transition-colors">
+                                        <LucideImage size={12} /> Gen AI Fill
+                                     </button>
+                                  </div>
+                               </div>
+
+                               {/* Smart Collage Builder */}
+                               <div className="pt-4 border-t border-[#2C2C2C]">
+                                  <div className="text-[10px] text-[#A0A0A0] mb-2 font-semibold flex items-center gap-1"><Layout size={12}/> Smart Collage Builder</div>
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                     {[
+                                        { l: '2x Grid', i: '2x' },
+                                        { l: '3x Grid', i: '3x' },
+                                        { l: '4x Quad', i: '4x' },
+                                        { l: '1L 2R', i: '1-2' },
+                                        { l: '2T 1B', i: '2-1' },
+                                        { l: 'Filmstrip', i: 'film' }
+                                     ].map(c => (
+                                        <button key={c.i} className="py-2 bg-[#202020] hover:bg-[#2A2A2A] border border-[#303030] rounded text-[9px] text-[#8A8A8A] hover:text-white flex flex-col items-center justify-center gap-1">
+                                           <div className="w-6 h-6 border border-[#555] rounded-sm opacity-50 flex items-center justify-center text-[8px] font-mono">{c.i}</div>
+                                           {c.l}
+                                        </button>
+                                     ))}
+                                  </div>
+                               </div>
+
+                               {/* Print Settings */}
+                               <div className="pt-4 border-t border-[#2C2C2C]">
+                                  <div className="text-[10px] text-[#A0A0A0] mb-2 font-semibold flex items-center gap-1"><Printer size={12}/> Print Preparation</div>
+                                  <div className="space-y-1.5">
+                                     <label className="flex items-center gap-2 text-xs text-[#8A8A8A] p-2 bg-[#1A1A1A] rounded cursor-pointer hover:bg-[#252525]">
+                                        <input type="checkbox" className="accent-blue-500" checked={!!artboards.find(b => b.id === activeArtboardId)?.showMargins} onChange={(e) => updateArtboardPropDirect(activeArtboardId, 'showMargins', e.target.checked, true)} />
+                                        Show Print Margins (0.25")
+                                     </label>
+                                     <button className="w-full py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-between items-center transition-colors">
+                                        <span>Generate 0.125" Bleed</span>
+                                        <Plus size={10} />
+                                     </button>
+                                  </div>
+                               </div>
+                             </div>
+                           ) : (
+                             <div className="flex flex-col items-center justify-center py-20 text-center opacity-50">
+                                <MousePointer2 size={32} className="mb-4" />
+                                <span className="text-sm font-medium">No layer selected</span>
+                                <span className="text-xs mt-2 w-48">Select an object or an artboard on the canvas to edit its properties.</span>
+                             </div>
+                           )}
+                       </>
                    )}
                                      {false && (
                        <div className="pt-6 border-t border-[#2C2C2C] space-y-4">
@@ -6485,16 +7014,25 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                             <button className="w-full h-8 bg-[#222] hover:bg-[#2A2A2A] text-[#CCC] rounded text-[11px] font-semibold transition border border-[#333] overflow-hidden flex items-center justify-center gap-1">
                                Presets <ChevronDown size={12} className="opacity-70" />
                             </button>
-                            <div className="absolute top-full left-0 w-max min-w-full mt-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-50 overflow-hidden flex flex-col max-h-[300px] overflow-y-auto no-scrollbar">
-                                {ARTBOARD_PRESETS.map((preset) => (
-                                  <button 
-                                    key={preset.name}
-                                    onClick={() => createArtboard(preset.name)}
-                                    className="text-[10px] text-left text-[#C0C0C0] px-3 py-2 hover:bg-blue-600 hover:text-white transition whitespace-nowrap flex justify-between gap-4 items-center"
-                                  >
-                                    <span>{preset.name}</span>
-                                    <span className="opacity-40 text-[9px] font-mono">{preset.width}x{preset.height}</span>
-                                  </button>
+                            <div className="absolute top-full left-0 w-[240px] mt-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-50 flex flex-col max-h-[400px] overflow-y-auto custom-scrollbar">
+                                {Array.from(new Set(PRESET_REGISTRY.map(p => p.category))).map(category => (
+                                  <div key={category} className="flex flex-col">
+                                    <div className="sticky top-0 bg-[#222]/95 backdrop-blur-sm px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-[#888] border-b border-[#333] z-10 capitalize">
+                                      {category.replace('_', ' ')}
+                                    </div>
+                                    {PRESET_REGISTRY.filter(p => p.category === category).map((preset) => (
+                                      <button 
+                                        key={preset.id}
+                                        onClick={() => createArtboardFromPreset(preset.id)}
+                                        className="text-[10px] text-left text-[#C0C0C0] px-3 py-2 hover:bg-blue-600 hover:text-white transition whitespace-nowrap flex flex-col gap-0.5 group/btn border-b border-[#222] last:border-b-0"
+                                      >
+                                        <div className="flex justify-between items-center w-full">
+                                          <span className="font-medium">{preset.name}</span>
+                                          <span className="opacity-40 text-[9px] font-mono group-hover/btn:text-blue-200">{preset.width}x{preset.height} {preset.unit}</span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
                                 ))}
                             </div>
                          </div>
@@ -6716,10 +7254,127 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                 </div>
              )}
 
+             {/* QUICK ACTIONS PANEL */}
+             {activeTab === 'quick' && (
+                <div className="p-4 space-y-6 text-[#C0C0C0]">
+                   {selectionType !== 'image' && selectionType !== 'frameGroup' ? (
+                      <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                         <Activity size={32} className="mb-4 text-emerald-500 animate-pulse" />
+                         <span className="text-sm font-semibold text-white">Quick Actions</span>
+                         <span className="text-xs mt-2 w-48 text-[#8A8A8A]">Select an Image layer on the canvas to access one-click utilities and fixes.</span>
+                      </div>
+                   ) : (
+                      <div className="space-y-6 flex flex-col h-full">
+                         
+                         {/* One-Click Quick Fixes */}
+                         <div className="space-y-2">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                               <Sparkles size={11} className="text-yellow-400"/> Quick Fixes
+                            </div>
+                            <div className="grid grid-cols-1 gap-1.5">
+                               <button onClick={() => { addFilterToPipeline('brightness'); applyFilter('brightness', 0.1); addFilterToPipeline('contrast'); applyFilter('contrast', 0.15); applyFilter('vibrance', undefined); addFilterToPipeline('vibrance'); }} className="p-2 border border-[#2C2C2C] hover:border-emerald-500/50 hover:bg-emerald-900/20 bg-[#1A1A1A] rounded text-left text-[11px] font-medium transition duration-150 group font-sans flex items-center gap-3">
+                                  <div className="w-6 h-6 rounded bg-[#2A2A2A] flex items-center justify-center text-white"><Sparkles size={12}/></div>
+                                  <div>
+                                    <div className="text-white group-hover:text-emerald-400 transition-colors">Auto Enhance</div>
+                                    <div className="text-[9px] text-[#6A6A6A]">Smart contrast, brightness, and vibrance</div>
+                                  </div>
+                               </button>
+                               <button onClick={() => { addFilterToPipeline('sharpen'); applyFilter('sharpen', 0.3); }} className="p-2 border border-[#2C2C2C] hover:border-blue-500/50 hover:bg-blue-900/20 bg-[#1A1A1A] rounded text-left text-[11px] font-medium transition duration-150 group font-sans flex items-center gap-3">
+                                  <div className="w-6 h-6 rounded bg-[#2A2A2A] flex items-center justify-center text-white"><Eye size={12}/></div>
+                                  <div>
+                                    <div className="text-white group-hover:text-blue-400 transition-colors">Auto Sharpen</div>
+                                    <div className="text-[9px] text-[#6A6A6A]">Enhance edge detail and clarity</div>
+                                  </div>
+                               </button>
+                               <button onClick={() => { addFilterToPipeline('saturation'); applyFilter('saturation', 0.2); addFilterToPipeline('vibrance'); }} className="p-2 border border-[#2C2C2C] hover:border-violet-500/50 hover:bg-violet-900/20 bg-[#1A1A1A] rounded text-left text-[11px] font-medium transition duration-150 group font-sans flex items-center gap-3">
+                                  <div className="w-6 h-6 rounded bg-[#2A2A2A] flex items-center justify-center text-white"><Palette size={12}/></div>
+                                  <div>
+                                    <div className="text-white group-hover:text-violet-400 transition-colors">Auto Color Correct</div>
+                                    <div className="text-[9px] text-[#6A6A6A]">Boost missing saturation and colors</div>
+                                  </div>
+                               </button>
+                            </div>
+                         </div>
+
+                         {/* Quick Utilities */}
+                         <div className="space-y-2">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                               <Settings2 size={11} className="text-slate-400"/> Transform Utilities
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                               {[
+                                  { label: 'Fit to Print', target: 'print' },
+                                  { label: 'Fit to Web', target: 'web' },
+                                  { label: 'Center Subject', target: 'center' },
+                                  { label: 'Reset Aspect', target: 'reset' }
+                               ].map(u => (
+                                  <button 
+                                     key={u.label}
+                                     onClick={() => {
+                                        if (u.target === 'reset') resetCrop();
+                                        else alignSelection('centerH');
+                                     }}
+                                     className="py-1 px-2 border border-[#2C2C2C] hover:border-slate-500/50 hover:text-white bg-[#1A1A1A] hover:bg-[#252525] rounded text-center text-[10px] font-medium transition duration-150 font-sans"
+                                  >
+                                     {u.label}
+                                  </button>
+                               ))}
+                            </div>
+                         </div>
+
+                         {/* Digital Frames */}
+                         <div className="space-y-2">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                               <ImageIcon size={11} className="text-orange-400"/> Digital Frames
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                               {[
+                                  { label: 'Polaroid', target: 'polaroid' },
+                                  { label: 'Classic White', target: 'white' },
+                                  { label: 'Gallery Black', target: 'black' },
+                                  { label: 'Metallic Gold', target: 'metallic' },
+                                  { label: 'Vintage Brown', target: 'vintage' }
+                               ].map(u => (
+                                  <button 
+                                     key={u.label}
+                                     onClick={() => applyFrame(u.target)}
+                                     className="py-1 px-2 border border-[#2C2C2C] hover:border-orange-500/50 hover:text-white bg-[#1A1A1A] hover:bg-[#252525] rounded text-center text-[10px] font-medium transition duration-150 font-sans"
+                                  >
+                                     {u.label}
+                                  </button>
+                               ))}
+                            </div>
+                         </div>
+
+                         {/* Document Prep */}
+                         <div className="space-y-2 mt-4 pt-4 border-t border-[#2C2C2C]">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                               <FileText size={11} className="text-red-400"/> Formatting Utilities
+                            </div>
+                            <div className="text-[9px] text-slate-500 mb-2 leading-relaxed">Instantly reformat open imagery strictly into normalized document proportions.</div>
+                            <div className="h-[300px] overflow-y-auto no-scrollbar pr-1 grid grid-cols-1 gap-1.5">
+                               {PRESET_REGISTRY.filter(p => p.category === 'document' || p.category === 'social' || p.category === 'ecommerce').map((preset) => (
+                                 <button key={preset.id} onClick={() => createArtboardFromPreset(preset.id)} className="flex items-center gap-2 p-1.5 bg-[#222] hover:bg-white/5 border border-[#333] hover:border-white/20 rounded text-left transition-colors font-sans">
+                                    <div className={`w-5 h-5 rounded bg-[#333] flex items-center justify-center shrink-0 ${preset.category === 'social' ? 'text-fuchsia-500' : preset.category === 'ecommerce' ? 'text-orange-500' : 'text-blue-400'}`}>
+                                      {preset.category === 'social' ? <Instagram size={10} /> : preset.category === 'ecommerce' ? <ShoppingBag size={10} /> : <FileText size={10} />}
+                                    </div>
+                                    <div className="flex-1 overflow-hidden">
+                                      <div className="text-[10px] font-medium text-white truncate">Convert to {preset.name}</div>
+                                      <div className="text-[8px] text-slate-500 font-mono">{preset.width}x{preset.height} {preset.unit}</div>
+                                    </div>
+                                 </button>
+                               ))}
+                            </div>
+                         </div>
+                      </div>
+                   )}
+                </div>
+             )}
+
              {/* FILTER STUDIO PANEL */}
              {activeTab === 'filters' && (
                 <div className="p-4 space-y-6 text-[#C0C0C0]">
-                   {selectionType !== 'image' ? (
+                   {selectionType !== 'image' && selectionType !== 'frameGroup' ? (
                       <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
                          <Sparkles size={32} className="mb-4 text-amber-500 animate-pulse" />
                          <span className="text-sm font-semibold text-white">Filter Studio</span>
@@ -7378,7 +8033,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
             {activeContextMenu.obj ? (
                <>
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
-                  {activeContextMenu.obj?.type === 'image' && (
+                  {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
                      <>
                         <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
                         <div className="h-px bg-[#252525] my-1" />
@@ -7396,6 +8051,24 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                   <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
                   <div className="h-px bg-[#252525] my-1" />
                   <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
+                  {activeContextMenu.obj?.type === 'group' && (
+                     <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => { 
+                         const group = activeContextMenu.obj as any;
+                         if (group && typeof group.toActiveSelection === 'function') {
+                             const sel = group.toActiveSelection();
+                             fabricRef.current?.setActiveObject(sel);
+                         } else {
+                             const items = (group as fabric.Group).removeAll();
+                             fabricRef.current?.remove(group as fabric.Group);
+                             items.forEach(i => fabricRef.current?.add(i));
+                             const sel = new fabric.ActiveSelection(items, { canvas: fabricRef.current });
+                             fabricRef.current?.setActiveObject(sel);
+                         }
+                         fabricRef.current?.requestRenderAll();
+                         updateLayersList();
+                         closeContextMenu();
+                     }} />
+                  )}
                   <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
                   <div className="h-px bg-[#252525] my-1" />
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Move To Artboard</div>

@@ -952,7 +952,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${
+                   undoStack.length > 0 
+                     ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
+                     : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                }`}
                 title="Undo (Ctrl+Z)"
               >
                 <Undo2 size={16} />
@@ -960,7 +964,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${
+                   redoStack.length > 0 
+                     ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
+                     : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                }`}
                 title="Redo (Ctrl+Y)"
               >
                 <Redo2 size={16} />
@@ -1288,14 +1296,22 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <button
                   onClick={undo}
                   disabled={undoStack.length === 0}
-                  className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium disabled:opacity-30"
+                  className={`flex items-center justify-center gap-2 p-2 rounded-md transition-colors text-sm font-medium disabled:opacity-30 border ${
+                    undoStack.length > 0 
+                      ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
+                      : "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 border-transparent"
+                  }`}
                 >
                   <Undo2 size={16} /> Undo
                 </button>
                 <button
                   onClick={redo}
                   disabled={redoStack.length === 0}
-                  className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium disabled:opacity-30"
+                  className={`flex items-center justify-center gap-2 p-2 rounded-md transition-colors text-sm font-medium disabled:opacity-30 border ${
+                    redoStack.length > 0 
+                      ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
+                      : "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 border-transparent"
+                  }`}
                 >
                   <Redo2 size={16} /> Redo
                 </button>

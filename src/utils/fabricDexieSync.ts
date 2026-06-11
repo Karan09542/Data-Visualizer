@@ -52,7 +52,7 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       relativeY = (obj.top || 0) - artboard.y;
     }
 
-    const data = obj.toObject(['id', 'artboardId', 'layerId', 'customFilters', 'name', 'locked', 'selectable', 'evented']);
+    const data = obj.toObject(['id', 'artboardId', 'layerId', 'customFilters', 'name', 'customName', 'locked', 'selectable', 'evented', 'isFrameGroup', 'frameType']);
     
     toPutObjects.push({
       id: objId,
@@ -122,6 +122,12 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
           const enlObj = enlivenedObjects[0];
           enlObj.id = record.id;
           enlObj.artboardId = record.artboardId;
+          
+          if (record.data.customName) enlObj.customName = record.data.customName;
+          if (record.data.layerId) enlObj.layerId = record.data.layerId;
+          if (record.data.isFrameGroup) enlObj.set('isFrameGroup', record.data.isFrameGroup);
+          if (record.data.frameType) enlObj.set('frameType', record.data.frameType);
+          
           if (record.data.customFilters) {
             enlObj.customFilters = record.data.customFilters;
             const filtersObj = (fabric as any).Image?.filters || (fabric as any).filters;
