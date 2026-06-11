@@ -115,7 +115,7 @@ export const ExportStudio: React.FC<Props> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0D0D0D] border-l border-[#222] w-80 shrink-0 overflow-y-auto custom-scrollbar">
+    <div className="flex flex-col h-full bg-[#0D0D0D] border-l border-[#222] w-full overflow-y-auto custom-scrollbar">
       {/* Header */}
       <div className="p-4 border-b border-[#222] bg-[#111] sticky top-0 z-10">
         <div className="flex items-center justify-between mb-4">
@@ -135,12 +135,12 @@ export const ExportStudio: React.FC<Props> = ({
         </div>
 
         {/* Format Selector Tap */}
-        <div className="flex bg-[#1A1A1A] p-1 rounded-lg border border-[#222] gap-1">
+        <div className="flex bg-[#1A1A1A] p-1 rounded-lg border border-[#222] gap-1 overflow-x-auto no-scrollbar">
           {(['jpeg', 'png', 'webp', 'avif'] as ExportFormat[]).map(fmt => (
             <button
               key={fmt}
               onClick={() => onChange({ ...settings, format: fmt })}
-              className={`flex-1 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+              className={`flex-1 min-w-[50px] py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
                 settings.format === fmt 
                 ? 'bg-blue-600 text-white shadow-lg' 
                 : 'text-slate-500 hover:text-slate-300 hover:bg-[#252525]'
@@ -162,7 +162,7 @@ export const ExportStudio: React.FC<Props> = ({
             </div>
 
             {/* Premium segmented control instead of simple select */}
-            <div className="grid grid-cols-3 bg-[#161616] p-1 rounded-xl border border-[#222222] gap-1">
+            <div className="flex bg-[#161616] p-1 rounded-xl border border-[#222222] gap-1 overflow-x-auto no-scrollbar">
               {[
                 { id: 'current', label: 'Active' },
                 { id: 'selected', label: 'Selected' },
@@ -172,7 +172,7 @@ export const ExportStudio: React.FC<Props> = ({
                   key={t.id}
                   type="button"
                   onClick={() => setExportTarget(t.id as any)}
-                  className={`py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center ${
+                  className={`flex-1 min-w-[65px] py-1.5 px-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center whitespace-nowrap ${
                     exportTarget === t.id 
                     ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm font-black' 
                     : 'text-slate-500 hover:text-slate-300 border border-transparent'
@@ -237,9 +237,9 @@ export const ExportStudio: React.FC<Props> = ({
 
                         {/* Beautiful active badge status */}
                         {isActive && (
-                          <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full">
+                          <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full shrink-0">
                             <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider">Active</span>
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
                           </div>
                         )}
                       </div>
