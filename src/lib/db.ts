@@ -61,6 +61,7 @@ export interface FabricObject {
   rotation: number;
   scaleX: number;
   scaleY: number;
+  order?: number;
 }
 
 export interface Layer {

@@ -4,7 +4,44 @@ import * as fabric from 'fabric';
 export const saveToDexie = async (documentId: string, artboards: any[], canvas: fabric.Canvas) => {
   if (!canvas || !documentId) return;
 
-  const fabricObjects = canvas.getObjects().filter(o => o.type !== 'activeSelection');
+  // Gather all objects, including those inside an active selection
+  const rawObjects = canvas.getObjects();
+  const fabricObjects: any[] = [];
+  
+  rawObjects.forEach(obj => {
+    if (obj.type === 'activeSelection') {
+      const activeSelItems = (obj as any).getObjects();
+      activeSelItems.forEach((innerObj: any) => {
+          // Temporarily attach canvas to compute absolute transformations
+          const origCanvas = innerObj.canvas;
+          innerObj.canvas = canvas;
+          const matrix = innerObj.calcTransformMatrix();
+          const options = fabric.util.qrDecompose(matrix);
+          
+          fabricObjects.push({
+             ...innerObj,
+             left: options.translateX,
+             top: options.translateY,
+             scaleX: options.scaleX,
+             scaleY: options.scaleY,
+             angle: options.angle,
+             toObject: (props: string[]) => {
+                 const objData = innerObj.toObject(props);
+                 // Override with absolute coords
+                 objData.left = options.translateX;
+                 objData.top = options.translateY;
+                 objData.scaleX = options.scaleX;
+                 objData.scaleY = options.scaleY;
+                 objData.angle = options.angle;
+                 return objData;
+             }
+          });
+          innerObj.canvas = origCanvas;
+      });
+    } else {
+      fabricObjects.push(obj);
+    }
+  });
   
   const toPutArtboards = artboards.map((b, i) => ({
     id: b.id,
@@ -19,6 +56,7 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
 
   const toPutObjects: FabricObject[] = [];
 
+  let orderIdx = 0;
   for (const obj of fabricObjects) {
     if (!(obj as any).id) (obj as any).id = Date.now().toString() + Math.random().toString();
     const objId = (obj as any).id as string;
@@ -79,6 +117,7 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       artboardId: assignedArtboardId,
       layerId: (obj as any).layerId || 'default',
       type: obj.type || 'unknown',
+      order: orderIdx++,
       data: data,
       relativeX,
       relativeY,
@@ -106,6 +145,8 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
 
   const artboardRecords = await db.artboards.where('documentId').equals(documentId).sortBy('order');
   const objectRecords = await db.objects.where('documentId').equals(documentId).toArray();
+  // Sort primarily by order to preserve z-index layer positioning
+  objectRecords.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   let loadedArtboards: any[] = [];
 
@@ -119,26 +160,21 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
       return;
     }
 
-    const groupedObjRecords = objectRecords.reduce((acc, curr) => {
-      acc[curr.artboardId] = acc[curr.artboardId] || [];
-      acc[curr.artboardId].push(curr);
-      return acc;
-    }, {} as Record<string, FabricObject[]>);
-
-    let itemsProcessed = 0;
-
-    for (const record of objectRecords) {
+    const orderedData = objectRecords.map((record) => {
       const parentBoard = loadedArtboards.find(b => b.id === record.artboardId);
-      
       const objData = record.data;
       if (parentBoard) {
         objData.left = parentBoard.x + record.relativeX;
         objData.top = parentBoard.y + record.relativeY;
       }
+      return objData;
+    });
 
-      fabric.util.enlivenObjects([objData]).then((enlivenedObjects: any[]) => {
-        if (enlivenedObjects.length > 0) {
-          const enlObj = enlivenedObjects[0];
+    fabric.util.enlivenObjects(orderedData).then((enlivenedObjects: any[]) => {
+      if (enlivenedObjects && enlivenedObjects.length > 0) {
+        enlivenedObjects.forEach((enlObj, index) => {
+          if (!enlObj) return;
+          const record = objectRecords[index];
           enlObj.id = record.id;
           enlObj.artboardId = record.artboardId;
           
@@ -172,25 +208,16 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
           
           if (record.data.customFilters) {
             enlObj.customFilters = record.data.customFilters;
-            const filtersObj = (fabric as any).Image?.filters || (fabric as any).filters;
-            // NOTE: rebuildFabricFilters requires ImageWorkspace.tsx context but we can just let it render later
-            // We can do it broadly here if needed
           }
           canvas.add(enlObj);
-        }
-        itemsProcessed++;
-        if (itemsProcessed === objectRecords.length) {
-          canvas.requestRenderAll();
-          resolve(loadedArtboards);
-        }
-      }).catch((e: any) => {
-        console.error("Failed to enliven object:", record.id, e);
-        itemsProcessed++;
-        if (itemsProcessed === objectRecords.length) {
-          canvas.requestRenderAll();
-          resolve(loadedArtboards);
-        }
-      });
-    }
+        });
+      }
+      canvas.requestRenderAll();
+      resolve(loadedArtboards);
+    }).catch((e: any) => {
+      console.error("Failed to enliven objects:", e);
+      canvas.requestRenderAll();
+      resolve(loadedArtboards);
+    });
   });
 };

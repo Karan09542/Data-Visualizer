@@ -591,6 +591,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                         Organize your creative workflow with multiple artboards and deep layer management supporting reordering, visibility toggling, and object locking.
+                        <br/><br/>
+                        <span className="font-semibold text-slate-600 dark:text-slate-300">Shortcuts: </span>
+                        Use <code className="font-mono text-[10px] bg-slate-800/10 dark:bg-slate-800/50 px-1 rounded border border-slate-300 dark:border-slate-700/50">Ctrl+[</code> / <code className="font-mono text-[10px] bg-slate-800/10 dark:bg-slate-800/50 px-1 rounded border border-slate-300 dark:border-slate-700/50">Ctrl+]</code> to Send Backward/Bring Forward. Add <code className="font-mono text-[10px] bg-slate-800/10 dark:bg-slate-800/50 px-1 rounded border border-slate-300 dark:border-slate-700/50">Shift</code> to Send to Back/Bring to Front.
                       </p>
                     </div>
                   </div>

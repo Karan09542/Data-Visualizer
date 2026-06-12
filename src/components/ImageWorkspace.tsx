@@ -8,11 +8,11 @@ import { getValueAtPath } from "../utils/pathUtils";
 import { 
   Type, Upload, Download, Undo, Redo, 
   Layers, MousePointer2, Brush, Circle, Square, Minus, Edit2, RotateCw, RotateCcw, Image as ImageIcon,
-  SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, FlipHorizontal, FlipVertical,
+  SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, FlipHorizontal, FlipVertical, BringToFront, SendToBack, ArrowUp, ArrowDown,
   Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-  Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images
+  Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images, Info, Keyboard
 } from "lucide-react";
 import JSZip from "jszip";
 import { RgbaStringColorPicker } from "react-colorful";
@@ -557,23 +557,43 @@ class LayerReorderCommand implements Command {
 
   private applyOrder(canvas: fabric.Canvas, order: { id: string; idx: number }[], updateLayers: () => void) {
     const sorted = [...order].sort((a, b) => a.idx - b.idx);
-    sorted.forEach(item => {
-      const obj = canvas.getObjects().find((o: any) => o.id === item.id);
-      if (obj) {
-        if (typeof (canvas as any).moveObjectTo === 'function') {
-          (canvas as any).moveObjectTo(obj, item.idx);
-        } else if (typeof (canvas as any).moveTo === 'function') {
-          (canvas as any).moveTo(obj, item.idx);
-        } else {
-          const objs = canvas.getObjects();
-          const currIdx = objs.indexOf(obj);
-          if (currIdx !== -1) {
-            objs.splice(currIdx, 1);
-            objs.splice(item.idx, 0, obj);
-          }
-        }
-      }
+    
+    // Store IDs of currently active objects
+    const activeObjects = canvas.getActiveObjects() as any[];
+    const activeIds = activeObjects.map(o => o.id);
+    
+    // Clear selection so objects return to canvas
+    canvas.discardActiveObject();
+
+    const existingObjs = canvas.getObjects().filter(o => o.type !== 'activeSelection') as any[];
+    const map = new Map<string, any>();
+    existingObjs.forEach(o => map.set(o.id, o));
+
+    const reorderedObjs: any[] = [];
+    sorted.forEach(({id}) => {
+       if (map.has(id)) {
+          reorderedObjs.push(map.get(id));
+          map.delete(id);
+       }
     });
+    // Append any untracked objects
+    map.forEach(v => reorderedObjs.push(v));
+
+    // Remove all and re-add in exact order
+    existingObjs.forEach(o => canvas.remove(o));
+    reorderedObjs.forEach(o => canvas.add(o));
+    
+    // Restore selection
+    const toSelect = reorderedObjs.filter(o => activeIds.includes(o.id));
+    if (toSelect.length > 0) {
+      if (toSelect.length === 1) {
+        canvas.setActiveObject(toSelect[0]);
+      } else {
+        const sel = new fabric.ActiveSelection(toSelect, { canvas });
+        canvas.setActiveObject(sel);
+      }
+    }
+
     canvas.renderAll();
     updateLayers();
   }
@@ -1408,6 +1428,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     targets: fabric.Object[];
   } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   
   useLayoutEffect(() => {
     if (activeContextMenu && contextMenuRef.current) {
@@ -2656,6 +2677,65 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     handleSelectionContext(null);
   }, [updateLayersList, handleSelectionContext]);
 
+  const getLayersOrder = useCallback(() => {
+    if (!fabricRef.current) return [];
+    return fabricRef.current.getObjects().map((obj: any, idx) => ({
+      id: obj.id as string,
+      idx
+    }));
+  }, []);
+
+  const handleLayerOrder = useCallback((action: 'front' | 'forward' | 'backward' | 'back') => {
+    if (!fabricRef.current) return;
+    const activeObjects = fabricRef.current.getActiveObjects();
+    if (!activeObjects || activeObjects.length === 0) return;
+
+    const beforeOrder = getLayersOrder();
+
+    if (action === 'front') {
+      const sorted = [...activeObjects].sort((a: any, b: any) => {
+         const idxA = fabricRef.current!.getObjects().indexOf(a);
+         const idxB = fabricRef.current!.getObjects().indexOf(b);
+         return idxA - idxB; // Lowest first
+      });
+      sorted.forEach(obj => fabricRef.current?.bringObjectToFront(obj));
+    } else if (action === 'back') {
+      const sorted = [...activeObjects].sort((a: any, b: any) => {
+         const idxA = fabricRef.current!.getObjects().indexOf(a);
+         const idxB = fabricRef.current!.getObjects().indexOf(b);
+         return idxB - idxA; // Highest first
+      });
+      sorted.forEach(obj => fabricRef.current?.sendObjectToBack(obj));
+    } else if (action === 'forward') {
+      const sorted = [...activeObjects].sort((a: any, b: any) => {
+         const idxA = fabricRef.current!.getObjects().indexOf(a);
+         const idxB = fabricRef.current!.getObjects().indexOf(b);
+         return idxB - idxA;
+      });
+      sorted.forEach(obj => fabricRef.current?.bringObjectForward(obj));
+    } else if (action === 'backward') {
+      const sorted = [...activeObjects].sort((a: any, b: any) => {
+         const idxA = fabricRef.current!.getObjects().indexOf(a);
+         const idxB = fabricRef.current!.getObjects().indexOf(b);
+         return idxA - idxB;
+      });
+      sorted.forEach(obj => fabricRef.current?.sendObjectBackwards(obj));
+    }
+
+    const afterOrder = getLayersOrder();
+    if (JSON.stringify(beforeOrder) === JSON.stringify(afterOrder)) return;
+
+    const cmdName = action === 'front' ? 'Bring to Front' : action === 'back' ? 'Send to Back' : action === 'forward' ? 'Bring Forward' : 'Send Backward';
+    const cmd = new LayerReorderCommand(cmdName, beforeOrder, afterOrder);
+    
+    isInternalChange.current = true;
+    cmd.undo(fabricRef.current, () => {});
+    isInternalChange.current = false;
+    
+    executeCommand(cmd);
+    updateLayersList();
+  }, [getLayersOrder, executeCommand, updateLayersList]);
+
   const artboardFocusValueRef = useRef<any>(null);
 
   const onArtboardPropStart = (val: any) => {
@@ -3547,6 +3627,61 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     });
     fabricRef.current = canvas;
 
+    // Initial load State
+    isInternalChange.current = true;
+
+    const initImg = async () => {
+      let resolveUrl = "";
+      if (typeof storedData === 'string') {
+        if (storedData.startsWith('data:image') || storedData.startsWith('blob:') || storedData.startsWith('http')) {
+          resolveUrl = storedData;
+        } else if (storedData.startsWith('img_') || storedData.startsWith('thumb_')) {
+          resolveUrl = await resolveAssetUrl(storedData);
+        }
+      } else if (storedData && typeof storedData === 'object') {
+        const id = (storedData as any).assetId || (storedData as any).assetRef || ((storedData as any)._type === "media" ? (storedData as any).assetId : null);
+        if (id) {
+          resolveUrl = await resolveAssetUrl(id);
+        } else if ((storedData as any).url) {
+          const urlStr = (storedData as any).url;
+          if (urlStr.startsWith('img_') || urlStr.startsWith('thumb_')) {
+            resolveUrl = await resolveAssetUrl(urlStr);
+          } else {
+            resolveUrl = urlStr;
+          }
+        }
+      }
+      
+      if (resolveUrl) {
+        fabric.Image.fromURL(resolveUrl).then((img) => {
+          if (img) {
+            (img as any).id = Date.now().toString() + Math.random().toString();
+            
+            // Center inside default artboard
+            const board = artboardsRef.current[0];
+            if (board) {
+              img.left = board.x + (board.width - (img.width! * (img.scaleX ?? 1))) / 2;
+              img.top = board.y + (board.height - (img.height! * (img.scaleY ?? 1))) / 2;
+            }
+            
+            canvas.add(img);
+            canvas.setActiveObject(img);
+            
+            setTimeout(fitView, 50);
+            canvas.renderAll();
+            updateLayersList();
+          }
+        }).catch(err => {
+          console.error("Failed to load fabric image from source:", err);
+          fitView();
+          updateLayersList();
+        });
+      } else {
+        fitView();
+        updateLayersList();
+      }
+      isInternalChange.current = false;
+    };
 
     loadFromDexie(path, canvas).then((loadedArtboards) => {
       if (loadedArtboards && loadedArtboards.length > 0) {
@@ -3591,11 +3726,18 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       fabricRef.current?.requestRenderAll();
       
       setIsLoaded(true);
-      setTimeout(fitView, 100);
-      updateLayersList();
+      
+      if (fabricRef.current && fabricRef.current.getObjects().length === 0) {
+         initImg();
+      } else {
+         setTimeout(fitView, 100);
+         updateLayersList();
+         isInternalChange.current = false;
+      }
     }).catch(err => {
       console.error("Dexie load error", err);
       setIsLoaded(true);
+      initImg();
     });
 
     // Window resize handler
@@ -4437,61 +4579,6 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
     // Initial load State
     isInternalChange.current = true;
-    
-    const initImg = async () => {
-      let resolveUrl = "";
-      if (typeof storedData === 'string') {
-        if (storedData.startsWith('data:image') || storedData.startsWith('blob:') || storedData.startsWith('http')) {
-          resolveUrl = storedData;
-        } else if (storedData.startsWith('img_') || storedData.startsWith('thumb_')) {
-          resolveUrl = await resolveAssetUrl(storedData);
-        }
-      } else if (storedData && typeof storedData === 'object') {
-        const id = (storedData as any).assetId || (storedData as any).assetRef || ((storedData as any)._type === "media" ? (storedData as any).assetId : null);
-        if (id) {
-          resolveUrl = await resolveAssetUrl(id);
-        } else if ((storedData as any).url) {
-          const urlStr = (storedData as any).url;
-          if (urlStr.startsWith('img_') || urlStr.startsWith('thumb_')) {
-            resolveUrl = await resolveAssetUrl(urlStr);
-          } else {
-            resolveUrl = urlStr;
-          }
-        }
-      }
-      
-      if (resolveUrl) {
-        fabric.Image.fromURL(resolveUrl).then((img) => {
-          if (img) {
-            (img as any).id = Date.now().toString() + Math.random().toString();
-            
-            // Center inside default artboard
-            const board = artboardsRef.current[0];
-            img.left = board.x + (board.width - (img.width! * (img.scaleX ?? 1))) / 2;
-            img.top = board.y + (board.height - (img.height! * (img.scaleY ?? 1))) / 2;
-            
-            canvas.add(img);
-            canvas.setActiveObject(img);
-            
-            // Fit view after image is added and positioned
-            setTimeout(fitView, 50);
-            
-            canvas.renderAll();
-            updateLayersList();
-          }
-        }).catch(err => {
-          console.error("Failed to load fabric image from source:", err);
-          fitView();
-          updateLayersList();
-        });
-      } else {
-        fitView();
-        updateLayersList();
-      }
-      isInternalChange.current = false;
-    };
-    
-    initImg();
 
     // Canvas Events Binding
     const handleObjectAdded = (e: any) => {
@@ -4684,6 +4771,11 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       const isRedo = ctrlOrCmd && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey));
       const isUndo = ctrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey;
       const isDelete = e.key === 'Delete' || e.key === 'Backspace';
+      const isBringForward = ctrlOrCmd && e.key === ']' && !e.shiftKey;
+      const isBringToFront = ctrlOrCmd && e.key === ']' && e.shiftKey;
+      const isSendBackward = ctrlOrCmd && e.key === '[' && !e.shiftKey;
+      const isSendToBack = ctrlOrCmd && e.key === '[' && e.shiftKey;
+      const isLayerAction = isBringForward || isBringToFront || isSendBackward || isSendToBack;
 
       if (e.key.toLowerCase() === 'c' && !ctrlOrCmd && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
         if (!isCropping) {
@@ -4706,7 +4798,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         closeContextMenu();
       }
 
-      if (isUndo || isRedo || isDelete) {
+      if (isUndo || isRedo || isDelete || isLayerAction) {
         if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
            return;
         }
@@ -4721,6 +4813,14 @@ function dataURLtoFile(dataurl: string, filename: string): File {
           performRedo();
         } else if (isDelete) {
           deleteActiveObject();
+        } else if (isBringToFront) {
+          handleLayerOrder('front');
+        } else if (isBringForward) {
+          handleLayerOrder('forward');
+        } else if (isSendBackward) {
+          handleLayerOrder('backward');
+        } else if (isSendToBack) {
+          handleLayerOrder('back');
         }
       } else if (!ctrlOrCmd) {
         if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
@@ -4767,7 +4867,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
       window.removeEventListener('keyup', handleKeyUp, { capture: true });
     };
-  }, [performUndo, performRedo, brushType, applyBrushSettings]);
+  }, [performUndo, performRedo, brushType, applyBrushSettings, handleLayerOrder]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -5600,14 +5700,6 @@ function dataURLtoFile(dataurl: string, filename: string): File {
      }
   };
   
-  const getLayersOrder = () => {
-    if (!fabricRef.current) return [];
-    return fabricRef.current.getObjects().map((obj: any, idx) => ({
-      id: obj.id as string,
-      idx
-    }));
-  };
-
   const moveLayerUp = (id: string) => {
      if (!fabricRef.current) return;
      const items = fabricRef.current.getObjects();
@@ -6323,6 +6415,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         <input id="img-upload" type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
 
         <div className="flex-1" />
+
+        <button className="h-8 w-8 hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white flex items-center justify-center rounded transition-colors shrink-0 mr-1" title="Shortcuts Info" onClick={() => setShowShortcuts(true)}>
+          <Info size={14} />
+        </button>
 
         <button 
            onClick={() => { setActiveTab('export'); if(isMobile) setShowMobilePanel(true); }} 
@@ -9790,7 +9886,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       {activeContextMenu && createPortal(
          <div 
            ref={contextMenuRef}
-           className="fixed z-[9999] w-52 bg-[#1A1A1A] border border-[#2D2D2D] shadow-[0_12px_48px_rgba(0,0,0,0.7)] rounded-xl overflow-hidden py-1 context-menu-container"
+           className="fixed z-[9999] w-52 bg-[#1A1A1A] border border-[#2D2D2D] shadow-[0_12px_48px_rgba(0,0,0,0.7)] rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] py-1 context-menu-container"
            style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
            onClick={(e) => e.stopPropagation()}
          >
@@ -9835,6 +9931,31 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                   )}
                   <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
                   <div className="h-px bg-[#252525] my-1" />
+
+                  {(() => {
+                     let maxIdx = -1;
+                     let minIdx = Number.MAX_SAFE_INTEGER;
+                     const totalObjs = fabricRef.current?.getObjects().length || 0;
+                     activeContextMenu.targets.forEach(t => {
+                        const idx = fabricRef.current?.getObjects().indexOf(t) ?? -1;
+                        if(idx > maxIdx) maxIdx = idx;
+                        if(idx !== -1 && idx < minIdx) minIdx = idx;
+                     });
+                     const canBringForward = maxIdx !== -1 && maxIdx < totalObjs - 1;
+                     const canSendBackward = minIdx !== -1 && minIdx > 0;
+                     
+                     return (
+                        <>
+                           <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Layer Order</div>
+                           <ContextMenuItem icon={BringToFront} label="Bring to Front" shortcut="Ctrl+Shift+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('front'); closeContextMenu(); }} />
+                           <ContextMenuItem icon={ArrowUp} label="Bring Forward" shortcut="Ctrl+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('forward'); closeContextMenu(); }} />
+                           <ContextMenuItem icon={ArrowDown} label="Send Backward" shortcut="Ctrl+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('backward'); closeContextMenu(); }} />
+                           <ContextMenuItem icon={SendToBack} label="Send to Back" shortcut="Ctrl+Shift+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('back'); closeContextMenu(); }} />
+                           <div className="h-px bg-[#252525] my-1" />
+                        </>
+                     );
+                  })()}
+
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Move To Artboard</div>
                   {artboards.map(b => (
                     <ContextMenuItem 
@@ -10037,6 +10158,41 @@ function dataURLtoFile(dataurl: string, filename: string): File {
          </div>,
          document.body
       )}
+
+      {showShortcuts && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-[#181818] border border-[#2c2c2c] rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-[#2c2c2c] bg-[#1a1a1a]">
+               <div className="font-semibold text-sm text-white flex items-center gap-2">
+                 <Keyboard size={16} className="text-blue-400" /> Image Node Shortcuts
+               </div>
+               <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white transition">
+                 <X size={16} />
+               </button>
+            </div>
+            <div className="p-4 space-y-3">
+               <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-300">Bring Forward</span>
+                  <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
+               </div>
+               <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-300">Send Backward</span>
+                  <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
+               </div>
+               <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-300">Bring to Front</span>
+                  <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
+               </div>
+               <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-300">Send to Back</span>
+                  <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
+               </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   </div>
   );
@@ -10204,10 +10360,11 @@ const ColorPickerTrigger = ({
   );
 };
 
-const ContextMenuItem = ({ icon: Icon, label, onClick, danger, shortcut }: any) => (
+const ContextMenuItem = ({ icon: Icon, label, onClick, danger, shortcut, disabled }: any) => (
    <button 
-     className={`w-full px-3 py-1.5 flex items-center justify-between text-xs transition-colors ${danger ? 'text-red-400 hover:bg-red-500/10' : 'text-slate-300 hover:bg-white/5 hover:text-white'}`}
-     onClick={(e) => { e.stopPropagation(); onClick(); }}
+     className={`w-full px-3 py-1.5 flex items-center justify-between text-xs transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${danger && !disabled ? 'text-red-400 hover:bg-red-500/10' : !disabled ? 'text-slate-300 hover:bg-white/5 hover:text-white' : 'text-slate-300'}`}
+     onClick={(e) => { e.stopPropagation(); if(!disabled) onClick(); }}
+     disabled={disabled}
    >
       <div className="flex items-center gap-2">
          <Icon size={14} />
