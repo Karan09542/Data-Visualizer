@@ -47,17 +47,17 @@ export function SmartFallbackMedia({
   }, [src, isAsset]);
 
   const rawUrl = isAsset ? resolvedUrl : src;
-  const currentUrl = renderState === 'proxied' ? getProxiedUrl(rawUrl) : rawUrl;
+  const currentUrl = renderState === 'proxied' && type === 'image' ? getProxiedUrl(rawUrl) : rawUrl;
   const isExternal = currentUrl.startsWith('http') && !currentUrl.includes(window.location.host);
-  const crossOrigin = isExternal ? 'anonymous' : undefined;
+  const crossOrigin = (isExternal && type === 'image') ? 'anonymous' : undefined;
 
-  const handleError = () => {
+  const handleError = (e: React.SyntheticEvent) => {
     if (isAsset) {
       setRenderState('failed');
       return;
     }
-    if (renderState === 'direct') {
-      console.warn(`Direct rendering failed for ${src}, falling back to proxy.`);
+    if (renderState === 'direct' && type === 'image') {
+      console.warn(`Direct rendering failed for ${src}, falling back to proxy.`, e);
       setRenderState('proxied');
     } else {
       setRenderState('failed');

@@ -8,10 +8,29 @@ import SmartMediaRenderer from './SmartMediaRenderer';
 import { SmartFallbackMedia } from './SmartFallbackMedia';
 import { PdfViewer } from './PdfViewer';
 import { SafeModelViewer } from './SafeModelViewer';
+import { resolveAssetUrl } from '../utils/assetManager';
 
 const MediaPreviewPopup: React.FC = () => {
   const { activePreviewMedia, setActivePreviewMedia } = useStore();
   const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
+
+  const [resolvedAssetUrl, setResolvedAssetUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!activePreviewMedia?.url) {
+       setResolvedAssetUrl(null);
+       return;
+    }
+    const { url } = activePreviewMedia;
+    if (url.startsWith('img_') || url.startsWith('thumb_')) {
+       // Ignore the warning about missing import if we already have resolveAssetUrl
+       // Wait, we DO need to import resolveAssetUrl in MediaPreviewPopup.tsx!
+       // Good thing we saw it is at the top of the file!
+       resolveAssetUrl(url).then(resolved => setResolvedAssetUrl(resolved));
+    } else {
+       setResolvedAssetUrl(null);
+    }
+  }, [activePreviewMedia?.url]);
 
   if (!activePreviewMedia) return null;
 
@@ -20,7 +39,10 @@ const MediaPreviewPopup: React.FC = () => {
   const handleReset = () => transformComponentRef.current?.resetTransform();
 
   const renderContent = () => {
-    const { url, type } = activePreviewMedia;
+    const { type } = activePreviewMedia;
+    const originalUrl = activePreviewMedia.url;
+    // For components that need a real http/blob URL
+    const resolvedUrl = resolvedAssetUrl || originalUrl;
 
     if (type === 'image') {
       return (
@@ -39,7 +61,7 @@ const MediaPreviewPopup: React.FC = () => {
             >
               <SmartFallbackMedia 
                 type="image"
-                src={url} 
+                src={originalUrl} 
                 alt="Preview" 
                 className="max-w-full max-h-[90vh] object-contain shadow-2xl rounded-lg"
                 draggable={false}
@@ -61,7 +83,7 @@ const MediaPreviewPopup: React.FC = () => {
         <div className="relative w-full h-full flex items-center justify-center">
           <SmartFallbackMedia
             type="video" 
-            src={url} 
+            src={originalUrl} 
             controls 
             autoPlay
             className="max-w-[95%] max-h-[95%] rounded-lg shadow-2xl border border-white/5"
@@ -78,9 +100,9 @@ const MediaPreviewPopup: React.FC = () => {
             <Music size={80} className="relative z-10 group-hover:scale-110 transition-transform duration-500" />
           </div>
           <div className="space-y-4 w-full">
-            <SmartFallbackMedia type="audio" src={url} controls className="w-full sm:w-[450px]" />
+            <SmartFallbackMedia type="audio" src={originalUrl} controls className="w-full sm:w-[450px]" />
             <p className="text-slate-400 font-mono text-xs truncate max-w-[400px] text-center opacity-60">
-              {url.split('/').pop()}
+              {originalUrl.split('/').pop()}
             </p>
           </div>
         </div>
@@ -90,7 +112,11 @@ const MediaPreviewPopup: React.FC = () => {
     if (type === 'pdf') {
       return (
         <div className="w-[95%] h-[92%] bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl ring-1 ring-white/10 flex flex-col p-2">
-          <PdfViewer url={url} />
+          {resolvedAssetUrl === null && originalUrl.startsWith('img_') ? (
+             <div className="flex w-full h-full justify-center items-center text-slate-500">Loading asset...</div>
+          ) : (
+             <PdfViewer url={resolvedUrl} />
+          )}
         </div>
       );
     }
@@ -98,12 +124,16 @@ const MediaPreviewPopup: React.FC = () => {
     if (type === '3d-model') {
       return (
         <div className="relative w-[95%] h-[95%] max-w-7xl flex items-center justify-center bg-transparent rounded-2xl overflow-hidden shadow-2xl">
-          <SafeModelViewer
-            src={url}
-            autoRotate
-            cameraControls
-            style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
-          />
+          {resolvedAssetUrl === null && originalUrl.startsWith('img_') ? (
+             <div className="flex w-full h-full justify-center items-center text-slate-500 text-xs">Loading 3D asset...</div>
+          ) : (
+             <SafeModelViewer
+               src={resolvedUrl}
+               autoRotate
+               cameraControls
+               style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
+             />
+          )}
         </div>
       );
     }
@@ -113,7 +143,7 @@ const MediaPreviewPopup: React.FC = () => {
         <div className="w-[95%] h-[92%] max-w-7xl flex items-center justify-center bg-slate-900/40 rounded-3xl border border-slate-700/50 overflow-hidden shadow-2xl backdrop-blur-sm">
           <div className="w-full h-full p-2 sm:p-4 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&>div>iframe]:w-full [&>div>iframe]:h-full [&>div>iframe]:rounded-2xl [&>div>img]:max-w-full [&>div>img]:max-h-full [&>div>img]:object-contain [&>div>img]:rounded-2xl [&>div>video]:max-w-full [&>div>video]:max-h-full [&>div>video]:rounded-2xl">
             <SmartMediaRenderer 
-              url={url} 
+              url={originalUrl} 
               onResolvedType={(detected, actualUrl) => {
                 if (detected === 'image') {
                   setActivePreviewMedia({ url: actualUrl, type: 'image' });

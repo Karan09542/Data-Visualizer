@@ -58,8 +58,6 @@ export const getMediaType = (val: string) => {
   if (
     val.startsWith("data:image/") ||
     (val.startsWith("blob:http") && val.includes("image")) ||
-    val.startsWith("img_") ||
-    val.startsWith("thumb_") ||
     val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)
   )
@@ -86,6 +84,11 @@ export const getMediaType = (val: string) => {
     val.startsWith("model/")
   )
     return "3d-model";
+  
+  if (val.startsWith("img_") || val.startsWith("thumb_")) {
+    return "image";
+  }
+
   // Use inspector for youtube, vimoe, spotfiy, or any http url
   // Just treat any http/https link as potential smart media if we didn't natively catch it
   if (val.startsWith("http://") || val.startsWith("https://")) {
@@ -280,7 +283,6 @@ function NodeRenderer({
     return await db.assets.get(id);
   }, [actualAssetId]);
 
-  const mediaSrc = assetDetails?.thumbnailId || actualAssetId || strVal;
   const isApiNode =
     data.type === "string" &&
     data.name &&
@@ -313,6 +315,21 @@ function NodeRenderer({
   const isManuallyRendered =
     manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
   const isKnownDataUrl = !!knownDataUrls[strVal];
+
+  const assetMimeType = assetDetails?.mimeType?.toLowerCase() || '';
+  const assetName = typeof data.rawValue === 'object' && (data.rawValue?.name || data.rawValue?.filename || data.rawValue?.url) ? String(data.rawValue.name || data.rawValue.filename || data.rawValue.url).toLowerCase() : '';
+  const fallbackStrVal = actualAssetId && (assetName || assetDetails?.filename) ? (assetName || assetDetails?.filename) : strVal;
+
+  const mediaTypeByAsset =
+    assetMimeType.startsWith('image/') ? 'image' :
+    assetMimeType.startsWith('video/') ? 'video' :
+    assetMimeType.startsWith('audio/') ? 'audio' :
+    assetMimeType.startsWith('application/pdf') || assetMimeType === 'pdf' ? 'pdf' :
+    assetMimeType.startsWith('model/') ? '3d-model' :
+    null;
+
+  const resolvedMediaType = mediaTypeByAsset || getMediaType(fallbackStrVal as string) || getMediaType(strVal);
+
   const mediaType =
     (showMediaPreview || isManuallyRendered) &&
     data.type === "string" &&
@@ -321,9 +338,13 @@ function NodeRenderer({
     !isJsNode &&
     !isTsNode &&
     !isKnownDataUrl
-      ? getMediaType(strVal)
+      ? resolvedMediaType
       : null;
   const isMedia = !!mediaType;
+
+  const mediaSrc = resolvedMediaType === 'image' 
+    ? (assetDetails?.thumbnailId || actualAssetId || strVal)
+    : (actualAssetId || strVal);
 
   useEffect(() => {
     const el = mediaContainerRef.current;
@@ -1840,7 +1861,8 @@ function NodeRenderer({
                     />
                   )}
                   {mediaType === "video" && (
-                    <video
+                    <SmartFallbackMedia
+                      type="video"
                       src={mediaSrc}
                       controls
                       className="max-w-full max-h-[160px] rounded focus:outline-none"
@@ -1898,7 +1920,7 @@ function NodeRenderer({
                       <span className="text-slate-500 font-sans">Size:</span>
                       <span className="text-slate-300 font-medium">{(assetDetails.size / 1024).toFixed(1)} KB</span>
                     </div>
-                    {assetDetails.width && assetDetails.height && (
+                    {typeof assetDetails.width === 'number' && typeof assetDetails.height === 'number' && assetDetails.width > 0 && assetDetails.height > 0 && (
                       <div className="flex justify-between">
                         <span className="text-slate-500 font-sans">Dims:</span>
                         <span className="text-slate-300 font-medium">{assetDetails.width} × {assetDetails.height} px</span>

@@ -3898,7 +3898,6 @@ function dataURLtoFile(dataurl: string, filename: string): File {
        const deltaX = e.clientX - startMouseXRef.current;
        const deltaY = e.clientY - startMouseYRef.current;
        
-       const isShift = e.shiftKey || isShiftPressedRef.current;
        const isCtrl = e.ctrlKey || isCtrlPressedRef.current;
 
        // Lock property based on first movement direction
@@ -3910,13 +3909,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
              activeBrushPropertyRef.current = 'size';
              setActiveBrushProperty('size');
           } else {
-             if (isCtrl && !isShift) {
-                activeBrushPropertyRef.current = 'hardness';
-                setActiveBrushProperty('hardness');
-             } else {
-                activeBrushPropertyRef.current = 'opacity';
-                setActiveBrushProperty('opacity');
-             }
+             activeBrushPropertyRef.current = 'opacity';
+                 setActiveBrushProperty('opacity');
           }
           hasLockedPropertyRef.current = true;
        }
@@ -3980,10 +3974,9 @@ function dataURLtoFile(dataurl: string, filename: string): File {
        const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
        if (!isBrushActive) return;
        
-       const isShift = e.shiftKey || isShiftPressedRef.current;
        const isCtrl = e.ctrlKey || isCtrlPressedRef.current;
        
-       if ((isShift || isCtrl) && e.button === 0) {
+       if (isCtrl && e.button === 0) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
@@ -3992,7 +3985,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
           hasLockedPropertyRef.current = false;
           
           // Sensible initial active property based on modifier keys
-          const initialProp = isCtrl && !isShift ? 'hardness' : (isShift && !isCtrl ? 'opacity' : 'size');
+          const initialProp = 'size';
           activeBrushPropertyRef.current = initialProp;
           setActiveBrushProperty(initialProp);
 
@@ -4014,7 +4007,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
     const touchStartHandler = (e: TouchEvent) => {
       const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
-      const hasModifier = isShiftPressedRef.current || isCtrlPressedRef.current;
+      const hasModifier = isCtrlPressedRef.current;
       
       if (e.touches.length === 2 && isBrushActive && hasModifier) {
         e.preventDefault();
@@ -4022,11 +4015,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         isAdjustingBrushTouchRef.current = true;
         hasLockedPropertyRef.current = false;
 
-        const isShift = isShiftPressedRef.current;
         const isCtrl = isCtrlPressedRef.current;
         
         // Initial setup
-        const initialProp = isCtrl && !isShift ? 'hardness' : (isShift && !isCtrl ? 'opacity' : 'size');
+        const initialProp = 'size';
         activeBrushPropertyRef.current = initialProp;
         setActiveBrushProperty(initialProp);
         
@@ -4078,7 +4070,6 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         const deltaX = currentMidX - startTouchXRef.current;
         const deltaY = currentMidY - startTouchYRef.current;
 
-        const isShift = isShiftPressedRef.current;
         const isCtrl = isCtrlPressedRef.current;
 
         // Auto-lock axis on touch gesture
@@ -4089,13 +4080,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                  activeBrushPropertyRef.current = 'size';
                  setActiveBrushProperty('size');
               } else {
-                 if (isCtrl && !isShift) {
-                    activeBrushPropertyRef.current = 'hardness';
-                    setActiveBrushProperty('hardness');
-                 } else {
-                    activeBrushPropertyRef.current = 'opacity';
-                    setActiveBrushProperty('opacity');
-                 }
+                 activeBrushPropertyRef.current = 'opacity';
+                 setActiveBrushProperty('opacity');
               }
               hasLockedPropertyRef.current = true;
            }
@@ -4255,7 +4241,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     canvas.on('mouse:wheel', (opt) => {
       const e = opt.e;
       const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
-      if (isBrushActive && (e.ctrlKey || e.shiftKey || isShiftPressedRef.current || isCtrlPressedRef.current)) {
+      if (isBrushActive && (e.ctrlKey || isCtrlPressedRef.current)) {
          e.preventDefault();
          e.stopPropagation();
          

@@ -109,8 +109,21 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
     
     // 3. Generate IDs
     const randomHex = () => Math.random().toString(36).substring(2, 10);
-    const assetId = `img_${randomHex()}`;
-    const thumbnailId = `thumb_${randomHex()}`;
+    const getExtension = (name: string, type: string) => {
+      if (name && name.includes('.')) {
+        return name.split('.').pop()?.toLowerCase() || '';
+      }
+      if (type && type.includes('/')) {
+        const ext = type.split('/')[1];
+        if (ext && ext !== 'octet-stream') return ext;
+      }
+      return '';
+    };
+    
+    const ext = getExtension(file.name, file.type);
+    const assetId = ext ? `img_${randomHex()}.${ext}` : `img_${randomHex()}`;
+    const thumbnailId = ext ? `thumb_${randomHex()}.${ext}` : `thumb_${randomHex()}`;
+
     
     // 4. Generate Thumbnail
     let thumbnailBlob: Blob;
@@ -183,7 +196,14 @@ export async function resolveAssetUrl(assetId: string): Promise<string> {
   const blob = await getAssetBlob(assetId);
   if (!blob) return "";
   
-  const url = URL.createObjectURL(blob);
+  let url = URL.createObjectURL(blob);
+  if (assetId.includes('.')) {
+    const ext = assetId.split('.').pop();
+    if (ext) {
+      url += `#file.${ext}`;
+    }
+  }
+  
   urlCache.set(assetId, url);
   return url;
 }
