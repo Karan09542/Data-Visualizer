@@ -24,6 +24,77 @@ import { TypographyPresets } from "./TypographyPresets";
 import { ExportStudio } from "./export/ExportStudio";
 import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../lib/imagePresets";
 
+// Custom Fabric.Rect render override to support percentage and individual corner rounding
+if (fabric && fabric.Rect && fabric.Rect.prototype) {
+  const originalRectRender = fabric.Rect.prototype._render;
+  (fabric.Rect.prototype as any)._render = function (ctx: CanvasRenderingContext2D) {
+    const hasCustomRounding =
+      this.cornerRoundingPercent !== undefined ||
+      this.cornerTopLeftPercent !== undefined ||
+      this.cornerTopRightPercent !== undefined ||
+      this.cornerBottomRightPercent !== undefined ||
+      this.cornerBottomLeftPercent !== undefined;
+
+    if (!hasCustomRounding) {
+      return originalRectRender.call(this, ctx);
+    }
+
+    const w = this.width || 0;
+    const h = this.height || 0;
+    const maxR = Math.min(w, h) / 2;
+
+    const isIndiv = this.useIndividualCorners || false;
+    const uniformPercent = this.cornerRoundingPercent ?? 0;
+
+    const pTL = (isIndiv && this.cornerTopLeftPercent !== undefined) ? this.cornerTopLeftPercent : uniformPercent;
+    const pTR = (isIndiv && this.cornerTopRightPercent !== undefined) ? this.cornerTopRightPercent : uniformPercent;
+    const pBR = (isIndiv && this.cornerBottomRightPercent !== undefined) ? this.cornerBottomRightPercent : uniformPercent;
+    const pBL = (isIndiv && this.cornerBottomLeftPercent !== undefined) ? this.cornerBottomLeftPercent : uniformPercent;
+
+    const rTL = Math.max(0, Math.min(maxR, (pTL / 100) * maxR));
+    const rTR = Math.max(0, Math.min(maxR, (pTR / 100) * maxR));
+    const rBR = Math.max(0, Math.min(maxR, (pBR / 100) * maxR));
+    const rBL = Math.max(0, Math.min(maxR, (pBL / 100) * maxR));
+
+    const x = -w / 2;
+    const y = -h / 2;
+
+    ctx.beginPath();
+    ctx.moveTo(x + rTL, y);
+
+    ctx.lineTo(x + w - rTR, y);
+    if (rTR > 0) {
+      ctx.quadraticCurveTo(x + w, y, x + w, y + rTR);
+    } else {
+      ctx.lineTo(x + w, y);
+    }
+
+    ctx.lineTo(x + w, y + h - rBR);
+    if (rBR > 0) {
+      ctx.quadraticCurveTo(x + w, y + h, x + w - rBR, y + h);
+    } else {
+      ctx.lineTo(x + w, y + h);
+    }
+
+    ctx.lineTo(x + rBL, y + h);
+    if (rBL > 0) {
+      ctx.quadraticCurveTo(x, y + h, x, y + h - rBL);
+    } else {
+      ctx.lineTo(x, y + h);
+    }
+
+    ctx.lineTo(x, y + rTL);
+    if (rTL > 0) {
+      ctx.quadraticCurveTo(x, y, x + rTL, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+
+    ctx.closePath();
+    this._renderPaintInOrder(ctx);
+  };
+}
+
 // Cache to prevent multiple compilations
 let isPngInitialised = false;
 let isResizeInitialised = false;
@@ -434,10 +505,10 @@ class PropertyChangeCommand implements Command {
 class StyleChangeCommand implements Command {
   name: string;
   private obj: fabric.Object;
-  private before: { fill: any; stroke: any };
-  private after: { fill: any; stroke: any };
+  private before: any;
+  private after: any;
 
-  constructor(name: string, obj: fabric.Object, before: { fill: any; stroke: any }, after: { fill: any; stroke: any }) {
+  constructor(name: string, obj: fabric.Object, before: any, after: any) {
     this.name = name;
     this.obj = obj;
     this.before = before;
@@ -449,13 +520,21 @@ class StyleChangeCommand implements Command {
   }
 
   undo(canvas: fabric.Canvas, updateLayers: () => void) {
-    this.obj.set({ fill: this.before.fill, stroke: this.before.stroke });
+    this.obj.set(this.before);
+    this.obj.dirty = true;
+    if (typeof (this.obj as any).setCoords === 'function') {
+      (this.obj as any).setCoords();
+    }
     canvas.renderAll();
     updateLayers();
   }
 
   redo(canvas: fabric.Canvas, updateLayers: () => void) {
-    this.obj.set({ fill: this.after.fill, stroke: this.after.stroke });
+    this.obj.set(this.after);
+    this.obj.dirty = true;
+    if (typeof (this.obj as any).setCoords === 'function') {
+      (this.obj as any).setCoords();
+    }
     canvas.renderAll();
     updateLayers();
   }
@@ -1298,6 +1377,20 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const [artboards, setArtboards] = useState<Artboard[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [activeArtboardId, setActiveArtboardId] = useState<string>("artboard_default");
+
+  // Collage configurations
+  const [collagePaddingPercent, setCollagePaddingPercent] = useState<number>(5);
+  const [collageGapPercent, setCollageGapPercent] = useState<number>(2);
+  const [collageBgColor, setCollageBgColor] = useState<string>('#333333');
+  const [collageBorderColor, setCollageBorderColor] = useState<string>('#555555');
+  const [collageBorderWidth, setCollageBorderWidth] = useState<number>(2);
+  const [collageCornerRadius, setCollageCornerRadius] = useState<number>(8);
+  const [useIndividualCorners, setUseIndividualCorners] = useState<boolean>(false);
+  const [collageCornerTL, setCollageCornerTL] = useState<number>(8);
+  const [collageCornerTR, setCollageCornerTR] = useState<number>(8);
+  const [collageCornerBR, setCollageCornerBR] = useState<number>(8);
+  const [collageCornerBL, setCollageCornerBL] = useState<number>(8);
+  const [collageBorderStyle, setCollageBorderStyle] = useState<'solid' | 'dashed' | 'none'>('dashed');
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
   const [snapTolerance, setSnapTolerance] = useState(10);
@@ -1314,6 +1407,30 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     obj: fabric.Object | null;
     targets: fabric.Object[];
   } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  
+  useLayoutEffect(() => {
+    if (activeContextMenu && contextMenuRef.current) {
+      const el = contextMenuRef.current;
+      const rect = el.getBoundingClientRect();
+      const padding = 8;
+      
+      let newX = activeContextMenu.x;
+      let newY = activeContextMenu.y;
+
+      if (newX + rect.width > window.innerWidth) {
+        newX = window.innerWidth - rect.width - padding;
+      }
+      if (newY + rect.height > window.innerHeight) {
+        newY = window.innerHeight - rect.height - padding;
+      }
+
+      el.style.left = `${newX}px`;
+      el.style.top = `${newY}px`;
+      el.style.visibility = 'visible';
+    }
+  }, [activeContextMenu]);
+
   const [artboardDropdown, setArtboardDropdown] = useState<{ id: string, x: number, y: number } | null>(null);
   const [renamingArtboard, setRenamingArtboard] = useState<{ id: string; name: string } | null>(null);
   const [isAltPressed, setIsAltPressed] = useState(false);
@@ -1327,6 +1444,38 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     "artboard_default": true
   }));
   const [selectionType, setSelectionType] = useState<string | null>(null);
+  const [parentAlignmentObj, setParentAlignmentObj] = useState<fabric.Object | null>(null);
+  const parentAlignmentObjRef = useRef<fabric.Object | null>(null);
+
+  const getAbsoluteBoundingRect = (obj: fabric.Object) => {
+    if (!obj.group) {
+      return (obj as any).getBoundingRect(true);
+    }
+    const halfWidth = (obj.width || 0) / 2;
+    const halfHeight = (obj.height || 0) / 2;
+    const localCorners = [
+      new fabric.Point(-halfWidth, -halfHeight),
+      new fabric.Point(halfWidth, -halfHeight),
+      new fabric.Point(halfWidth, halfHeight),
+      new fabric.Point(-halfWidth, halfHeight)
+    ];
+    const matrix = obj.calcTransformMatrix();
+    const worldCorners = localCorners.map(corner => 
+      fabric.util.transformPoint(corner, matrix)
+    );
+    const xs = worldCorners.map(p => p.x);
+    const ys = worldCorners.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return {
+      left: minX,
+      top: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  };
 
   const artboardsRef = useRef(artboards);
   const activeArtboardIdRef = useRef(activeArtboardId);
@@ -1622,6 +1771,78 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const [brushSpacing, setBrushSpacing] = useState<number>(25);
   const [brushSmoothing, setBrushSmoothing] = useState<number>(40);
 
+  // Dynamic Photoshop-style Brush Adjustment gesture states & refs
+  const [showHud, setShowHud] = useState(false);
+  const [hudPosition, setHudPosition] = useState<{ x: number, y: number } | null>(null);
+  const [activeBrushProperty, setActiveBrushProperty] = useState<'size' | 'opacity' | 'hardness'>('size');
+  const [hudFadingOut, setHudFadingOut] = useState(false);
+
+  const isAdjustingBrushRef = useRef(false);
+  const activeBrushPropertyRef = useRef<'size' | 'opacity' | 'hardness'>('size');
+  const hasLockedPropertyRef = useRef<boolean>(false);
+  
+  const startBrushSizeRef = useRef(10);
+  const startBrushOpacityRef = useRef(100);
+  const startBrushHardnessRef = useRef(100);
+  const startMouseXRef = useRef(0);
+  const startMouseYRef = useRef(0);
+
+  const isAdjustingBrushTouchRef = useRef(false);
+  const startBrushTouchSizeRef = useRef(10);
+  const startBrushTouchOpacityRef = useRef(100);
+  const startBrushTouchHardnessRef = useRef(100);
+  const startTouchXRef = useRef(0);
+  const startTouchYRef = useRef(0);
+  
+  const hudTimeoutRef = useRef<any>(null);
+
+  // Keyboard and styling refs to prevent stale closure traps in events
+  const isShiftPressedRef = useRef(false);
+  const isCtrlPressedRef = useRef(false);
+  const brushSizeRef = useRef(brushSize);
+  const brushOpacityRef = useRef(brushOpacity);
+  const brushHardnessRef = useRef(brushHardness);
+  const brushTypeRef = useRef(brushType);
+  const brushColorRef = useRef(brushColor);
+  const brushFlowRef = useRef(brushFlow);
+  const brushSmoothingRef = useRef(brushSmoothing);
+
+  useEffect(() => {
+    isShiftPressedRef.current = isShiftPressed;
+  }, [isShiftPressed]);
+
+  useEffect(() => {
+    isCtrlPressedRef.current = isCtrlPressed;
+  }, [isCtrlPressed]);
+
+  useEffect(() => {
+    brushSizeRef.current = brushSize;
+  }, [brushSize]);
+
+  useEffect(() => {
+    brushOpacityRef.current = brushOpacity;
+  }, [brushOpacity]);
+
+  useEffect(() => {
+    brushHardnessRef.current = brushHardness;
+  }, [brushHardness]);
+
+  useEffect(() => {
+    brushTypeRef.current = brushType;
+  }, [brushType]);
+
+  useEffect(() => {
+    brushColorRef.current = brushColor;
+  }, [brushColor]);
+
+  useEffect(() => {
+    brushFlowRef.current = brushFlow;
+  }, [brushFlow]);
+
+  useEffect(() => {
+    brushSmoothingRef.current = brushSmoothing;
+  }, [brushSmoothing]);
+
   // Consolidated Export Settings
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
 
@@ -1722,7 +1943,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     return board;
   };
 
-  const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight') => {
+  const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'distributeH' | 'distributeV') => {
     if (!fabricRef.current) return;
     const activeObject = fabricRef.current.getActiveObject();
     if (!activeObject) return;
@@ -1731,7 +1952,24 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       ? (activeObject as fabric.ActiveSelection).getObjects() 
       : [activeObject];
 
-    const board = getTargetArtboard(activeObject);
+    const parentObj = parentAlignmentObjRef.current;
+    const hasParent = parentObj && objects.includes(parentObj);
+    const refArea = hasParent ? getAbsoluteBoundingRect(parentObj) : null;
+
+    const refX = refArea ? refArea.left : 0;
+    const refY = refArea ? refArea.top : 0;
+    const refW = refArea ? refArea.width : 0;
+    const refH = refArea ? refArea.height : 0;
+
+    const originalBoard = getTargetArtboard(activeObject);
+    const board = {
+      ...originalBoard,
+      x: refArea ? refArea.left : originalBoard.x,
+      y: refArea ? refArea.top : originalBoard.y,
+      width: refArea ? refArea.width : originalBoard.width,
+      height: refArea ? refArea.height : originalBoard.height,
+    };
+
     const beforeStates = objects.map(o => ({
       obj: o,
       before: {
@@ -1745,99 +1983,205 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
     }));
 
-    objects.forEach(obj => {
-      const bounds = obj.getBoundingRect();
-      const objWidth = bounds.width;
-      const objHeight = bounds.height;
-      const originX = obj.originX;
-      const originY = obj.originY;
+    // Handle Distribution modes directly first
+    if (mode === 'distributeH' || mode === 'distributeV') {
+      const children = hasParent ? objects.filter(o => o !== parentObj) : objects;
+      if (children.length >= 2) {
+        const childrenWithBounds = children.map(c => ({
+          obj: c,
+          bounds: getAbsoluteBoundingRect(c)
+        }));
 
-      // Adjust for scaling and origin
+        const groupScaleX = activeObject.scaleX || 1;
+        const groupScaleY = activeObject.scaleY || 1;
+
+        if (mode === 'distributeH') {
+          childrenWithBounds.sort((a, b) => a.bounds.left - b.bounds.left);
+
+          const minLeft = refArea ? refX : childrenWithBounds[0].bounds.left;
+          const maxRight = refArea ? (refX + refW) : (childrenWithBounds[childrenWithBounds.length - 1].bounds.left + childrenWithBounds[childrenWithBounds.length - 1].bounds.width);
+          const totalWidth = maxRight - minLeft;
+
+          const totalChildrenWidth = childrenWithBounds.reduce((sum, item) => sum + item.bounds.width, 0);
+          const totalSpacing = totalWidth - totalChildrenWidth;
+          const gap = children.length > 1 ? (totalSpacing / (children.length - 1)) : 0;
+
+          let currentLeft = minLeft;
+          childrenWithBounds.forEach((item) => {
+            const deltaX = currentLeft - item.bounds.left;
+            item.obj.set({ left: item.obj.left! + (deltaX / groupScaleX) });
+            item.obj.setCoords();
+            currentLeft += item.bounds.width + gap;
+          });
+        } else {
+          childrenWithBounds.sort((a, b) => a.bounds.top - b.bounds.top);
+
+          const minTop = refArea ? refY : childrenWithBounds[0].bounds.top;
+          const maxBottom = refArea ? (refY + refH) : (childrenWithBounds[childrenWithBounds.length - 1].bounds.top + childrenWithBounds[childrenWithBounds.length - 1].bounds.height);
+          const totalHeight = maxBottom - minTop;
+
+          const totalChildrenHeight = childrenWithBounds.reduce((sum, item) => sum + item.bounds.height, 0);
+          const totalSpacing = totalHeight - totalChildrenHeight;
+          const gap = children.length > 1 ? (totalSpacing / (children.length - 1)) : 0;
+
+          let currentTop = minTop;
+          childrenWithBounds.forEach((item) => {
+            const deltaY = currentTop - item.bounds.top;
+            item.obj.set({ top: item.obj.top! + (deltaY / groupScaleY) });
+            item.obj.setCoords();
+            currentTop += item.bounds.height + gap;
+          });
+        }
+      }
+      if (fabricRef.current) {
+        if (activeObject) {
+          activeObject.setCoords();
+          if (activeObject.type === 'activeSelection') {
+            (activeObject as any)._calcBounds?.(true);
+          }
+        }
+        fabricRef.current.requestRenderAll();
+        // Fire custom modified events for undo state as standard
+        const afterStatesDis = objects.map(o => ({
+          obj: o,
+          before: beforeStates.find(s => s.obj === o)!.before,
+          after: {
+            left: o.left,
+            top: o.top,
+            scaleX: o.scaleX,
+            scaleY: o.scaleY,
+            angle: o.angle,
+            width: o.width,
+            height: o.height,
+          }
+        }));
+        const cmd = new TransformObjectsCommand(`Align Selection: ${mode}`, afterStatesDis);
+        executeCommand(cmd);
+      }
+      return;
+    }
+
+    objects.forEach(obj => {
+      // Skip parent object since it acts as the key reference anchor
+      if (refArea && obj === parentObj) {
+        return;
+      }
+      
+      const currentAbsBounds = getAbsoluteBoundingRect(obj);
       const currentScaleX = obj.scaleX || 1;
       const currentScaleY = obj.scaleY || 1;
 
+      let targetScaleX = currentScaleX;
+      let targetScaleY = currentScaleY;
+
       switch (mode) {
-        case 'left':
-          obj.set({ left: board.x + (obj.left! - bounds.left) });
-          break;
-        case 'centerH':
-          obj.set({ left: board.x + (board.width - objWidth) / 2 + (obj.left! - bounds.left) });
-          break;
-        case 'right':
-          obj.set({ left: board.x + board.width - objWidth + (obj.left! - bounds.left) });
-          break;
-        case 'top':
-          obj.set({ top: board.y + (obj.top! - bounds.top) });
-          break;
-        case 'centerV':
-          obj.set({ top: board.y + (board.height - objHeight) / 2 + (obj.top! - bounds.top) });
-          break;
-        case 'bottom':
-          obj.set({ top: board.y + board.height - objHeight + (obj.top! - bounds.top) });
-          break;
         case 'stretch':
-          obj.set({
-            left: board.x + (obj.left! - bounds.left),
-            top: board.y + (obj.top! - bounds.top),
-            scaleX: board.width / (obj.width! * currentScaleX) * currentScaleX,
-            scaleY: board.height / (obj.height! * currentScaleY) * currentScaleY,
-          });
+          targetScaleX = currentScaleX * (board.width / currentAbsBounds.width);
+          targetScaleY = currentScaleY * (board.height / currentAbsBounds.height);
           break;
         case 'fit': {
-          const scale = Math.min(board.width / objWidth, board.height / objHeight);
-          obj.set({
-            scaleX: currentScaleX * scale,
-            scaleY: currentScaleY * scale,
-          });
-          const newBounds = obj.getBoundingRect();
-          obj.set({
-            left: board.x + (board.width - newBounds.width) / 2 + (obj.left! - newBounds.left),
-            top: board.y + (board.height - newBounds.height) / 2 + (obj.top! - newBounds.top),
-          });
+          const scale = Math.min(board.width / currentAbsBounds.width, board.height / currentAbsBounds.height);
+          targetScaleX = currentScaleX * scale;
+          targetScaleY = currentScaleY * scale;
           break;
         }
         case 'fill': {
-          const scale = Math.max(board.width / objWidth, board.height / objHeight);
-          obj.set({
-            scaleX: currentScaleX * scale,
-            scaleY: currentScaleY * scale,
-          });
-          const newBounds = obj.getBoundingRect();
-          obj.set({
-            left: board.x + (board.width - newBounds.width) / 2 + (obj.left! - newBounds.left),
-            top: board.y + (board.height - newBounds.height) / 2 + (obj.top! - newBounds.top),
-          });
+          const scale = Math.max(board.width / currentAbsBounds.width, board.height / currentAbsBounds.height);
+          targetScaleX = currentScaleX * scale;
+          targetScaleY = currentScaleY * scale;
           break;
         }
         case 'fitWidth': {
-          const scale = board.width / objWidth;
-          obj.set({
-            scaleX: currentScaleX * scale,
-            scaleY: currentScaleY * scale,
-          });
-          const newBounds = obj.getBoundingRect();
-          obj.set({
-            left: board.x + (obj.left! - newBounds.left),
-            top: board.y + (board.height - newBounds.height) / 2 + (obj.top! - newBounds.top),
-          });
+          const scale = board.width / currentAbsBounds.width;
+          targetScaleX = currentScaleX * scale;
+          targetScaleY = currentScaleY * scale;
           break;
         }
         case 'fitHeight': {
-          const scale = board.height / objHeight;
-          obj.set({
-            scaleX: currentScaleX * scale,
-            scaleY: currentScaleY * scale,
-          });
-          const newBounds = obj.getBoundingRect();
-          obj.set({
-            left: board.x + (board.width - newBounds.width) / 2 + (obj.left! - newBounds.left),
-            top: board.y + (obj.top! - newBounds.top),
-          });
+          const scale = board.height / currentAbsBounds.height;
+          targetScaleX = currentScaleX * scale;
+          targetScaleY = currentScaleY * scale;
           break;
         }
+        case 'utils_fitInside': {
+          const scale = Math.min(board.width / currentAbsBounds.width, board.height / currentAbsBounds.height);
+          targetScaleX = currentScaleX * scale;
+          targetScaleY = currentScaleY * scale;
+          break;
+        }
+        case 'matchWidth':
+          targetScaleX = currentScaleX * (board.width / currentAbsBounds.width);
+          break;
+        case 'matchHeight':
+          targetScaleY = currentScaleY * (board.height / currentAbsBounds.height);
+          break;
       }
+
+      obj.set({
+        scaleX: targetScaleX,
+        scaleY: targetScaleY
+      });
+      obj.setCoords();
+
+      const newAbsBounds = getAbsoluteBoundingRect(obj);
+
+      let targetAbsLeft = newAbsBounds.left;
+      let targetAbsTop = newAbsBounds.top;
+
+      switch (mode) {
+        case 'left':
+        case 'stretch':
+        case 'matchWidth':
+          targetAbsLeft = board.x;
+          break;
+        case 'centerH':
+        case 'fit':
+        case 'fill':
+        case 'fitWidth':
+        case 'utils_fitInside':
+        case 'utils_centerInside':
+          targetAbsLeft = board.x + (board.width - newAbsBounds.width) / 2;
+          break;
+        case 'right':
+          targetAbsLeft = board.x + board.width - newAbsBounds.width;
+          break;
+        case 'top':
+        case 'stretch':
+        case 'matchHeight':
+          targetAbsTop = board.y;
+          break;
+        case 'centerV':
+        case 'fit':
+        case 'fill':
+        case 'fitHeight':
+        case 'utils_fitInside':
+        case 'utils_centerInside':
+          targetAbsTop = board.y + (board.height - newAbsBounds.height) / 2;
+          break;
+        case 'bottom':
+          targetAbsTop = board.y + board.height - newAbsBounds.height;
+          break;
+      }
+
+      const deltaX = targetAbsLeft - newAbsBounds.left;
+      const deltaY = targetAbsTop - newAbsBounds.top;
+
+      const groupScaleX = obj.group ? (obj.group.scaleX || 1) : 1;
+      const groupScaleY = obj.group ? (obj.group.scaleY || 1) : 1;
+
+      obj.set({
+        left: obj.left! + (deltaX / groupScaleX),
+        top: obj.top! + (deltaY / groupScaleY)
+      });
       obj.setCoords();
     });
+
+    if (activeObject) {
+      activeObject.setCoords();
+      if (activeObject.type === 'activeSelection') {
+        (activeObject as any)._calcBounds?.(true);
+      }
+    }
 
     const afterStates = objects.map(o => ({
       obj: o,
@@ -2059,6 +2403,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     flipX: false,
     flipY: false,
   });
+  const [frameBorderWidth, setFrameBorderWidth] = useState(20);
 
   const fontSizeStartRef = useRef<number>(40);
   const textStartValueRef = useRef<string>("");
@@ -2092,7 +2437,36 @@ function dataURLtoFile(dataurl: string, filename: string): File {
           console.error("Dexie save failed", err);
         });
 
-        const dataUrl = fabricRef.current.toDataURL({ multiplier: 1, format: 'png' });
+        const activeBoard = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
+        let dataUrl = "";
+
+        if (activeBoard) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = activeBoard.width;
+            tempCanvas.height = activeBoard.height;
+            const ctx = tempCanvas.getContext('2d');
+            if (ctx) {
+                if (!activeBoard.transparent) {
+                  ctx.fillStyle = activeBoard.backgroundColor || "#ffffff";
+                  ctx.fillRect(0, 0, activeBoard.width, activeBoard.height);
+                } else {
+                  ctx.clearRect(0, 0, activeBoard.width, activeBoard.height);
+                }
+
+                ctx.save();
+                ctx.translate(-activeBoard.x, -activeBoard.y);
+                fabricRef.current.getObjects().forEach((obj) => {
+                  if (!obj.visible || obj.type === 'activeSelection') return;
+                  if ((obj as any).artboardId === activeBoard.id) obj.render(ctx);
+                });
+                ctx.restore();
+                dataUrl = tempCanvas.toDataURL('image/png');
+            } else {
+                dataUrl = fabricRef.current.toDataURL({ multiplier: 1, format: 'png' });
+            }
+        } else {
+            dataUrl = fabricRef.current.toDataURL({ multiplier: 1, format: 'png' });
+        }
         const name = path.split('.').pop() || "edited_image";
         const file = dataURLtoFile(dataUrl, `${name}.png`);
         
@@ -2111,9 +2485,55 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   const handleSelectionContext = useCallback((e: any) => {
     const active = fabricRef.current?.getActiveObject();
     if (active) {
+      if (active.type === 'activeSelection') {
+        const selObjects = (active as fabric.ActiveSelection).getObjects();
+        if (parentAlignmentObjRef.current && !selObjects.includes(parentAlignmentObjRef.current)) {
+          parentAlignmentObjRef.current = null;
+          setParentAlignmentObj(null);
+        }
+      } else {
+        parentAlignmentObjRef.current = null;
+        setParentAlignmentObj(null);
+      }
+
       setSelectedLayerId((active as any).id);
       setSelectionType(active.get('isFrameGroup') ? 'frameGroup' : active.type);
       
+      if ((active as any).isCollageBlock) {
+        setCollageBgColor(active.get('fill') as string || '#333333');
+        const stroke = active.get('stroke') as string || '#555555';
+        setCollageBorderColor(stroke === 'transparent' ? '#555555' : stroke);
+        setCollageBorderWidth(active.get('strokeWidth') as number || 2);
+        
+        const obj = active as any;
+        const w = obj.width ?? 100;
+        const h = obj.height ?? 100;
+        const maxR = Math.min(w, h) / 2;
+        
+        const uPercent = obj.cornerRoundingPercent !== undefined ? obj.cornerRoundingPercent : Math.round(((obj.rx || 0) / (maxR || 1)) * 100);
+        const tlPercent = obj.cornerTopLeftPercent !== undefined ? obj.cornerTopLeftPercent : uPercent;
+        const trPercent = obj.cornerTopRightPercent !== undefined ? obj.cornerTopRightPercent : uPercent;
+        const brPercent = obj.cornerBottomRightPercent !== undefined ? obj.cornerBottomRightPercent : uPercent;
+        const blPercent = obj.cornerBottomLeftPercent !== undefined ? obj.cornerBottomLeftPercent : uPercent;
+        const isIndiv = obj.useIndividualCorners ?? false;
+
+        setCollageCornerRadius(uPercent);
+        setUseIndividualCorners(isIndiv);
+        setCollageCornerTL(tlPercent);
+        setCollageCornerTR(trPercent);
+        setCollageCornerBR(brPercent);
+        setCollageCornerBL(blPercent);
+
+        const dash = active.get('strokeDashArray');
+        if (stroke === 'transparent' || active.get('strokeWidth') === 0) {
+          setCollageBorderStyle('none');
+        } else if (dash && dash.length > 0) {
+          setCollageBorderStyle('dashed');
+        } else {
+          setCollageBorderStyle('solid');
+        }
+      }
+
       if (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox') {
         const textObj = active as any;
         setTextProps({
@@ -2135,7 +2555,21 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       } else if (active.type === 'image' || active.get('isFrameGroup')) {
         let imgObj = active as any;
         if (imgObj.get('isFrameGroup')) {
+           const frameType = imgObj.get('frameType');
            const items = imgObj.getObjects();
+           
+           const rectObj = items.find((i: any) => i.type === 'rect');
+           if (rectObj) {
+              if (frameType === 'polaroid') {
+                  const contentObj = items.find((i: any) => i.type === 'image');
+                  if (contentObj) {
+                      setFrameBorderWidth(Math.round(rectObj.top - contentObj.getCenterPoint().y));
+                  }
+              } else {
+                  setFrameBorderWidth(Math.round(rectObj.strokeWidth || 20));
+              }
+           }
+           
            imgObj = items.find((i: any) => i.type === 'image') || imgObj;
         }
         setImageFilters(imgObj.customFilters || []);
@@ -2151,6 +2585,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         }
       }
     } else {
+      parentAlignmentObjRef.current = null;
+      setParentAlignmentObj(null);
       setSelectedLayerId(null);
       setSelectionType(null);
     }
@@ -2339,6 +2775,354 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     }
 
     const macro = new MacroCommand(`Convert to ${preset.name}`, commands);
+    executeCommand(macro);
+  };
+
+  const generateSmartCollage = (type: string) => {
+    if (!fabricRef.current || !activeArtboardId) return;
+    const canvas = fabricRef.current;
+    const board = artboards.find(b => b.id === activeArtboardId);
+    if (!board) return;
+
+    // We will save to history before we do this
+    const commands: Command[] = [];
+    const padding = Math.min(board.width, board.height) * (collagePaddingPercent / 100);
+    const innerW = board.width - padding * 2;
+    const innerH = board.height - padding * 2;
+    const gap = Math.min(board.width, board.height) * (collageGapPercent / 100);
+
+    const items: fabric.Rect[] = [];
+
+    const createPlaceholder = (x: number, y: number, w: number, h: number) => {
+      const isNone = collageBorderStyle === 'none';
+      const isDashed = collageBorderStyle === 'dashed';
+      const rect = new fabric.Rect({
+        left: board.x + padding + x,
+        top: board.y + padding + y,
+        width: w,
+        height: h,
+        fill: collageBgColor,
+        stroke: isNone ? 'transparent' : collageBorderColor,
+        strokeWidth: isNone ? 0 : collageBorderWidth,
+        strokeDashArray: isDashed ? [5, 5] : undefined,
+        rx: 0, // we use custom drawing properties
+        ry: 0,
+        cornerRoundingPercent: collageCornerRadius,
+        useIndividualCorners: useIndividualCorners,
+        cornerTopLeftPercent: collageCornerTL,
+        cornerTopRightPercent: collageCornerTR,
+        cornerBottomLeftPercent: collageCornerBL,
+        cornerBottomRightPercent: collageCornerBR,
+        opacity: 0.9,
+        cornerColor: '#00aaff',
+        transparentCorners: false,
+        id: 'collage_' + Date.now().toString() + '_' + Math.random().toString().slice(2, 6)
+      } as any);
+      (rect as any).artboardId = board.id;
+      (rect as any).isCollageBlock = true;
+      return rect;
+    };
+
+    if (type === '2x') {
+      const cellW = (innerW - gap) / 2;
+      items.push(createPlaceholder(0, 0, cellW, innerH));
+      items.push(createPlaceholder(cellW + gap, 0, cellW, innerH));
+    } else if (type === '3x') {
+      const cellW = (innerW - gap * 2) / 3;
+      items.push(createPlaceholder(0, 0, cellW, innerH));
+      items.push(createPlaceholder(cellW + gap, 0, cellW, innerH));
+      items.push(createPlaceholder((cellW + gap) * 2, 0, cellW, innerH));
+    } else if (type === '4x') {
+      const cellW = (innerW - gap) / 2;
+      const cellH = (innerH - gap) / 2;
+      items.push(createPlaceholder(0, 0, cellW, cellH));
+      items.push(createPlaceholder(cellW + gap, 0, cellW, cellH));
+      items.push(createPlaceholder(0, cellH + gap, cellW, cellH));
+      items.push(createPlaceholder(cellW + gap, cellH + gap, cellW, cellH));
+    } else if (type === '1-2') {
+      const cellW = (innerW - gap) / 2;
+      const cellH = (innerH - gap) / 2;
+      items.push(createPlaceholder(0, 0, cellW, innerH));
+      items.push(createPlaceholder(cellW + gap, 0, cellW, cellH));
+      items.push(createPlaceholder(cellW + gap, cellH + gap, cellW, cellH));
+    } else if (type === '2-1') {
+      const cellW = (innerW - gap) / 2;
+      const cellH = (innerH - gap) / 2;
+      items.push(createPlaceholder(0, 0, innerW, cellH));
+      items.push(createPlaceholder(0, cellH + gap, cellW, cellH));
+      items.push(createPlaceholder(cellW + gap, cellH + gap, cellW, cellH));
+    } else if (type === 'film') {
+      const cellW = innerW;
+      const cellH = (innerH - gap * 2) / 3;
+      items.push(createPlaceholder(0, 0, cellW, cellH));
+      items.push(createPlaceholder(0, cellH + gap, cellW, cellH));
+      items.push(createPlaceholder(0, (cellH + gap) * 2, cellW, cellH));
+    }
+
+    if (items.length > 0) {
+      canvas.discardActiveObject();
+      items.forEach(item => {
+        canvas.add(item);
+        commands.push(new AddObjectCommand("Add Collage Block", item));
+      });
+      const sel = new fabric.ActiveSelection(items, { canvas });
+      canvas.setActiveObject(sel);
+      canvas.requestRenderAll();
+      updateLayersList();
+      
+      const macro = new MacroCommand(`Smart Collage (${type})`, commands);
+      executeCommand(macro);
+    }
+  };
+
+  const addAlignedCollageText = (alignment: 'top' | 'center' | 'bottom' | 'left' | 'right') => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const active = canvas.getActiveObject();
+    if (!active || !(active as any).isCollageBlock) {
+       return;
+    }
+
+    const rect = active as fabric.Rect;
+    const scaledW = rect.getScaledWidth();
+    const scaledH = rect.getScaledHeight();
+    const textWidth = Math.min(scaledW * 0.8, 200);
+    const textHeight = 30;
+
+    let left = rect.left + (scaledW - textWidth) / 2;
+    let top = rect.top + (scaledH - textHeight) / 2;
+    let textAlign: fabric.TextboxProps['textAlign'] = 'center';
+
+    if (alignment === 'top') {
+      top = rect.top + scaledH * 0.15;
+    } else if (alignment === 'bottom') {
+      top = rect.top + scaledH * 0.85 - textHeight;
+    } else if (alignment === 'left') {
+      left = rect.left + scaledW * 0.1;
+      textAlign = 'left';
+    } else if (alignment === 'right') {
+      left = rect.left + scaledW * 0.9 - textWidth;
+      textAlign = 'right';
+    }
+
+    const text = new fabric.Textbox('Heading Text', {
+      left,
+      top,
+      width: textWidth,
+      fill: '#FFFFFF',
+      fontFamily: textProps.fontFamily,
+      fontSize: Math.min(scaledH * 0.18, 24),
+      fontWeight: 'bold',
+      fontStyle: textProps.fontStyle,
+      textAlign: textAlign,
+      id: Date.now().toString() + '_' + Math.random().toString().slice(2, 6),
+      artboardId: (rect as any).artboardId
+    } as any);
+
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.requestRenderAll();
+    updateLayersList();
+
+    const cmd = new AddObjectCommand("Add Collage Text", text);
+    executeCommand(cmd);
+  };
+
+  const fillCollageBlockWithImage = (imageFile: File) => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const active = canvas.getActiveObject();
+    if (!active || !(active as any).isCollageBlock) {
+       return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      fabric.Image.fromURL(dataUrl).then((img) => {
+        const rect = active as fabric.Rect;
+        
+        // Calculate dimensions to cover/fill the block (similar to object-fit: cover)
+        const blockW = rect.getScaledWidth();
+        const blockH = rect.getScaledHeight();
+        const imgW = img.width || 100;
+        const imgH = img.height || 100;
+
+        const scaleX = blockW / imgW;
+        const scaleY = blockH / imgH;
+        const scale = Math.max(scaleX, scaleY);
+
+        img.set({
+          left: rect.left + (blockW - imgW * scale) / 2,
+          top: rect.top + (blockH - imgH * scale) / 2,
+          scaleX: scale,
+          scaleY: scale,
+          clipPath: new fabric.Rect({
+            left: 0,
+            top: 0,
+            width: imgW,
+            height: imgH,
+            rx: (rect.rx || 0) / scale,
+            ry: (rect.ry || 0) / scale,
+            originX: 'center',
+            originY: 'center'
+          }),
+          id: 'img_' + Date.now().toString() + '_' + Math.random().toString().slice(2, 6),
+          artboardId: (rect as any).artboardId
+        } as any);
+
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.requestRenderAll();
+        updateLayersList();
+
+        const cmd = new AddObjectCommand("Fill Block with Image", img);
+        executeCommand(cmd);
+      });
+    };
+    reader.readAsDataURL(imageFile);
+  };
+
+  const updateCollageBlockStyleProperty = (prop: string, value: any) => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const active = canvas.getActiveObject();
+    if (!active) return;
+
+    const items: fabric.Object[] = [];
+    if (active.type === 'activeSelection') {
+      (active as fabric.ActiveSelection).getObjects().forEach(o => {
+        if ((o as any).isCollageBlock) items.push(o);
+      });
+    } else if ((active as any).isCollageBlock) {
+      items.push(active);
+    }
+
+    if (items.length === 0) return;
+
+    const commands: Command[] = [];
+    items.forEach(item => {
+      const before: any = {};
+      const after: any = {};
+
+      if (prop === 'fill') {
+        before.fill = item.get('fill');
+        after.fill = value;
+        setCollageBgColor(value);
+      } else if (prop === 'stroke') {
+        before.stroke = item.get('stroke');
+        before.strokeWidth = item.get('strokeWidth');
+        before.strokeDashArray = item.get('strokeDashArray');
+
+        after.stroke = value;
+        setCollageBorderColor(value);
+
+        // Auto-activate the outline if thickness is 0 or style is none
+        const currentWidth = item.get('strokeWidth') ?? 0;
+        const currentStroke = item.get('stroke');
+        if (collageBorderStyle === 'none' || currentWidth === 0 || currentStroke === 'transparent') {
+          const newWidth = collageBorderWidth > 0 ? collageBorderWidth : 2;
+          after.strokeWidth = newWidth;
+          after.strokeDashArray = null;
+          setCollageBorderWidth(newWidth);
+          setCollageBorderStyle('solid');
+        }
+      } else if (prop === 'strokeWidth') {
+        before.strokeWidth = item.get('strokeWidth');
+        before.stroke = item.get('stroke');
+        before.strokeDashArray = item.get('strokeDashArray');
+
+        after.strokeWidth = value;
+        setCollageBorderWidth(value);
+
+        // Auto-set border color and style if outline gains thickness
+        const currentStroke = item.get('stroke');
+        if (value > 0 && (collageBorderStyle === 'none' || currentStroke === 'transparent' || !currentStroke)) {
+          after.stroke = collageBorderColor || '#555555';
+          after.strokeDashArray = null;
+          setCollageBorderStyle('solid');
+        } else if (value === 0) {
+          after.stroke = 'transparent';
+          after.strokeDashArray = null;
+          setCollageBorderStyle('none');
+        }
+      } else if (prop === 'rx') {
+        before.cornerRoundingPercent = (item as any).cornerRoundingPercent;
+        before.rx = (item as fabric.Rect).rx || 0;
+        before.ry = (item as fabric.Rect).ry || 0;
+        after.cornerRoundingPercent = value;
+        after.rx = value;
+        after.ry = value;
+        setCollageCornerRadius(value);
+      } else if (prop === 'rx_tl') {
+        before.cornerTopLeftPercent = (item as any).cornerTopLeftPercent;
+        after.cornerTopLeftPercent = value;
+        setCollageCornerTL(value);
+      } else if (prop === 'rx_tr') {
+        before.cornerTopRightPercent = (item as any).cornerTopRightPercent;
+        after.cornerTopRightPercent = value;
+        setCollageCornerTR(value);
+      } else if (prop === 'rx_bl') {
+        before.cornerBottomLeftPercent = (item as any).cornerBottomLeftPercent;
+        after.cornerBottomLeftPercent = value;
+        setCollageCornerBL(value);
+      } else if (prop === 'rx_br') {
+        before.cornerBottomRightPercent = (item as any).cornerBottomRightPercent;
+        after.cornerBottomRightPercent = value;
+        setCollageCornerBR(value);
+      } else if (prop === 'useIndividualCorners') {
+        before.useIndividualCorners = (item as any).useIndividualCorners;
+        after.useIndividualCorners = value;
+        setUseIndividualCorners(value);
+      } else if (prop === 'borderStyle') {
+        before.stroke = item.get('stroke');
+        before.strokeWidth = item.get('strokeWidth');
+        before.strokeDashArray = item.get('strokeDashArray');
+
+        setCollageBorderStyle(value);
+        if (value === 'none') {
+          after.stroke = 'transparent';
+          after.strokeWidth = 0;
+          after.strokeDashArray = null;
+        } else if (value === 'dashed') {
+          after.stroke = collageBorderColor || '#555555';
+          after.strokeWidth = collageBorderWidth > 0 ? collageBorderWidth : 2;
+          after.strokeDashArray = [5, 5];
+        } else {
+          after.stroke = collageBorderColor || '#555555';
+          after.strokeWidth = collageBorderWidth > 0 ? collageBorderWidth : 2;
+          after.strokeDashArray = null;
+        }
+      }
+
+      item.set(after);
+      item.dirty = true;
+      commands.push(new StyleChangeCommand("Update Collage Block Style", item, before, after));
+    });
+
+    if (commands.length > 0) {
+      const macro = new MacroCommand("Apply Collage Custom Style", commands);
+      executeCommand(macro);
+      canvas.requestRenderAll();
+    }
+  };
+
+  const generateBleed = () => {
+    if (!activeArtboardId) return;
+    const board = artboards.find(b => b.id === activeArtboardId);
+    if (!board) return;
+
+    // 0.125 inch at 300 DPI = 37.5px. At 72 DPI (web default) = 9px. Let's use 9px for standard screens.
+    const bleedPx = 18; // 9px per side
+
+    const commands: Command[] = [];
+    
+    // Update artboard props
+    commands.push(new ArtboardPropertyCommand("Adjust width for bleed", board.id, 'width', board.width, board.width + bleedPx, setArtboards));
+    commands.push(new ArtboardPropertyCommand("Adjust height for bleed", board.id, 'height', board.height, board.height + bleedPx, setArtboards));
+    commands.push(new ArtboardPropertyCommand("Enable bleed guide", board.id, 'showBleed', board.showBleed, true, setArtboards));
+    
+    const macro = new MacroCommand(`Generate Bleed`, commands);
     executeCommand(macro);
   };
 
@@ -2759,6 +3543,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       height: containerRef.current.clientHeight - 48, // minus header
       preserveObjectStacking: true,
       selection: true,
+      stopContextMenu: false,
     });
     fabricRef.current = canvas;
 
@@ -3037,6 +3822,47 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       });
 
       ctx.restore();
+      
+      // Draw Parent Alignment Object highlight if active
+      if (parentAlignmentObjRef.current && fabricRef.current) {
+        const activeObj = fabricRef.current.getActiveObject();
+        // Check if the parent object is part of the current active selection
+        if (activeObj && activeObj.type === 'activeSelection' && (activeObj as fabric.ActiveSelection).getObjects().includes(parentAlignmentObjRef.current)) {
+          ctx.save();
+          ctx.transform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
+
+          const bounds = getAbsoluteBoundingRect(parentAlignmentObjRef.current);
+          
+          // Draw a clear blue, thick line around the parent object
+          ctx.strokeStyle = "#3b82f6";
+          ctx.lineWidth = 3 / vpt[0];
+          ctx.setLineDash([]);
+          ctx.strokeRect(bounds.left, bounds.top, bounds.width, bounds.height);
+
+          // Draw the PARENT text badge
+          const badgeHeight = 16 / vpt[3];
+          const badgeWidth = 48 / vpt[0];
+          const badgeX = bounds.left;
+          const badgeY = bounds.top - badgeHeight - (4 / vpt[3]);
+
+          ctx.fillStyle = "#3b82f6";
+          if (ctx.roundRect) {
+            ctx.beginPath();
+            ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 4 / vpt[0]);
+            ctx.fill();
+          } else {
+            ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
+          }
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `bold ${8 / vpt[3]}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("PARENT", badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+
+          ctx.restore();
+        }
+      }
 
       const overlay = document.getElementById('artboard-ui-overlay');
       if (overlay) {
@@ -3054,9 +3880,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
           }
         }
       }
-    });
-
-    // Panning & Zooming events
+    });    // Panning & Zooming events
     // Touch / Pinch-to-zoom support
     let initialPinchDistance = 0;
     let initialZoom = 1;
@@ -3064,7 +3888,166 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     let initialPanY = 0;
     let initialMidpoint = { x: 0, y: 0 };
     
+    // Dynamic brush size / opacity modification handlers
+    const handleBrushAdjustMousemove = (e: MouseEvent) => {
+       if (!isAdjustingBrushRef.current) return;
+       e.preventDefault();
+       e.stopPropagation();
+       e.stopImmediatePropagation();
+       
+       const deltaX = e.clientX - startMouseXRef.current;
+       const deltaY = e.clientY - startMouseYRef.current;
+       
+       const isShift = e.shiftKey || isShiftPressedRef.current;
+       const isCtrl = e.ctrlKey || isCtrlPressedRef.current;
+
+       // Lock property based on first movement direction
+       if (!hasLockedPropertyRef.current) {
+          const distance = Math.hypot(deltaX, deltaY);
+          if (distance < 5) return; // Wait for a non-trivial movement
+
+          if (Math.abs(deltaX) > Math.abs(deltaY)) {
+             activeBrushPropertyRef.current = 'size';
+             setActiveBrushProperty('size');
+          } else {
+             if (isCtrl && !isShift) {
+                activeBrushPropertyRef.current = 'hardness';
+                setActiveBrushProperty('hardness');
+             } else {
+                activeBrushPropertyRef.current = 'opacity';
+                setActiveBrushProperty('opacity');
+             }
+          }
+          hasLockedPropertyRef.current = true;
+       }
+
+       let newSize = brushSizeRef.current;
+       let newOpacity = brushOpacityRef.current;
+       let newHardness = brushHardnessRef.current;
+
+       if (activeBrushPropertyRef.current === 'size') {
+          // Horizontal adjusts size (Drag right increases, Drag left decreases)
+          newSize = Math.max(1, Math.min(500, Math.round(startBrushSizeRef.current + deltaX * 1.0)));
+          setBrushSize(newSize);
+          brushSizeRef.current = newSize;
+          
+       } else if (activeBrushPropertyRef.current === 'opacity') {
+          // Vertical adjusts opacity (Drag up increases, Drag down decreases)
+          newOpacity = Math.max(1, Math.min(100, Math.round(startBrushOpacityRef.current - deltaY * 0.7)));
+          setBrushOpacity(newOpacity);
+          brushOpacityRef.current = newOpacity;
+       } else if (activeBrushPropertyRef.current === 'hardness') {
+          // Vertical adjusts hardness (Drag up increases, Drag down decreases)
+          newHardness = Math.max(0, Math.min(100, Math.round(startBrushHardnessRef.current - deltaY * 0.7)));
+          setBrushHardness(newHardness);
+          brushHardnessRef.current = newHardness;
+       }
+       
+       applyBrushSettings(
+         brushTypeRef.current,
+         brushColorRef.current,
+         newSize,
+         newOpacity,
+         brushFlowRef.current,
+         newHardness,
+         brushSmoothingRef.current
+       );
+       
+       setShowHud(true);
+       
+       canvas.requestRenderAll();
+    };
+
+         const handleBrushAdjustMouseup = (e: MouseEvent) => {
+        if (isAdjustingBrushRef.current) {
+           e.preventDefault();
+           e.stopPropagation();
+           e.stopImmediatePropagation();
+           isAdjustingBrushRef.current = false;
+           
+           setHudFadingOut(true);
+           if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+           hudTimeoutRef.current = setTimeout(() => {
+              setShowHud(false);
+              setHudFadingOut(false);
+           }, 500);
+        }
+        window.removeEventListener('mousemove', handleBrushAdjustMousemove, { capture: true });
+        window.removeEventListener('mouseup', handleBrushAdjustMouseup, { capture: true });
+     };
+
+    const handleBrushAdjustMousedown = (e: MouseEvent) => {
+       const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
+       if (!isBrushActive) return;
+       
+       const isShift = e.shiftKey || isShiftPressedRef.current;
+       const isCtrl = e.ctrlKey || isCtrlPressedRef.current;
+       
+       if ((isShift || isCtrl) && e.button === 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          
+          isAdjustingBrushRef.current = true;
+          hasLockedPropertyRef.current = false;
+          
+          // Sensible initial active property based on modifier keys
+          const initialProp = isCtrl && !isShift ? 'hardness' : (isShift && !isCtrl ? 'opacity' : 'size');
+          activeBrushPropertyRef.current = initialProp;
+          setActiveBrushProperty(initialProp);
+
+          startBrushSizeRef.current = brushSizeRef.current;
+           startBrushOpacityRef.current = brushOpacityRef.current;
+           startBrushHardnessRef.current = brushHardnessRef.current;
+           startMouseXRef.current = e.clientX;
+           startMouseYRef.current = e.clientY;
+           if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+           setHudFadingOut(false);
+           const rect = (canvas.getElement().parentElement as HTMLElement).getBoundingClientRect();
+          setHudPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          setShowHud(true);
+          
+          window.addEventListener('mousemove', handleBrushAdjustMousemove, { capture: true });
+          window.addEventListener('mouseup', handleBrushAdjustMouseup, { capture: true });
+       }
+    };
+
     const touchStartHandler = (e: TouchEvent) => {
+      const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
+      const hasModifier = isShiftPressedRef.current || isCtrlPressedRef.current;
+      
+      if (e.touches.length === 2 && isBrushActive && hasModifier) {
+        e.preventDefault();
+        e.stopPropagation();
+        isAdjustingBrushTouchRef.current = true;
+        hasLockedPropertyRef.current = false;
+
+        const isShift = isShiftPressedRef.current;
+        const isCtrl = isCtrlPressedRef.current;
+        
+        // Initial setup
+        const initialProp = isCtrl && !isShift ? 'hardness' : (isShift && !isCtrl ? 'opacity' : 'size');
+        activeBrushPropertyRef.current = initialProp;
+        setActiveBrushProperty(initialProp);
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const currentMidX = (touch1.clientX + touch2.clientX) / 2;
+        const currentMidY = (touch1.clientY + touch2.clientY) / 2;
+        
+        startBrushTouchSizeRef.current = brushSizeRef.current;
+        startBrushTouchOpacityRef.current = brushOpacityRef.current;
+        startBrushTouchHardnessRef.current = brushHardnessRef.current;
+        startTouchXRef.current = currentMidX;
+        startTouchYRef.current = currentMidY;
+        
+        const rect = (canvas.getElement().parentElement as HTMLElement).getBoundingClientRect();
+        setHudPosition({ x: currentMidX - rect.left, y: currentMidY - rect.top });
+        setShowHud(true);
+        canvas.selection = false;
+        return;
+      }
+
       if (e.touches.length === 2 && canvas.viewportTransform) {
         e.preventDefault();
         const touch1 = e.touches[0];
@@ -3083,6 +4066,74 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     };
 
     const touchMoveHandler = (e: TouchEvent) => {
+      if (isAdjustingBrushTouchRef.current && e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const currentMidX = (touch1.clientX + touch2.clientX) / 2;
+        const currentMidY = (touch1.clientY + touch2.clientY) / 2;
+        
+        const deltaX = currentMidX - startTouchXRef.current;
+        const deltaY = currentMidY - startTouchYRef.current;
+
+        const isShift = isShiftPressedRef.current;
+        const isCtrl = isCtrlPressedRef.current;
+
+        // Auto-lock axis on touch gesture
+        if (!hasLockedPropertyRef.current) {
+           const distance = Math.hypot(deltaX, deltaY);
+           if (distance >= 5) {
+              if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                 activeBrushPropertyRef.current = 'size';
+                 setActiveBrushProperty('size');
+              } else {
+                 if (isCtrl && !isShift) {
+                    activeBrushPropertyRef.current = 'hardness';
+                    setActiveBrushProperty('hardness');
+                 } else {
+                    activeBrushPropertyRef.current = 'opacity';
+                    setActiveBrushProperty('opacity');
+                 }
+              }
+              hasLockedPropertyRef.current = true;
+           }
+        }
+        
+        let newSize = brushSizeRef.current;
+        let newOpacity = brushOpacityRef.current;
+        let newHardness = brushHardnessRef.current;
+
+        if (activeBrushPropertyRef.current === 'size') {
+           newSize = Math.max(1, Math.min(500, Math.round(startBrushTouchSizeRef.current + deltaX * 1.0)));
+           setBrushSize(newSize);
+           brushSizeRef.current = newSize;
+        } else if (activeBrushPropertyRef.current === 'opacity') {
+           newOpacity = Math.max(1, Math.min(100, Math.round(startBrushTouchOpacityRef.current - deltaY * 0.7)));
+           setBrushOpacity(newOpacity);
+           brushOpacityRef.current = newOpacity;
+        } else if (activeBrushPropertyRef.current === 'hardness') {
+           newHardness = Math.max(0, Math.min(100, Math.round(startBrushTouchHardnessRef.current - deltaY * 0.7)));
+           setBrushHardness(newHardness);
+           brushHardnessRef.current = newHardness;
+        }
+        
+        applyBrushSettings(
+          brushTypeRef.current,
+          brushColorRef.current,
+          newSize,
+          newOpacity,
+          brushFlowRef.current,
+          newHardness,
+          brushSmoothingRef.current
+        );
+        
+        setShowHud(true);
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (e.touches.length === 2 && canvas.viewportTransform) {
         e.preventDefault();
         const touch1 = e.touches[0];
@@ -3123,10 +4174,72 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     };
 
     const touchEndHandler = (e: TouchEvent) => {
+       if (isAdjustingBrushTouchRef.current) {
+          isAdjustingBrushTouchRef.current = false;
+          setHudFadingOut(false);
+          setShowHud(true);
+          if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+          hudTimeoutRef.current = setTimeout(() => {
+             setHudFadingOut(true);
+             hudTimeoutRef.current = setTimeout(() => {
+                setShowHud(false);
+                setHudFadingOut(false);
+             }, 500);
+          }, 800);
+          canvas.selection = true;
+          validateViewport();
+          return;
+       }
+
        if (e.touches.length < 2) {
           canvas.selection = true;
        }
        validateViewport();
+    };
+
+    const handleMousedownCapture = (e: MouseEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        const activeObj = canvas.getActiveObject();
+        if (activeObj && activeObj.type === 'activeSelection') {
+          const pointer = (canvas as any).getPointer(e);
+          const selObjects = (activeObj as fabric.ActiveSelection).getObjects();
+          let clickedSubObject: fabric.Object | null = null;
+          
+          for (let i = selObjects.length - 1; i >= 0; i--) {
+            const obj = selObjects[i];
+            
+            // Calculate point in local coordinates using inverse transform matrix
+            const matrix = obj.calcTransformMatrix();
+            const inverted = fabric.util.invertTransform(matrix);
+            const localPt = fabric.util.transformPoint(pointer, inverted);
+            
+            const halfW = (obj.width || 0) / 2;
+            const halfH = (obj.height || 0) / 2;
+            
+            const inside = (localPt.x >= -halfW && localPt.x <= halfW && localPt.y >= -halfH && localPt.y <= halfH);
+            
+            if (inside) {
+              clickedSubObject = obj;
+              break;
+            }
+          }
+          
+          if (clickedSubObject) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (parentAlignmentObjRef.current === clickedSubObject) {
+              parentAlignmentObjRef.current = null;
+              setParentAlignmentObj(null);
+            } else {
+              parentAlignmentObjRef.current = clickedSubObject;
+              setParentAlignmentObj(clickedSubObject);
+            }
+            
+            canvas.requestRenderAll();
+          }
+        }
+      }
     };
 
     // Attach native events to wrapper
@@ -3135,32 +4248,76 @@ function dataURLtoFile(dataurl: string, filename: string): File {
        upperCanvas.addEventListener('touchstart', touchStartHandler as any, { passive: false });
        upperCanvas.addEventListener('touchmove', touchMoveHandler as any, { passive: false });
        upperCanvas.addEventListener('touchend', touchEndHandler as any);
+       upperCanvas.addEventListener('mousedown', handleMousedownCapture, true);
+       upperCanvas.addEventListener('mousedown', handleBrushAdjustMousedown, true);
     }
     
     canvas.on('mouse:wheel', (opt) => {
       const e = opt.e;
-      e.preventDefault();
-      e.stopPropagation();
-      let zoom = canvas.getZoom();
-      const delta = e.deltaY;
-      
-      // More consistent zoom formula
-      const zoomStep = 0.05;
-      const factor = 1 + (delta > 0 ? -zoomStep * 2 : zoomStep * 2);
-      zoom *= factor;
-      
-      if (zoom > 20) zoom = 20;
-      if (zoom < 0.05) zoom = 0.05;
-      
-      const point = new fabric.Point(e.offsetX, e.offsetY);
-      canvas.zoomToPoint(point, zoom);
-      setZoomPercent(Math.round(zoom * 100));
-      canvas.requestRenderAll();
-      
-      if (!isMobileRef.current) {
-        viewportTransformRef.current = canvas.viewportTransform!.slice();
+      const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
+      if (isBrushActive && (e.ctrlKey || e.shiftKey || isShiftPressedRef.current || isCtrlPressedRef.current)) {
+         e.preventDefault();
+         e.stopPropagation();
+         
+         let delta = -e.deltaY;
+         if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+           delta = -e.deltaX;
+         }
+         
+         const step = Math.sign(delta) * 1.5; // Scale slightly for zoom speed parity
+         const currentSize = brushSizeRef.current;
+         const newSize = Math.max(1, Math.min(500, Math.round(currentSize + step)));
+         setBrushSize(newSize);
+         brushSizeRef.current = newSize;
+          activeBrushPropertyRef.current = 'size';
+          setActiveBrushProperty('size');
+         
+         applyBrushSettings(
+           brushTypeRef.current,
+           brushColorRef.current,
+           newSize,
+           brushOpacityRef.current,
+           brushFlowRef.current,
+           brushHardnessRef.current,
+           brushSmoothingRef.current
+         );
+         
+         const wrapperRect = (canvas.getElement().parentElement as HTMLElement).getBoundingClientRect();
+         const posX = (e.clientX !== undefined) ? (e.clientX - wrapperRect.left) : (wrapperRect.width / 2);
+         const posY = (e.clientY !== undefined) ? (e.clientY - wrapperRect.top) : (wrapperRect.height / 2);
+         
+         setHudPosition({ x: posX, y: posY });
+         setShowHud(true);
+         
+         if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+         hudTimeoutRef.current = setTimeout(() => setShowHud(false), 800);
+         
+         canvas.requestRenderAll();
+         return;
+      } else {
+         e.preventDefault();
+         e.stopPropagation();
+         let zoom = canvas.getZoom();
+         const delta = e.deltaY;
+         
+         // More consistent zoom formula
+         const zoomStep = 0.05;
+         const factor = 1 + (delta > 0 ? -zoomStep * 2 : zoomStep * 2);
+         zoom *= factor;
+         
+         if (zoom > 20) zoom = 20;
+         if (zoom < 0.05) zoom = 0.05;
+         
+         const point = new fabric.Point(e.offsetX, e.offsetY);
+         canvas.zoomToPoint(point, zoom);
+         setZoomPercent(Math.round(zoom * 100));
+         canvas.requestRenderAll();
+         
+         if (!isMobileRef.current) {
+           viewportTransformRef.current = canvas.viewportTransform!.slice();
+         }
+         validateViewport();
       }
-      validateViewport();
     });
 
     let isPanning = false;
@@ -3170,6 +4327,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     canvas.on('mouse:down', (opt) => {
       const e = opt.e as any;
       if (!e) return;
+
       if (activeToolRef.current === 'pan' || e.button === 1 || isSpacePressedRef.current || isAltPressedRef.current) {
         isPanning = true;
         lastX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
@@ -3518,6 +4676,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
          upperCanvasEl.removeEventListener('touchstart', touchStartHandler as any);
          upperCanvasEl.removeEventListener('touchmove', touchMoveHandler as any);
          upperCanvasEl.removeEventListener('touchend', touchEndHandler as any);
+         upperCanvasEl.removeEventListener('mousedown', handleMousedownCapture, true);
+         upperCanvasEl.removeEventListener('mousedown', handleBrushAdjustMousedown, true);
       }
       
       resizeObserver.disconnect();
@@ -3627,9 +4787,18 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     e.preventDefault();
     if (!fabricRef.current) return;
 
-    const pointer = fabricRef.current.getScenePoint(e.nativeEvent);
-    const target = fabricRef.current.findTarget(e.nativeEvent);
-    const activeObjects = fabricRef.current.getActiveObjects();
+    const pointer = fabricRef.current.getScenePoint(e.nativeEvent as any);
+    const targetInfo = fabricRef.current.findTarget(e.nativeEvent as any);
+    const target = targetInfo?.target;
+    
+    let activeObjects = fabricRef.current.getActiveObjects();
+
+    // If right clicked on an object that isn't selected, select it first
+    if (target && !activeObjects.includes(target as any)) {
+      fabricRef.current.setActiveObject(target as any);
+      fabricRef.current.requestRenderAll();
+      activeObjects = [target as any];
+    }
 
     setActiveContextMenu({
       x: e.clientX,
@@ -3642,17 +4811,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   const handleImportImageClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!fabricRef.current) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const activeObj = fabricRef.current.getActiveObject();
-    const activeObjects = fabricRef.current.getActiveObjects();
-
-    setActiveContextMenu({
-      x: rect.left,
-      y: rect.bottom + 5,
-      obj: activeObj || null,
-      targets: activeObjects
-    });
+    document.getElementById('img-upload')?.click();
   };
 
   const closeContextMenu = () => setActiveContextMenu(null);
@@ -3664,7 +4823,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       
       // Check if click/touch was inside activeContextMenu
       const clickedInContextMenu = target.closest('.context-menu-container');
-      const clickedImportToggleButton = target.closest('[title="Import Image Options"]');
+      const clickedImportToggleButton = target.closest('[title="Import Image"]');
       
       if (!clickedInContextMenu && !clickedImportToggleButton) {
         closeContextMenu();
@@ -3717,7 +4876,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         const sel = clonedGroup.toActiveSelection();
         items = sel.getObjects();
     } else {
-        items = clonedGroup.removeAll();
+        items = (clonedGroup as any).removeAll();
         canvas.remove(clonedGroup);
         items.forEach((i: any) => canvas.add(i));
     }
@@ -4228,7 +5387,40 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     }
   };
 
-  const applyFrame = async (frameType: string) => {
+  const updateFrameBorderWidth = (width: number) => {
+    setFrameBorderWidth(width);
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const activeObj = canvas.getActiveObject();
+    
+    if (activeObj && activeObj.get('isFrameGroup')) {
+        const frameType = activeObj.get('frameType');
+        const items = (activeObj as any as fabric.Group).getObjects();
+        const rectObj = items.find((i: any) => i.type === 'rect');
+        const imgObj = items.find((i: any) => i.type === 'image');
+        
+        if (rectObj && imgObj) {
+            if (frameType === 'polaroid') {
+                const center = imgObj.getCenterPoint();
+                const w = imgObj.getScaledWidth();
+                const h = imgObj.getScaledHeight();
+                rectObj.set({
+                    left: center.x,
+                    top: center.y + width,
+                    width: w + (width * 2),
+                    height: h + (width * 4)
+                });
+            } else {
+                rectObj.set('strokeWidth', width);
+            }
+            (activeObj as any).setDirty?.();
+            activeObj.fire('modified');
+            canvas.requestRenderAll();
+        }
+    }
+  };
+
+  const applyFrame = async (frameType: string, customWidth?: number) => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
     let activeObj = canvas.getActiveObject();
@@ -4256,7 +5448,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
            const sel = groupAsAny.toActiveSelection();
            items = sel.getObjects();
        } else {
-           items = clonedGroup.removeAll();
+           items = (clonedGroup as any).removeAll();
            canvas.remove(clonedGroup);
            items.forEach((i: any) => canvas.add(i));
        }
@@ -4275,7 +5467,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
        
        baseImageObj = img;
        
-       if (prevFrameType === frameType) {
+       if (prevFrameType === frameType && customWidth === undefined) {
            // Toggle off identical frame
            canvas.add(baseImageObj);
            canvas.setActiveObject(baseImageObj);
@@ -4300,30 +5492,29 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
     // Default Frame Settings
     let strokeColor = "#ffffff";
-    let strokeWidth = 20;
+    let strokeWidth = customWidth !== undefined ? customWidth : 20;
     let strokeUniform = true;
-    let padding = 0;
     
     switch (frameType) {
       case 'polaroid':
         strokeColor = "#F9F9F9";
-        strokeWidth = 30; // base boundary
+        if (customWidth === undefined) strokeWidth = 30; // base boundary
         break;
       case 'black':
         strokeColor = "#111111";
-        strokeWidth = 15;
+        if (customWidth === undefined) strokeWidth = 15;
         break;
       case 'white':
         strokeColor = "#FFFFFF";
-        strokeWidth = 15;
+        if (customWidth === undefined) strokeWidth = 15;
         break;
       case 'metallic':
         strokeColor = "#D4AF37";
-        strokeWidth = 12;
+        if (customWidth === undefined) strokeWidth = 12;
         break;
       case 'vintage':
         strokeColor = "#8B5A2B";
-        strokeWidth = 20;
+        if (customWidth === undefined) strokeWidth = 20;
         break;
     }
 
@@ -4339,12 +5530,12 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       originX: 'center',
       originY: 'center',
       left: center.x,
-      top: center.y + (frameType === 'polaroid' ? 30 : 0),
-      width: w,
-      height: h + (frameType === 'polaroid' ? 60 : 0),
+      top: center.y + (frameType === 'polaroid' ? strokeWidth : 0),
+      width: w + (frameType === 'polaroid' ? strokeWidth * 2 : 0),
+      height: h + (frameType === 'polaroid' ? strokeWidth * 3.5 : 0),
       fill: 'transparent',
       stroke: strokeColor,
-      strokeWidth: strokeWidth,
+      strokeWidth: frameType === 'polaroid' ? 0 : strokeWidth,
       strokeUniform: strokeUniform,
       shadow: new fabric.Shadow({
         color: 'rgba(0,0,0,0.3)',
@@ -5140,7 +6331,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
         <div className="w-px h-6 bg-[#3A3A3A] mx-0.5 md:mx-1 shrink-0" />
 
-        <button className="h-8 w-8 hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white flex items-center justify-center rounded transition-colors shrink-0" title="Import Image Options" onClick={handleImportImageClick}>
+        <button className="h-8 w-8 hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white flex items-center justify-center rounded transition-colors shrink-0" title="Import Image" onClick={handleImportImageClick}>
           <Upload size={14} />
         </button>
         <input id="img-upload" type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
@@ -5312,9 +6503,186 @@ function dataURLtoFile(dataurl: string, filename: string): File {
               {/* Main Fabric Canvas Wrapper (hidden during comparison mode) */}
               <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
                  <canvas ref={canvasRef} className="block" />
-              </div>
+               </div>
 
-              {/* Empty State Overlay */}
+               {/* Dynamic Photoshop-style Brush Adjustment floating HUD and diameter preview */}
+                {showHud && hudPosition && (() => {
+                   const getRgba = (hex: string, alpha: number) => {
+                      let c = hex.replace('#', '');
+                      if (c.length === 3) {
+                         c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+                      }
+                      const r = parseInt(c.substring(0, 2), 16) || 0;
+                      const g = parseInt(c.substring(2, 4), 16) || 0;
+                      const b = parseInt(c.substring(4, 6), 16) || 0;
+                      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                   };
+
+                   const zoom = fabricRef.current?.getZoom() || 1;
+                   const size = brushSize * zoom;
+                   
+                   const strokeWidth = 3;
+                   const ringDiameter = Math.max(size, 48);
+                   const radius = (ringDiameter / 2) + 6;
+                   const padding = 12;
+                   const svgSize = ringDiameter + (padding * 2);
+                   const center = svgSize / 2;
+                   const circumference = 2 * Math.PI * radius;
+
+                   let percentage = 100;
+                   let strokeColor = '#3b82f6'; // Size: Blue
+
+                   if (activeBrushProperty === 'opacity') {
+                      percentage = brushOpacity;
+                      strokeColor = '#a855f7'; // Opacity: Purple/Magenta
+                   } else if (activeBrushProperty === 'hardness') {
+                      percentage = brushHardness;
+                      strokeColor = '#f59e0b'; // Hardness: Amber/Yellow
+                   } else {
+                      percentage = (brushSize / 500) * 100;
+                      strokeColor = '#3b82f6'; // Size: Blue
+                   }
+
+                   const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+                   let previewStyle: React.CSSProperties = {
+                      width: `${size}px`,
+                      height: `${size}px`,
+                      maxWidth: '450px',
+                      maxHeight: '450px',
+                      minWidth: '6px',
+                      minHeight: '6px',
+                      borderRadius: '9999px',
+                      border: '1.5px solid rgba(255, 255, 255, 0.9)',
+                      boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.45)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' width='8' height='8' fill='%230D0F13'/%3E%3Crect y='8' width='8' height='8' fill='%230D0F13'/%3E%3C/svg%3E")`,
+                      boxSizing: 'border-box',
+                      transition: 'width 75ms ease-out, height 75ms ease-out'
+                   };
+
+                   const baseColor = brushColor || '#ef4444';
+                   const opacity = brushOpacity / 100;
+                   const hPercent = brushHardness;
+
+                   const previewCoreStyle: React.CSSProperties = {
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '9999px',
+                      background: `radial-gradient(circle, ${getRgba(baseColor, opacity)} 0%, ${getRgba(baseColor, opacity * (hPercent / 100))} ${hPercent}%, transparent 100%)`,
+                      transition: 'all 50ms ease-out'
+                   };
+
+                   return (
+                      <div 
+                         id="brush-hud-overlay"
+                         className="absolute pointer-events-none z-[100] flex flex-col items-center justify-center select-none"
+                         style={{ 
+                            left: hudPosition.x, 
+                            top: hudPosition.y,
+                            transform: `translate(-50%, -50%) scale(${hudFadingOut ? 0.92 : 1})`,
+                            opacity: hudFadingOut ? 0 : 1,
+                            transition: 'opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.16, 1, 0.3, 1)',
+                         }}
+                      >
+                         {/* Circle Wrapper with SVG Progress Dial */}
+                         <div className="relative flex items-center justify-center" style={{ width: `${svgSize}px`, height: `${svgSize}px` }}>
+                            
+                            <svg 
+                               width={svgSize} 
+                               height={svgSize} 
+                               className="absolute top-0 left-0 pointer-events-none"
+                            >
+                               {/* Contrast dark dropshadow circle */}
+                               <circle 
+                                  cx={center} 
+                                  cy={center} 
+                                  r={radius} 
+                                  fill="none" 
+                                  stroke="rgba(0, 0, 0, 0.5)" 
+                                  strokeWidth={strokeWidth + 2} 
+                               />
+                               {/* Empty track */}
+                               <circle 
+                                  cx={center} 
+                                  cy={center} 
+                                  r={radius} 
+                                  fill="none" 
+                                  stroke="rgba(255, 255, 255, 0.15)" 
+                                  strokeWidth={strokeWidth} 
+                               />
+                               {/* Dynamic trace progress segment */}
+                               <circle 
+                                  cx={center} 
+                                  cy={center} 
+                                  r={radius} 
+                                  fill="none" 
+                                  stroke={strokeColor} 
+                                  strokeWidth={strokeWidth} 
+                                  strokeDasharray={circumference} 
+                                  strokeDashoffset={strokeDashoffset} 
+                                  strokeLinecap="round" 
+                                  transform={`rotate(-90 ${center} ${center})`}
+                                  className="transition-[stroke-dashoffset] duration-75 ease"
+                                  style={{
+                                     filter: `drop-shadow(0 0 3px ${strokeColor}cc)`,
+                                  }}
+                               />
+                            </svg>
+
+                            {/* Center circle brush tip container with checkerboard bg */}
+                            <div style={previewStyle as React.CSSProperties}>
+                               <div style={previewCoreStyle} />
+                            </div>
+                         </div>
+                         
+                         {/* Floating HUD Information Pill */}
+                         <div className="mt-4 bg-[#0B0D13]/95 backdrop-blur-xl border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.6)] rounded-full px-5 py-2.5 flex items-center gap-3 select-none animate-in fade-in duration-100 ease-out">
+                            {activeBrushProperty === 'size' && (
+                               <>
+                                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                     <Brush size={12} className="text-blue-400" />
+                                     <span>Size</span>
+                                  </div>
+                                  <div className="w-px h-3.5 bg-white/15" />
+                                  <div className="text-sm font-mono font-extrabold text-white">
+                                     {brushSize}px
+                                  </div>
+                               </>
+                            )}
+                            {activeBrushProperty === 'opacity' && (
+                               <>
+                                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                     <Droplets size={12} className="text-purple-400" />
+                                     <span>Opacity</span>
+                                  </div>
+                                  <div className="w-px h-3.5 bg-white/15" />
+                                  <div className="text-sm font-mono font-extrabold text-white">
+                                     {brushOpacity}%
+                                  </div>
+                               </>
+                            )}
+                            {activeBrushProperty === 'hardness' && (
+                               <>
+                                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                     <Circle size={12} className="text-amber-400 fill-amber-400/10" />
+                                     <span>Hardness</span>
+                                  </div>
+                                  <div className="w-px h-3.5 bg-white/15" />
+                                  <div className="text-sm font-mono font-extrabold text-white">
+                                     {brushHardness}%
+                                  </div>
+                               </>
+                            )}
+                         </div>
+                      </div>
+                   );
+                })()}
+                
+                {/* Empty State Overlay */}
               {isLoaded && artboards.length === 0 && (
                  <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
                     <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-[#1A1A1A] border border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
@@ -5626,7 +6994,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                            referrerPolicy="no-referrer"
                                            className="max-w-full max-h-full object-contain pointer-events-none" 
                                            style={{
-                                              backgroundColor: (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor || '#fff',
+                                              backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                               ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                            }}
                                        />
@@ -5699,7 +7067,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                   <div className="relative rounded-xl border border-[#222] bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
                                      <div className="w-full h-full flex items-center justify-center">
                                         <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none" style={{
-                                           backgroundColor: (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor || '#fff',
+                                           backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                            ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                         }} />
                                      </div>
@@ -5708,7 +7076,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                   <div className="relative rounded-xl border border-blue-500/20 bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
                                      <div className="w-full h-full flex items-center justify-center">
                                         <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none" style={{
-                                           backgroundColor: (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor || '#fff',
+                                           backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                            ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                         }} />
                                      </div>
@@ -5739,7 +7107,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                             >
                                <div className="w-full h-full flex items-center justify-center p-4 text-center">
                                   <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none mx-auto" style={{
-                                     backgroundColor: (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor || '#fff',
+                                     backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                      ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                   }} />
                                </div>
@@ -5768,7 +7136,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                             >
                                <div className="w-full h-full flex items-center justify-center p-4 text-center">
                                   <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none mx-auto" style={{
-                                     backgroundColor: (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor || '#fff',
+                                     backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                      ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                   }} />
                                </div>
@@ -6384,7 +7752,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                   <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushSize}px</span>
                                  </div>
                                  <input 
-                                   type="range" min="1" max="150" step="1" value={brushSize} 
+                                   type="range" min="1" max="500" step="1" value={brushSize} 
                                    onChange={(e) => setBrushSize(Number(e.target.value))} 
                                    className="w-full accent-blue-500 hover:accent-blue-400 h-2 md:h-1 bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer" 
                                  />
@@ -6481,8 +7849,257 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                <button className="flex-1 h-8 bg-[#2C2C2C] hover:bg-[#3A3A3A] rounded flex justify-center items-center gap-2 text-xs transition border border-[#3A3A3A]" onClick={flipX}><FlipHorizontal size={14}/> Flip X</button>
                                <button className="flex-1 h-8 bg-[#2C2C2C] hover:bg-[#3A3A3A] rounded flex justify-center items-center gap-2 text-xs transition border border-[#3A3A3A]" onClick={flipY}><FlipVertical size={14}/> Flip Y</button>
                             </div>
-                         </div>                                                 {/* Typography Module */}
-                          {(selectionType === 'i-text' || selectionType === 'text' || selectionType === 'textbox') && (
+                         </div>
+
+                          {/* Smart Collage Block Customization Panel */}
+                          {(() => {
+                             const activeObj = fabricRef.current?.getActiveObject();
+                             const isCollageSelected = activeObj && (
+                                (activeObj as any).isCollageBlock || 
+                                (activeObj.type === 'activeSelection' && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))
+                             );
+                             if (!isCollageSelected) return null;
+                             return (
+                                <div className="space-y-4 pt-4 border-t border-[#2C2C2C] pb-4 animate-fade-in">
+                                   <div className="text-[10px] uppercase font-bold tracking-wider text-blue-400 flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5"><Layout size={12}/> Smart Collage Cell Options</div>
+                                      <span className="text-[9px] text-[#A0A0A0] bg-[#222] px-1.5 py-0.5 rounded border border-[#333]">CELL EDIT</span>
+                                   </div>
+
+                                {/* Action Grid */}
+                                <div className="grid grid-cols-2 gap-2 bg-[#141414] border border-[#222] p-2.5 rounded-lg">
+                                   {/* Background color */}
+                                   <div className="space-y-1">
+                                      <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Cell Fill</span>
+                                      <div className="flex gap-2">
+                                         <div className="w-8 h-8 rounded shrink-0 border border-[#2a2a2a] shadow-inner" style={{ backgroundColor: collageBgColor }} />
+                                         <div className="flex-1">
+                                            <ColorPickerTrigger 
+                                               color={collageBgColor} 
+                                               onChange={(color) => {
+                                                  setCollageBgColor(color);
+                                                  updateCollageBlockStyleProperty('fill', color);
+                                               }} 
+                                            />
+                                         </div>
+                                      </div>
+                                   </div>
+
+                                   {/* Border color */}
+                                   <div className="space-y-1">
+                                      <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Border Color</span>
+                                      <div className="flex gap-2">
+                                         <div className="w-8 h-8 rounded shrink-0 border border-[#2a2a2a] shadow-inner" style={{ backgroundColor: collageBorderStyle === 'none' ? 'transparent' : collageBorderColor }} />
+                                         <div className="flex-1">
+                                            <ColorPickerTrigger 
+                                               color={collageBorderColor} 
+                                               onChange={(color) => {
+                                                  setCollageBorderColor(color);
+                                                  updateCollageBlockStyleProperty('stroke', color);
+                                               }} 
+                                            />
+                                         </div>
+                                      </div>
+                                   </div>
+                                </div>
+
+                                {/* Border Style, Thickness & Corner Radius */}
+                                <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
+                                   <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">Border & Radius Controls</span>
+                                   
+                                   {/* Style selection button row */}
+                                   <div>
+                                      <span className="text-[9px] text-[#808080] block mb-1">Border Style</span>
+                                      <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                                         {['none', 'solid', 'dashed'].map((st) => (
+                                            <button
+                                               key={st}
+                                               type="button"
+                                               onClick={() => {
+                                                  setCollageBorderStyle(st as any);
+                                                  updateCollageBlockStyleProperty('borderStyle', st);
+                                               }}
+                                               className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${collageBorderStyle === st ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
+                                            >
+                                               {st}
+                                            </button>
+                                         ))}
+                                      </div>
+                                   </div>
+
+                                   {/* Stroke width & corner radius range controls */}
+                                   <div className="space-y-3 pt-1">
+                                      <div>
+                                         <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
+                                            <span>Border Thickness</span>
+                                            <span className="font-mono text-blue-400 text-[10px] font-bold">{collageBorderWidth}px</span>
+                                         </div>
+                                         <input 
+                                            type="range" min="0" max="50" step="1" 
+                                            value={collageBorderWidth} 
+                                            onChange={(e) => {
+                                               const val = Number(e.target.value);
+                                               setCollageBorderWidth(val);
+                                               updateCollageBlockStyleProperty('strokeWidth', val);
+                                            }} 
+                                            className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                         />
+                                      </div>
+
+                                      {/* Custom Toggle for Separate Corner Rounding */}
+                                      <div className="flex items-center justify-between pt-1 pb-1 border-t border-[#1C1C1C]">
+                                         <span className="text-[9px] text-[#8A8A8A]">Round Corners Separately</span>
+                                         <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                               type="checkbox" 
+                                               className="sr-only peer" 
+                                               checked={useIndividualCorners}
+                                               onChange={(e) => {
+                                                  const val = e.target.checked;
+                                                  updateCollageBlockStyleProperty('useIndividualCorners', val);
+                                               }}
+                                            />
+                                            <div className="w-7 h-4 bg-[#2C2C2C] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#A0A0A0] peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                                         </label>
+                                      </div>
+
+                                      {useIndividualCorners ? (
+                                         <div className="grid grid-cols-2 gap-x-2 gap-y-2 pt-1 border-t border-[#1C1C1C]">
+                                            {/* Top Left */}
+                                            <div>
+                                               <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                                  <span>Top Left</span>
+                                                  <span className="font-mono text-blue-400 text-[8px] font-bold">{collageCornerTL}%</span>
+                                               </div>
+                                               <input 
+                                                  type="range" min="0" max="100" step="1" 
+                                                  value={collageCornerTL} 
+                                                  onChange={(e) => {
+                                                     const val = Number(e.target.value);
+                                                     updateCollageBlockStyleProperty('rx_tl', val);
+                                                  }} 
+                                                  className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                               />
+                                            </div>
+                                            {/* Top Right */}
+                                            <div>
+                                               <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                                  <span>Top Right</span>
+                                                  <span className="font-mono text-blue-400 text-[8px] font-bold">{collageCornerTR}%</span>
+                                               </div>
+                                               <input 
+                                                  type="range" min="0" max="100" step="1" 
+                                                  value={collageCornerTR} 
+                                                  onChange={(e) => {
+                                                     const val = Number(e.target.value);
+                                                     updateCollageBlockStyleProperty('rx_tr', val);
+                                                  }} 
+                                                  className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                               />
+                                            </div>
+                                            {/* Bottom Left */}
+                                            <div>
+                                               <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                                  <span>Bottom Left</span>
+                                                  <span className="font-mono text-blue-400 text-[8px] font-bold">{collageCornerBL}%</span>
+                                               </div>
+                                               <input 
+                                                  type="range" min="0" max="100" step="1" 
+                                                  value={collageCornerBL} 
+                                                  onChange={(e) => {
+                                                     const val = Number(e.target.value);
+                                                     updateCollageBlockStyleProperty('rx_bl', val);
+                                                  }} 
+                                                  className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                               />
+                                            </div>
+                                            {/* Bottom Right */}
+                                            <div>
+                                               <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                                  <span>Bottom Right</span>
+                                                  <span className="font-mono text-blue-400 text-[8px] font-bold">{collageCornerBR}%</span>
+                                               </div>
+                                               <input 
+                                                  type="range" min="0" max="100" step="1" 
+                                                  value={collageCornerBR} 
+                                                  onChange={(e) => {
+                                                     const val = Number(e.target.value);
+                                                     updateCollageBlockStyleProperty('rx_br', val);
+                                                  }} 
+                                                  className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                               />
+                                            </div>
+                                         </div>
+                                      ) : (
+                                         <div>
+                                            <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
+                                               <span>Cell Corner Rounding (%)</span>
+                                               <span className="font-mono text-blue-400 text-[10px] font-bold">{collageCornerRadius}%</span>
+                                            </div>
+                                            <input 
+                                               type="range" min="0" max="100" step="1" 
+                                               value={collageCornerRadius} 
+                                               onChange={(e) => {
+                                                  const val = Number(e.target.value);
+                                                  updateCollageBlockStyleProperty('rx', val);
+                                               }} 
+                                               className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                            />
+                                         </div>
+                                      )}
+                                   </div>
+                                </div>
+
+                                {/* Image filling interactive controls */}
+                                <div className="space-y-2 bg-[#141414] border border-[#222] p-3 rounded-lg">
+                                   <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">Fill Cell with Image</span>
+                                   <div className="pt-1">
+                                      <label className="relative flex flex-col items-center justify-center border border-dashed border-[#3A3A3A] hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-[#0C0C0C] hover:bg-blue-950/10 group">
+                                         <LucideImage size={24} className="text-[#8A8A8A] group-hover:text-blue-400 mb-1.5 transition-colors" />
+                                         <span className="text-[10px] font-bold text-white group-hover:text-blue-300">Upload Photograph</span>
+                                         <span className="text-[9px] text-[#6A6A6A] mt-0.5">Crop and object-fit cover perfectly</span>
+                                         <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            onChange={(e) => {
+                                               const file = e.target.files?.[0];
+                                               if (file) fillCollageBlockWithImage(file);
+                                            }} 
+                                         />
+                                      </label>
+                                   </div>
+                                </div>
+
+                                {/* Text alignment helpers relative block to cell */}
+                                <div className="space-y-2 bg-[#141414] border border-[#222] p-3 rounded-lg">
+                                   <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">Add Text Overlay (Relative Align)</span>
+                                   <div className="grid grid-cols-5 gap-1 pt-1">
+                                      {[
+                                         { label: 'Left', id: 'left' as const, icon: <AlignLeft size={13} /> },
+                                         { label: 'Top', id: 'top' as const, icon: <ChevronUp size={13} /> },
+                                         { label: 'Center', id: 'center' as const, icon: <AlignJustify size={13} /> },
+                                         { label: 'Bot', id: 'bottom' as const, icon: <ChevronDown size={13} /> },
+                                         { label: 'Right', id: 'right' as const, icon: <AlignRight size={13} /> },
+                                      ].map((btn) => (
+                                         <button
+                                            key={btn.id}
+                                            type="button"
+                                            onClick={() => addAlignedCollageText(btn.id)}
+                                            className="h-11 bg-[#1F1F1F] hover:bg-blue-600 border border-[#2C2C2C] hover:border-blue-500 rounded flex flex-col items-center justify-center text-[#8A8A8A] hover:text-white transition-all gap-1 shadow-sm"
+                                            title={`Add Text Aligned to ${btn.label}`}
+                                         >
+                                            {btn.icon}
+                                            <span className="text-[8px] font-bold font-sans tracking-tight">{btn.label}</span>
+                                         </button>
+                                      ))}
+                                   </div>
+                                </div>
+                             </div>
+                          );
+                       })()}
+                      {/* Typography Module */}
+                       {(selectionType === 'i-text' || selectionType === 'text' || selectionType === 'textbox') && (
                              <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in">
                                 <div className="flex items-center justify-between">
                                   <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
@@ -6753,15 +8370,52 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                          {/* Artboard Assignment and Alignment Module */}
                          <div className="space-y-3 pt-4 border-t border-[#2C2C2C] mb-4">
                             <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
-                               <SquareDashed size={12}/> Artboard Snapping & Align
+                               <span className="flex items-center gap-2">
+                                 <SquareDashed size={12}/> Alignment & Spacing
+                                 {parentAlignmentObj && (
+                                   <span className="text-[8px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-tight">
+                                     KEY OBJECT ACTIVE
+                                   </span>
+                                 )}
+                               </span>
                             </div>
+
+                            {/* Key Object Alignment Helper text */}
+                            {selectionType === 'activeSelection' && (
+                              <div className="p-2.5 rounded-lg bg-blue-950/20 border border-blue-500/10 text-[10px] text-[#A0A0A0] space-y-1.5 my-2">
+                                <div className="flex justify-between items-center text-white text-xs font-semibold">
+                                   <span>Key Object (Parent Alignment)</span>
+                                   {parentAlignmentObj ? (
+                                     <button 
+                                       onClick={() => {
+                                         parentAlignmentObjRef.current = null;
+                                         setParentAlignmentObj(null);
+                                         if (fabricRef.current) fabricRef.current.requestRenderAll();
+                                       }}
+                                       className="text-[9px] text-[#A0A0A0] hover:text-white underline font-normal bg-transparent border-0 cursor-pointer"
+                                     >
+                                        Clear Parent
+                                     </button>
+                                   ) : null}
+                                </div>
+                                {parentAlignmentObj ? (
+                                  <p className="text-blue-300 font-mono">
+                                    Using <span className="font-bold underline text-white">{(parentAlignmentObj as any).name || (parentAlignmentObj as any).type || "object"}</span> as Parent
+                                  </p>
+                                ) : (
+                                  <p className="text-[#8A8A8A]">
+                                    Pro Tip: Hold <kbd className="px-1 py-0.5 bg-[#2C2C2C] text-white rounded font-mono text-[9px]">Ctrl / ⌘</kbd> and click any selected item to designate it as the **Parent Container**.
+                                  </p>
+                                )}
+                              </div>
+                            )}
 
                             {/* Quick alignment buttons targeting assigned or closest artboard */}
                             <div className="space-y-3">
                                <div className="flex flex-col gap-1.5">
                                  <div className="text-[10px] text-[#A0A0A0] flex justify-between items-center">
-                                   <span>Snap Alignment</span>
-                                   <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1 rounded uppercase font-bold tracking-tighter">Artboard</span>
+                                   <span>Snap Alignment ({parentAlignmentObj ? "Key Object" : "Artboard"})</span>
+                                   <span className="text-[9px] bg-[#1a2e3b] text-blue-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-tighter">{parentAlignmentObj ? "Parent" : "Artboard"}</span>
                                  </div>
                                  <div className="grid grid-cols-3 gap-1">
                                     <button onClick={() => alignSelection('left')} className="h-8 bg-[#282828] hover:bg-[#323232] text-white rounded transition flex items-center justify-center border border-transparent hover:border-[#444]" title="Align Left"><AlignStartVertical size={14}/></button>
@@ -6775,8 +8429,22 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                </div>
 
                                <div className="flex flex-col gap-1.5">
-                                 <div className="text-[10px] text-[#A0A0A0]">Fitting & Sizing</div>
+                                 <div className="text-[10px] text-[#A0A0A0] flex justify-between items-center">
+                                    <span>Fitting, Sizing & Spacing</span>
+                                 </div>
                                  <div className="grid grid-cols-2 gap-1">
+                                    <button onClick={() => alignSelection('distributeH')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]" title="Equal Space / Distribute Horizontally">Distribute Horiz</button>
+                                    <button onClick={() => alignSelection('distributeV')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]" title="Equal Space / Distribute Vertically">Distribute Vert</button>
+                                    
+                                    {parentAlignmentObj && (
+                                      <>
+                                        <button onClick={() => alignSelection('utils_fitInside')} className="h-8 bg-blue-950/40 hover:bg-blue-900/50 text-[10px] text-blue-300 rounded transition flex items-center justify-center gap-1.5 px-2 border border-blue-900/30 font-semibold" title="Fit Children Inside Parent">Fit inside Parent</button>
+                                        <button onClick={() => alignSelection('utils_centerInside')} className="h-8 bg-blue-950/40 hover:bg-blue-900/50 text-[10px] text-blue-300 rounded transition flex items-center justify-center gap-1.5 px-2 border border-blue-900/30 font-semibold" title="Center Children Inside Parent">Center in Parent</button>
+                                        <button onClick={() => alignSelection('matchWidth')} className="h-8 bg-blue-950/20 hover:bg-blue-900/35 text-[10px] text-blue-300 border border-blue-900/40 rounded transition flex items-center justify-center gap-1.5 px-2" title="Match Parent Width">Match Width</button>
+                                        <button onClick={() => alignSelection('matchHeight')} className="h-8 bg-blue-950/20 hover:bg-blue-900/35 text-[10px] text-blue-300 border border-blue-900/40 rounded transition flex items-center justify-center gap-1.5 px-2" title="Match Parent Height">Match Height</button>
+                                      </>
+                                    )}
+
                                     <button onClick={() => alignSelection('fit')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]">Fit to Artboard</button>
                                     <button onClick={() => alignSelection('fill')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]">Fill Artboard</button>
                                     <button onClick={() => alignSelection('fitWidth')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]">Fit Width</button>
@@ -6835,8 +8503,12 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                </div>
 
                                {/* Smart Collage Builder */}
-                               <div className="pt-4 border-t border-[#2C2C2C]">
-                                  <div className="text-[10px] text-[#A0A0A0] mb-2 font-semibold flex items-center gap-1"><Layout size={12}/> Smart Collage Builder</div>
+                               <div className="pt-4 border-t border-[#2C2C2C] space-y-3">
+                                  <div className="text-[10px] text-[#A0A0A0] font-semibold flex items-center justify-between">
+                                     <div className="flex items-center gap-1"><Layout size={12}/> Smart Collage Builder</div>
+                                     <span className="text-[9px] text-blue-400 font-bold bg-blue-500/10 px-1.5 py-0.5 rounded">PERFECT FIT</span>
+                                  </div>
+                                  
                                   <div className="grid grid-cols-3 gap-1.5">
                                      {[
                                         { l: '2x Grid', i: '2x' },
@@ -6846,11 +8518,99 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                         { l: '2T 1B', i: '2-1' },
                                         { l: 'Filmstrip', i: 'film' }
                                      ].map(c => (
-                                        <button key={c.i} className="py-2 bg-[#202020] hover:bg-[#2A2A2A] border border-[#303030] rounded text-[9px] text-[#8A8A8A] hover:text-white flex flex-col items-center justify-center gap-1">
+                                        <button 
+                                          key={c.i} 
+                                          onClick={() => generateSmartCollage(c.i)}
+                                          className="py-2 bg-[#202020] hover:bg-[#2A2A2A] border border-[#303030] rounded text-[9px] text-[#8A8A8A] hover:text-white flex flex-col items-center justify-center gap-1 transition"
+                                        >
                                            <div className="w-6 h-6 border border-[#555] rounded-sm opacity-50 flex items-center justify-center text-[8px] font-mono">{c.i}</div>
                                            {c.l}
                                         </button>
                                      ))}
+                                  </div>
+
+                                  <div className="space-y-2.5 bg-[#1A1A1A] p-2.5 rounded-lg border border-[#262626]">
+                                     <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block mb-1">Preset Options (Perfect Fit)</span>
+                                     
+                                     <div>
+                                        <div className="flex justify-between items-center text-[10px] text-[#8A8A8A] mb-1">
+                                           <span>Outer Padding (Margin)</span>
+                                           <span className="font-mono text-white text-[10px]">{collagePaddingPercent}%</span>
+                                        </div>
+                                        <input 
+                                           type="range" min="0" max="15" step="1" 
+                                           value={collagePaddingPercent} 
+                                           onChange={(e) => setCollagePaddingPercent(Number(e.target.value))} 
+                                           className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                        />
+                                     </div>
+
+                                     <div>
+                                        <div className="flex justify-between items-center text-[10px] text-[#8A8A8A] mb-1">
+                                           <span>Inner Gap (Spacing)</span>
+                                           <span className="font-mono text-white text-[10px]">{collageGapPercent}%</span>
+                                        </div>
+                                        <input 
+                                           type="range" min="0" max="10" step="0.5" 
+                                           value={collageGapPercent} 
+                                           onChange={(e) => setCollageGapPercent(Number(e.target.value))} 
+                                           className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                        />
+                                     </div>
+
+                                     <div className="grid grid-cols-2 gap-2 pt-1">
+                                        <div>
+                                           <span className="text-[9px] text-[#8A8A8A] block mb-1">Block Fill</span>
+                                           <div className="flex gap-1.5 items-center">
+                                              <div className="w-5 h-5 rounded border border-[#3A3A3A] shrink-0" style={{ backgroundColor: collageBgColor }} />
+                                              <ColorPickerTrigger color={collageBgColor} onChange={setCollageBgColor} />
+                                           </div>
+                                        </div>
+                                        <div>
+                                           <span className="text-[9px] text-[#8A8A8A] block mb-1">Border Color</span>
+                                           <div className="flex gap-1.5 items-center">
+                                              <div className="w-5 h-5 rounded border border-[#3A3A3A] shrink-0" style={{ backgroundColor: collageBorderColor }} />
+                                              <ColorPickerTrigger color={collageBorderColor} onChange={setCollageBorderColor} />
+                                           </div>
+                                        </div>
+                                     </div>
+
+                                     <div className="grid grid-cols-2 gap-2 pt-1">
+                                        <div>
+                                           <span className="text-[9px] text-[#8A8A8A] block mb-1">Border Width</span>
+                                           <input 
+                                              type="number" min="0" max="10" 
+                                              value={collageBorderWidth} 
+                                              onChange={(e) => setCollageBorderWidth(Number(e.target.value))} 
+                                              className="w-full h-6 bg-[#181818] border border-[#3A3A3A] text-[10px] text-white px-1.5 rounded outline-none focus:border-blue-500"
+                                           />
+                                        </div>
+                                        <div>
+                                           <span className="text-[9px] text-[#8A8A8A] block mb-1">Corner Radius</span>
+                                           <input 
+                                              type="number" min="0" max="100" 
+                                              value={collageCornerRadius} 
+                                              onChange={(e) => setCollageCornerRadius(Number(e.target.value))} 
+                                              className="w-full h-6 bg-[#181818] border border-[#3A3A3A] text-[10px] text-white px-1.5 rounded outline-none focus:border-blue-500"
+                                           />
+                                        </div>
+                                     </div>
+
+                                     <div>
+                                        <span className="text-[9px] text-[#8A8A8A] block mb-1 font-sans">Border Style</span>
+                                        <div className="grid grid-cols-3 gap-1 bg-[#181818] border border-[#2A2A2A] rounded p-0.5">
+                                           {['none', 'solid', 'dashed'].map((st) => (
+                                              <button
+                                                 key={st}
+                                                 type="button"
+                                                 onClick={() => setCollageBorderStyle(st as any)}
+                                                 className={`py-1 text-[9px] font-semibold rounded capitalize transition ${collageBorderStyle === st ? 'bg-[#3A3A3A] text-white' : 'text-[#8A8A8A] hover:text-white'}`}
+                                              >
+                                                 {st}
+                                              </button>
+                                           ))}
+                                        </div>
+                                     </div>
                                   </div>
                                </div>
 
@@ -6862,9 +8622,12 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                         <input type="checkbox" className="accent-blue-500" checked={!!artboards.find(b => b.id === activeArtboardId)?.showMargins} onChange={(e) => updateArtboardPropDirect(activeArtboardId, 'showMargins', e.target.checked, true)} />
                                         Show Print Margins (0.25")
                                      </label>
-                                     <button className="w-full py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-between items-center transition-colors">
+                                     <button 
+                                       onClick={generateBleed}
+                                       className="w-full py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-between items-center transition-colors"
+                                     >
                                         <span>Generate 0.125" Bleed</span>
-                                        <Plus size={10} />
+                                        <Plus className="opacity-70" size={12} />
                                      </button>
                                   </div>
                                </div>
@@ -6924,7 +8687,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                  <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushSize}px</span>
                                 </div>
                                 <input 
-                                  type="range" min="1" max="150" step="1" value={brushSize} 
+                                  type="range" min="1" max="500" step="1" value={brushSize} 
                                   onChange={(e) => setBrushSize(Number(e.target.value))} 
                                   className="w-full accent-blue-500 h-1" 
                                 />
@@ -7345,6 +9108,20 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                ))}
                             </div>
                          </div>
+
+                         {selectionType === 'frameGroup' && (
+                             <div className="space-y-1 mt-3">
+                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
+                                  <span>Border Width</span>
+                                  <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{frameBorderWidth}px</span>
+                                 </div>
+                                 <input 
+                                   type="range" min="1" max="150" step="1" value={frameBorderWidth} 
+                                   onChange={(e) => updateFrameBorderWidth(Number(e.target.value))} 
+                                   className="w-full accent-orange-500 h-1"
+                                 />
+                             </div>
+                         )}
 
                          {/* Document Prep */}
                          <div className="space-y-2 mt-4 pt-4 border-t border-[#2C2C2C]">
@@ -8026,8 +9803,9 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       {/* Context Menu Portal */}
       {activeContextMenu && createPortal(
          <div 
+           ref={contextMenuRef}
            className="fixed z-[9999] w-52 bg-[#1A1A1A] border border-[#2D2D2D] shadow-[0_12px_48px_rgba(0,0,0,0.7)] rounded-xl overflow-hidden py-1 context-menu-container"
-           style={{ left: activeContextMenu.x, top: activeContextMenu.y }}
+           style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
            onClick={(e) => e.stopPropagation()}
          >
             {activeContextMenu.obj ? (
@@ -8058,7 +9836,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                              const sel = group.toActiveSelection();
                              fabricRef.current?.setActiveObject(sel);
                          } else {
-                             const items = (group as fabric.Group).removeAll();
+                             const items = (group as any).removeAll();
                              fabricRef.current?.remove(group as fabric.Group);
                              items.forEach(i => fabricRef.current?.add(i));
                              const sel = new fabric.ActiveSelection(items, { canvas: fabricRef.current });

@@ -52,7 +52,26 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       relativeY = (obj.top || 0) - artboard.y;
     }
 
-    const data = obj.toObject(['id', 'artboardId', 'layerId', 'customFilters', 'name', 'customName', 'locked', 'selectable', 'evented', 'isFrameGroup', 'frameType']);
+    const data = obj.toObject([
+      'id', 
+      'artboardId', 
+      'layerId', 
+      'customFilters', 
+      'name', 
+      'customName', 
+      'locked', 
+      'selectable', 
+      'evented', 
+      'isFrameGroup', 
+      'frameType',
+      'isCollageBlock',
+      'cornerRoundingPercent',
+      'useIndividualCorners',
+      'cornerTopLeftPercent',
+      'cornerTopRightPercent',
+      'cornerBottomLeftPercent',
+      'cornerBottomRightPercent'
+    ]);
     
     toPutObjects.push({
       id: objId,
@@ -127,6 +146,29 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
           if (record.data.layerId) enlObj.layerId = record.data.layerId;
           if (record.data.isFrameGroup) enlObj.set('isFrameGroup', record.data.isFrameGroup);
           if (record.data.frameType) enlObj.set('frameType', record.data.frameType);
+          
+          if (record.data.isCollageBlock) {
+             enlObj.isCollageBlock = true;
+             (enlObj as any).isCollageBlock = true;
+          }
+          if (record.data.cornerRoundingPercent !== undefined) {
+             (enlObj as any).cornerRoundingPercent = record.data.cornerRoundingPercent;
+          }
+          if (record.data.useIndividualCorners !== undefined) {
+             (enlObj as any).useIndividualCorners = record.data.useIndividualCorners;
+          }
+          if (record.data.cornerTopLeftPercent !== undefined) {
+             (enlObj as any).cornerTopLeftPercent = record.data.cornerTopLeftPercent;
+          }
+          if (record.data.cornerTopRightPercent !== undefined) {
+             (enlObj as any).cornerTopRightPercent = record.data.cornerTopRightPercent;
+          }
+          if (record.data.cornerBottomLeftPercent !== undefined) {
+             (enlObj as any).cornerBottomLeftPercent = record.data.cornerBottomLeftPercent;
+          }
+          if (record.data.cornerBottomRightPercent !== undefined) {
+             (enlObj as any).cornerBottomRightPercent = record.data.cornerBottomRightPercent;
+          }
           
           if (record.data.customFilters) {
             enlObj.customFilters = record.data.customFilters;
