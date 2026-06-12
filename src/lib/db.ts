@@ -89,11 +89,11 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   history: EntityTable<HistoryRecord, 'id'>;
 };
 
-db.version(6).stores({
+db.version(7).stores({
   documents: '++id, name, createdAt, updatedAt',
   nodePositions: 'id',
   customFormulas: '++id, name, createdAt',
-  assets: 'assetId, hash, createdAt',
+  assets: 'assetId, hash, createdAt, thumbnailId',
   artboards: 'id, documentId, name, order',
   objects: 'id, documentId, artboardId, layerId, type',
   layers: 'id, documentId, artboardId, order',

@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Download, Loader2, AlertCircle } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 
-// Initialize the pdf.js worker using the bundled asset url from Vite
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+// Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 interface PdfViewerProps {
   url: string;

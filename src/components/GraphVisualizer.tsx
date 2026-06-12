@@ -1699,6 +1699,51 @@ export default function GraphVisualizer() {
                   </button>
                 )}
 
+              {(() => {
+                const nodeVal = String(contextMenu.node.value || "");
+                const nodePath = String(contextMenu.node.path);
+                const rawObj = typeof contextMenu.node.rawValue === 'object' ? contextMenu.node.rawValue : null;
+                const assetIdToCheck = rawObj?.url || rawObj?.filename || nodeVal;
+                
+                const state = useStore.getState();
+                let assetMimeType = '';
+                if (assetIdToCheck) {
+                  const assetMeta = state.uploadedMediaMetadata[assetIdToCheck];
+                  if (assetMeta && assetMeta.mimeType) {
+                    assetMimeType = assetMeta.mimeType.toLowerCase();
+                  }
+                }
+
+                const isImageNode = 
+                  getMediaType(nodeVal) === 'image' || 
+                  nodePath.match(/\.(png|jpe?g|gif|webp|image)$/i) || 
+                  nodePath.endsWith('_image_node') ||
+                  assetMimeType.startsWith('image/');
+
+                if (isImageNode && contextMenu.node.path !== "root") {
+                  return (
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          if (state.openWorkspaceTab) {
+                            state.openWorkspaceTab(contextMenu.node.path, false);
+                          }
+                          if (state.setExpandedJsNodeId) {
+                            state.setExpandedJsNodeId(contextMenu.node.path);
+                          }
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Edit2 size={16} />
+                        Edit Image
+                      </button>
+                  );
+                }
+                return null;
+              })()}
+
               {String(contextMenu.node.name).endsWith("_api_node") === false &&
                 (contextMenu.node.type === "string" ||
                   contextMenu.node.type === "number") && (

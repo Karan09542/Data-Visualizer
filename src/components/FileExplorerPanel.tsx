@@ -600,7 +600,8 @@ function isFileSystemMeaningful(value: any): boolean {
 
     setExplorerExpandedPath(parentDotPath, true);
     if (actualType !== "folder") {
-      openWorkspaceTab(finalPath, true);      
+      openWorkspaceTab(finalPath, true);
+      setExpandedJsNodeId(finalPath);
     }
 
     setCreatingInPath(null);
@@ -925,6 +926,7 @@ function isFileSystemMeaningful(value: any): boolean {
               if (!isFolder) {
                 e.stopPropagation();
                 openWorkspaceTab(item.id, false); // false = not preview
+                setExpandedJsNodeId(item.id);
               }
             }}
             style={{ paddingLeft: indentPadding }}
