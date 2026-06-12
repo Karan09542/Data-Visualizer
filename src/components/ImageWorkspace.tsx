@@ -10233,6 +10233,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                   <span className="text-xs text-slate-300">Send to Back</span>
                   <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
                </div>
+               <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-300">Context Menu (Mobile)</span>
+                  <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">2-Finger Hold</span></div>
+               </div>
             </div>
           </div>
         </div>,

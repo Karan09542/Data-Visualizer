@@ -18,6 +18,7 @@ import {
   Check
 } from "lucide-react";
 import { setValueAtPath } from "../utils/pathUtils";
+import { TaskImagePreview } from "./TaskImagePreview";
 
 export interface TodoTask {
   id: string;
@@ -29,6 +30,7 @@ export interface TodoTask {
   tags?: string[];
   notes?: string;
   tasks?: TodoTask[];
+  imageHashes?: string[];
 }
 
 export interface TodoNodeData {
@@ -558,38 +560,45 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                   <div className="w-1.5" />
                 )}
 
-                {/* Title */}
-                {editingTaskId === task.id ? (
-                  <input
-                    type="text"
-                    value={editingText}
-                    onChange={(e) => setEditingText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        saveEditedTaskName(task.id, editingText);
-                      } else if (e.key === "Escape") {
-                        setEditingTaskId(null);
-                      }
-                    }}
-                    onBlur={() => saveEditedTaskName(task.id, editingText)}
-                    autoFocus
-                    className="bg-[#111625] text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none flex-1 font-normal"
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span 
-                    className={`text-[12.5px] font-normal leading-normal truncate flex-1 cursor-text ${
-                      isDone 
-                        ? 'text-slate-500 line-through' 
-                        : 'text-slate-100 hover:text-white transition-colors'
-                    }`}
-                    onDoubleClick={() => startEditingTask(task.id, task.text)}
-                    title="Double-click to rename"
-                  >
-                    {task.text}
-                  </span>
-                )}
+                  <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                    {/* Title */}
+                    {editingTaskId === task.id ? (
+                      <input
+                        type="text"
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            saveEditedTaskName(task.id, editingText);
+                          } else if (e.key === "Escape") {
+                            setEditingTaskId(null);
+                          }
+                        }}
+                        onBlur={() => saveEditedTaskName(task.id, editingText)}
+                        autoFocus
+                        className="bg-[#111625] text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span 
+                        className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${
+                          isDone 
+                            ? 'text-slate-500 line-through' 
+                            : 'text-slate-100 hover:text-white transition-colors'
+                        }`}
+                        onDoubleClick={() => startEditingTask(task.id, task.text)}
+                        title="Double-click to rename"
+                      >
+                        {task.text}
+                      </span>
+                    )}
+
+                    {/* Image Preview */}
+                    {task.imageHashes && task.imageHashes.length > 0 && (
+                      <TaskImagePreview imageHashes={task.imageHashes} compact={true} />
+                    )}
+                  </div>
 
                 {/* Clickable Priority/Done Pill Badge (cycles priority on click!) */}
                 <button 

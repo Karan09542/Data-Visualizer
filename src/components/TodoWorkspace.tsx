@@ -46,6 +46,8 @@ import { TodoSearchBar } from "./TodoSearchBar";
 import { cn } from "@/lib/utils";
 import Markdown from "react-markdown";
 import katex from "katex";
+import { TaskImagePreview } from "./TaskImagePreview";
+import { TodoImageGallery } from "./TodoImageGallery";
 
 // Suppress react-fit warnings
 const originalWarn = console.warn;
@@ -1937,6 +1939,10 @@ function TodoWorkspaceItem({
             onFocus={() => onSelectTask(task.id)}
           />
 
+          {task.imageHashes && task.imageHashes.length > 0 && (
+             <TaskImagePreview imageHashes={task.imageHashes} compact={true} />
+          )}
+
           {/* Row metadata visual list (clickable badge popovers!) */}
           {(task.priority ||
             task.dueDate ||
@@ -2965,6 +2971,12 @@ function TodoTaskDetails({
             </div>
           </div>
         </div>
+
+        {/* Attachments Section */}
+        <TodoImageGallery 
+          imageHashes={foundTask.imageHashes} 
+          onChange={(newHashes) => onUpdate(foundTask!.id, { imageHashes: newHashes })} 
+        />
 
         <div className="h-px w-full bg-slate-100 dark:bg-slate-800/60 my-2 font-sans"></div>
 
