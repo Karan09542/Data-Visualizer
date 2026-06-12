@@ -1445,6 +1445,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (newY + rect.height > window.innerHeight) {
         newY = window.innerHeight - rect.height - padding;
       }
+      
+      // additional check in case menu is huge
+      if (newX < padding) newX = padding;
+      if (newY < padding) newY = padding;
 
       el.style.left = `${newX}px`;
       el.style.top = `${newY}px`;
@@ -4508,20 +4512,58 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       validateViewport();
     });
 
-    // Mobile Swipe Navigation and Double Tap
+    // Mobile Swipe Navigation and Double Tap / Long Press Context Menu
     let touchStartX = 0;
     let touchStartY = 0;
     let lastTapTime = 0;
+    let twoFingerTouchTimer: any = null;
 
     const handleTouchStart = (e: TouchEvent) => {
        if (e.touches.length === 1) {
           touchStartX = e.touches[0].clientX;
           touchStartY = e.touches[0].clientY;
+       } else if (e.touches.length === 2 && fabricRef.current) {
+          // Detect logic for two-finger context menu
+          const evt = e.touches[0];
+          twoFingerTouchTimer = setTimeout(() => {
+             if (!fabricRef.current) return;
+             
+             // Pass the original touch event which has e.touches
+             const targetInfo = fabricRef.current.findTarget(e as any);
+             const target = targetInfo?.target;
+
+             let activeObjects = fabricRef.current.getActiveObjects();
+
+             if (target && !activeObjects.includes(target as any)) {
+               fabricRef.current.setActiveObject(target as any);
+               fabricRef.current.requestRenderAll();
+               activeObjects = [target as any];
+             }
+
+             setActiveContextMenu({
+               x: evt.clientX,
+               y: evt.clientY,
+               obj: (target as any) || null,
+               targets: activeObjects
+             });
+          }, 400); // 400ms hold
+       }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+       if (twoFingerTouchTimer && e.touches.length < 2) {
+           clearTimeout(twoFingerTouchTimer);
+           twoFingerTouchTimer = null;
        }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
+       if (twoFingerTouchTimer) {
+           clearTimeout(twoFingerTouchTimer);
+           twoFingerTouchTimer = null;
+       }
        if (!isMobileRef.current) return;
+
        
        // Handle Swipe
        if (e.changedTouches.length === 1) {
@@ -4574,6 +4616,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
     if (canvas.upperCanvasEl) {
        canvas.upperCanvasEl.addEventListener('touchstart', handleTouchStart as any, { passive: true });
+       canvas.upperCanvasEl.addEventListener('touchmove', handleTouchMove as any, { passive: true });
        canvas.upperCanvasEl.addEventListener('touchend', handleTouchEnd as any, { passive: true });
     }
 
@@ -4749,6 +4792,9 @@ function dataURLtoFile(dataurl: string, filename: string): File {
          upperCanvasEl.removeEventListener('touchstart', touchStartHandler as any);
          upperCanvasEl.removeEventListener('touchmove', touchMoveHandler as any);
          upperCanvasEl.removeEventListener('touchend', touchEndHandler as any);
+         upperCanvasEl.removeEventListener('touchstart', handleTouchStart as any);
+         upperCanvasEl.removeEventListener('touchmove', handleTouchMove as any);
+         upperCanvasEl.removeEventListener('touchend', handleTouchEnd as any);
          upperCanvasEl.removeEventListener('mousedown', handleMousedownCapture, true);
          upperCanvasEl.removeEventListener('mousedown', handleBrushAdjustMousedown, true);
       }
