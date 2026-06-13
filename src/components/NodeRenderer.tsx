@@ -313,7 +313,9 @@ function NodeRenderer({
   const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
 
   const isManuallyRendered =
-    manuallyRenderedNodes && !!manuallyRenderedNodes[data.id];
+    manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
+      ? manuallyRenderedNodes[data.id]
+      : showMediaPreview;
   const isKnownDataUrl = !!knownDataUrls[strVal];
 
   const assetMimeType = assetDetails?.mimeType?.toLowerCase() || '';
@@ -331,7 +333,7 @@ function NodeRenderer({
   const resolvedMediaType = mediaTypeByAsset || getMediaType(fallbackStrVal as string) || getMediaType(strVal);
 
   const mediaType =
-    (showMediaPreview || isManuallyRendered) &&
+    isManuallyRendered &&
     data.type === "string" &&
     !smartMediaFailed &&
     !isApiNode &&

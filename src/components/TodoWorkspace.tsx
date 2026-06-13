@@ -2576,6 +2576,17 @@ function TodoTaskDetails({
             )}
             <span>{isCompleted ? "Completed" : "Mark Complete"}</span>
           </button>
+          <button
+            onClick={() => {
+              onRemove(foundTask!.id);
+              onClose();
+            }}
+            className="px-2 h-7 rounded-md text-[10px] font-bold tracking-wider uppercase transition-all flex items-center gap-1 border cursor-pointer border-rose-200 hover:bg-rose-500/10 hover:border-rose-500 hover:text-rose-600 dark:border-rose-900/40 dark:hover:text-rose-455 hover:scale-95 text-slate-500 dark:text-slate-400"
+            title="Delete active task"
+          >
+            <Trash2 size={11.5} />
+            <span>Delete</span>
+          </button>
           <div className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-1"></div>
           <button
             onClick={onClose}

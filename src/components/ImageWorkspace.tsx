@@ -7,7 +7,7 @@ import { resolveAssetUrl, importFile } from "../utils/assetManager";
 import { getValueAtPath } from "../utils/pathUtils";
 import { 
   Type, Upload, Download, Undo, Redo, 
-  Layers, MousePointer2, Brush, Circle, Square, Minus, Edit2, RotateCw, RotateCcw, Image as ImageIcon,
+  Layers, MousePointer2, Brush, Circle, Square, Minus, Triangle, Edit2, RotateCw, RotateCcw, Image as ImageIcon,
   SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, FlipHorizontal, FlipVertical, BringToFront, SendToBack, ArrowUp, ArrowDown,
   Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand,
@@ -1411,6 +1411,22 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const [collageCornerBR, setCollageCornerBR] = useState<number>(8);
   const [collageCornerBL, setCollageCornerBL] = useState<number>(8);
   const [collageBorderStyle, setCollageBorderStyle] = useState<'solid' | 'dashed' | 'none'>('dashed');
+
+  // Shape Properties states
+  const [shapeFillColor, setShapeFillColor] = useState<string>('transparent');
+  const [shapeStrokeColor, setShapeStrokeColor] = useState<string>('#000000');
+  const [shapeStrokeWidth, setShapeStrokeWidth] = useState<number>(2);
+  const [shapeBorderStyle, setShapeBorderStyle] = useState<'solid' | 'dashed' | 'none'>('solid');
+  const [shapeCornerRadius, setShapeCornerRadius] = useState<number>(0);
+  const [shapeUseIndividualCorners, setShapeUseIndividualCorners] = useState<boolean>(false);
+  const [shapeCornerTL, setShapeCornerTL] = useState<number>(0);
+  const [shapeCornerTR, setShapeCornerTR] = useState<number>(0);
+  const [shapeCornerBL, setShapeCornerBL] = useState<number>(0);
+  const [shapeCornerBR, setShapeCornerBR] = useState<number>(0);
+  const [shapeOpacity, setShapeOpacity] = useState<number>(100);
+  const [shapeStrokeLineJoin, setShapeStrokeLineJoin] = useState<'miter' | 'round' | 'bevel'>('miter');
+  const [shapeStrokeLineCap, setShapeStrokeLineCap] = useState<'butt' | 'round' | 'square'>('butt');
+
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
   const [snapTolerance, setSnapTolerance] = useState(10);
@@ -2522,7 +2538,48 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       }
 
       setSelectedLayerId((active as any).id);
-      setSelectionType(active.get('isFrameGroup') ? 'frameGroup' : active.type);
+      const selType = active.get('isFrameGroup') ? 'frameGroup' : active.type;
+      setSelectionType(selType);
+
+      if (['rect', 'circle', 'triangle', 'line'].includes(selType || '')) {
+         setShapeFillColor(active.get('fill') as string || 'transparent');
+         const strokeVal = active.get('stroke') as string || '#000000';
+         setShapeStrokeColor(strokeVal === 'transparent' ? '#000000' : strokeVal);
+         setShapeStrokeWidth(active.get('strokeWidth') as number ?? 2);
+         setShapeOpacity(Math.round((active.get('opacity') ?? 1) * 100));
+         setShapeStrokeLineJoin((active.get('strokeLineJoin') as 'miter' | 'round' | 'bevel') || 'miter');
+         setShapeStrokeLineCap((active.get('strokeLineCap') as 'butt' | 'round' | 'square') || 'butt');
+
+         const dashArray = active.get('strokeDashArray');
+         if (!active.get('stroke') || active.get('stroke') === 'transparent' || active.get('strokeWidth') === 0) {
+            setShapeBorderStyle('none');
+         } else if (dashArray && dashArray.length > 0) {
+            setShapeBorderStyle('dashed');
+         } else {
+            setShapeBorderStyle('solid');
+         }
+
+         if (selType === 'rect') {
+            const obj = active as any;
+            const w = obj.width ?? 100;
+            const h = obj.height ?? 100;
+            const maxR = Math.min(w, h) / 2;
+
+            const uPercent = obj.cornerRoundingPercent !== undefined ? obj.cornerRoundingPercent : Math.round(((obj.rx || 0) / (maxR || 1)) * 100);
+            const tlPercent = obj.cornerTopLeftPercent !== undefined ? obj.cornerTopLeftPercent : uPercent;
+            const trPercent = obj.cornerTopRightPercent !== undefined ? obj.cornerTopRightPercent : uPercent;
+            const brPercent = obj.cornerBottomRightPercent !== undefined ? obj.cornerBottomRightPercent : uPercent;
+            const blPercent = obj.cornerBottomLeftPercent !== undefined ? obj.cornerBottomLeftPercent : uPercent;
+            const isIndiv = obj.useIndividualCorners ?? false;
+
+            setShapeCornerRadius(uPercent);
+            setShapeUseIndividualCorners(isIndiv);
+            setShapeCornerTL(tlPercent);
+            setShapeCornerTR(trPercent);
+            setShapeCornerBR(brPercent);
+            setShapeCornerBL(blPercent);
+         }
+      }
       
       if ((active as any).isCollageBlock) {
         setCollageBgColor(active.get('fill') as string || '#333333');
@@ -3186,6 +3243,142 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 
     if (commands.length > 0) {
       const macro = new MacroCommand("Apply Collage Custom Style", commands);
+      executeCommand(macro);
+      canvas.requestRenderAll();
+    }
+  };
+
+  const updateSelectedShapeProperty = (prop: string, value: any) => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const active = canvas.getActiveObject();
+    if (!active) return;
+
+    const items: fabric.Object[] = [];
+    if (active.type === 'activeSelection') {
+      (active as fabric.ActiveSelection).getObjects().forEach(o => {
+        if (['rect', 'circle', 'triangle', 'line'].includes(o.type || '')) items.push(o);
+      });
+    } else if (['rect', 'circle', 'triangle', 'line'].includes(active.type || '')) {
+      items.push(active);
+    }
+
+    if (items.length === 0) return;
+
+    const commands: Command[] = [];
+    items.forEach(item => {
+      const before: any = {};
+      const after: any = {};
+
+      if (prop === 'fill') {
+        before.fill = item.get('fill');
+        after.fill = value;
+        setShapeFillColor(value);
+      } else if (prop === 'stroke') {
+        before.stroke = item.get('stroke');
+        before.strokeWidth = item.get('strokeWidth');
+        before.strokeDashArray = item.get('strokeDashArray');
+
+        after.stroke = value;
+        setShapeStrokeColor(value);
+
+        const currentWidth = item.get('strokeWidth') ?? 0;
+        const currentStroke = item.get('stroke');
+        if (shapeBorderStyle === 'none' || currentWidth === 0 || currentStroke === 'transparent') {
+          const newWidth = shapeStrokeWidth > 0 ? shapeStrokeWidth : 2;
+          after.strokeWidth = newWidth;
+          after.strokeDashArray = null;
+          setShapeStrokeWidth(newWidth);
+          setShapeBorderStyle('solid');
+        }
+      } else if (prop === 'strokeWidth') {
+        before.strokeWidth = item.get('strokeWidth');
+        before.stroke = item.get('stroke');
+        before.strokeDashArray = item.get('strokeDashArray');
+
+        after.strokeWidth = value;
+        setShapeStrokeWidth(value);
+
+        const currentStroke = item.get('stroke');
+        if (value > 0 && (shapeBorderStyle === 'none' || currentStroke === 'transparent' || !currentStroke)) {
+          after.stroke = shapeStrokeColor || '#000000';
+          after.strokeDashArray = null;
+          setShapeBorderStyle('solid');
+        } else if (value === 0) {
+          after.stroke = 'transparent';
+          after.strokeDashArray = null;
+          setShapeBorderStyle('none');
+        }
+      } else if (prop === 'opacity') {
+        before.opacity = item.get('opacity');
+        after.opacity = value / 100;
+        setShapeOpacity(value);
+      } else if (prop === 'strokeLineJoin') {
+        before.strokeLineJoin = item.get('strokeLineJoin');
+        after.strokeLineJoin = value;
+        setShapeStrokeLineJoin(value);
+      } else if (prop === 'strokeLineCap') {
+        before.strokeLineCap = item.get('strokeLineCap');
+        after.strokeLineCap = value;
+        setShapeStrokeLineCap(value);
+      } else if (prop === 'borderStyle') {
+        before.stroke = item.get('stroke');
+        before.strokeWidth = item.get('strokeWidth');
+        before.strokeDashArray = item.get('strokeDashArray');
+
+        setShapeBorderStyle(value);
+        if (value === 'none') {
+          after.stroke = 'transparent';
+          after.strokeWidth = 0;
+          after.strokeDashArray = null;
+        } else if (value === 'dashed') {
+          after.stroke = shapeStrokeColor || '#000000';
+          after.strokeWidth = shapeStrokeWidth > 0 ? shapeStrokeWidth : 2;
+          after.strokeDashArray = [5, 5];
+        } else {
+          after.stroke = shapeStrokeColor || '#000000';
+          after.strokeWidth = shapeStrokeWidth > 0 ? shapeStrokeWidth : 2;
+          after.strokeDashArray = null;
+        }
+      } else if (item.type === 'rect') {
+        if (prop === 'rx') {
+          before.cornerRoundingPercent = (item as any).cornerRoundingPercent;
+          before.rx = (item as fabric.Rect).rx || 0;
+          before.ry = (item as fabric.Rect).ry || 0;
+          after.cornerRoundingPercent = value;
+          after.rx = value;
+          after.ry = value;
+          setShapeCornerRadius(value);
+        } else if (prop === 'rx_tl') {
+          before.cornerTopLeftPercent = (item as any).cornerTopLeftPercent;
+          after.cornerTopLeftPercent = value;
+          setShapeCornerTL(value);
+        } else if (prop === 'rx_tr') {
+          before.cornerTopRightPercent = (item as any).cornerTopRightPercent;
+          after.cornerTopRightPercent = value;
+          setShapeCornerTR(value);
+        } else if (prop === 'rx_bl') {
+          before.cornerBottomLeftPercent = (item as any).cornerBottomLeftPercent;
+          after.cornerBottomLeftPercent = value;
+          setShapeCornerBL(value);
+        } else if (prop === 'rx_br') {
+          before.cornerBottomRightPercent = (item as any).cornerBottomRightPercent;
+          after.cornerBottomRightPercent = value;
+          setShapeCornerBR(value);
+        } else if (prop === 'useIndividualCorners') {
+          before.useIndividualCorners = (item as any).useIndividualCorners;
+          after.useIndividualCorners = value;
+          setShapeUseIndividualCorners(value);
+        }
+      }
+
+      item.set(after);
+      item.dirty = true;
+      commands.push(new StyleChangeCommand("Update Shape Style", item, before, after));
+    });
+
+    if (commands.length > 0) {
+      const macro = new MacroCommand("Apply Shape Style", commands);
       executeCommand(macro);
       canvas.requestRenderAll();
     }
@@ -5374,6 +5567,49 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     executeCommand(cmd);
   };
 
+  const addTriangle = () => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+    const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+    const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+    const triangle = new fabric.Triangle({
+      left: viewCenterX, 
+      top: viewCenterY, 
+      width: 100,
+      height: 100,
+      fill: 'transparent',
+      stroke: brushColor || '#00aaff',
+      strokeWidth: brushSize > 0 ? brushSize : 2,
+      originX: 'center',
+      originY: 'center',
+      id: Date.now().toString() + Math.random().toString(),
+      artboardId: activeArtboardIdRef.current
+    } as any);
+    const cmd = new AddObjectCommand("Add Triangle", triangle);
+    executeCommand(cmd);
+  };
+
+  const addLine = () => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+    const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+    const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+    const line = new fabric.Line([viewCenterX - 50, viewCenterY, viewCenterX + 50, viewCenterY], {
+      stroke: brushColor || '#00aaff',
+      strokeWidth: brushSize > 0 ? brushSize : 2,
+      originX: 'center',
+      originY: 'center',
+      id: Date.now().toString() + Math.random().toString(),
+      artboardId: activeArtboardIdRef.current
+    } as any);
+    const cmd = new AddObjectCommand("Add Line", line);
+    executeCommand(cmd);
+  };
+
   const addText = () => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
@@ -6494,6 +6730,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
             <ToolBtn icon={Type} tool="text" current={activeTool} set={addText} title="Text (T)"/>
             <ToolBtn icon={Square} tool="rect" current={activeTool} set={addRect} title="Rectangle"/>
             <ToolBtn icon={Circle} tool="circle" current={activeTool} set={addCircle} title="Ellipse (Circle)"/>
+            <ToolBtn icon={Triangle} tool="triangle" current={activeTool} set={addTriangle} title="Triangle"/>
+            <ToolBtn icon={Minus} tool="line" current={activeTool} set={addLine} title="Line"/>
             
             <div className="flex-1" />
 
@@ -8226,6 +8464,304 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                              </div>
                           );
                        })()}
+                       {/* Shape Customization Panel */}
+                       {['rect', 'circle', 'triangle', 'line'].includes(selectionType || '') && (
+                          <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in">
+                             <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
+                                <Palette size={12}/> Shape Properties
+                             </div>
+
+                             {/* Fill and Stroke Colors */}
+                             <div className="grid grid-cols-2 gap-2 bg-[#141414] border border-[#222] p-2.5 rounded-lg">
+                                {/* Fill color */}
+                                {selectionType !== 'line' && (
+                                   <div className="space-y-1">
+                                      <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Fill Color</span>
+                                      <div className="flex gap-2">
+                                         <div className="w-8 h-8 rounded shrink-0 border border-[#2a2a2a] shadow-inner relative overflow-hidden" style={{ backgroundColor: shapeFillColor }}>
+                                            {shapeFillColor === 'transparent' && (
+                                               <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-red-500/20 to-transparent flex items-center justify-center">
+                                                  <div className="w-full h-[1px] bg-red-500 rotate-45" />
+                                               </div>
+                                            )}
+                                         </div>
+                                         <div className="flex-1 flex flex-col gap-1">
+                                            <ColorPickerTrigger 
+                                               color={shapeFillColor === 'transparent' ? '#ffffff' : shapeFillColor} 
+                                               onChange={(color) => {
+                                                  updateSelectedShapeProperty('fill', color);
+                                               }} 
+                                            />
+                                            <button 
+                                               type="button" 
+                                               onClick={() => updateSelectedShapeProperty('fill', 'transparent')}
+                                               className="py-0.5 px-1.5 text-[8px] bg-[#1a1a1a] border border-[#2a2a2a] rounded text-slate-400 hover:text-white"
+                                            >
+                                               Transparent
+                                            </button>
+                                         </div>
+                                      </div>
+                                   </div>
+                                )}
+
+                                {/* Border (Stroke) color */}
+                                <div className={selectionType === 'line' ? 'col-span-2 space-y-1' : 'space-y-1'}>
+                                   <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">
+                                      {selectionType === 'line' ? 'Line Color' : 'Border Color'}
+                                   </span>
+                                   <div className="flex gap-2">
+                                      <div className="w-8 h-8 rounded shrink-0 border border-[#2a2a2a] shadow-inner relative overflow-hidden" style={{ backgroundColor: shapeStrokeColor }}>
+                                         {shapeStrokeColor === 'transparent' && (
+                                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-red-500/20 to-transparent flex items-center justify-center">
+                                               <div className="w-full h-[1px] bg-red-500 rotate-45" />
+                                            </div>
+                                         )}
+                                      </div>
+                                      <div className="flex-1 flex flex-col gap-1">
+                                         <ColorPickerTrigger 
+                                            color={shapeStrokeColor === 'transparent' ? '#ffffff' : shapeStrokeColor} 
+                                            onChange={(color) => {
+                                               updateSelectedShapeProperty('stroke', color);
+                                            }} 
+                                         />
+                                      </div>
+                                   </div>
+                                </div>
+                             </div>
+
+                             {/* Border Style (Dashed/Solid/None) & Thickness */}
+                             <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
+                                <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">
+                                   {selectionType === 'line' ? 'Line Style & Thickness' : 'Border & Outline Style'}
+                                </span>
+                                
+                                {selectionType !== 'line' && (
+                                   <div>
+                                      <span className="text-[9px] text-[#808080] block mb-1">Outline Style</span>
+                                      <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                                         {['none', 'solid', 'dashed'].map((st) => (
+                                            <button
+                                               key={st}
+                                               type="button"
+                                               onClick={() => {
+                                                  updateSelectedShapeProperty('borderStyle', st);
+                                               }}
+                                               className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${shapeBorderStyle === st ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
+                                            >
+                                               {st}
+                                            </button>
+                                         ))}
+                                      </div>
+                                   </div>
+                                )}
+
+                                {/* Thickness/Stroke Width range slider */}
+                                <div>
+                                   <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
+                                      <span>{selectionType === 'line' ? 'Line Thickness' : 'Border Thickness'}</span>
+                                      <span className="font-mono text-blue-400 text-[10px] font-bold">{shapeStrokeWidth}px</span>
+                                   </div>
+                                   <input 
+                                      type="range" min={selectionType === 'line' ? "1" : "0"} max="50" step="1" 
+                                      value={shapeStrokeWidth} 
+                                      onChange={(e) => {
+                                         const val = Number(e.target.value);
+                                         updateSelectedShapeProperty('strokeWidth', val);
+                                      }} 
+                                      className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                   />
+                                </div>
+
+                                {/* General Opacity control */}
+                                <div className="pt-1 border-t border-[#1C1C1C]">
+                                   <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
+                                      <span>Opacity</span>
+                                      <span className="font-mono text-blue-400 text-[10px] font-bold">{shapeOpacity}%</span>
+                                   </div>
+                                   <input 
+                                      type="range" min="1" max="100" step="1" 
+                                      value={shapeOpacity} 
+                                      onChange={(e) => {
+                                         const val = Number(e.target.value);
+                                         updateSelectedShapeProperty('opacity', val);
+                                      }} 
+                                      className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                   />
+                                </div>
+                             </div>
+
+                             {/* Corner Rounding Controls - RECTANGLE ONLY */}
+                             {selectionType === 'rect' && (
+                                <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
+                                   <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">Corner Rounding</span>
+                                   
+                                   <div className="flex items-center justify-between py-1 border-b border-[#1C1C1C]">
+                                      <span className="text-[9px] text-[#8A8A8A]">Round Corners Separately</span>
+                                      <label className="relative inline-flex items-center cursor-pointer">
+                                         <input 
+                                            type="checkbox" 
+                                            className="sr-only peer" 
+                                            checked={shapeUseIndividualCorners}
+                                            onChange={(e) => {
+                                               const val = e.target.checked;
+                                               updateSelectedShapeProperty('useIndividualCorners', val);
+                                            }}
+                                         />
+                                         <div className="w-7 h-4 bg-[#2C2C2C] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#A0A0A0] peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                                      </label>
+                                   </div>
+
+                                   {shapeUseIndividualCorners ? (
+                                      <div className="grid grid-cols-2 gap-x-2 gap-y-2 pt-1">
+                                         {/* Top Left */}
+                                         <div>
+                                            <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                               <span>Top Left</span>
+                                               <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerTL}%</span>
+                                            </div>
+                                            <input 
+                                               type="range" min="0" max="100" step="1" 
+                                               value={shapeCornerTL} 
+                                               onChange={(e) => {
+                                                  const val = Number(e.target.value);
+                                                  updateSelectedShapeProperty('rx_tl', val);
+                                               }} 
+                                               className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                            />
+                                         </div>
+                                         {/* Top Right */}
+                                         <div>
+                                            <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                               <span>Top Right</span>
+                                               <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerTR}%</span>
+                                            </div>
+                                            <input 
+                                               type="range" min="0" max="100" step="1" 
+                                               value={shapeCornerTR} 
+                                               onChange={(e) => {
+                                                  const val = Number(e.target.value);
+                                                  updateSelectedShapeProperty('rx_tr', val);
+                                               }} 
+                                               className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                            />
+                                         </div>
+                                         {/* Bottom Left */}
+                                         <div>
+                                            <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                               <span>Bottom Left</span>
+                                               <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerBL}%</span>
+                                            </div>
+                                            <input 
+                                               type="range" min="0" max="100" step="1" 
+                                               value={shapeCornerBL} 
+                                               onChange={(e) => {
+                                                  const val = Number(e.target.value);
+                                                  updateSelectedShapeProperty('rx_bl', val);
+                                               }} 
+                                               className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                            />
+                                         </div>
+                                         {/* Bottom Right */}
+                                         <div>
+                                            <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
+                                               <span>Bottom Right</span>
+                                               <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerBR}%</span>
+                                            </div>
+                                            <input 
+                                               type="range" min="0" max="100" step="1" 
+                                               value={shapeCornerBR} 
+                                               onChange={(e) => {
+                                                  const val = Number(e.target.value);
+                                                  updateSelectedShapeProperty('rx_br', val);
+                                               }} 
+                                               className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                            />
+                                         </div>
+                                      </div>
+                                   ) : (
+                                      <div>
+                                         <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
+                                            <span>Corner Rounding (%)</span>
+                                            <span className="font-mono text-blue-400 text-[10px] font-bold">{shapeCornerRadius}%</span>
+                                         </div>
+                                         <input 
+                                            type="range" min="0" max="100" step="1" 
+                                            value={shapeCornerRadius} 
+                                            onChange={(e) => {
+                                               const val = Number(e.target.value);
+                                               updateSelectedShapeProperty('rx', val);
+                                            }} 
+                                            className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500" 
+                                         />
+                                      </div>
+                                   )}
+                                </div>
+                             )}
+                          </div>
+                       )}
+                      {/* Corner Rounding & Connections for Triangle/Line */}
+                      {['triangle', 'line'].includes(selectionType || '') && (
+                         <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in pl-1">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
+                               <Palette size={12}/> {selectionType === 'triangle' ? 'Triangle Rounding' : 'Line Join / End Caps'}
+                            </div>
+                            
+                            <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
+                               {/* Line Join selection */}
+                               <div>
+                                  <span className="text-[9px] text-[#808080] block mb-1">Corner Style</span>
+                                  <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                                     {[
+                                        { id: 'miter', label: 'Sharp' },
+                                        { id: 'round', label: 'Rounded' },
+                                        { id: 'bevel', label: 'Beveled' }
+                                     ].map((st) => (
+                                        <button
+                                           key={st.id}
+                                           type="button"
+                                           onClick={() => {
+                                              updateSelectedShapeProperty('strokeLineJoin', st.id);
+                                           }}
+                                           className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${shapeStrokeLineJoin === st.id ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
+                                        >
+                                           {st.label}
+                                        </button>
+                                     ))}
+                                  </div>
+                                  <p className="text-[8px] text-[#606060] mt-1.5 leading-normal">
+                                     {shapeStrokeLineJoin === 'round' 
+                                        ? '✓ Corners are rounded based on Border Thickness.' 
+                                        : 'ℹ Select "Rounded" to round corners. Customise Border Thickness above to adjust the curve.'}
+                                  </p>
+                               </div>
+
+                               {/* Line Cap style - specifically for lines */}
+                               {selectionType === 'line' && (
+                                  <div className="pt-2 border-t border-[#1C1C1C]">
+                                     <span className="text-[9px] text-[#808080] block mb-1">Line End Caps</span>
+                                     <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                                        {[
+                                           { id: 'butt', label: 'Butt' },
+                                           { id: 'round', label: 'Round' },
+                                           { id: 'square', label: 'Square' }
+                                        ].map((cp) => (
+                                           <button
+                                              key={cp.id}
+                                              type="button"
+                                              onClick={() => {
+                                                 updateSelectedShapeProperty('strokeLineCap', cp.id);
+                                              }}
+                                              className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${shapeStrokeLineCap === cp.id ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
+                                           >
+                                              {cp.label}
+                                           </button>
+                                        ))}
+                                     </div>
+                                  </div>
+                               )}
+                            </div>
+                         </div>
+                      )}
                       {/* Typography Module */}
                        {(selectionType === 'i-text' || selectionType === 'text' || selectionType === 'textbox') && (
                              <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in">

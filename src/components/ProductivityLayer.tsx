@@ -251,6 +251,77 @@ export async function saveTodoChangesToWorkspace(
   return updatedData;
 }
 
+export async function addNewTodoToWorkspace(
+  parsedData: any,
+  nodePath: string,
+  newTaskText: string,
+  parentTaskId?: string
+) {
+  const updatedData = JSON.parse(JSON.stringify(parsedData));
+  const val = getValueAtPath(updatedData, nodePath);
+  if (!val) return parsedData;
+
+  let nodeObj: any = val;
+  let wasString = false;
+  if (typeof val === "string") {
+    try {
+      nodeObj = JSON.parse(val);
+      wasString = true;
+    } catch {
+      return parsedData;
+    }
+  }
+
+  const newId = Math.random().toString(36).substring(2, 9);
+  const newTask: any = {
+    id: newId,
+    text: newTaskText.trim(),
+    completed: false,
+    status: "Todo",
+    priority: "Normal",
+    tasks: []
+  };
+
+  if (nodeObj && Array.isArray(nodeObj.tasks)) {
+    if (!parentTaskId) {
+      nodeObj.tasks.push(newTask);
+    } else {
+      const walk = (tList: any[]): boolean => {
+        for (let i = 0; i < tList.length; i++) {
+          if (tList[i].id === parentTaskId) {
+            if (!tList[i].tasks) tList[i].tasks = [];
+            tList[i].tasks.push(newTask);
+            return true;
+          }
+          if (tList[i].tasks && tList[i].tasks.length > 0) {
+            if (walk(tList[i].tasks)) return true;
+          }
+        }
+        return false;
+      };
+      walk(nodeObj.tasks);
+    }
+  }
+
+  const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
+  setValueAtPath(updatedData, nodePath, finalVal);
+
+  const { setCode, codeFormat } = useStore.getState();
+  let newCode = "";
+  if (codeFormat === "yaml") {
+    try {
+      const yaml = (await import("js-yaml")).default;
+      newCode = yaml.dump(updatedData);
+    } catch {
+      newCode = JSON.stringify(updatedData, null, 2);
+    }
+  } else {
+    newCode = JSON.stringify(updatedData, null, 2);
+  }
+  setCode(newCode);
+  return updatedData;
+}
+
 // --- Helper: fuzzy match algorithm ---
 function scoreFuzzy(str: string, query: string): number {
   if (!query) return 1;
@@ -539,6 +610,16 @@ export default function ProductivityLayer() {
   const [todoViewMode, setTodoViewMode] = useState<"flat" | "tree">("flat");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
 
+  // New task creation states
+  const [isCreatingTodo, setIsCreatingTodo] = useState(false);
+  const [newTodoText, setNewTodoText] = useState("");
+  const [selectedNodePath, setSelectedNodePath] = useState("");
+  const [targetParentTaskId, setTargetParentTaskId] = useState("");
+
+  // Inline subtask states
+  const [inlineSubParentId, setInlineSubParentId] = useState<string | null>(null);
+  const [inlineSubText, setInlineSubText] = useState("");
+
   // Saved / Pinned Files and chronological swap logs in LocalStorage
   const [recentFiles, setRecentFiles] = useState<string[]>(() => {
     try {
@@ -784,6 +865,32 @@ export default function ProductivityLayer() {
   const handleDeleteTodo = async (task: FlatTodoItem) => {
     await saveTodoChangesToWorkspace(parsedData, task.nodePath, task.id, null);
     setActiveTodo(null);
+    useStore.getState().setNotification?.({
+      message: `Deleted task "${task.text || "unlabeled task"}"`,
+      type: "success"
+    });
+  };
+
+  const allTodoFiles = useMemo(() => {
+    return allWorkspaceFiles.filter(f => f.type === "todo_node" || f.name.endsWith(".todo"));
+  }, [allWorkspaceFiles]);
+
+  useEffect(() => {
+    if (allTodoFiles.length > 0 && !selectedNodePath) {
+      setSelectedNodePath(allTodoFiles[0].id);
+    }
+  }, [allTodoFiles, selectedNodePath]);
+
+  const handleCreateTodoSubmit = async () => {
+    if (!newTodoText.trim() || !selectedNodePath) return;
+    await addNewTodoToWorkspace(
+      parsedData,
+      selectedNodePath,
+      newTodoText,
+      targetParentTaskId || undefined
+    );
+    setNewTodoText("");
+    setIsCreatingTodo(false);
   };
 
   const todoCenterListEl = useRef<HTMLDivElement>(null);
@@ -963,6 +1070,17 @@ export default function ProductivityLayer() {
                   />
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
+                      onClick={() => setIsCreatingTodo(prev => !prev)}
+                      className={cn(
+                        "px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors flex items-center gap-1",
+                        isCreatingTodo
+                          ? "bg-emerald-600 text-white"
+                          : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                      )}
+                    >
+                      + Create
+                    </button>
+                    <button
                       onClick={() => setTodoViewMode(prev => prev === "tree" ? "flat" : "tree")}
                       className={cn("px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors", todoViewMode === "tree" ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}
                     >
@@ -973,6 +1091,90 @@ export default function ProductivityLayer() {
                     </div>
                   </div>
                 </div>
+
+                {isCreatingTodo && (
+                  <div className="px-4 py-3.5 bg-slate-50 dark:bg-[#111622] border-b border-slate-100 dark:border-slate-800/80 flex flex-col gap-3 select-none">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#10b981] flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-ping shrink-0" />
+                        Create New Task (supports nesting)
+                      </span>
+                      <button 
+                        onClick={() => setIsCreatingTodo(false)} 
+                        className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Destination .todo file select */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                          Destination File
+                        </label>
+                        <select
+                          value={selectedNodePath}
+                          onChange={(e) => {
+                            setSelectedNodePath(e.target.value);
+                            setTargetParentTaskId(""); // reset parent
+                          }}
+                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2 outline-none text-slate-850 dark:text-slate-200 cursor-pointer"
+                        >
+                          {allTodoFiles.map((file) => (
+                            <option key={file.id} value={file.id}>
+                              {file.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Parent Task Selector (Nesting!) */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                          Nesting / Parent Task (Optional)
+                        </label>
+                        <select
+                          value={targetParentTaskId}
+                          onChange={(e) => setTargetParentTaskId(e.target.value)}
+                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2 outline-none text-slate-850 dark:text-slate-200 cursor-pointer"
+                        >
+                          <option value="">None (Top Level Root Task)</option>
+                          {allWorkspaceTodos
+                            .filter((t) => t.nodePath === selectedNodePath)
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {"— ".repeat(t.depth || 0)}{t.text}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Task text bar and Submit button */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newTodoText}
+                        onChange={(e) => setNewTodoText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleCreateTodoSubmit();
+                          }
+                        }}
+                        placeholder="Type task details and press Enter to save..."
+                        className="flex-1 text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 focus:border-blue-500 transition-colors"
+                      />
+                      <button
+                        onClick={handleCreateTodoSubmit}
+                        disabled={!newTodoText.trim() || !selectedNodePath}
+                        className="p-2.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer bg-blue-600 hover:bg-blue-500"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Todo List Content */}
                 <div
@@ -999,73 +1201,161 @@ export default function ProductivityLayer() {
                       }
 
                       return (
-                        <div
-                          key={`${todo.nodePath}-${todo.id}-${idx}`}
-                          className={cn(
-                            "is-selected-todo flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors relative select-none mx-2 my-0.5 rounded-md",
-                            isSelected
-                              ? "bg-blue-600 text-white border-transparent shadow-sm"
-                              : "hover:bg-slate-100 dark:hover:bg-slate-800/80"
-                          )}
-                          style={todoViewMode === "tree" && !todoSearch.trim() ? { paddingLeft: `${Math.max(1, (todo.depth || 0) * 1.5 + 1)}rem` } : {}}
-                          onClick={() => {
-                            setActiveTodo(todo);
-                          }}
-                        >
-                          <div className="flex items-center gap-3 min-w-0 pr-4">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleTodoStatus(todo);
-                              }}
-                              className={cn("transition shrink-0", isSelected ? "text-white/80 hover:text-white" : "text-slate-400 hover:text-blue-500")}
-                            >
-                              {isCompleted ? (
-                                <CheckCircle2 size={15} className={cn(isSelected ? "text-white" : "text-emerald-500")} />
-                              ) : (
-                                <Circle size={15} className={cn(isSelected ? "text-white/60" : "text-slate-450 dark:text-slate-500")} />
-                              )}
-                            </button>
-                            <div className="flex flex-col min-w-0">
-                              <span className={cn(
-                                "text-xs font-medium truncate tracking-tight",
-                                isSelected ? "text-white" : "text-slate-800 dark:text-slate-200",
-                                isCompleted && (isSelected ? "line-through text-white/60 font-normal" : "line-through text-slate-400 dark:text-slate-550 font-normal")
-                              )}>
-                                {todo.text || <em className={cn("font-mono text-[10px]", isSelected ? "text-white/60" : "text-slate-400 dark:text-slate-600")}>unlabeled task</em>}
-                              </span>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                <span className={cn("font-mono text-[9px] px-1 py-0.5 rounded flex items-center leading-none", isSelected ? "bg-white/20 text-white/90" : "text-slate-450 dark:text-slate-500 bg-slate-100 dark:bg-slate-900")}>
-                                  {todo.nodeName}
+                        <React.Fragment key={`${todo.nodePath}-${todo.id}-${idx}`}>
+                          <div
+                            className={cn(
+                              "is-selected-todo flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors relative select-none mx-2 my-0.5 rounded-md",
+                              isSelected
+                                ? "bg-blue-600 text-white border-transparent shadow-sm"
+                                : "hover:bg-slate-100 dark:hover:bg-slate-800/80"
+                            )}
+                            style={todoViewMode === "tree" && !todoSearch.trim() ? { paddingLeft: `${Math.max(1, (todo.depth || 0) * 1.5 + 1)}rem` } : {}}
+                            onClick={() => {
+                              setActiveTodo(todo);
+                            }}
+                          >
+                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleTodoStatus(todo);
+                                }}
+                                className={cn("transition shrink-0", isSelected ? "text-white/80 hover:text-white" : "text-slate-400 hover:text-blue-500")}
+                              >
+                                {isCompleted ? (
+                                  <CheckCircle2 size={15} className={cn(isSelected ? "text-white" : "text-emerald-500")} />
+                                ) : (
+                                  <Circle size={15} className={cn(isSelected ? "text-white/60" : "text-slate-450 dark:text-slate-500")} />
+                                )}
+                              </button>
+                              <div className="flex flex-col min-w-0">
+                                <span className={cn(
+                                  "text-xs font-medium truncate tracking-tight",
+                                  isSelected ? "text-white" : "text-slate-800 dark:text-slate-200",
+                                  isCompleted && (isSelected ? "line-through text-white/60 font-normal" : "line-through text-slate-400 dark:text-slate-550 font-normal")
+                                )}>
+                                  {todo.text || <em className={cn("font-mono text-[10px]", isSelected ? "text-white/60" : "text-slate-450 dark:text-slate-600")}>unlabeled task</em>}
                                 </span>
-                                {todo.priority && todo.priority !== "Normal" && (
-                                  <span className={cn("text-[8px] uppercase tracking-wide font-bold px-1 rounded leading-none pt-0.5 pb-px", isSelected ? "bg-white/20 text-white" : priorityBg)}>
-                                    {todo.priority}
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <span className={cn("font-mono text-[9px] px-1 py-0.5 rounded flex items-center leading-none", isSelected ? "bg-white/20 text-white/90" : "text-slate-450 dark:text-slate-500 bg-slate-100 dark:bg-slate-900")}>
+                                    {todo.nodeName}
                                   </span>
-                                )}
-                                {todo.dueDate && (
-                                  <span className={cn("text-[8px] px-1 rounded font-mono shrink-0 flex items-center gap-0.5", isSelected ? "bg-white/20 text-white" : "text-rose-500 bg-rose-500/10")}>
-                                    <CalendarIcon size={8} />
-                                    {todo.dueDate}
-                                  </span>
-                                )}
+                                  {todo.priority && todo.priority !== "Normal" && (
+                                    <span className={cn("text-[8px] uppercase tracking-wide font-bold px-1 rounded leading-none pt-0.5 pb-px", isSelected ? "bg-white/20 text-white" : priorityBg)}>
+                                      {todo.priority}
+                                    </span>
+                                  )}
+                                  {todo.dueDate && (
+                                    <span className={cn("text-[8px] px-1 rounded font-mono shrink-0 flex items-center gap-0.5", isSelected ? "bg-white/20 text-white" : "text-rose-500 bg-rose-500/10")}>
+                                      <CalendarIcon size={8} />
+                                      {todo.dueDate}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (inlineSubParentId === todo.id) {
+                                    setInlineSubParentId(null);
+                                  } else {
+                                    setInlineSubParentId(todo.id);
+                                    setInlineSubText("");
+                                  }
+                                }}
+                                title="Add child/subtask"
+                                className={cn(
+                                  "text-[9px] uppercase font-bold px-1.5 py-0.5 rounded font-mono select-none flex items-center gap-0.5 transition-colors cursor-pointer",
+                                  isSelected 
+                                    ? "bg-white/20 text-white hover:bg-white/30" 
+                                    : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100"
+                                )}
+                              >
+                                + subtask
+                              </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  await handleDeleteTodo(todo);
+                                }}
+                                title="Delete task"
+                                className={cn(
+                                  "p-1 rounded font-mono transition-colors cursor-pointer flex items-center justify-center shrink-0",
+                                  isSelected
+                                    ? "text-white/80 hover:text-rose-250 hover:bg-white/15"
+                                    : "text-slate-450 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                                )}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                              {(todo.tags || []).map((tag, tagIdx) => (
+                                <span key={`${tag}-${tagIdx}`} className={cn("text-[8px] font-bold uppercase tracking-wider border px-1 py-0.5 rounded font-mono select-none", isSelected ? "bg-white/20 text-white border-transparent" : "text-slate-400 bg-slate-100 dark:bg-slate-900 border-slate-250 dark:border-slate-800/80")}>
+                                  {tag}
+                                </span>
+                              ))}
+                              {isSelected && (
+                                <span className="text-[9px] text-white/70 uppercase font-mono pl-1 shrink-0 select-none">
+                                  ⏎ view
+                                </span>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                            {(todo.tags || []).map((tag, tagIdx) => (
-                              <span key={`${tag}-${tagIdx}`} className={cn("text-[8px] font-bold uppercase tracking-wider border px-1 py-0.5 rounded font-mono select-none", isSelected ? "bg-white/20 text-white border-transparent" : "text-slate-400 bg-slate-100 dark:bg-slate-900 border-slate-250 dark:border-slate-800/80")}>
-                                {tag}
+                          {inlineSubParentId === todo.id && (
+                            <div 
+                              className="px-4 py-2 bg-slate-50 dark:bg-[#111622] border-t border-b border-slate-100 dark:border-slate-800/80 flex items-center gap-2 select-none"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="text-[10px] font-bold text-emerald-500 font-mono tracking-wide shrink-0">
+                                SUBTASK OF "{todo.text.slice(0, 15)}...":
                               </span>
-                            ))}
-                            {isSelected && (
-                              <span className="text-[9px] text-white/70 uppercase font-mono pl-1 shrink-0 select-none">
-                                ⏎ view
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={inlineSubText}
+                                onChange={(e) => setInlineSubText(e.target.value)}
+                                onKeyDown={async (e) => {
+                                  if (e.key === "Enter") {
+                                    if (inlineSubText.trim()) {
+                                      await addNewTodoToWorkspace(
+                                        parsedData,
+                                        todo.nodePath,
+                                        inlineSubText,
+                                        todo.id
+                                      );
+                                      setInlineSubText("");
+                                      setInlineSubParentId(null);
+                                    }
+                                  } else if (e.key === "Escape") {
+                                    setInlineSubParentId(null);
+                                  }
+                                }}
+                                placeholder="Type subtask name and press Enter..."
+                                className="flex-1 bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-md p-1.5 text-xs text-slate-850 dark:text-slate-200 placeholder-slate-400 outline-none"
+                              />
+                              <button
+                                onClick={async () => {
+                                  if (inlineSubText.trim()) {
+                                    await addNewTodoToWorkspace(
+                                      parsedData,
+                                      todo.nodePath,
+                                      inlineSubText,
+                                      todo.id
+                                    );
+                                    setInlineSubText("");
+                                    setInlineSubParentId(null);
+                                  }
+                                }}
+                                className="text-[10px] uppercase font-bold tracking-wider px-2 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}

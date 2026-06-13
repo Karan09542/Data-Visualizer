@@ -1054,12 +1054,18 @@ export const useStore = create<StoreState>()(
       setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
       setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show }),
       toggleManualMediaRender: (nodeId: string) =>
-        set((state) => ({
-          manuallyRenderedNodes: {
-            ...state.manuallyRenderedNodes,
-            [nodeId]: !state.manuallyRenderedNodes[nodeId],
-          },
-        })),
+        set((state) => {
+          const currentVal =
+            state.manuallyRenderedNodes[nodeId] !== undefined
+              ? state.manuallyRenderedNodes[nodeId]
+              : state.showMediaPreview;
+          return {
+            manuallyRenderedNodes: {
+              ...state.manuallyRenderedNodes,
+              [nodeId]: !currentVal,
+            },
+          };
+        }),
       setGlobalTextExpanded: (expanded: boolean) =>
         set({ globalTextExpanded: expanded }),
       setActivePreviewText: (text, path = null) =>
@@ -1215,6 +1221,7 @@ export const useStore = create<StoreState>()(
       partialize: (state) => {
         const persistedKeys = [
           ...Object.keys(defaultSettings),
+          "code",
           "codeFormat",
           "isEditorPanelOpen",
           "isAdvancedPanelOpen",
@@ -1225,14 +1232,28 @@ export const useStore = create<StoreState>()(
           "activeTab",
           "globalTextExpanded",
           "activePreviewPath",
+          "workspaceTabs",
+          "activeExplorerFile",
+          "explorerExpandedPaths",
+          "selectedExplorerFiles",
+          "apiNodeConfig",
+          "jsNodeVisibility",
+          "jsNodeCodeOverrides",
+          "expandedJsNodeId",
         ];
         return Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key)),
         );
       },
+      onRehydrateStorage: () => (state) => {
+        if (state && state.code) {
+          // Re-parse the hydrated code to reconstruct parsedData and treeData
+          // We use setTimeout to ensure Zustand finishes initializing first
+          setTimeout(() => {
+            useStore.getState().setCode(state.code, true);
+          }, 0);
+        }
+      },
     },
   ),
 );
-
-// Initialize the store immediately
-useStore.getState().setCode(useStore.getState().code || initialCode);

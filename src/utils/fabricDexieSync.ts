@@ -108,7 +108,9 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       'cornerTopLeftPercent',
       'cornerTopRightPercent',
       'cornerBottomLeftPercent',
-      'cornerBottomRightPercent'
+      'cornerBottomRightPercent',
+      'strokeLineJoin',
+      'strokeLineCap'
     ]);
     
     toPutObjects.push({

@@ -71,6 +71,7 @@ export default function GraphVisualizer() {
   const setInlineApiEditor = useStore((s) => s.setInlineApiEditor);
   const manuallyRenderedNodes = useStore((s) => s.manuallyRenderedNodes);
   const toggleManualMediaRender = useStore((s) => s.toggleManualMediaRender);
+  const showMediaPreview = useStore((s) => s.showMediaPreview);
   const knownDataUrls = useStore((s) => s.knownDataUrls);
   const autoOrganizeTrigger = useStore((s) => s.autoOrganizeTrigger);
 
@@ -611,7 +612,13 @@ export default function GraphVisualizer() {
         const cloned = JSON.parse(JSON.stringify(originalResponse));
         let current = cloned;
         for (let i = 0; i < parts.length - 1; i++) {
+          if (current === undefined || current === null || typeof current !== 'object') break;
           current = current[parts[i]];
+        }
+
+        if (current === undefined || current === null || typeof current !== 'object') {
+          console.warn("Invalid path for changes relative to api node", relativePath);
+          return;
         }
 
         const lastKey = parts[parts.length - 1];
@@ -720,7 +727,13 @@ export default function GraphVisualizer() {
 
       let current = parsed;
       for (let i = 0; i < parts.length - 1; i++) {
+        if (current === undefined || current === null || typeof current !== 'object') break;
         current = current[parts[i]];
+      }
+
+      if (current === undefined || current === null || typeof current !== 'object') {
+        console.warn("Invalid path for changes, current is not an object", nodePath);
+        return;
       }
 
       const lastKey = parts[parts.length - 1];
@@ -1645,7 +1658,9 @@ export default function GraphVisualizer() {
                       className="text-emerald-400 dark:text-emerald-500"
                     />
                     {manuallyRenderedNodes &&
-                    manuallyRenderedNodes[contextMenu.node.id]
+                    (manuallyRenderedNodes[contextMenu.node.id] !== undefined
+                      ? manuallyRenderedNodes[contextMenu.node.id]
+                      : showMediaPreview)
                       ? "Hide Media Preview"
                       : "Render Media Preview"}
                   </button>

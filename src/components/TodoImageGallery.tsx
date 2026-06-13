@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { importFile, resolveAssetUrl } from "../utils/assetManager";
-import { Image as ImageIcon, X, Trash2, Maximize2, MoveVertical } from "lucide-react";
+import { Image as ImageIcon, X, Trash2, Camera, MoveVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CameraCaptureModal } from "./CameraCaptureModal";
 
 interface TodoTaskProps {
   imageHashes?: string[];
@@ -14,6 +15,15 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
   const [urls, setUrls] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(0);
+  const [showCamera, setShowCamera] = useState(false);
+  const [hasCamera, setHasCamera] = useState(false);
+
+  useEffect(() => {
+    // Check if camera API is supported
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      setHasCamera(true);
+    }
+  }, []);
 
   useEffect(() => {
     let unmounted = false;
@@ -57,6 +67,10 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
     onChange(newHashes);
   };
 
+  const handleCameraCapture = (file: File) => {
+    addFiles([file]);
+  };
+
   const handlePaste = async (e: ClipboardEvent) => {
     if (readOnly || !onChange) return;
     const items = Array.from(e.clipboardData?.items || []);
@@ -92,16 +106,28 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
   if (!imageHashes || imageHashes.length === 0) {
     if (readOnly) return null;
     return (
-      <div 
-        className="w-full mt-4 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700/50 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
-        onDragOver={e => e.preventDefault()}
-        onDrop={handleDrop}
-        onClick={() => document.getElementById("hidden-file-input")?.click()}
-      >
-         <ImageIcon size={24} className="mb-2 opacity-50" />
-         <span className="text-xs font-semibold">Drop images here or click to upload</span>
-         <span className="text-[10px] opacity-70">Supports JPG, PNG, GIF, clipboard paste</span>
-         <input type="file" multiple id="hidden-file-input" className="hidden" accept="image/*" onChange={handleFileSelect} />
+      <div className="w-full mt-4 flex flex-col gap-2">
+        <div 
+          className="w-full flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700/50 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
+          onDragOver={e => e.preventDefault()}
+          onDrop={handleDrop}
+          onClick={() => document.getElementById("hidden-file-input")?.click()}
+        >
+           <ImageIcon size={24} className="mb-2 opacity-50" />
+           <span className="text-xs font-semibold">Drop images here or click to upload</span>
+           <span className="text-[10px] opacity-70">Supports JPG, PNG, GIF, clipboard paste</span>
+           <input type="file" multiple id="hidden-file-input" className="hidden" accept="image/*" onChange={handleFileSelect} />
+        </div>
+        {hasCamera && (
+          <button 
+            className="w-full flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-700/50 rounded-xl bg-white dark:bg-slate-800 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+            onClick={() => setShowCamera(true)}
+          >
+            <Camera size={16} />
+            Take Photo
+          </button>
+        )}
+        {showCamera && <CameraCaptureModal onClose={() => setShowCamera(false)} onCapture={handleCameraCapture} />}
       </div>
     );
   }
@@ -135,18 +161,33 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
          ))}
          
          {!readOnly && (
-           <div 
-             className="aspect-square rounded-xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors flex items-center justify-center flex-col text-slate-500"
-             onClick={() => document.getElementById("hidden-file-input-add")?.click()}
-           >
-              <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full mb-1">
-                 <ImageIcon size={16} />
-              </div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider">Add Image</span>
-              <input type="file" multiple id="hidden-file-input-add" className="hidden" accept="image/*" onChange={handleFileSelect} />
-           </div>
+           <>
+             <div 
+               className="aspect-square rounded-xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors flex items-center justify-center flex-col text-slate-500"
+               onClick={() => document.getElementById("hidden-file-input-add")?.click()}
+             >
+                <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full mb-1">
+                   <ImageIcon size={16} />
+                </div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider">Add Image</span>
+                <input type="file" multiple id="hidden-file-input-add" className="hidden" accept="image/*" onChange={handleFileSelect} />
+             </div>
+             {hasCamera && (
+               <div 
+                 className="aspect-square rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700/50 cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center justify-center flex-col text-slate-500 shadow-sm"
+                 onClick={() => setShowCamera(true)}
+               >
+                  <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-full mb-1">
+                     <Camera size={16} />
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider">Take Photo</span>
+               </div>
+             )}
+           </>
          )}
        </div>
+
+       {showCamera && <CameraCaptureModal onClose={() => setShowCamera(false)} onCapture={handleCameraCapture} />}
 
        {isFullscreen && createPortal(
           <div 
@@ -196,3 +237,4 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
     </div>
   );
 }
+

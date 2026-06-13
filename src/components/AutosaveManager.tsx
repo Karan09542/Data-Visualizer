@@ -27,8 +27,20 @@ export default function AutosaveManager() {
       try {
         const existingAutosave = await db.documents.where('name').equals('Autosaved Document').first();
         if (existingAutosave && existingAutosave.code) {
-          setCode(existingAutosave.code);
-          lastSavedCode.current = existingAutosave.code;
+          // Check if there is already a large/custom code from localstorage hydration
+          // We only overwrite if the current code in Zustand is the default initial code,
+          // which implies localstorage failed or is empty.
+          const currentCode = useStore.getState().code;
+          const isInitialOrEmpty = !currentCode || currentCode.includes("JSON Visual Node Engine");
+          
+          if (isInitialOrEmpty) {
+            setCode(existingAutosave.code);
+            lastSavedCode.current = existingAutosave.code;
+          } else {
+            // Keep the Zustand synchronous localstorage version, which might be fresher
+            // (e.g. if the user reloaded before the 2s debounce finished)
+            lastSavedCode.current = currentCode;
+          }
         }
       } catch (err) {
         console.error('Failed to load autosaved document:', err);

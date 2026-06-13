@@ -19,10 +19,14 @@ export function getValueAtPath(obj: any, path: string): any {
 }
 
 export function setValueAtPath(obj: any, path: string, value: any): any {
-  const newObj = JSON.parse(JSON.stringify(obj || {}));
+  let newObj = JSON.parse(JSON.stringify(obj || {}));
   const parts = getParts(path);
   if (parts.length === 0) {
     return value;
+  }
+
+  if (newObj === null || typeof newObj !== "object" || Array.isArray(newObj)) {
+    newObj = {};
   }
 
   let current = newObj;
@@ -34,12 +38,18 @@ export function setValueAtPath(obj: any, path: string, value: any): any {
       typeof current[part] !== "object" ||
       Array.isArray(current[part])
     ) {
+      if (current === null || typeof current !== "object") {
+        current = {};
+      }
       current[part] = {};
     }
     current = current[part];
   }
 
   const lastPart = parts[parts.length - 1];
+  if (current === null || typeof current !== "object") {
+    current = {};
+  }
   current[lastPart] = value;
   return newObj;
 }
