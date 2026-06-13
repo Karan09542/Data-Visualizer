@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair, Image as ImageIcon, Layers } from 'lucide-react';
+import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair, Image as ImageIcon, Layers, Search, BookOpen } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface NodeHelpModalProps {
@@ -11,7 +11,7 @@ interface NodeHelpModalProps {
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   const { code, setCode, appTheme } = useStore();
-  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image' | 'search'>('api');
 
   const handleInsertExample = async () => {
     try {
@@ -170,6 +170,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     { id: 'js', label: 'JS Nodes', icon: FileJson, color: 'amber' },
                     { id: 'ts', label: 'TS Nodes', icon: Code, color: 'blue' },
                     { id: 'py', label: 'Python Nodes', icon: Terminal, color: 'emerald' },
+                    { id: 'search', label: 'Search Nodes', icon: Search, color: 'blue' },
                     { id: 'math', label: 'Math Nodes', icon: Calculator, color: 'rose' },
                     { id: 'todo', label: 'Todo Nodes', icon: ListTodo, color: 'purple' },
                     { id: 'image', label: 'Image Nodes', icon: ImageIcon, color: 'cyan' },
@@ -557,6 +558,42 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   ]
 }`}
                     </pre>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'search' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className={`p-4 rounded-xl border flex gap-3 ${
+                    appTheme === 'dark' ? 'bg-blue-950/20 border-blue-900/40 text-blue-200' : 'bg-blue-50/50 border-blue-100 text-blue-850'
+                  }`}>
+                    <Search className="shrink-0 mt-0.5 text-blue-500" size={18} />
+                    <div>
+                      <span className="font-semibold block mb-0.5">What are Search Nodes?</span>
+                      Keys or files ending with either <code className="font-mono bg-blue-500/10 dark:bg-blue-500/20 px-1 py-0.5 rounded text-xs font-bold">.search</code> or <code className="font-mono bg-blue-500/10 dark:bg-blue-500/20 px-1 py-0.5 rounded text-xs font-bold">_search_node</code> act as built-in search engines inside the application. They support searching topics, fetching summaries, discovering images, and reading full articles via Wikipedia.
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <BookOpen size={16} className="text-blue-500" />
+                        <span>Full Articles & Images</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Launch a beautiful full-screen reading experience with inline articles, image viewing, categories, and direct Wikipedia linking — no need to leave your workspace.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Bookmark size={16} className="text-blue-500" />
+                        <span>Rich Output & History</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Searches log queries safely in your local history, support favorites, and push rich metadata (images, summaries) back to their JSON object parent automatically.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

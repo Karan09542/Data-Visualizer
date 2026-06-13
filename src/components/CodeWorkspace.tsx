@@ -33,6 +33,7 @@ import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
 import { TodoWorkspace } from "./TodoWorkspace";
 import ImageWorkspace from "./ImageWorkspace";
+import { SearchNodeWorkspace } from "./SearchNodeWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
@@ -178,6 +179,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const isPy = useMemo(() => fileExt.endsWith('_py_node') || fileExt === 'py', [fileExt]);
   const isApi = useMemo(() => fileExt.endsWith('_api_node') || fileExt === 'api', [fileExt]);
   const isTodo = useMemo(() => fileExt.endsWith('_todo_node') || fileExt === 'todo', [fileExt]);
+  const isSearch = useMemo(() => fileExt.endsWith('_search_node') || fileExt === 'search', [fileExt]);
   const isImg = useMemo(() => {
     const ext = fileExt.toLowerCase();
     if (ext.endsWith('_image_node') || ext === 'img' || ext === 'image' || ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'gif' || ext === 'webp') {
@@ -806,10 +808,10 @@ declare const console: {
   const currentPrompt = activePrompts[currentFilePath];
 
   useEffect(() => {
-    if (isTodo || isImg) {
+    if (isTodo || isImg || isSearch) {
       setTerminalState("hidden");
     }
-  }, [isTodo, isImg]);
+  }, [isTodo, isImg, isSearch]);
 
   // Auto-focus terminal input whenever a STDIN or alert/prompt/confirm prompt details are activated
   useEffect(() => {
@@ -1503,7 +1505,9 @@ declare const console: {
                     </button>
                   </div>
                 )}
-                {isTodo ? (
+                {isSearch ? (
+                  <SearchNodeWorkspace key={currentFilePath} path={currentFilePath} />
+                ) : isTodo ? (
                   <TodoWorkspace key={currentFilePath} path={currentFilePath} />
                 ) : isImg ? (
                   <ImageWorkspace key={currentFilePath} path={currentFilePath} />

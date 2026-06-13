@@ -80,6 +80,21 @@ export interface HistoryRecord {
   data: any;
 }
 
+export interface SearchHistoryRecord {
+  id?: number;
+  query: string;
+  timestamp: number;
+  isPinned?: boolean;
+}
+
+export interface SavedSearchArticle {
+  id: string; // pageid or title
+  title: string;
+  summary: string;
+  thumbnail?: string;
+  timestamp: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -89,6 +104,8 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   objects: EntityTable<FabricObject, 'id'>;
   layers: EntityTable<Layer, 'id'>;
   history: EntityTable<HistoryRecord, 'id'>;
+  searchHistory: EntityTable<SearchHistoryRecord, 'id'>;
+  savedArticles: EntityTable<SavedSearchArticle, 'id'>;
 };
 
 db.version(8).stores({
@@ -100,6 +117,11 @@ db.version(8).stores({
   objects: 'id, documentId, artboardId, layerId, type',
   layers: 'id, documentId, artboardId, order',
   history: '++id, documentId, timestamp'
+});
+
+db.version(9).stores({
+  searchHistory: '++id, query, timestamp, isPinned',
+  savedArticles: 'id, title, timestamp'
 });
 
 export { db };

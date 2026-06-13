@@ -34,6 +34,7 @@ import { PyNodeCodeRenderer } from "./PyNodeCodeRenderer";
 import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
 import { MathNodeRenderer } from "./MathNodeRenderer";
 import { TodoNodeRenderer } from "./TodoNodeRenderer";
+import { SearchNodeRenderer } from "./SearchNodeRenderer";
 
 import { SafeModelViewer } from "./SafeModelViewer";
 
@@ -311,6 +312,7 @@ function NodeRenderer({
 
   const isTodoNode = typeof data.name === "string" && (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
   const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
+  const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
@@ -872,7 +874,7 @@ function NodeRenderer({
 
   let fWidth = customSize
     ? customSize.width
-    : isApiNode ? 340 : isTodoNode ? 385 : isMathNode ? (isExpanded ? 600 : 320)
+    : isApiNode ? 340 : isTodoNode ? 385 : isMathNode ? (isExpanded ? 600 : 320) : isSearchNode ? 320
       : (isJsNode || isTsNode || isPyNode)
         ? 440
         : (isJsCode || isTsCode || isPyCode)
@@ -888,6 +890,7 @@ function NodeRenderer({
     ? customSize.height
     : isTodoNode ? (isExpanded ? 360 : 140)
     : isMathNode ? (isExpanded ? 350 : 250)
+    : isSearchNode ? 240
     : isMedia
       ? mediaType === "audio"
         ? 140
@@ -913,7 +916,7 @@ function NodeRenderer({
   let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isMathNode ? "max-w-[600px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
 
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) {
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isSearchNode) {
     shapeClasses = `p-0 !bg-transparent !border-transparent !shadow-none overflow-visible`;
   }
 
@@ -1811,6 +1814,12 @@ function NodeRenderer({
                     width={fWidth}
                     height={fHeight}
                   />
+                )}
+                {isSearchNode && (
+                   <SearchNodeRenderer
+                      nodeId={data.id}
+                      data={data}
+                   />
                 )}
                 {hasChildren && isCollapsed && (
                   <span
