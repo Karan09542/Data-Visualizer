@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { importFile, resolveAssetUrl } from "../utils/assetManager";
-import { Image as ImageIcon, X, Trash2, Camera, MoveVertical } from "lucide-react";
+import { Image as ImageIcon, X, Trash2, Camera, MoveVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CameraCaptureModal } from "./CameraCaptureModal";
+import { motion, AnimatePresence } from "motion/react";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 interface TodoTaskProps {
   imageHashes?: string[];
@@ -15,6 +17,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
   const [urls, setUrls] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenIndex, setFullscreenIndex] = useState(0);
+  const [slideDirection, setSlideDirection] = useState(0);
   const [showCamera, setShowCamera] = useState(false);
   const [hasCamera, setHasCamera] = useState(false);
 
@@ -148,7 +151,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
          {urls.map((url, i) => (
             url ? (
               <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm group">
-                <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300 cursor-pointer" alt={`attachment ${i}`} onClick={() => { setIsFullscreen(true); setFullscreenIndex(i); }} />
+                <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300 cursor-pointer" alt={`attachment ${i}`} onClick={() => { setIsFullscreen(true); setFullscreenIndex(i); setSlideDirection(0); }} />
                 {!readOnly && (
                   <button onClick={() => removeImage(i)} className="absolute top-1 right-1 p-1.5 bg-black/50 hover:bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
                     <Trash2 size={12} />
@@ -191,43 +194,81 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
 
        {isFullscreen && createPortal(
           <div 
-             className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center backdrop-blur-md"
-             onMouseDown={(e) => {
-               const startX = e.clientX;
-               const handleMouseUp = (eUp: MouseEvent) => {
-                 const dx = eUp.clientX - startX;
-                 if (dx > 50 && fullscreenIndex > 0) setFullscreenIndex(i => i - 1);
-                 else if (dx < -50 && fullscreenIndex < urls.length - 1) setFullscreenIndex(i => i + 1);
-                 window.removeEventListener('mouseup', handleMouseUp);
-               };
-               window.addEventListener('mouseup', handleMouseUp);
-             }}
-             onTouchStart={(e) => {
-               const startX = e.touches[0].clientX;
-               let endX = startX;
-               const handleTouchMove = (eMove: TouchEvent) => { endX = eMove.touches[0].clientX; };
-               const handleTouchEnd = () => {
-                 const dx = endX - startX;
-                 if (dx > 50 && fullscreenIndex > 0) setFullscreenIndex(i => i - 1);
-                 else if (dx < -50 && fullscreenIndex < urls.length - 1) setFullscreenIndex(i => i + 1);
-                 window.removeEventListener('touchmove', handleTouchMove);
-                 window.removeEventListener('touchend', handleTouchEnd);
-               };
-               window.addEventListener('touchmove', handleTouchMove);
-               window.addEventListener('touchend', handleTouchEnd);
-             }}
+             className="fixed inset-0 z-[99999] bg-black flex items-center justify-center backdrop-blur-md"
           >
+             <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setIsFullscreen(false)} />
              <button onClick={() => setIsFullscreen(false)} className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors z-50">
                <X size={20} />
              </button>
-             <div className="relative w-full h-full flex items-center justify-center p-8">
-               {urls[fullscreenIndex] && <img src={urls[fullscreenIndex]} className="max-w-full max-h-full object-contain drop-shadow-2xl rounded-lg select-none pointer-events-none" draggable={false} alt={`fullscreen ${fullscreenIndex}`} />}
+
+             <div className="relative w-full h-full flex items-center justify-center overflow-hidden z-40">
+                <AnimatePresence initial={false} custom={slideDirection}>
+                   <motion.div
+                      key={fullscreenIndex}
+                      custom={slideDirection}
+                      variants={{
+                         enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 300 : -300 }),
+                         center: { opacity: 1, x: 0 },
+                         exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -300 : 300 })
+                      }}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                      className="absolute inset-0 flex items-center justify-center p-0 md:p-8"
+                      drag="x"
+                      dragConstraints={{ left: 0, right: 0 }}
+                      dragElastic={1}
+                      onDragEnd={(e, { offset, velocity }) => {
+                         const swipe = offset.x;
+                         if (swipe < -50 && fullscreenIndex < urls.length - 1) {
+                            setSlideDirection(1);
+                            setFullscreenIndex(i => i + 1);
+                         } else if (swipe > 50 && fullscreenIndex > 0) {
+                            setSlideDirection(-1);
+                            setFullscreenIndex(i => i - 1);
+                         }
+                      }}
+                   >
+                     {urls[fullscreenIndex] && (
+                        <TransformWrapper
+                           initialScale={1}
+                           minScale={0.5}
+                           maxScale={5}
+                           centerOnInit
+                           wheel={{ step: 0.1 }}
+                        >
+                           <TransformComponent wrapperClass="w-full h-full flex items-center justify-center" contentClass="w-full h-full flex items-center justify-center">
+                              <img src={urls[fullscreenIndex]} className="max-w-full max-h-full object-contain drop-shadow-2xl md:rounded-lg select-none pointer-events-auto" draggable={false} alt={`fullscreen ${fullscreenIndex}`} />
+                           </TransformComponent>
+                        </TransformWrapper>
+                     )}
+                   </motion.div>
+                </AnimatePresence>
+
+                {/* Desktop Navigation Arrows */}
+                {urls.length > 1 && fullscreenIndex > 0 && (
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); setSlideDirection(-1); setFullscreenIndex(i => i - 1); }} 
+                     className="absolute left-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors z-50 hidden md:block"
+                   >
+                     <ChevronLeft size={24} />
+                   </button>
+                )}
+                {urls.length > 1 && fullscreenIndex < urls.length - 1 && (
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); setSlideDirection(1); setFullscreenIndex(i => i + 1); }} 
+                     className="absolute right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md transition-colors z-50 hidden md:block"
+                   >
+                     <ChevronRight size={24} />
+                   </button>
+                )}
              </div>
 
              {urls.length > 1 && (
                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 bg-black/50 backdrop-blur-md rounded-full border border-white/10 z-50" onClick={e => e.stopPropagation()}>
                   {urls.map((u, i) => (
-                    <button key={i} onClick={() => setFullscreenIndex(i)} className={cn("w-2 h-2 rounded-full transition-all", i === fullscreenIndex ? "bg-white scale-125" : "bg-white/30 hover:bg-white/50")} />
+                    <button key={i} onClick={() => { setSlideDirection(i > fullscreenIndex ? 1 : -1); setFullscreenIndex(i); }} className={cn("w-2 h-2 rounded-full transition-all", i === fullscreenIndex ? "bg-white scale-125" : "bg-white/30 hover:bg-white/50")} />
                   ))}
                </div>
              )}
