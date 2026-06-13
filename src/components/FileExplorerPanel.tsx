@@ -930,7 +930,7 @@ function isFileSystemMeaningful(value: any): boolean {
               }
             }}
             style={{ paddingLeft: indentPadding }}
-            className={`group flex items-center justify-start py-1.5 cursor-pointer transition-colors text-xs border-l-2 select-none relative ${
+            className={`group flex items-center justify-start py-1.5 cursor-pointer transition-colors text-xs border-l-2 select-none relative w-max min-w-full ${
               isFolder ? "pr-20" : "pr-8"
             } ${
               isSelected
@@ -938,7 +938,7 @@ function isFileSystemMeaningful(value: any): boolean {
                 : "border-l-transparent text-slate-700 hover:text-slate-900 dark:text-slate-350 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
             } ${dragOverFolderId === item.id ? "bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500 border-dashed rounded" : ""}`}
           >
-            <div className="flex items-center gap-2 min-w-0 pr-2">
+            <div className="flex items-center gap-2 pr-2 whitespace-nowrap">
               {isFolder ? (
                 <>
                   <span className="text-slate-400 hover:text-slate-300">
@@ -967,7 +967,7 @@ function isFileSystemMeaningful(value: any): boolean {
                   className="w-full text-xs font-mono px-1 py-0.5 bg-white dark:bg-[#121824] border border-blue-500 rounded outline-none text-slate-800 dark:text-slate-200"
                 />
               ) : (
-                <span className="truncate font-mono tracking-tight">{item.name}</span>
+                <span className="whitespace-nowrap font-mono tracking-tight">{item.name}</span>
               )}
             </div>
 
@@ -1213,7 +1213,7 @@ function isFileSystemMeaningful(value: any): boolean {
 
       {/* CORE TREE CANVAS AREA */}
       <div 
-        className="flex-1 overflow-y-auto custom-scrollbar p-1.5 space-y-[1px]" 
+        className="flex-1 overflow-auto custom-scrollbar p-1.5 space-y-[1px]" 
         onClick={() => setSelectedExplorerFiles([])}
         onDoubleClick={(e) => {
           if (e.target === e.currentTarget) {

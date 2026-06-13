@@ -7165,7 +7165,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                 </div>
               )}          {/* Squoosh-like image comparison viewer */}
           {comparisonMode && (
-             <div className="absolute inset-0 z-40 bg-[#090909] flex flex-col p-0 md:p-6 items-center justify-between select-none">
+             <div className="absolute inset-0 z-40 bg-[#090909] flex flex-col p-0 md:p-4 items-center justify-center gap-4 select-none">
                 {/* Visual Header Option Controls */}
                 {isMobile ? (
                    <>
@@ -7184,8 +7184,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                       </button>
                    </>
                 ) : (
-                <div className="w-full flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between bg-[#141414] p-3 rounded-xl border border-[#232323] shadow-lg mb-4 shrink-0 z-30">
-                   <div className="flex items-center justify-between gap-3">
+                <div className="w-full flex flex-col md:flex-row flex-wrap gap-3 items-stretch md:items-center justify-between bg-[#141414] p-3 rounded-xl border border-[#232323] shadow-lg mb-4 shrink-0 z-30">
+                   <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-2">
                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                          <span className="text-xs font-black uppercase tracking-widest text-slate-200">Live Preview</span>
@@ -7202,9 +7202,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                       </button>
                    </div>
                    
-                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                   <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3">
                       {/* Zoom Control */}
-                      <div className="flex items-center justify-between sm:justify-start gap-2 bg-[#1A1A1A] p-1.5 px-3 rounded-lg border border-[#222] min-w-0">
+                      <div className="flex items-center justify-between xl:justify-start gap-2 bg-[#1A1A1A] p-1.5 px-3 rounded-lg border border-[#222] min-w-0 flex-wrap">
+
                          <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest leading-none">Zoom</span>
                          <div className="flex items-center gap-2">
                             <input 
@@ -7257,7 +7258,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                       </div>
 
                       {/* Preview Modes Selection */}
-                      <div className="flex bg-[#1D1D1D] p-1 rounded-lg border border-[#2D2D2D] gap-1 overflow-x-auto no-scrollbar shrink-0">
+                      <div className="flex bg-[#1D1D1D] p-1 rounded-lg border border-[#2D2D2D] gap-1 overflow-x-auto sm:flex-wrap no-scrollbar shrink-0 max-w-full">
                          {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
                             <button
                               key={mode}
@@ -7334,7 +7335,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                         onPointerLeave={handlePointerUp}
                         onKeyDown={handleKeyDown}
                         tabIndex={0}
-                        className={`${isMobile ? 'w-full h-full rounded-none border-none flex-1 min-h-0' : 'w-full max-w-4xl h-full max-h-[60vh] rounded-xl border border-[#222]'} relative bg-[#111] overflow-hidden shadow-2xl group flex items-center justify-center outline-none focus:border-blue-500/50`}
+                        className={`${isMobile ? 'w-full h-full rounded-none border-none flex-1 min-h-0' : 'w-full max-w-5xl flex-1 min-h-0 rounded-xl border border-[#222]'} relative bg-[#111] overflow-hidden shadow-2xl group flex items-center justify-center outline-none focus:border-blue-500/50`}
                         style={{ aspectRatio: !isMobile ? (() => {
                            const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
                            return b ? `${b.width} / ${b.height}` : "1.33";

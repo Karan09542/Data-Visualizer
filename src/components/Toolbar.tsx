@@ -28,11 +28,14 @@ import {
   SlidersHorizontal,
   Network,
   Database,
+  Save,
+  Check,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { estimateShareSize } from "../utils/shareUtils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
+import { db } from "../lib/db";
 import NodeHelpModal from "./NodeHelpModal";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
@@ -75,6 +78,12 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     setVisualizerMode,
     codeFormat,
     convertFormat,
+    activeDocumentId,
+    activeDocumentName,
+    isDirty,
+    setIsDirty,
+    setLastSavedCode,
+    setNotification,
   } = useStore();
 
   const { annotations } = useAnnotationStore();
@@ -975,31 +984,69 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               </button>
             </div>
 
-            <div className="flex items-center space-x-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-4">
-              <button
-                onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
-                className={`flex items-center gap-1.5 p-1.5 px-2.5 rounded-md transition-colors border hover:-translate-y-px mr-1 ${isAutosaveEnabled ? "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/50" : "bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700"}`}
-                title={
-                  isAutosaveEnabled ? "Autosave is On" : "Turn On Autosave"
-                }
-              >
-                {isAutosaveEnabled ? (
-                  <Cloud size={14} />
-                ) : (
-                  <CloudOff size={14} />
-                )}
-                <span className="text-xs font-semibold">
-                  {isAutosaveEnabled ? "Autosave On" : "Autosave Off"}
-                </span>
-              </button>
+            <div className="flex items-center gap-2 flex-shrink-0 border-r border-slate-300 dark:border-slate-800 pr-4">
               <button
                 onClick={() => setIsSavedDocsOpen(true)}
-                className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors border border-slate-300 dark:border-slate-700 hover:-translate-y-px mr-2"
-                title="Saved Documents"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition-colors border border-slate-300 dark:border-slate-700"
+                title="Open Document Manager"
               >
-                <FolderOpen size={14} />
-                <span className="text-xs font-semibold">Saved</span>
+                <FolderOpen size={14} className="text-blue-500" />
+                <span className="text-sm font-semibold max-w-[150px] truncate">
+                  {activeDocumentName || "Unnamed Document"}
+                </span>
               </button>
+
+              <div className="flex items-center gap-1.5 mr-2">
+                <button
+                  onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
+                  className={`p-1.5 rounded-md transition-colors border ${isAutosaveEnabled ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-800/40" : "bg-transparent text-slate-400 border-transparent hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300"}`}
+                  title={isAutosaveEnabled ? "Autosave is On" : "Turn On Autosave"}
+                >
+                  {isAutosaveEnabled ? <Cloud size={14} /> : <CloudOff size={14} />}
+                </button>
+
+                {!isAutosaveEnabled && isDirty && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100/50 dark:bg-amber-500/10 px-2 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                    Unsaved Changes
+                  </span>
+                )}
+                {!isAutosaveEnabled && !isDirty && activeDocumentId && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    <Check size={10} strokeWidth={3} />
+                    Saved
+                  </span>
+                )}
+              </div>
+
+              {(isDirty && activeDocumentId && !isAutosaveEnabled) && (
+                <button
+                  onClick={async () => {
+                    await db.documents.update(activeDocumentId, {
+                      code,
+                      updatedAt: Date.now()
+                    });
+                    setLastSavedCode(code);
+                    setIsDirty(false);
+                    setNotification({ message: 'Document saved', type: 'success' });
+                  }}
+                  className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors border border-transparent shadow-sm"
+                  title="Save Current Document"
+                >
+                  <Save size={14} />
+                  <span className="text-xs font-semibold">Save</span>
+                </button>
+              )}
+              {(!activeDocumentId && isDirty) && (
+                 <button
+                 onClick={() => setIsSavedDocsOpen(true)}
+                 className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors border border-transparent shadow-sm"
+                 title="Save as new document"
+               >
+                 <Save size={14} />
+                 <span className="text-xs font-semibold">Save New</span>
+               </button>
+              )}
 
               <label
                 className="cursor-pointer flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors border border-indigo-500/25 hover:-translate-y-px mr-2"
@@ -1371,6 +1418,23 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 >
                   <FolderOpen size={16} /> Saved Documents
                 </button>
+                {activeDocumentId && (
+                  <button
+                    onClick={async () => {
+                      setIsMobileMenuOpen(false);
+                      await db.documents.update(activeDocumentId, {
+                        code,
+                        updatedAt: Date.now()
+                      });
+                      setLastSavedCode(code);
+                      setIsDirty(false);
+                      setNotification({ message: 'Document updated successfully', type: 'success' });
+                    }}
+                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-100 dark:bg-blue-900/30 rounded-md text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors text-sm font-medium"
+                  >
+                    <Save size={16} /> Quick Save
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);

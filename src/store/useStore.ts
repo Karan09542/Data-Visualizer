@@ -134,6 +134,10 @@ export const defaultSettings = {
   searchEngineMode: "permissive" as SearchEngineMode,
   isAutosaveEnabled: true,
   visualizerMode: "graph" as VisualizerMode,
+  activeDocumentId: null as number | null,
+  activeDocumentName: null as string | null,
+  isDirty: false,
+  lastSavedCode: null as string | null,
 };
 
 export type CodeFormat = "json" | "yaml";
@@ -291,6 +295,14 @@ export interface StoreState {
   isMobileMenuOpen: boolean;
   isShortcutsOpen: boolean;
   isMathHelpOpen: boolean;
+  activeDocumentId: number | null;
+  activeDocumentName: string | null;
+  isDirty: boolean;
+  lastSavedCode: string | null;
+  setActiveDocumentId: (id: number | null) => void;
+  setActiveDocumentName: (name: string | null) => void;
+  setIsDirty: (isDirty: boolean) => void;
+  setLastSavedCode: (code: string | null) => void;
   showMediaPreview: boolean;
   manuallyRenderedNodes: Record<string, boolean>;
   globalTextExpanded: boolean;
@@ -869,7 +881,9 @@ export const useStore = create<StoreState>()(
           }));
         }
 
-        set({ code, parsedData: data, error, treeData });
+        const isDirtyComputed = get().lastSavedCode !== null ? code !== get().lastSavedCode : true;
+
+        set({ code, parsedData: data, error, treeData, isDirty: isDirtyComputed });
         if (get().searchQuery && treeData) {
           get().setSearchQuery(get().searchQuery);
         } else {
@@ -1052,7 +1066,11 @@ export const useStore = create<StoreState>()(
         void set({ isShortcutsOpen: isOpen }),
       setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
       setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
-      setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show }),
+      setActiveDocumentId: (id: number | null) => set({ activeDocumentId: id }),
+      setActiveDocumentName: (name: string | null) => set({ activeDocumentName: name }),
+      setIsDirty: (isDirty: boolean) => set({ isDirty }),
+      setLastSavedCode: (code: string | null) => set({ lastSavedCode: code }),
+      setShowMediaPreview: (show: boolean) => set({ showMediaPreview: show, manuallyRenderedNodes: {} }),
       toggleManualMediaRender: (nodeId: string) =>
         set((state) => {
           const currentVal =
@@ -1240,6 +1258,10 @@ export const useStore = create<StoreState>()(
           "jsNodeVisibility",
           "jsNodeCodeOverrides",
           "expandedJsNodeId",
+          "activeDocumentId",
+          "activeDocumentName",
+          "isDirty",
+          "lastSavedCode",
         ];
         return Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key)),

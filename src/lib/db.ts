@@ -6,6 +6,7 @@ export interface SavedDocument {
   code: string;
   createdAt: number;
   updatedAt: number;
+  isPinned?: boolean;
 }
 
 export interface NodePosition {
@@ -90,8 +91,8 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   history: EntityTable<HistoryRecord, 'id'>;
 };
 
-db.version(7).stores({
-  documents: '++id, name, createdAt, updatedAt',
+db.version(8).stores({
+  documents: '++id, name, createdAt, updatedAt, isPinned',
   nodePositions: 'id',
   customFormulas: '++id, name, createdAt',
   assets: 'assetId, hash, createdAt, thumbnailId',

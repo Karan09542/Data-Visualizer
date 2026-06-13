@@ -66,16 +66,6 @@
     @apply bg-slate-400 dark:bg-slate-600;
   }
   
-  @media (max-width: 768px) {
-    .custom-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .custom-scrollbar {
-      -ms-overflow-style: none;  /* IE and Edge */
-      scrollbar-width: none;  /* Firefox */
-    }
-  }
-
   /* Utility to completely hide scrollbars */
   .scrollbar-none::-webkit-scrollbar {
     display: none !important;
