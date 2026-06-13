@@ -198,18 +198,21 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
         const file = new File([capturedVideo], `capture_${Date.now()}.webm`, { type: 'video/webm' });
         onCapture(file);
       } else if (capturedImage) {
-        if (completedCrop && completedCrop.width && completedCrop.height && completedCrop.width < 100 && crop.unit !== '%') {
-           // wait actually the crop dimensions from react-image-crop are based on rendered image if unit is px.
            const image = imgRef.current;
            if (!image) throw new Error("Image not loaded");
            const scaleX = image.naturalWidth / image.width;
            const scaleY = image.naturalHeight / image.height;
 
-           const pixelCrop = {
+           const pixelCrop = (completedCrop && completedCrop.width > 0 && completedCrop.height > 0) ? {
               x: completedCrop.x * scaleX,
               y: completedCrop.y * scaleY,
               width: completedCrop.width * scaleX,
               height: completedCrop.height * scaleY,
+           } : {
+              x: 0,
+              y: 0,
+              width: image.naturalWidth,
+              height: image.naturalHeight
            };
 
            const finalBlob = await getCroppedImageInternal(capturedImage, pixelCrop, rotation);
@@ -217,12 +220,6 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
              const file = new File([finalBlob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
              onCapture(file);
            }
-        } else {
-           const res = await fetch(capturedImage);
-           const blob = await res.blob();
-           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-           onCapture(file);
-        }
       }
       onClose();
     } catch(err) {

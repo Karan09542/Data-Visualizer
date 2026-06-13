@@ -190,7 +190,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
               <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm group bg-slate-100 dark:bg-slate-800">
                 {renderThumb(url, i)}
                 {!readOnly && (
-                  <button onClick={() => removeImage(i)} className="absolute top-1 right-1 p-1.5 bg-black/50 hover:bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10">
+                  <button onClick={(e) => { e.stopPropagation(); removeImage(i); }} className="absolute top-1 right-1 p-1.5 bg-black/50 hover:bg-red-500 rounded-lg text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10">
                     <Trash2 size={12} />
                   </button>
                 )}

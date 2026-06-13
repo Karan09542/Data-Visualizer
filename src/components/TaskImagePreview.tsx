@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { resolveAssetUrl } from "../utils/assetManager";
-import { Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon, PlayCircle } from "lucide-react";
 
 export function TaskImagePreview({ imageHashes = [], compact = true }: { imageHashes?: string[], compact?: boolean }) {
   const [urls, setUrls] = useState<string[]>([]);
@@ -30,28 +30,46 @@ export function TaskImagePreview({ imageHashes = [], compact = true }: { imageHa
 
   if (!imageHashes || imageHashes.length === 0) return null;
 
+  const isVideo = (url: string) => {
+     return url.includes('#file.mp4') || url.includes('#file.webm') || url.includes('#file.mov') || url.startsWith('data:video');
+  };
+
+  const renderMedia = (url: string, i: number, isCompact: boolean) => {
+    if (isVideo(url) && !url.match(/#file\.(jpg|jpeg|png|gif|webp)$/i)) {
+      return (
+         <div className="w-full h-full relative" key={`video-${i}`}>
+            <video src={url} className="w-full h-full object-cover select-none" muted playsInline />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+               <PlayCircle className="text-white/80 w-6 h-6 drop-shadow-md" />
+            </div>
+         </div>
+      );
+    }
+    return <img src={url} className="w-full h-full object-cover select-none" alt={isCompact ? `attachment ${i+1}` : "attachment"} key={`img-${i}`} />;
+  };
+
   if (compact) {
     if (imageHashes.length === 1) {
       return (
         <div className="mt-1 w-full max-w-[200px] h-[100px] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/50 relative shadow-sm shrink-0">
-          {urls[0] ? (
-            <img src={urls[0]} className="w-full h-full object-cover select-none" alt="attachment" />
-          ) : (
+          {urls[0] ? renderMedia(urls[0], 0, false) : (
             <div className="w-full h-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
           )}
         </div>
       );
     } else {
-      // Carousel / Multi-image
+      // Carousel / Multi-image (max 3)
+      const previewUrls = urls.slice(0, 3);
+      
       return (
         <div className="mt-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[220px]">
-          {urls.map((url, i) => (
+          {previewUrls.map((url, i) => (
              url ? (
                <div key={i} className="relative w-14 h-14 rounded-md overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700/50">
-                 <img src={url} className="w-full h-full object-cover select-none" alt={`attachment ${i+1}`} />
-                 {i === urls.length - 1 && imageHashes.length > urls.length && (
-                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white text-[10px] font-bold">
-                     +{imageHashes.length - urls.length}
+                 {renderMedia(url, i, true)}
+                 {i === 2 && imageHashes.length > 3 && (
+                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[12px] font-bold">
+                     +{imageHashes.length - 3}
                    </div>
                  )}
                </div>
@@ -70,7 +88,16 @@ export function TaskImagePreview({ imageHashes = [], compact = true }: { imageHa
       {urls.map((url, i) => (
          url ? (
            <div key={i} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm cursor-pointer group">
-             <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" alt={`attachment ${i}`} />
+             {isVideo(url) && !url.match(/#file\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                <>
+                   <video src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" muted playsInline />
+                   <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors">
+                      <PlayCircle className="text-white/80 w-8 h-8 drop-shadow-md" />
+                   </div>
+                </>
+             ) : (
+                <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" alt={`attachment ${i}`} />
+             )}
            </div>
          ) : (
            <div key={i} className="aspect-video bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
