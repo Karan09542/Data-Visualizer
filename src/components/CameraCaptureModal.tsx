@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Camera, RefreshCcw, Check, ArrowLeft, RotateCw, Image as ImageIcon, Crop } from 'lucide-react';
-import Cropper from 'react-easy-crop';
+import { X, Camera, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopCircle } from 'lucide-react';
+import ReactCrop, { type Crop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { cn } from '@/lib/utils';
 import getCroppedImg from '../utils/cropImage';
 
@@ -17,18 +18,24 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   
+  const [mode, setMode] = useState<'photo' | 'video'>('photo');
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<BlobPart[]>([]);
+
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedVideo, setCapturedVideo] = useState<Blob | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Cropper state
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [rotation, setRotation] = useState(0);
+  const [crop, setCrop] = useState<Crop>({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
+  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
   const [aspect, setAspect] = useState<number | undefined>(undefined);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
-    // Check if device has multiple cameras
     navigator.mediaDevices.enumerateDevices().then(devices => {
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
       if (videoInputs.length > 1) {
@@ -38,7 +45,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
   }, []);
 
   useEffect(() => {
-    if (capturedImage) return; // don't open camera if we already captured
+    if (capturedImage || capturedVideo) return;
 
     let activeStream: MediaStream | null = null;
     let isMounted = true;
@@ -50,7 +57,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
         }
         const s = await navigator.mediaDevices.getUserMedia({
           video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false
+          audio: mode === 'video'
         });
         if (!isMounted) {
            s.getTracks().forEach(track => track.stop());
@@ -78,9 +85,8 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
         stream.getTracks().forEach(t => t.stop());
       }
     };
-  }, [facingMode, capturedImage]);
+  }, [facingMode, capturedImage, capturedVideo, mode]);
 
-  // Make sure to clean up the stream when unmounting
   useEffect(() => {
     return () => {
       if (stream) stream.getTracks().forEach(t => t.stop());
@@ -93,63 +99,132 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
 
   const takePhoto = () => {
     if (!videoRef.current || !stream) return;
-    
-    // Flash effect
     const videoEl = videoRef.current;
-    
     const canvas = document.createElement('canvas');
     canvas.width = videoEl.videoWidth;
     canvas.height = videoEl.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    // If user-facing, it's often mirrored in preview but we want to capture it properly?
-    // Usually we just draw as is, or mirror it if needed.
     if (facingMode === 'user') {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
     }
-    
     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
     setCapturedImage(dataUrl);
-    
-    // Stop camera
     stream.getTracks().forEach(t => t.stop());
     setStream(null);
   };
 
+  const startRecording = () => {
+    if (!stream) return;
+    videoChunksRef.current = [];
+    try {
+      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') ? 'video/webm; codecs=vp9' : 'video/webm';
+      const mr = new MediaRecorder(stream, { mimeType });
+      mr.ondataavailable = e => {
+        if (e.data.size > 0) videoChunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        const blob = new Blob(videoChunksRef.current, { type: mimeType });
+        setCapturedVideo(blob);
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        setStream(null);
+      };
+      mediaRecorderRef.current = mr;
+      mr.start(200);
+      setIsRecording(true);
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
   const retake = () => {
     setCapturedImage(null);
-    setCrop({ x: 0, y: 0 });
-    setZoom(1);
+    setCapturedVideo(null);
+    setCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
+    setCompletedCrop(null);
     setRotation(0);
     setAspect(undefined);
   };
 
-  const onCropComplete = useCallback((croppedArea: any, croppedAreaPixels: any) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  }, []);
+  const getCroppedImageInternal = async (imageSrc: string, pixelCrop: any, rotation = 0) => {
+    const image = new Image();
+    image.src = imageSrc;
+    await new Promise(resolve => { image.onload = resolve; });
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const maxSize = Math.max(image.width, image.height);
+    const safeArea = 2 * ((maxSize / 2) * Math.sqrt(2));
+    
+    canvas.width = safeArea;
+    canvas.height = safeArea;
+    ctx.translate(safeArea / 2, safeArea / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.translate(-safeArea / 2, -safeArea / 2);
+
+    ctx.drawImage(image, safeArea / 2 - image.width * 0.5, safeArea / 2 - image.height * 0.5);
+    const data = ctx.getImageData(0, 0, safeArea, safeArea);
+    
+    canvas.width = pixelCrop.width;
+    canvas.height = pixelCrop.height;
+    ctx.putImageData(
+      data,
+      Math.round(0 - safeArea / 2 + image.width * 0.5 - pixelCrop.x),
+      Math.round(0 - safeArea / 2 + image.height * 0.5 - pixelCrop.y)
+    );
+
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((file) => {
+        resolve(file);
+      }, 'image/jpeg', 0.95);
+    });
+  };
 
   const handleSave = async () => {
-    if (!capturedImage) return;
     setIsProcessing(true);
-    
     try {
-      let finalBlob: Blob | null;
-      if (croppedAreaPixels) {
-        finalBlob = await getCroppedImg(capturedImage, croppedAreaPixels, rotation);
-      } else {
-        // Just convert base64 to blob if no crop was applied?
-        const res = await fetch(capturedImage);
-        finalBlob = await res.blob();
-      }
-      
-      if (finalBlob) {
-        const file = new File([finalBlob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      if (capturedVideo) {
+        const file = new File([capturedVideo], `capture_${Date.now()}.webm`, { type: 'video/webm' });
         onCapture(file);
-        onClose();
+      } else if (capturedImage) {
+        if (completedCrop && completedCrop.width && completedCrop.height && completedCrop.width < 100 && crop.unit !== '%') {
+           // wait actually the crop dimensions from react-image-crop are based on rendered image if unit is px.
+           const image = imgRef.current;
+           if (!image) throw new Error("Image not loaded");
+           const scaleX = image.naturalWidth / image.width;
+           const scaleY = image.naturalHeight / image.height;
+
+           const pixelCrop = {
+              x: completedCrop.x * scaleX,
+              y: completedCrop.y * scaleY,
+              width: completedCrop.width * scaleX,
+              height: completedCrop.height * scaleY,
+           };
+
+           const finalBlob = await getCroppedImageInternal(capturedImage, pixelCrop, rotation);
+           if (finalBlob) {
+             const file = new File([finalBlob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+             onCapture(file);
+           }
+        } else {
+           const res = await fetch(capturedImage);
+           const blob = await res.blob();
+           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+           onCapture(file);
+        }
       }
+      onClose();
     } catch(err) {
       console.error(err);
     } finally {
@@ -168,7 +243,11 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
       ].map(preset => (
         <button 
           key={preset.label}
-          onClick={() => setAspect(preset.value)}
+          onClick={() => {
+             setAspect(preset.value);
+             if (preset.value) setCrop(c => ({...c, aspect: preset.value}));
+             else setCrop(c => ({...c, aspect: undefined}));
+          }}
           className={cn(
             "px-4 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-colors", 
             aspect === preset.value ? "bg-blue-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
@@ -177,9 +256,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
           {preset.label}
         </button>
       ))}
-      
       <div className="w-px h-6 bg-white/20 mx-1 shrink-0" />
-      
       <button 
          onClick={() => setRotation(r => (r + 90) % 360)}
          className="px-3 py-1.5 rounded-full bg-white/10 text-white hover:bg-white/20 shrink-0"
@@ -192,15 +269,25 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
 
   return createPortal(
     <div className="fixed inset-0 z-[999999] bg-black flex flex-col items-center">
-       {/* Top Bar */}
        <div className="w-full h-14 flex items-center justify-between px-4 z-10 bg-gradient-to-b from-black/50 to-transparent absolute top-0 left-0">
           <button onClick={onClose} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
              <X size={20} />
           </button>
-          <div className="text-white font-medium text-sm drop-shadow-md">
-             {capturedImage ? 'Edit Photo' : 'Take Photo'}
-          </div>
-          {capturedImage ? (
+          
+          {!capturedImage && !capturedVideo && !isRecording && (
+            <div className="flex bg-black/40 backdrop-blur rounded-full p-1 border border-white/10">
+               <button onClick={() => setMode('photo')} className={cn("px-4 py-1 text-xs font-medium rounded-full transition-colors", mode === 'photo' ? "bg-white text-black" : "text-white")}>Photo</button>
+               <button onClick={() => setMode('video')} className={cn("px-4 py-1 text-xs font-medium rounded-full transition-colors", mode === 'video' ? "bg-white text-black" : "text-white")}>Video</button>
+            </div>
+          )}
+          {isRecording && <div className="text-red-500 animate-pulse font-bold">Recording...</div>}
+          {(capturedImage || capturedVideo) && (
+            <div className="text-white font-medium text-sm drop-shadow-md">
+               {capturedImage ? 'Edit Photo' : 'Preview Video'}
+            </div>
+          )}
+
+          {capturedImage || capturedVideo ? (
             <button onClick={handleSave} disabled={isProcessing} className="p-2 text-blue-400 font-bold hover:text-blue-300 rounded-full flex items-center gap-1 bg-black/20 backdrop-blur disabled:opacity-50">
                <Check size={18} />
                <span className="text-xs">{isProcessing ? 'Saving...' : 'Save'}</span>
@@ -214,9 +301,8 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
           )}
        </div>
 
-       {/* Main Content Area */}
        <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden">
-          {!capturedImage ? (
+          {!capturedImage && !capturedVideo ? (
             <>
               {errorMsg ? (
                  <div className="text-red-400 p-8 text-center bg-white/5 rounded-xl border border-red-500/20">
@@ -228,7 +314,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
                    ref={videoRef} 
                    autoPlay 
                    playsInline 
-                   muted
+                   muted={mode === 'photo'}
                    className={cn(
                       "w-full h-full object-cover",
                       facingMode === 'user' && "scale-x-[-1]"
@@ -236,43 +322,61 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
                  />
               )}
               
-              {/* Camera Controls */}
               {!errorMsg && (
                  <div className="absolute bottom-10 left-0 w-full flex items-center justify-center pointer-events-none">
-                    <button 
-                      onClick={takePhoto} 
-                      className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
-                    >
-                       <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
-                    </button>
+                    {mode === 'photo' ? (
+                       <button 
+                         onClick={takePhoto} 
+                         className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
+                       >
+                          <div className="w-16 h-16 bg-white rounded-full shadow-lg" />
+                       </button>
+                    ) : (
+                       <button 
+                         onClick={isRecording ? stopRecording : startRecording} 
+                         className={cn(
+                           "w-20 h-20 rounded-full border-4 flex items-center justify-center pointer-events-auto transition-transform",
+                           isRecording ? "border-red-500 bg-red-500/20" : "border-white bg-red-500"
+                         )}
+                       >
+                          {isRecording ? <Square size={24} className="text-white fill-current" /> : <div className="w-6 h-6 bg-white rounded-full" />}
+                       </button>
+                    )}
                  </div>
               )}
             </>
           ) : (
-            <div className="w-full h-full relative">
-               <Cropper
-                 image={capturedImage}
-                 crop={crop}
-                 zoom={zoom}
-                 aspect={aspect}
-                 rotation={rotation}
-                 onCropChange={setCrop}
-                 onCropComplete={onCropComplete}
-                 onZoomChange={setZoom}
-                 onRotationChange={setRotation}
-                 classes={{ containerClassName: 'bg-black w-full h-full' }}
-               />
-               <button onClick={retake} className="absolute left-4 bottom-24 p-3 bg-white/10 hover:bg-white/20 hover:text-white text-white/70 rounded-full backdrop-blur z-20 flex items-center gap-2">
+            <div className="w-full h-full relative flex items-center justify-center bg-black">
+               {capturedImage && (
+                  <ReactCrop
+                     crop={crop}
+                     onChange={(_, percentCrop) => setCrop(percentCrop)}
+                     onComplete={(c) => setCompletedCrop(c)}
+                     aspect={aspect}
+                     className="max-h-full"
+                  >
+                     <img 
+                        ref={imgRef}
+                        src={capturedImage} 
+                        style={{ transform: `rotate(${rotation}deg)`, maxHeight: '80vh', objectFit: 'contain' }}
+                        alt="Captured"
+                     />
+                  </ReactCrop>
+               )}
+               {capturedVideo && (
+                  <video src={URL.createObjectURL(capturedVideo)} controls className="max-w-full max-h-full" autoPlay loop playsInline />
+               )}
+               <button onClick={retake} className="absolute left-4 bottom-24 p-3 bg-white/10 hover:bg-white/20 hover:text-white text-white/70 rounded-full backdrop-blur z-20 flex items-center gap-2 shadow-xl">
                  <ArrowLeft size={16} /> <span className="text-xs font-semibold pr-1">Retake</span>
                </button>
             </div>
           )}
        </div>
 
-       {/* Crop presets if image is captured */}
        {capturedImage && renderCropPresets()}
 
     </div>,
     document.body
   );
 }
+

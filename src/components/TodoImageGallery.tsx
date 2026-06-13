@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { importFile, resolveAssetUrl } from "../utils/assetManager";
-import { Image as ImageIcon, X, Trash2, Camera, MoveVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { Image as ImageIcon, X, Trash2, Camera, MoveVertical, ChevronLeft, ChevronRight, PlayCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CameraCaptureModal } from "./CameraCaptureModal";
 import { motion, AnimatePresence } from "motion/react";
@@ -53,11 +53,11 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
 
   const addFiles = async (files: File[]) => {
     if (readOnly || !onChange) return;
-    const imagesOnly = files.filter(f => f.type.startsWith('image/'));
+    const mediaOnly = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
     
     // Process imports
     const newHashes = [...imageHashes];
-    for (const file of imagesOnly) {
+    for (const file of mediaOnly) {
       try {
          const { assetId } = await importFile(file);
          if (!newHashes.includes(assetId)) {
@@ -118,8 +118,8 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
         >
            <ImageIcon size={24} className="mb-2 opacity-50" />
            <span className="text-xs font-semibold">Drop images here or click to upload</span>
-           <span className="text-[10px] opacity-70">Supports JPG, PNG, GIF, clipboard paste</span>
-           <input type="file" multiple id="hidden-file-input" className="hidden" accept="image/*" onChange={handleFileSelect} />
+           <span className="text-[10px] opacity-70">Supports JPG, PNG, GIF, MP4, WEBM</span>
+           <input type="file" multiple id="hidden-file-input" className="hidden" accept="image/*,video/*" onChange={handleFileSelect} />
         </div>
         {hasCamera && (
           <button 
@@ -134,6 +134,43 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
       </div>
     );
   }
+
+  const isVideo = (url: string) => {
+     return url.includes('#file.mp4') || url.includes('#file.webm') || url.includes('#file.mov') || url.startsWith('data:video') || url.startsWith('blob:'); // blob: is technically tricky, but usually video blobs ends with nothing so we check our asset manager hashes. Wait, in assetManager, object url ends with #file.xyz
+  };
+
+  const renderThumb = (url: string, i: number) => {
+     if (isVideo(url) && !url.match(/#file\.(jpg|jpeg|png|gif|webp)$/i)) {
+        return (
+           <div className="w-full h-full relative cursor-pointer" onClick={() => { setIsFullscreen(true); setFullscreenIndex(i); setSlideDirection(0); }}>
+              <video src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" muted playsInline />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors">
+                 <PlayCircle className="text-white/80 w-8 h-8 drop-shadow-md" />
+              </div>
+           </div>
+        );
+     }
+     return (
+        <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300 cursor-pointer" alt={`attachment ${i}`} onClick={() => { setIsFullscreen(true); setFullscreenIndex(i); setSlideDirection(0); }} />
+     );
+  };
+
+  const renderFullscreenItem = (url: string, i: number) => {
+     if (isVideo(url) && !url.match(/#file\.(jpg|jpeg|png|gif|webp)$/i)) {
+        return (
+           <div className="w-full h-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <video src={url} className="max-w-full max-h-full drop-shadow-2xl md:rounded-lg select-none pointer-events-auto" controls autoPlay loop playsInline />
+           </div>
+        );
+     }
+     return (
+        <TransformWrapper initialScale={1} minScale={0.5} maxScale={5} centerOnInit wheel={{ step: 0.1 }}>
+           <TransformComponent wrapperClass="w-full h-full flex items-center justify-center" contentClass="w-full h-full flex items-center justify-center">
+              <img src={url} className="max-w-full max-h-full object-contain drop-shadow-2xl md:rounded-lg select-none pointer-events-auto" draggable={false} alt={`fullscreen ${i}`} />
+           </TransformComponent>
+        </TransformWrapper>
+     );
+  };
 
   // Large gallery
   return (
@@ -150,10 +187,10 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
        >
          {urls.map((url, i) => (
             url ? (
-              <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm group">
-                <img src={url} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300 cursor-pointer" alt={`attachment ${i}`} onClick={() => { setIsFullscreen(true); setFullscreenIndex(i); setSlideDirection(0); }} />
+              <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm group bg-slate-100 dark:bg-slate-800">
+                {renderThumb(url, i)}
                 {!readOnly && (
-                  <button onClick={() => removeImage(i)} className="absolute top-1 right-1 p-1.5 bg-black/50 hover:bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                  <button onClick={() => removeImage(i)} className="absolute top-1 right-1 p-1.5 bg-black/50 hover:bg-red-500 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10">
                     <Trash2 size={12} />
                   </button>
                 )}
@@ -172,8 +209,8 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
                 <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full mb-1">
                    <ImageIcon size={16} />
                 </div>
-                <span className="text-[10px] font-semibold uppercase tracking-wider">Add Image</span>
-                <input type="file" multiple id="hidden-file-input-add" className="hidden" accept="image/*" onChange={handleFileSelect} />
+                <span className="text-[10px] font-semibold uppercase tracking-wider">Add Media</span>
+                <input type="file" multiple id="hidden-file-input-add" className="hidden" accept="image/*,video/*" onChange={handleFileSelect} />
              </div>
              {hasCamera && (
                <div 
@@ -230,19 +267,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
                          }
                       }}
                    >
-                     {urls[fullscreenIndex] && (
-                        <TransformWrapper
-                           initialScale={1}
-                           minScale={0.5}
-                           maxScale={5}
-                           centerOnInit
-                           wheel={{ step: 0.1 }}
-                        >
-                           <TransformComponent wrapperClass="w-full h-full flex items-center justify-center" contentClass="w-full h-full flex items-center justify-center">
-                              <img src={urls[fullscreenIndex]} className="max-w-full max-h-full object-contain drop-shadow-2xl md:rounded-lg select-none pointer-events-auto" draggable={false} alt={`fullscreen ${fullscreenIndex}`} />
-                           </TransformComponent>
-                        </TransformWrapper>
-                     )}
+                     {urls[fullscreenIndex] && renderFullscreenItem(urls[fullscreenIndex], fullscreenIndex)}
                    </motion.div>
                 </AnimatePresence>
 
