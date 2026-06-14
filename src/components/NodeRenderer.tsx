@@ -35,7 +35,7 @@ import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
 import { MathNodeRenderer } from "./MathNodeRenderer";
 import { TodoNodeRenderer } from "./TodoNodeRenderer";
 import { SearchNodeRenderer } from "./SearchNodeRenderer";
-
+import { TransferNodeRenderer } from "./TransferNodeRenderer";
 import { SafeModelViewer } from "./SafeModelViewer";
 
 interface NodeProps {
@@ -311,6 +311,7 @@ function NodeRenderer({
   const isPyTerminal = data.type === "py_terminal";
 
   const isTodoNode = typeof data.name === "string" && (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
+  const isTransferNode = data.type === "transfer";
   const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
   const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
@@ -913,10 +914,10 @@ function NodeRenderer({
 
   const isDefaultShape = nodeShape === "default";
 
-  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isMathNode ? "max-w-[600px]" : "max-w-[260px]"}`;
+  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isMathNode ? "max-w-[600px]" : isTransferNode ? "max-w-[420px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
 
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isSearchNode) {
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isSearchNode || isTransferNode) {
     shapeClasses = `p-0 !bg-transparent !border-transparent !shadow-none overflow-visible`;
   }
 
@@ -1277,7 +1278,7 @@ function NodeRenderer({
             style={{
               ...shapeStyle,
               transform:
-                isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode ? undefined : `scale(${nodeSize})`,
+                isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode ? undefined : `scale(${nodeSize})`,
               transformOrigin: "center",
               touchAction: "none",
             }}
@@ -1608,9 +1609,9 @@ function NodeRenderer({
               </div>
             )}
             <div
-              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode ? "p-0" : ""}`}
+              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode ? "p-0" : ""}`}
             >
-              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) && (
+              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode) && (
                 <div className="flex-shrink-0 mr-2 flex items-center">
                   {hasChildren && (
                     <div
@@ -1632,7 +1633,7 @@ function NodeRenderer({
               )}
 
               <div
-                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
+                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
                 style={{
                   ...(isCustom ? { color: nodeTextColor } : {}),
                   ...(nodeTheme === "peepal" ||
@@ -1642,7 +1643,7 @@ function NodeRenderer({
                     : {}),
                 }}
               >
-                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) && (
+                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode) && (
                   <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                     <span
                       className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
@@ -1820,6 +1821,9 @@ function NodeRenderer({
                       nodeId={data.id}
                       data={data}
                    />
+                )}
+                {isTransferNode && (
+                  <TransferNodeRenderer node={data} />
                 )}
                 {hasChildren && isCollapsed && (
                   <span
