@@ -75,22 +75,7 @@ export function ServiceWorkerUpdater() {
   if (!showPrompt) return null;
 
   if (!isPWA) {
-    return (
-      <div className="fixed bottom-6 right-6 z-[99999] bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg px-4 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-5">
-        <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-          New version available
-        </div>
-        <button
-          onClick={handleUpdate}
-          className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-        >
-          Refresh
-        </button>
-        <button onClick={handleDismiss} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-1">
-          <X size={14} />
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (
