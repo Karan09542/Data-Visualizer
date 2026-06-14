@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore } from "../store/useStore";
@@ -290,54 +291,75 @@ export const TransferNodeRenderer: React.FC<{
 
   return (
     <div className={`w-[400px] min-h-[340px] rounded-2xl overflow-hidden border shadow-2xl flex flex-col ${isDark ? "bg-[#111829] border-white/10 text-slate-300" : "bg-white border-slate-200 text-slate-800"}`}>
-      {/* Immersive Camera Overlay */}
+      {/* Immersive Camera Overlay - Rendered in Portal */}
       <AnimatePresence>
-        {scanMode && (
+        {scanMode && createPortal(
           <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center"
+            className="fixed inset-0 z-[10000] bg-black flex flex-col items-center justify-center overflow-hidden"
           >
             <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" />
             
             {/* Camera UI Elements */}
-            <div className="relative z-10 w-full h-full flex flex-col items-center justify-between p-8">
-              <div className="w-full flex justify-between items-center">
+            <div className="relative z-[10001] w-full h-full flex flex-col items-center justify-between p-6 sm:p-10 pointer-events-none">
+              {/* Top Controls */}
+              <div className="w-full flex justify-between items-center pointer-events-auto">
                 <button 
                   onClick={() => setScanMode(null)}
-                  className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white hover:bg-black/60 transition-all"
+                  className="group p-4 rounded-2xl bg-black/40 backdrop-blur-xl border border-white/10 text-white hover:bg-black/60 transition-all flex items-center gap-3"
                 >
                   <X className="w-6 h-6" />
+                  <span className="text-xs font-bold uppercase tracking-widest sm:block hidden">Exit Scanner</span>
                 </button>
-                <div className="px-4 py-2 rounded-full bg-emerald-500/20 backdrop-blur-md border border-emerald-500/40 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
-                  Ready to pair
+                <div className="px-5 py-2.5 rounded-full bg-emerald-500/20 backdrop-blur-xl border border-emerald-500/40 text-emerald-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Active Pair
                 </div>
               </div>
 
+              {/* Central Target Window */}
               <div className="relative">
-                <div className="w-[260px] h-[260px] border-2 border-emerald-500/50 rounded-3xl relative">
-                  {/* Corners */}
-                  <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl" />
-                  <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl" />
-                  <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl" />
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-emerald-500 rounded-br-xl" />
+                <div className="w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] border-2 border-white/10 rounded-[40px] relative">
+                  {/* Neon Corners */}
+                  <div className="absolute -top-1 -left-1 w-10 h-10 border-t-4 border-l-4 border-emerald-500 rounded-tl-3xl shadow-[0_0_15px_#10b981]" />
+                  <div className="absolute -top-1 -right-1 w-10 h-10 border-t-4 border-r-4 border-emerald-500 rounded-tr-3xl shadow-[0_0_15px_#10b981]" />
+                  <div className="absolute -bottom-1 -left-1 w-10 h-10 border-b-4 border-l-4 border-emerald-500 rounded-bl-3xl shadow-[0_0_15px_#10b981]" />
+                  <div className="absolute -bottom-1 -right-1 w-10 h-10 border-b-4 border-r-4 border-emerald-500 rounded-br-3xl shadow-[0_0_15px_#10b981]" />
                   
-                  {/* Scanning Line */}
+                  {/* Dynamic Scanning Laser */}
                   <motion.div 
-                    animate={{ top: ["0%", "100%", "0%"] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-x-0 h-1 bg-emerald-500/50 shadow-[0_0_15px_#10b981] z-20"
+                    animate={{ top: ["5%", "95%", "5%"] }}
+                    transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute inset-x-6 h-0.5 bg-emerald-400/80 shadow-[0_0_20px_#34d399,0_0_40px_#10b981] z-20 rounded-full"
                   />
+
+                  {/* Faint Grid lines for high-tech feel */}
+                  <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.05)_1px,transparent_1px)] bg-[size:20px_20px] rounded-[40px]" />
                 </div>
               </div>
 
-              <div className="text-center bg-black/40 backdrop-blur-md p-6 rounded-3xl border border-white/10 w-full max-w-xs">
-                <p className="text-sm font-bold text-white mb-1">Scanning QR Code</p>
-                <p className="text-xs text-slate-400">Position the pairing code within the square frame</p>
+              {/* Bottom Instructions */}
+              <div className="text-center bg-black/60 backdrop-blur-2xl p-6 rounded-[32px] border border-white/10 w-full max-w-sm pointer-events-auto shadow-2xl">
+                <h4 className="text-base font-black text-white mb-2 tracking-tight">QR Code Pairing</h4>
+                <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                  Align the pairing code on the remote device within the neon frame to establish a persistent P2P tunnel.
+                </p>
+                <div className="mt-5 pt-5 border-t border-white/5 flex items-center justify-center gap-6">
+                   <div className="flex flex-col items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-[8px] uppercase tracking-tighter text-slate-500">Video Link</span>
+                   </div>
+                   <div className="flex flex-col items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-[8px] uppercase tracking-tighter text-slate-500">WebRTC Encrypted</span>
+                   </div>
+                </div>
               </div>
             </div>
-          </motion.div>
+          </motion.div>,
+          document.body
         )}
       </AnimatePresence>
 
