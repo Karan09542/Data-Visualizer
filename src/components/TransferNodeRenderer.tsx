@@ -34,6 +34,7 @@ export const TransferNodeRenderer: React.FC<{
   const [answerQR, setAnswerQR] = useState("");
 
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -228,7 +229,7 @@ export const TransferNodeRenderer: React.FC<{
       const currentDesc = pc.localDescription;
       if (currentDesc) {
         const payload = JSON.stringify(currentDesc);
-        const compressed = LZString.compressToUTF16(payload);
+        const compressed = LZString.compressToBase64(payload);
         setOfferQR(compressed);
         setConnectionState("pairing");
       }
@@ -238,15 +239,17 @@ export const TransferNodeRenderer: React.FC<{
   const handleScan = (code: string) => {
      if (!code) return;
      try {
-       const uncompressed = LZString.decompressFromUTF16(code);
+       const uncompressed = LZString.decompressFromBase64(code);
        const desc = JSON.parse(uncompressed || code);
        if (desc.type === "offer") {
          processOffer(desc);
        } else if (desc.type === "answer") {
          processAnswer(desc);
        }
+       setScanError(null);
      } catch(e) {
-       setNotification({ message: "Invalid pairing code scanned", type: "error" });
+       setScanError("Invalid pairing code scanned. Keep scanning or try another code.");
+       setTimeout(() => setScanError(null), 3000);
      }
   };
 
@@ -260,7 +263,7 @@ export const TransferNodeRenderer: React.FC<{
        const currentDesc = pc.localDescription;
        if (currentDesc) {
           const payload = JSON.stringify(currentDesc);
-          const compressed = LZString.compressToUTF16(payload);
+          const compressed = LZString.compressToBase64(payload);
           setAnswerQR(compressed);
           setScanMode(null);
           setConnectionState("pairing");
@@ -371,6 +374,15 @@ export const TransferNodeRenderer: React.FC<{
                         <span className="text-[8px] uppercase tracking-tighter text-slate-500">WebRTC Encrypted</span>
                      </div>
                   </div>
+                  {scanError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-xs font-semibold"
+                    >
+                      {scanError}
+                    </motion.div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -441,7 +453,7 @@ export const TransferNodeRenderer: React.FC<{
         {connectionState === "pairing" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-6 py-2">
             <div className="p-4 bg-white rounded-3xl shadow-xl">
-              <QRCodeSVG value={offerQR || answerQR} size={200} level="M" marginSize={2} />
+              <QRCodeSVG value={offerQR || answerQR} size={240} level="L" marginSize={1} />
             </div>
             
             <div className="text-center space-y-1">
