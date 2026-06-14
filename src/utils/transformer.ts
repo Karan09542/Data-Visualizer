@@ -45,15 +45,9 @@ export const transformToTree = (
     isTodoNode = true;
   }
 
-  let isTransferNode = false;
-  if (typeof name === 'string' && name.endsWith('_transfer_node')) {
-    isTransferNode = true;
-  }
-
-  if (isTodoNode || isTransferNode) {
-    if (isTransferNode) node.type = 'transfer';
+  if (isTodoNode) {
     node.value = data; // Keep raw data in value
-    // Explicitly return to avoid rendering children
+    // Explicitly return to avoid rendering children (or set children = undefined)
     node.children = undefined;
     return node;
   }

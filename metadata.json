@@ -1,6 +1,6 @@
 {
   "name": "JSON YAML TREE viewer",
   "description": "A high-performance JSON & YAML tree visualizer with advanced layout algorithms, themes, and HD export capabilities.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

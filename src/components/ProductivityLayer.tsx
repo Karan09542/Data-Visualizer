@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils";
 export interface FlatFileItem {
   id: string; // "root.dataSources.transform_users_js_node"
   name: string; // "transform_users.js"
-  type: string; // "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "primitive" | "folder"
+  type: string; // "js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "transfer_node" | "primitive" | "folder"
   pathStr: string; // "dataSources.transform_users_js_node"
   realKey: string; // "transform_users_js_node"
 }
@@ -96,6 +96,10 @@ export function getAllFiles(data: any, path: string = "root"): FlatFileItem[] {
       items.push({ id: currentPath, name: key.replace(/_api_node$/i, ".api"), type: "api_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_todo_node") || keyLower.endsWith(".todo")) {
       items.push({ id: currentPath, name: keyLower.endsWith(".todo") ? key : key.replace(/_todo_node$/i, ".todo"), type: "todo_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
+    } else if (keyLower.endsWith("_transfer_node") || keyLower.endsWith(".transfer")) {
+      items.push({ id: currentPath, name: keyLower.endsWith(".transfer") ? key : key.replace(/_transfer_node$/i, ".transfer"), type: "transfer_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
+    } else if (keyLower.endsWith("_math_node") || keyLower.endsWith(".math")) {
+      items.push({ id: currentPath, name: keyLower.endsWith(".math") ? key : key.replace(/_math_node$/i, ".math"), type: "math_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_json")) {
       items.push({ id: currentPath, name: key.replace(/_json$/i, ".json"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_yaml")) {
@@ -358,6 +362,10 @@ function renderOverlayFileIcon(type: string, name: string) {
     return <Globe className="w-4 h-4 text-sky-500 dark:text-sky-400 shrink-0" />;
   } else if (type === "todo_node" || name.endsWith(".todo")) {
     return <CheckCircle2 className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0" />;
+  } else if (type === "transfer_node" || name.endsWith(".transfer")) {
+    return <Globe className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />;
+  } else if (type === "math_node" || name.endsWith(".math")) {
+    return <Sparkles className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400 shrink-0" />;
   } else if (type === "folder") {
     return <Folder className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />;
   } else {

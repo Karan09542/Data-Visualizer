@@ -33,9 +33,10 @@ import { PyNodeRenderer } from "./PyNodeRenderer";
 import { PyNodeCodeRenderer } from "./PyNodeCodeRenderer";
 import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
 import { MathNodeRenderer } from "./MathNodeRenderer";
+import { TransferNodeRenderer } from "./TransferNodeRenderer";
 import { TodoNodeRenderer } from "./TodoNodeRenderer";
 import { SearchNodeRenderer } from "./SearchNodeRenderer";
-import { TransferNodeRenderer } from "./TransferNodeRenderer";
+
 import { SafeModelViewer } from "./SafeModelViewer";
 
 interface NodeProps {
@@ -311,7 +312,7 @@ function NodeRenderer({
   const isPyTerminal = data.type === "py_terminal";
 
   const isTodoNode = typeof data.name === "string" && (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
-  const isTransferNode = data.type === "transfer";
+  const isTransferNode = typeof data.name === "string" && (data.name.endsWith("_transfer_node") || data.name.endsWith(".transfer"));
   const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
   const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
@@ -875,7 +876,7 @@ function NodeRenderer({
 
   let fWidth = customSize
     ? customSize.width
-    : isApiNode ? 340 : isTodoNode ? 385 : isMathNode ? (isExpanded ? 600 : 320) : isSearchNode ? 320
+    : isApiNode ? 340 : isTodoNode ? 385 : isTransferNode ? 384 : isMathNode ? (isExpanded ? 600 : 320) : isSearchNode ? 320
       : (isJsNode || isTsNode || isPyNode)
         ? 440
         : (isJsCode || isTsCode || isPyCode)
@@ -890,6 +891,7 @@ function NodeRenderer({
   let fHeight = customSize
     ? customSize.height
     : isTodoNode ? (isExpanded ? 360 : 140)
+    : isTransferNode ? (isExpanded ? 360 : 320)
     : isMathNode ? (isExpanded ? 350 : 250)
     : isSearchNode ? 240
     : isMedia
@@ -914,10 +916,10 @@ function NodeRenderer({
 
   const isDefaultShape = nodeShape === "default";
 
-  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isMathNode ? "max-w-[600px]" : isTransferNode ? "max-w-[420px]" : "max-w-[260px]"}`;
+  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isTransferNode ? "max-w-[384px]" : isMathNode ? "max-w-[600px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
 
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isSearchNode || isTransferNode) {
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode) {
     shapeClasses = `p-0 !bg-transparent !border-transparent !shadow-none overflow-visible`;
   }
 
@@ -1162,14 +1164,14 @@ function NodeRenderer({
     }
   }
 
-  if (!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode)) {
+  if (!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode)) {
     fWidth *= nodeSize;
     fHeight *= nodeSize;
   }
 
   let foWidth = fWidth + 100;
   let foHeight = fHeight + 100;
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode) {
+  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode) {
     foWidth += 200;
     foHeight += 200;
   }
@@ -1278,7 +1280,7 @@ function NodeRenderer({
             style={{
               ...shapeStyle,
               transform:
-                isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode ? undefined : `scale(${nodeSize})`,
+                isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode ? undefined : `scale(${nodeSize})`,
               transformOrigin: "center",
               touchAction: "none",
             }}
@@ -1609,9 +1611,9 @@ function NodeRenderer({
               </div>
             )}
             <div
-              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode ? "p-0" : ""}`}
+              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode ? "p-0" : ""}`}
             >
-              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode) && (
+              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode) && (
                 <div className="flex-shrink-0 mr-2 flex items-center">
                   {hasChildren && (
                     <div
@@ -1633,7 +1635,7 @@ function NodeRenderer({
               )}
 
               <div
-                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
+                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
                 style={{
                   ...(isCustom ? { color: nodeTextColor } : {}),
                   ...(nodeTheme === "peepal" ||
@@ -1643,7 +1645,7 @@ function NodeRenderer({
                     : {}),
                 }}
               >
-                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isMathNode || isTransferNode) && (
+                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode) && (
                   <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                     <span
                       className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
@@ -1682,6 +1684,7 @@ function NodeRenderer({
                   !isPyNode &&
                   !isPyCode &&
                   !isPyTerminal &&
+                  !isTransferNode &&
                   !isTodoNode &&
                   !isMathNode && (
                     <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
@@ -1807,6 +1810,12 @@ function NodeRenderer({
                     isExpanded={isExpanded}
                   />
                 )}
+                {isTransferNode && (
+                  <TransferNodeRenderer 
+                    node={node}
+                    isSelected={isSelected}
+                  />
+                )}
                 {isMathNode && (
                   <MathNodeRenderer 
                     nodeId={data.id} 
@@ -1821,9 +1830,6 @@ function NodeRenderer({
                       nodeId={data.id}
                       data={data}
                    />
-                )}
-                {isTransferNode && (
-                  <TransferNodeRenderer node={data} />
                 )}
                 {hasChildren && isCollapsed && (
                   <span
