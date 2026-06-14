@@ -9,7 +9,7 @@ export function compressSDP(sdp: string): string {
   let fingerprint = "";
   let setup = "actpass";
   let mid = "0";
-  const candidates: any[] = [];
+  const candidates: string[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -20,7 +20,7 @@ export function compressSDP(sdp: string): string {
     } else if (trimmed.startsWith("a=ice-pwd:")) {
       pwd = trimmed.substring(10).trim();
     } else if (trimmed.startsWith("a=fingerprint:")) {
-      fingerprint = trimmed.substring(14).trim();
+      fingerprint = trimmed.substring(14).trim().replace("sha-256 ", "");
     } else if (trimmed.startsWith("a=setup:")) {
       setup = trimmed.substring(8).trim();
     } else if (trimmed.startsWith("a=mid:")) {
@@ -29,75 +29,102 @@ export function compressSDP(sdp: string): string {
       const parts = trimmed.substring(12).split(" ");
       if (parts.length >= 8) {
         const lower = trimmed.toLowerCase();
-        // Skip IPv6 candidates to keep QR code extremely small
-        if (lower.includes("ip6")) continue;
+        // Keep only UDP, IPv4 to keep it small
+        if (lower.includes("ip6") || lower.includes("tcp")) continue;
         
-        const candObj: any = {
-          f: parts[0],  // foundation
-          c: parts[1],  // component
-          pr: parts[2], // protocol (udp/tcp)
-          py: parts[3], // priority
-          ip: parts[4], // ip
-          po: parts[5], // port
-          t: parts[7]   // type (host/srflx/relay)
-        };
-        
+        // Parts: foundation, component, protocol, priority, ip, port, _, type
+        let cStr = `${parts[0]},${parts[1]},${parts[2]},${parts[3]},${parts[4]},${parts[5]},${parts[7]}`;
         for (let i = 8; i < parts.length - 1; i++) {
           if (parts[i] === "raddr") {
-            candObj.ra = parts[i+1];
-          } else if (parts[i] === "rport") {
-            candObj.rp = parts[i+1];
+            cStr += `,${parts[i+1]}`;
+            break; // just take raddr for now, maybe rport too but usually optional
           }
         }
-        candidates.push(candObj);
+        candidates.push(cStr);
       }
     }
   }
 
-  // Keep a maximum of 3 candidates to keep the QR code extremely lightweight and low density
-  const selectedCandidates = candidates.slice(0, 3);
-
-  const minObj = {
-    u: ufrag,
-    p: pwd,
-    f: fingerprint,
-    s: setup,
-    m: mid,
-    c: selectedCandidates
-  };
-
-  return LZString.compressToEncodedURIComponent(JSON.stringify(minObj));
+  const selectedCandidates = candidates.slice(0, 2); // 2 candidates max for QR density reduction
+  
+  const setupCode = setup === "actpass" ? "A" : setup === "active" ? "C" : "P";
+  
+  // Format: v1~ufrag~pwd~fingerprint~setupCode~mid~cand1~cand2...
+  return `v1~${ufrag}~${pwd}~${fingerprint}~${setupCode}~${mid}~${selectedCandidates.join("~")}`;
 }
 
 export function decompressSDP(compressed: string): string {
-  const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
-  if (!decompressed) {
-    throw new Error("Failed to decompress SDP data");
+  // If we try to decode via old LZString logic, fallback to it if needed
+  if (!compressed.startsWith("v1~")) {
+    // legacy or LZString decode, but let's try to pass it to LZString
+    const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+    if (!decompressed) throw new Error("Failed to decompress SDP data");
+    const data = JSON.parse(decompressed);
+    
+    const sdpLines = [
+      "v=0",
+      "o=- 81273918273 2 IN IP4 127.0.0.1",
+      "s=-",
+      "t=0 0",
+      "a=group:BUNDLE " + (data.m || "0"),
+      "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+      "c=IN IP4 0.0.0.0",
+      "a=mid:" + (data.m || "0"),
+      "a=sctp-port:5000",
+      "a=setup:" + (data.s || "actpass"),
+      "a=ice-ufrag:" + data.u,
+      "a=ice-pwd:" + data.p,
+      "a=fingerprint:" + data.f,
+    ];
+
+    if (Array.isArray(data.c)) {
+      for (const cand of data.c) {
+        let candLine = `a=candidate:${cand.f} ${cand.c} ${cand.pr} ${cand.py} ${cand.ip} ${cand.po} typ ${cand.t}`;
+        if (cand.ra) candLine += ` raddr ${cand.ra}`;
+        if (cand.rp) candLine += ` rport ${cand.rp}`;
+        sdpLines.push(candLine);
+      }
+    }
+
+    return sdpLines.join("\r\n") + "\r\n";
   }
 
-  const data = JSON.parse(decompressed);
+  const parts = compressed.split("~");
+  const ufrag = parts[1];
+  const pwd = parts[2];
+  const fingerprint = "sha-256 " + parts[3];
+  
+  let setupCode = parts[4];
+  let setup = "actpass";
+  if (setupCode === "C") setup = "active";
+  if (setupCode === "P") setup = "passive";
+  
+  const mid = parts[5];
   
   const sdpLines = [
     "v=0",
     "o=- 81273918273 2 IN IP4 127.0.0.1",
     "s=-",
     "t=0 0",
-    "a=group:BUNDLE " + (data.m || "0"),
+    "a=group:BUNDLE " + (mid || "0"),
     "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
     "c=IN IP4 0.0.0.0",
-    "a=mid:" + (data.m || "0"),
+    "a=mid:" + (mid || "0"),
     "a=sctp-port:5000",
-    "a=setup:" + (data.s || "actpass"),
-    "a=ice-ufrag:" + data.u,
-    "a=ice-pwd:" + data.p,
-    "a=fingerprint:" + data.f,
+    "a=setup:" + setup,
+    "a=ice-ufrag:" + ufrag,
+    "a=ice-pwd:" + pwd,
+    "a=fingerprint:" + fingerprint,
   ];
 
-  if (Array.isArray(data.c)) {
-    for (const cand of data.c) {
-      let candLine = `a=candidate:${cand.f} ${cand.c} ${cand.pr} ${cand.py} ${cand.ip} ${cand.po} typ ${cand.t}`;
-      if (cand.ra) candLine += ` raddr ${cand.ra}`;
-      if (cand.rp) candLine += ` rport ${cand.rp}`;
+  for (let i = 6; i < parts.length; i++) {
+    if (!parts[i]) continue;
+    const cParts = parts[i].split(",");
+    
+    // cParts: foundation, component, protocol, priority, ip, port, type, (raddr)
+    if (cParts.length >= 7) {
+      let candLine = `a=candidate:${cParts[0]} ${cParts[1]} ${cParts[2]} ${cParts[3]} ${cParts[4]} ${cParts[5]} typ ${cParts[6]}`;
+      if (cParts[7]) candLine += ` raddr ${cParts[7]}`;
       sdpLines.push(candLine);
     }
   }

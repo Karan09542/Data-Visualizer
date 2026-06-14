@@ -156,11 +156,6 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
     }, 300);
   };
 
-  const submitAnswer = async () => {
-    if (!peer || !answerCode) return;
-    await peer.acceptAnswer(answerCode);
-  };
-
   const sendWorkspace = () => {
     if (!peer) return;
     const snapshot = captureWorkspaceSnapshot();
@@ -348,12 +343,6 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
                   >
                     Copy Code
                   </button>
-                  <button
-                    onClick={submitAnswer}
-                    className="flex-1 py-1 px-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded-lg transition-all shadow shadow-blue-500/10"
-                  >
-                    Force Connect
-                  </button>
                 </div>
 
                 <div className="flex items-center gap-1.5 mt-2 px-3 py-2 bg-blue-500/5 rounded-lg border border-blue-500/10 w-full justify-center">
@@ -371,12 +360,6 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Synchronizing...</h4>
                   <p className="text-[10px] text-slate-500 mt-1">Establishing tunnel credentials.</p>
                 </div>
-                <button
-                  onClick={submitAnswer}
-                  className="w-full py-2 bg-blue-600 text-white text-[10px] font-bold rounded-lg shadow-lg shadow-blue-500/20"
-                >
-                  Confirm Connect
-                </button>
               </div>
             )}
 
