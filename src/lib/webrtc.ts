@@ -1,77 +1,108 @@
 
+import LZString from "lz-string";
+
 export function compressSDP(sdp: string): string {
   const lines = sdp.split(/\r?\n/);
-  const remainingLines: string[] = [];
-  let candidateCount = 0;
+  
+  let ufrag = "";
+  let pwd = "";
+  let fingerprint = "";
+  let setup = "actpass";
+  let mid = "0";
+  const candidates: any[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    
-    if (trimmed.startsWith("a=candidate:")) {
-      const lower = trimmed.toLowerCase();
-      // Keep only UDP candidates, skip IPv6, limit to max 3 candidates for ultra compactness
-      if (lower.includes("udp") && !lower.includes("ip6") && candidateCount < 3) {
-        remainingLines.push(trimmed);
-        candidateCount++;
+
+    if (trimmed.startsWith("a=ice-ufrag:")) {
+      ufrag = trimmed.substring(12).trim();
+    } else if (trimmed.startsWith("a=ice-pwd:")) {
+      pwd = trimmed.substring(10).trim();
+    } else if (trimmed.startsWith("a=fingerprint:")) {
+      fingerprint = trimmed.substring(14).trim();
+    } else if (trimmed.startsWith("a=setup:")) {
+      setup = trimmed.substring(8).trim();
+    } else if (trimmed.startsWith("a=mid:")) {
+      mid = trimmed.substring(6).trim();
+    } else if (trimmed.startsWith("a=candidate:")) {
+      const parts = trimmed.substring(12).split(" ");
+      if (parts.length >= 8) {
+        const lower = trimmed.toLowerCase();
+        // Skip IPv6 candidates to keep QR code extremely small
+        if (lower.includes("ip6")) continue;
+        
+        const candObj: any = {
+          f: parts[0],  // foundation
+          c: parts[1],  // component
+          pr: parts[2], // protocol (udp/tcp)
+          py: parts[3], // priority
+          ip: parts[4], // ip
+          po: parts[5], // port
+          t: parts[7]   // type (host/srflx/relay)
+        };
+        
+        for (let i = 8; i < parts.length - 1; i++) {
+          if (parts[i] === "raddr") {
+            candObj.ra = parts[i+1];
+          } else if (parts[i] === "rport") {
+            candObj.rp = parts[i+1];
+          }
+        }
+        candidates.push(candObj);
       }
-    } else if (
-      trimmed.startsWith("a=rtcp-") || 
-      trimmed.startsWith("a=extmap:") || 
-      trimmed.includes("ice-options:trickle")
-    ) {
-      // Drop optional non-essential metadata to save space
-      continue;
-    } else {
-      remainingLines.push(trimmed);
     }
   }
 
-  let cleanSdp = remainingLines.join("\r\n");
+  // Keep a maximum of 3 candidates to keep the QR code extremely lightweight and low density
+  const selectedCandidates = candidates.slice(0, 3);
 
-  const replacements: [RegExp, string][] = [
-    [/a=fingerprint:sha-256 /g, "F:"],
-    [/a=ice-ufrag:/g, "U:"],
-    [/a=ice-pwd:/g, "P:"],
-    [/a=candidate:/g, "C:"],
-    [/a=setup:/g, "S:"],
-    [/a=mid:/g, "M:"],
-    [/a=sctp-port:5000/g, "K:"],
-    [/c=IN IP4 /g, "I:"],
-    [/a=max-message-size:/g, "X:"],
-    [/a=rtcp-mux/g, "R:"],
-    [/a=rtcp-rsize/g, "Z:"],
-  ];
+  const minObj = {
+    u: ufrag,
+    p: pwd,
+    f: fingerprint,
+    s: setup,
+    m: mid,
+    c: selectedCandidates
+  };
 
-  for (const [pattern, rep] of replacements) {
-    cleanSdp = cleanSdp.replace(pattern, rep);
-  }
-
-  return cleanSdp;
+  return LZString.compressToEncodedURIComponent(JSON.stringify(minObj));
 }
 
 export function decompressSDP(compressed: string): string {
-  let sdp = compressed;
-
-  const replacements: [string, RegExp][] = [
-    ["a=fingerprint:sha-256 ", /F:/g],
-    ["a=ice-ufrag:", /U:/g],
-    ["a=ice-pwd:", /P:/g],
-    ["a=candidate:", /C:/g],
-    ["a=setup:", /S:/g],
-    ["a=mid:", /M:/g],
-    ["a=sctp-port:5000", /K:/g],
-    ["c=IN IP4 ", /I:/g],
-    ["a=max-message-size:", /X:/g],
-    ["a=rtcp-mux", /R:/g],
-    ["a=rtcp-rsize", /Z:/g],
-  ];
-
-  for (const [rep, pattern] of replacements) {
-    sdp = sdp.replace(pattern, rep);
+  const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+  if (!decompressed) {
+    throw new Error("Failed to decompress SDP data");
   }
 
-  return sdp;
+  const data = JSON.parse(decompressed);
+  
+  const sdpLines = [
+    "v=0",
+    "o=- 81273918273 2 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "a=group:BUNDLE " + (data.m || "0"),
+    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+    "c=IN IP4 0.0.0.0",
+    "a=mid:" + (data.m || "0"),
+    "a=sctp-port:5000",
+    "a=setup:" + (data.s || "actpass"),
+    "a=ice-ufrag:" + data.u,
+    "a=ice-pwd:" + data.p,
+    "a=fingerprint:" + data.f,
+  ];
+
+  if (Array.isArray(data.c)) {
+    for (const cand of data.c) {
+      let candLine = `a=candidate:${cand.f} ${cand.c} ${cand.pr} ${cand.py} ${cand.ip} ${cand.po} typ ${cand.t}`;
+      if (cand.ra) candLine += ` raddr ${cand.ra}`;
+      if (cand.rp) candLine += ` rport ${cand.rp}`;
+      sdpLines.push(candLine);
+    }
+  }
+
+  return sdpLines.join("\r\n") + "\r\n";
 }
 
 export type ConnectionState = "Waiting" | "Pairing" | "Connected" | "Transferring" | "Completed" | "Failed";
@@ -151,7 +182,7 @@ export class WebRTCPeer {
       const handleGathered = () => {
         if (this.pc.localDescription) {
           const compressed = compressSDP(this.pc.localDescription.sdp);
-          resolve("O:" + btoa(compressed));
+          resolve("O:" + compressed);
         }
       };
 
@@ -172,7 +203,17 @@ export class WebRTCPeer {
     if (sdp.startsWith("O:")) {
       sdp = sdp.slice(2);
     }
-    const decompressed = decompressSDP(atob(sdp));
+    
+    let decompressed = "";
+    try {
+      decompressed = decompressSDP(sdp);
+    } catch (err) {
+      try {
+        decompressed = decompressSDP(atob(sdp));
+      } catch (innerErr) {
+        throw new Error("Invalid SDP format");
+      }
+    }
 
     await this.pc.setRemoteDescription(new RTCSessionDescription({
       type: "offer",
@@ -186,7 +227,7 @@ export class WebRTCPeer {
       const handleGathered = () => {
         if (this.pc.localDescription) {
           const compressed = compressSDP(this.pc.localDescription.sdp);
-          resolve("A:" + btoa(compressed));
+          resolve("A:" + compressed);
         }
       };
 
@@ -207,7 +248,18 @@ export class WebRTCPeer {
     if (sdp.startsWith("A:")) {
       sdp = sdp.slice(2);
     }
-    const decompressed = decompressSDP(atob(sdp));
+    
+    let decompressed = "";
+    try {
+      decompressed = decompressSDP(sdp);
+    } catch (err) {
+      try {
+        decompressed = decompressSDP(atob(sdp));
+      } catch (innerErr) {
+        throw new Error("Invalid SDP format");
+      }
+    }
+
     await this.pc.setRemoteDescription(new RTCSessionDescription({
       type: "answer",
       sdp: decompressed

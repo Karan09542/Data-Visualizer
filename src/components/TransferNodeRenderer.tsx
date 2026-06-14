@@ -99,7 +99,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
         scannerRef.current = scanner;
         
         const config = { 
-          fps: 15, 
+          fps: 30, 
           qrbox: { width: 260, height: 260 },
           aspectRatio: 1.0
         };
