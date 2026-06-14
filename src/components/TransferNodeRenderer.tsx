@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { Html5QrcodeScanner } from "html5-qrcode";
-import { Share2, Smartphone, Monitor, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
+import { Share2, Smartphone, Monitor, CheckCircle2, AlertCircle, Loader2, X, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WebRTCPeer, ConnectionState } from "../lib/webrtc";
 import { captureWorkspaceSnapshot } from "../utils/workspaceSerializer";
@@ -20,8 +21,9 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
   const [answerCode, setAnswerCode] = useState<string>("");
   const [showScanner, setShowScanner] = useState(false);
   const [receivedData, setReceivedData] = useState<any>(null);
+  const [scannerError, setScannerError] = useState<string | null>(null);
   
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const setCode = useStore(s => s.setCode);
 
   useEffect(() => {
@@ -29,7 +31,6 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
     newPeer.on("stateChange", (s: ConnectionState) => setState(s));
     newPeer.on("message", (msg) => {
       setReceivedData(msg);
-      // Automatically handle workspace snapshots
       if (msg.type === "workspace_snapshot") {
         handleReceivedSnapshot(msg.data);
       }
@@ -39,12 +40,27 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
     
     return () => {
       newPeer.destroy();
+      stopScanner();
     };
   }, []);
 
+  const stopScanner = async () => {
+    if (scannerRef.current) {
+      if (scannerRef.current.isScanning) {
+        try {
+          await scannerRef.current.stop();
+        } catch (e) {
+          console.error("Failed to stop scanner", e);
+        }
+      }
+      scannerRef.current = null;
+    }
+    setShowScanner(false);
+    setScannerError(null);
+  };
+
   const handleReceivedSnapshot = async (snapshot: any) => {
     try {
-      // Save to IndexedDB
       const docId = await db.documents.add({
         name: snapshot.name || `Received ${new Date().toLocaleTimeString()}`,
         code: snapshot.code,
@@ -52,7 +68,6 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
         updatedAt: Date.now(),
       });
       
-      // Update store
       setCode(snapshot.code);
       useStore.getState().setActiveDocumentId(docId);
       useStore.getState().setActiveDocumentName(snapshot.name);
@@ -68,20 +83,50 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
     setState("Pairing");
   };
 
-  const startAnswer = () => {
+  const startScanner = async () => {
     setShowScanner(true);
-    setTimeout(() => {
-      const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
-      scanner.render(async (decodedText) => {
-        scanner.clear();
-        setShowScanner(false);
-        if (!peer) return;
-        const answer = await peer.acceptOffer(decodedText);
-        setAnswerCode(answer);
-        setState("Pairing");
-      }, (err) => {});
-      scannerRef.current = scanner;
-    }, 100);
+    setScannerError(null);
+    
+    // Clean up any existing scanner first
+    if (scannerRef.current) {
+      await stopScanner();
+      setShowScanner(true);
+    }
+
+    setTimeout(async () => {
+      try {
+        const scanner = new Html5Qrcode("reader");
+        scannerRef.current = scanner;
+        
+        const config = { 
+          fps: 15, 
+          qrbox: { width: 260, height: 260 },
+          aspectRatio: 1.0
+        };
+
+        await scanner.start(
+          { facingMode: "environment" },
+          config,
+          async (decodedText) => {
+            await stopScanner();
+            if (!peer) return;
+            try {
+              const answer = await peer.acceptOffer(decodedText);
+              setAnswerCode(answer);
+              setState("Pairing");
+            } catch (err) {
+              setScannerError("Invalid QR code format. Please scan a valid Host Offer.");
+            }
+          },
+          (errorMessage) => {
+            // Normal scanning noise, ignore
+          }
+        );
+      } catch (err) {
+        console.error("Camera error:", err);
+        setScannerError("Failed to access camera. Please check permissions.");
+      }
+    }, 300);
   };
 
   const submitAnswer = async () => {
@@ -116,7 +161,13 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
+      <div 
+        className="nodrag cursor-default w-full flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <AnimatePresence mode="wait">
         {state === "Waiting" && (
           <motion.div 
             key="waiting"
@@ -138,7 +189,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
                 <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Host Transfer</span>
               </button>
               <button
-                onClick={startAnswer}
+                onClick={startScanner}
                 className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group"
               >
                 <Smartphone size={24} className="mb-2 text-slate-400 group-hover:text-emerald-500" />
@@ -189,6 +240,17 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
                 </button>
               </div>
             )}
+
+            <button
+              onClick={() => {
+                setOfferCode("");
+                setAnswerCode("");
+                setState("Waiting");
+              }}
+              className="mt-3 text-[11px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-all px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 w-full active:scale-95"
+            >
+              Cancel & Go Back
+            </button>
           </motion.div>
         )}
 
@@ -262,22 +324,73 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
-      {showScanner && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col items-center justify-center p-5">
-          <div className="bg-[#0d1117] rounded-2xl w-full max-w-sm overflow-hidden border border-slate-800">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-              <span className="text-sm font-bold text-white">Scan Device QR</span>
-              <button onClick={() => setShowScanner(false)} className="text-slate-400">
-                <AlertCircle size={20} className="rotate-45" />
+      {showScanner && createPortal(
+        <div className="fixed inset-0 z-[99999] bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center">
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none z-10"></div>
+          
+          <div className="relative w-full h-full flex flex-col items-center justify-center p-6 max-w-lg mx-auto">
+            <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-20">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                  <Camera size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Join Transfer</h3>
+                  <p className="text-[10px] text-white/65">Align QR code to link devices</p>
+                </div>
+              </div>
+              <button 
+                onClick={stopScanner}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all backdrop-blur-md active:scale-95"
+              >
+                <X size={20} />
               </button>
             </div>
-            <div id="reader" className="w-full aspect-square"></div>
-            <p className="p-4 text-[10px] text-slate-500 text-center uppercase tracking-widest bg-black/20">
-              Point your camera at the host's QR code
+
+            <div className="relative w-full max-w-[320px] aspect-square rounded-3xl overflow-hidden border-2 border-white/25 shadow-2xl bg-black">
+              <div id="reader" className="w-full h-full [&_video]:object-cover"></div>
+              
+              {/* Corner brackets for scanner feel */}
+              <div className="absolute inset-0 pointer-events-none z-20">
+                <div className="absolute top-6 left-6 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                <div className="absolute top-6 right-6 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                <div className="absolute bottom-6 left-6 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                <div className="absolute bottom-6 right-6 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+              </div>
+
+              {/* Scanning line animation */}
+              <motion.div 
+                animate={{ top: ["20%", "80%", "20%"] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute left-6 right-6 h-0.5 bg-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.9)] z-10"
+              />
+
+              {scannerError && (
+                <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-6 text-center z-30">
+                  <AlertCircle size={40} className="text-red-500 mb-3" />
+                  <p className="text-xs text-white font-bold mb-4">{scannerError}</p>
+                  <button 
+                    onClick={() => {
+                      stopScanner();
+                      startScanner();
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white text-[10px] font-bold rounded-lg uppercase tracking-widest transition-transform active:scale-95"
+                  >
+                    Retry Camera
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <p className="mt-8 text-[11px] text-white/50 uppercase tracking-widest font-mono flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Waiting for capture...
             </p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
