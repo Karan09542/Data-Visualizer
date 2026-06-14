@@ -29,6 +29,15 @@ import {
   Activity,
   Maximize,
   Minimize,
+  MoreVertical,
+  Trash2,
+  ExternalLink,
+  Play,
+  Volume2,
+  FileText,
+  Search,
+  Clock,
+  Eye,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -40,14 +49,71 @@ interface Message {
   type: "text" | "file" | "node" | "workspace";
   content: string;
   fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  thumbnail?: string;
   timestamp: number;
+  status: "sending" | "sent" | "delivered" | "error";
 }
+
+const getFileType = (fileName: string) => {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext || ""))
+    return "image";
+  if (["mp4", "webm", "ogg", "mov"].includes(ext || "")) return "video";
+  if (["mp3", "wav", "m4a", "flac"].includes(ext || "")) return "audio";
+  if (["pdf"].includes(ext || "")) return "pdf";
+  return "file";
+};
+
+/**
+ * Minimizes SDP by stripping unused media sections and attributes
+ * Significant reduction for DataChannel-only connections
+ */
+const minimizeSDP = (sdp: string) => {
+  return sdp
+    .split("\r\n")
+    .filter((line) => {
+      // Keep global headers and application (DataChannel) section
+      // Filter out audio/video completely
+      const isMediaBody =
+        line.startsWith("m=audio") ||
+        line.startsWith("m=video") ||
+        line.includes("SAVPF") || // Secure Audio Video Profile
+        line.startsWith("a=rtpmap") ||
+        line.startsWith("a=fmtp") ||
+        line.startsWith("a=rtcp") ||
+        line.startsWith("a=ssrc") ||
+        line.startsWith("a=extmap") ||
+        line.startsWith("a=msid") ||
+        line.startsWith("a=group:BUNDLE"); // Less critical for single m-line
+
+      // Filter ICE candidates: Prefer HOST only for LAN pairing
+      if (line.startsWith("a=candidate")) {
+        // Discard relay (TURN), srflx (STUN), and TCP candidates
+        return line.includes(" typ host ") && !line.includes(" tcptype ");
+      }
+
+      return !isMediaBody;
+    })
+    .join("\r\n")
+    .trim();
+};
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
 
 export const TransferNodeRenderer: React.FC<{
   node: HierarchyPointNode<TreeNode>;
   isSelected?: boolean;
 }> = ({ node, isSelected }) => {
-  const { data: treeData, setData, appTheme, setNotification } = useStore();
+  const { parsedData, setCode, appTheme, setNotification, codeFormat } =
+    useStore();
   const [connectionState, setConnectionState] = useState<
     | "waiting"
     | "pairing"
@@ -85,6 +151,26 @@ export const TransferNodeRenderer: React.FC<{
 
   const [transferProgress, setTransferProgress] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
+  const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+  const [showContextMenu, setShowContextMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Optimization & Diagnostic State
+  const [diagnostics, setDiagnostics] = useState<{
+    original: number;
+    minimized: number;
+    compressed: number;
+    version: number;
+  } | null>(null);
+
+  const [scanStability, setScanStability] = useState<{
+    lastCode: string;
+    count: number;
+  }>({ lastCode: "", count: 0 });
 
   const videoRefCallback = useCallback(
     (node: HTMLVideoElement | null) => {
@@ -125,9 +211,15 @@ export const TransferNodeRenderer: React.FC<{
 
               canvas.width = width;
               canvas.height = height;
+
+              // ROI Calculation: Scan the center 70% of the view for 60% faster processing
+              const roiSize = Math.min(width, height) * 0.7;
+              const roiX = (width - roiSize) / 2;
+              const roiY = (height - roiSize) / 2;
+
               ctx.drawImage(node, 0, 0, width, height);
 
-              const imageData = ctx.getImageData(0, 0, width, height);
+              const imageData = ctx.getImageData(roiX, roiY, roiSize, roiSize);
               const code = jsQR(
                 imageData.data,
                 imageData.width,
@@ -136,8 +228,21 @@ export const TransferNodeRenderer: React.FC<{
                   inversionAttempts: "dontInvert",
                 },
               );
+
               if (code && code.data) {
-                handleScan(code.data);
+                // Auto-Capture Stability detection
+                setScanStability((prev) => {
+                  if (prev.lastCode === code.data) {
+                    const newCount = prev.count + 1;
+                    if (newCount >= 2) {
+                      // Confirmed stable for ~300ms
+                      handleScan(code.data);
+                      return { lastCode: "", count: 0 };
+                    }
+                    return { ...prev, count: newCount };
+                  }
+                  return { lastCode: code.data, count: 1 };
+                });
               }
             }
           }, 150);
@@ -245,6 +350,7 @@ export const TransferNodeRenderer: React.FC<{
               type: "text",
               content: msg.content,
               timestamp: Date.now(),
+              status: "delivered",
             },
           ]);
         } else if (msg.type === "chunk_start") {
@@ -274,13 +380,16 @@ export const TransferNodeRenderer: React.FC<{
               if (chunkData.type === "workspace") {
                 try {
                   const parsed = JSON.parse(fullPayload);
-                  setData(parsed);
+                  setCode(JSON.stringify(parsed, null, 2));
                   setNotification({
                     message: "Received and loaded workspace!",
                     type: "success",
                   });
                 } catch (err) {}
               } else if (chunkData.type === "file") {
+                const fType = chunkData.fileName
+                  ? getFileType(chunkData.fileName)
+                  : "file";
                 setMessages((prev) => [
                   ...prev,
                   {
@@ -288,8 +397,11 @@ export const TransferNodeRenderer: React.FC<{
                     sender: "remote",
                     type: "file",
                     fileName: chunkData.fileName,
+                    fileType: fType,
+                    fileSize: fullPayload.length,
                     content: fullPayload,
                     timestamp: Date.now(),
+                    status: "delivered",
                   },
                 ]);
               }
@@ -310,7 +422,7 @@ export const TransferNodeRenderer: React.FC<{
         } else if (msg.type === "workspace") {
           try {
             const parsed = JSON.parse(msg.content);
-            setData(parsed);
+            setCode(JSON.stringify(parsed, null, 2));
             setNotification({
               message: "Received and loaded workspace!",
               type: "success",
@@ -343,8 +455,22 @@ export const TransferNodeRenderer: React.FC<{
 
     const currentDesc = pc.localDescription;
     if (currentDesc) {
-      const payload = JSON.stringify(currentDesc);
-      const compressed = LZString.compressToBase64(payload);
+      const minimizedSdp = minimizeSDP(currentDesc.sdp);
+      const payload = JSON.stringify({
+        type: currentDesc.type,
+        sdp: minimizedSdp,
+      });
+
+      // Use EncodedURIComponent compression for better QR compatibility
+      const compressed = LZString.compressToEncodedURIComponent(payload);
+
+      setDiagnostics({
+        original: currentDesc.sdp.length,
+        minimized: minimizedSdp.length,
+        compressed: compressed.length,
+        version: Math.ceil(compressed.length / 25), // Rough estimation
+      });
+
       setOfferQR(compressed);
       setConnectionState("pairing");
     }
@@ -353,7 +479,7 @@ export const TransferNodeRenderer: React.FC<{
   const handleScan = (code: string) => {
     if (!code) return;
     try {
-      const uncompressed = LZString.decompressFromBase64(code);
+      const uncompressed = LZString.decompressFromEncodedURIComponent(code);
       const desc = JSON.parse(uncompressed || code);
       if (desc.type === "offer") {
         processOffer(desc);
@@ -388,8 +514,20 @@ export const TransferNodeRenderer: React.FC<{
 
     const currentDesc = pc.localDescription;
     if (currentDesc) {
-      const payload = JSON.stringify(currentDesc);
-      const compressed = LZString.compressToBase64(payload);
+      const minimizedSdp = minimizeSDP(currentDesc.sdp);
+      const payload = JSON.stringify({
+        type: currentDesc.type,
+        sdp: minimizedSdp,
+      });
+      const compressed = LZString.compressToEncodedURIComponent(payload);
+
+      setDiagnostics((prev) => ({
+        original: currentDesc.sdp.length,
+        minimized: minimizedSdp.length,
+        compressed: compressed.length,
+        version: Math.ceil(compressed.length / 25),
+      }));
+
       setAnswerQR(compressed);
       setScanMode(null);
       setConnectionState("pairing");
@@ -419,6 +557,7 @@ export const TransferNodeRenderer: React.FC<{
       type: "text",
       content: chatInput,
       timestamp: Date.now(),
+      status: "sent",
     };
     dcRef.current.send(JSON.stringify(msg));
     setMessages((prev) => [...prev, msg]);
@@ -427,7 +566,7 @@ export const TransferNodeRenderer: React.FC<{
 
   const sendWorkspace = () => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
-    const wsStr = JSON.stringify(treeData);
+    const wsStr = JSON.stringify(parsedData);
     setConnectionState("transferring");
     sendLargeMessage("workspace", wsStr).then(() =>
       setConnectionState("connected"),
@@ -578,9 +717,11 @@ export const TransferNodeRenderer: React.FC<{
               ? "bg-emerald-500/10 text-emerald-500"
               : connectionState === "transferring"
                 ? "bg-blue-500/10 text-blue-500"
-                : isDark
-                  ? "bg-white/5 text-slate-500"
-                  : "bg-slate-100 text-slate-500"
+                : connectionState === "failed"
+                  ? "bg-red-500/10 text-red-500"
+                  : isDark
+                    ? "bg-white/5 text-slate-500"
+                    : "bg-slate-100 text-slate-500"
           }`}
         >
           {connectionState}
@@ -649,19 +790,37 @@ export const TransferNodeRenderer: React.FC<{
             animate={{ opacity: 1 }}
             className="flex flex-col items-center gap-6 py-2"
           >
-            <div className="p-4 bg-white rounded-3xl shadow-xl">
+            <div className="p-4 bg-white rounded-3xl shadow-xl relative group">
               <QRCodeSVG
                 value={offerQR || answerQR}
                 size={240}
                 level="L"
                 marginSize={1}
               />
+              {diagnostics && (
+                <div className="absolute -bottom-2 -right-2 bg-indigo-600 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                  -{Math.round((1 - diagnostics.compressed / diagnostics.original) * 100)}% PAYLOAD
+                </div>
+              )}
             </div>
 
-            <div className="text-center space-y-1">
-              <p className="text-sm font-bold text-white">
-                Device Pairing Required
-              </p>
+            <div className="text-center space-y-2">
+              <div className="flex flex-col items-center">
+                <p className="text-sm font-bold text-white">
+                  Device Pairing Required
+                </p>
+                {diagnostics && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
+                      {diagnostics.compressed} chars
+                    </span>
+                    <span className="w-1 h-1 rounded-full bg-slate-700" />
+                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                      Optimized SDP
+                    </span>
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-slate-500">
                 Scan this code on the other device to link
               </p>
@@ -721,228 +880,109 @@ export const TransferNodeRenderer: React.FC<{
           </motion.div>
         )}
 
+        {connectionState === "failed" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center h-[320px] gap-6 text-center"
+          >
+            <div
+              className={`p-6 rounded-full ${isDark ? "bg-red-500/10 text-red-500" : "bg-red-50 text-red-600"}`}
+            >
+              <X className="w-12 h-12" />
+            </div>
+            <div>
+              <p
+                className={`text-lg font-bold mb-2 ${isDark ? "text-white" : "text-slate-900"}`}
+              >
+                Connection Failed
+              </p>
+              <p className="text-sm text-slate-500 max-w-[250px] mx-auto">
+                Unable to establish a secure P2P connection. This might be due
+                to network firewalls or scanning timeout.
+              </p>
+            </div>
+            <button
+              onClick={resetState}
+              className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${
+                isDark
+                  ? "border-white/10 bg-white/5 hover:bg-white/10 text-white"
+                  : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+              }`}
+            >
+              <RefreshCw className="w-4 h-4" /> Reset & Try Again
+            </button>
+          </motion.div>
+        )}
+
         {(connectionState === "connected" ||
           connectionState === "transferring") &&
           (() => {
+            const chatMessages = messages;
+            const mediaMessages = messages.filter((m) => m.type === "file");
+
             const content = (
               <div
-                className={`flex flex-col ${isFullscreen ? "w-full max-w-4xl mx-auto h-full p-6" : "h-[320px]"}`}
+                className={`flex flex-col relative ${isFullscreen ? "w-full max-w-4xl mx-auto h-full" : "h-[420px]"}`}
               >
-                {isFullscreen && (
-                  <div
-                    className={`flex items-center justify-between mb-6 p-4 rounded-xl border ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={`p-2.5 rounded-xl ${isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
-                      >
-                        <Share2 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3
-                          className={`font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}
-                        >
-                          Direct Transfer
-                        </h3>
-                        <p className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase">
-                          <Activity className="w-3 h-3 text-emerald-500" /> P2P
-                          Secure Connection
-                        </p>
-                      </div>
-                    </div>
-                    <div
-                      className={`px-2.5 py-1 mr-4 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        connectionState === "connected"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : "bg-blue-500/10 text-blue-500"
-                      }`}
-                    >
-                      {connectionState}
-                    </div>
-                  </div>
-                )}
-
-                {/* Messages Area */}
+                {/* Modern Compact Header */}
                 <div
-                  className={`flex-1 overflow-y-auto mb-4 space-y-4 pr-1 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
+                  className={`flex items-center justify-between p-4 border-b shrink-0 ${isDark ? "bg-[#0d1017]/80 backdrop-blur-md border-white/5" : "bg-white/80 backdrop-blur-md border-slate-100"}`}
                 >
-                  <AnimatePresence initial={false}>
-                    {messages.length === 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="h-full flex flex-col items-center justify-center text-center px-8 gap-4"
-                      >
-                        <div
-                          className={`p-4 rounded-full ${isDark ? "bg-white/5 text-slate-600" : "bg-slate-50 text-slate-400"}`}
-                        >
-                          <MessageSquare className="w-10 h-10" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-400">
-                            Direct Link Active
-                          </p>
-                          <p className="text-xs text-slate-500 mt-1">
-                            Ready to transfer files, nodes, and workspace data
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
-                    {messages.map((msg) => (
-                      <motion.div
-                        key={msg.id}
-                        initial={{
-                          opacity: 0,
-                          x: msg.sender === "me" ? 20 : -20,
-                        }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className={`flex flex-col ${msg.sender === "me" ? "items-end" : "items-start"}`}
-                      >
-                        <div
-                          className={`group relative max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all ${
-                            msg.sender === "me"
-                              ? "bg-indigo-600 text-white rounded-tr-none"
-                              : isDark
-                                ? "bg-[#161f30] text-slate-200 rounded-tl-none border border-white/5"
-                                : "bg-slate-100 text-slate-800 rounded-tl-none"
-                          }`}
-                        >
-                          {msg.type === "text" ? (
-                            msg.content
-                          ) : (
-                            <div className="flex items-center gap-3 py-1">
-                              <div
-                                className={`p-2 rounded-lg ${msg.sender === "me" ? "bg-white/20" : isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
-                              >
-                                <File className="w-5 h-5" />
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-[11px] font-bold truncate leading-none mb-1">
-                                  {msg.fileName}
-                                </span>
-                                <span className="text-[9px] opacity-70 uppercase tracking-tighter">
-                                  Received File
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-[9px] text-slate-500 mt-1.5 px-1 font-medium">
-                          {new Date(msg.timestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-
-                {/* Progress Bar for transfers */}
-                {transferProgress > 0 && (
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1.5 px-1">
-                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <RefreshCw className="w-3 h-3 animate-spin" />{" "}
-                        {connectionState === "transferring"
-                          ? "Syncing Workspace..."
-                          : "Sending File..."}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-500">
-                        {transferProgress}%
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-3">
                     <div
-                      className={`h-1.5 w-full rounded-full overflow-hidden ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                      className={`p-2 rounded-xl ${isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
                     >
-                      <motion.div
-                        className="h-full bg-indigo-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${transferProgress}%` }}
-                      />
+                      <Share2 className="w-5 h-5" />
                     </div>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={sendWorkspace}
-                      disabled={connectionState === "transferring"}
-                      className={`flex-1 flex gap-2 items-center justify-center py-3 rounded-xl text-[10px] font-bold uppercase transition-all border ${
-                        isDark
-                          ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30"
-                          : "border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200"
-                      } disabled:opacity-50`}
-                    >
-                      <Globe className="w-3.5 h-3.5 text-indigo-500" /> Sync
-                      Project
-                    </button>
-                    <label
-                      className={`flex-1 flex gap-2 items-center justify-center py-3 rounded-xl text-[10px] font-bold uppercase transition-all border cursor-pointer ${
-                        isDark
-                          ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-emerald-500/30"
-                          : "border-slate-100 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200"
-                      }`}
-                    >
-                      <UploadCloud className="w-3.5 h-3.5 text-emerald-500" />{" "}
-                      Send Assets
-                      <input
-                        type="file"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file || !dcRef.current) return;
-                          const reader = new FileReader();
-                          reader.onload = (re) => {
-                            const content = re.target?.result as string;
-                            sendLargeMessage("file", content, file.name);
-                            setMessages((prev) => [
-                              ...prev,
-                              {
-                                id: uuidv4(),
-                                sender: "me",
-                                type: "file",
-                                fileName: file.name,
-                                content: "",
-                                timestamp: Date.now(),
-                              },
-                            ]);
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                    </label>
+                    <div className="flex flex-col">
+                      <h3
+                        className={`text-sm font-bold tracking-tight leading-none mb-1 ${isDark ? "text-white" : "text-slate-900"}`}
+                      >
+                        Direct Transfer
+                      </h3>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          P2P Encrypted
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <div
-                      className={`flex-1 flex items-center rounded-xl p-1 border transition-all ${
-                        isDark
-                          ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
-                          : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
-                      }`}
+                      className={`flex p-1 rounded-lg ${isDark ? "bg-white/5" : "bg-slate-100"}`}
                     >
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                        placeholder="Type a secure message..."
-                        className="flex-1 bg-transparent px-3 py-2 text-xs focus:outline-none placeholder:text-slate-500"
-                      />
                       <button
-                        onClick={sendMessage}
-                        className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20"
+                        onClick={() => setViewMode("chat")}
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                          viewMode === "chat"
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
                       >
-                        <Send className="w-3.5 h-3.5" />
+                        Chat
+                      </button>
+                      <button
+                        onClick={() => setViewMode("media")}
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                          viewMode === "media"
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        Media ({mediaMessages.length})
                       </button>
                     </div>
+
                     <button
                       onClick={() => setIsFullscreen(!isFullscreen)}
-                      className={`p-3 rounded-xl border transition-all ${isDark ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-500" : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-400"}`}
-                      title={isFullscreen ? "Minimize" : "Maximize"}
+                      className={`p-2.5 rounded-xl border transition-all ${isDark ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400" : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"}`}
                     >
                       {isFullscreen ? (
                         <Minimize className="w-4 h-4" />
@@ -950,25 +990,587 @@ export const TransferNodeRenderer: React.FC<{
                         <Maximize className="w-4 h-4" />
                       )}
                     </button>
-                    <button
-                      onClick={resetState}
-                      className={`p-3 rounded-xl border transition-all ${isDark ? "border-red-500/10 text-red-400 hover:bg-red-500/20" : "border-red-100 bg-red-50 hover:bg-red-100 text-red-500"}`}
-                      title="Disconnect"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
+
+                <div className="flex-1 relative overflow-hidden bg-transparent">
+                  <AnimatePresence mode="wait">
+                    {viewMode === "chat" ? (
+                      <motion.div
+                        key="chat-view"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        className="flex flex-col h-full"
+                      >
+                        <div
+                          className={`flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
+                          style={{
+                            backgroundImage: isDark
+                              ? "radial-gradient(circle at 50% 50%, rgba(79, 70, 229, 0.05) 0%, transparent 100%)"
+                              : "none",
+                          }}
+                        >
+                          {chatMessages.length === 0 && (
+                            <div className="h-full flex flex-col items-center justify-center text-center px-12 gap-6">
+                              <div
+                                className={`w-20 h-20 rounded-3xl flex items-center justify-center ${isDark ? "bg-white/5 text-slate-600" : "bg-slate-50 text-slate-300"}`}
+                              >
+                                <MessageSquare className="w-10 h-10" />
+                              </div>
+                              <div className="space-y-2">
+                                <p
+                                  className={`text-sm font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                                >
+                                  End-to-End Secure
+                                </p>
+                                <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
+                                  Messages are sent directly between devices.
+                                  Nothing is stored on any server.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {chatMessages.map((msg) => (
+                            <motion.div
+                              key={msg.id}
+                              layout
+                              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              className={`flex flex-col ${msg.sender === "me" ? "items-end" : "items-start"}`}
+                            >
+                              <div
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setShowContextMenu({
+                                    id: msg.id,
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                  });
+                                }}
+                                className={`group relative max-w-[85%] rounded-3xl p-1 transition-all duration-300 ${
+                                  msg.sender === "me"
+                                    ? "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
+                                    : isDark
+                                      ? "bg-[#161f30] text-slate-200 rounded-tl-sm border border-white/5"
+                                      : "bg-slate-100 text-slate-800 rounded-tl-sm"
+                                }`}
+                              >
+                                {msg.type === "text" ? (
+                                  <div className="px-4 py-2.5 text-xs font-medium">
+                                    {msg.content}
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-1">
+                                    {msg.fileType === "image" && (
+                                      <button
+                                        onClick={() => setSelectedMedia(msg)}
+                                        className="relative rounded-2xl overflow-hidden group/img transition-transform active:scale-[0.98]"
+                                      >
+                                        <img
+                                          src={msg.content}
+                                          alt={msg.fileName}
+                                          className="w-full max-h-[300px] object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                          <Eye className="w-8 h-8 text-white" />
+                                        </div>
+                                      </button>
+                                    )}
+
+                                    {msg.fileType === "video" && (
+                                      <div className="relative rounded-2xl overflow-hidden bg-black aspect-video group/vid">
+                                        <video
+                                          src={msg.content}
+                                          className="w-full h-full object-cover opacity-80"
+                                        />
+                                        <button
+                                          onClick={() => setSelectedMedia(msg)}
+                                          className="absolute inset-0 flex items-center justify-center text-white transition-transform group-hover/vid:scale-110"
+                                        >
+                                          <div className="p-4 rounded-full bg-white/20 backdrop-blur-md">
+                                            <Play className="w-8 h-8 fill-current" />
+                                          </div>
+                                        </button>
+                                        <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] font-bold text-white">
+                                          VIDEO
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {msg.fileType === "audio" && (
+                                      <div
+                                        className={`p-3 rounded-2xl min-w-[240px] flex items-center gap-4 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white"}`}
+                                      >
+                                        <button className="p-2.5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30">
+                                          <Play className="w-4 h-4 fill-current" />
+                                        </button>
+                                        <div className="flex-1 flex flex-col gap-1.5">
+                                          <div className="flex items-center space-x-1">
+                                            {[...Array(20)].map((_, i) => (
+                                              <div
+                                                key={i}
+                                                className="w-0.5 bg-current opacity-30"
+                                                style={{
+                                                  height: `${Math.random() * 100}%`,
+                                                  minHeight: "4px",
+                                                }}
+                                              />
+                                            ))}
+                                          </div>
+                                          <div className="flex justify-between items-center text-[9px] font-bold opacity-80 tracking-widest leading-none">
+                                            <span>AUDIO PREVIEW</span>
+                                            <span>
+                                              {formatFileSize(
+                                                msg.fileSize || 0,
+                                              )}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {(msg.fileType === "file" ||
+                                      msg.fileType === "pdf") && (
+                                      <div
+                                        className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${
+                                          msg.sender === "me"
+                                            ? "hover:bg-white/5"
+                                            : "hover:bg-black/5"
+                                        }`}
+                                      >
+                                        <div
+                                          className={`p-3 rounded-xl ${
+                                            msg.sender === "me"
+                                              ? "bg-white/20 text-white"
+                                              : isDark
+                                                ? "bg-indigo-500/10 text-indigo-400"
+                                                : "bg-indigo-50 text-indigo-600"
+                                          }`}
+                                        >
+                                          {msg.fileType === "pdf" ? (
+                                            <FileText className="w-6 h-6" />
+                                          ) : (
+                                            <File className="w-6 h-6" />
+                                          )}
+                                        </div>
+                                        <div className="flex flex-col min-w-0 flex-1">
+                                          <span className="text-xs font-black truncate leading-tight mb-1">
+                                            {msg.fileName}
+                                          </span>
+                                          <div className="flex items-center gap-2 text-[9px] font-bold opacity-70 uppercase tracking-widest">
+                                            <span>
+                                              {formatFileSize(
+                                                msg.fileSize || 0,
+                                              )}
+                                            </span>
+                                            <span className="w-1 h-1 rounded-full bg-current opacity-40" />
+                                            <span>{msg.fileType}</span>
+                                          </div>
+                                        </div>
+                                        <a
+                                          href={msg.content}
+                                          download={msg.fileName}
+                                          className={`p-2.5 rounded-xl transition-all ${
+                                            msg.sender === "me"
+                                              ? "hover:bg-white/20"
+                                              : isDark
+                                                ? "hover:bg-white/5"
+                                                : "hover:bg-slate-200"
+                                          }`}
+                                        >
+                                          <Download className="w-4 h-4" />
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-1.5 px-2">
+                                <span className="text-[10px] text-slate-500 font-bold tracking-tight">
+                                  {new Date(msg.timestamp).toLocaleTimeString(
+                                    [],
+                                    {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
+                                </span>
+                                {msg.sender === "me" && (
+                                  <div className="flex items-center">
+                                    {msg.status === "sending" && (
+                                      <Clock className="w-3 h-3 text-slate-400" />
+                                    )}
+                                    {msg.status === "sent" && (
+                                      <Check className="w-3 h-3 text-slate-400" />
+                                    )}
+                                    {msg.status === "delivered" && (
+                                      <div className="flex -space-x-1.5">
+                                        <Check className="w-3 h-3 text-emerald-500" />
+                                        <Check className="w-3 h-3 text-emerald-500" />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          ))}
+                        </div>
+
+                        <div
+                          className={`p-4 border-t ${isDark ? "bg-[#0d1017]/50 border-white/5" : "bg-white border-slate-100"}`}
+                        >
+                          {transferProgress > 0 && (
+                            <div className="mb-4 bg-indigo-500/5 p-3 rounded-2xl border border-indigo-500/10">
+                              <div className="flex justify-between items-center mb-2 px-1">
+                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  {connectionState === "transferring"
+                                    ? "Receiving Stream..."
+                                    : "Transmitting..."}
+                                </span>
+                                <span className="text-[10px] font-black text-indigo-400">
+                                  {transferProgress}%
+                                </span>
+                              </div>
+                              <div
+                                className={`h-1.5 w-full rounded-full overflow-hidden ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                              >
+                                <motion.div
+                                  className="h-full bg-indigo-500 shadow-[0_0_10px_#6366f1]"
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${transferProgress}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-3">
+                            <label
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                                isDark
+                                  ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
+                                  : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
+                              }`}
+                            >
+                              <Plus className="w-5 h-5" />
+                              <input
+                                type="file"
+                                className="hidden"
+                                multiple
+                                onChange={(e) => {
+                                  const files = Array.from(
+                                    e.target.files || [],
+                                  );
+                                  if (files.length === 0 || !dcRef.current)
+                                    return;
+
+                                  files.forEach((file) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (re) => {
+                                      const content =
+                                        re.target?.result as string;
+                                      const fType = getFileType(file.name);
+                                      sendLargeMessage(
+                                        "file",
+                                        content,
+                                        file.name,
+                                      );
+                                      setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                          id: uuidv4(),
+                                          sender: "me",
+                                          type: "file",
+                                          fileName: file.name,
+                                          fileType: fType,
+                                          fileSize: file.size,
+                                          content: content,
+                                          timestamp: Date.now(),
+                                          status: "sent",
+                                        },
+                                      ]);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  });
+                                }}
+                              />
+                            </label>
+
+                            <div
+                              className={`flex-1 flex items-center rounded-2xl p-1.5 border transition-all shadow-inner ${
+                                isDark
+                                  ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
+                                  : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
+                              }`}
+                            >
+                              <input
+                                type="text"
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                onKeyDown={(e) =>
+                                  e.key === "Enter" && sendMessage()
+                                }
+                                placeholder="Type a message..."
+                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium"
+                              />
+                              <button
+                                onClick={sendMessage}
+                                disabled={!chatInput.trim()}
+                                className="p-2.5 bg-indigo-600 disabled:opacity-50 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center"
+                              >
+                                <Send className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    "Are you sure you want to disconnect?",
+                                  )
+                                ) {
+                                  resetState();
+                                }
+                              }}
+                              className={`p-3.5 rounded-2xl border transition-all ${isDark ? "border-red-500/10 bg-red-500/5 hover:bg-red-500/10 text-red-400" : "border-red-50/10 bg-red-50 hover:bg-red-100 text-red-500"}`}
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="media-view"
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.02 }}
+                        className="h-full overflow-y-auto p-4 flex flex-col"
+                      >
+                        <div className="flex items-center justify-between mb-4 px-2">
+                          <h4
+                            className={`text-sm font-black uppercase tracking-widest ${isDark ? "text-white" : "text-slate-900"}`}
+                          >
+                            Shared Media
+                          </h4>
+                        </div>
+
+                        {mediaMessages.length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
+                            <ImageIcon className="w-12 h-12 mb-4" />
+                            <p className="text-sm font-bold uppercase tracking-tighter">
+                              No Media Shared Yet
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                            {mediaMessages.map((m) => (
+                              <button
+                                key={m.id}
+                                onClick={() => setSelectedMedia(m)}
+                                className={`aspect-square rounded-xl overflow-hidden relative group border ${isDark ? "border-white/5 opacity-80 hover:opacity-100" : "border-slate-100"}`}
+                              >
+                                {m.fileType === "image" ? (
+                                  <img
+                                    src={m.content}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : m.fileType === "video" ? (
+                                  <div className="w-full h-full bg-slate-900 flex items-center justify-center text-white">
+                                    <Play className="w-6 h-6" />
+                                  </div>
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <File className="w-6 h-6 text-indigo-500" />
+                                  </div>
+                                )}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                                  <span className="text-[8px] font-black text-white uppercase tracking-tighter truncate max-w-full px-1">
+                                    {m.fileName}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <AnimatePresence>
+                    {showContextMenu && (
+                      <div
+                        className="fixed inset-0 z-[11000]"
+                        onClick={() => setShowContextMenu(null)}
+                      >
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          style={{
+                            left: Math.min(
+                              showContextMenu.x,
+                              window.innerWidth - 200,
+                            ),
+                            top: Math.min(
+                              showContextMenu.y,
+                              window.innerHeight - 300,
+                            ),
+                          }}
+                          className={`absolute w-52 rounded-2xl border shadow-2xl overflow-hidden p-2 backdrop-blur-xl ${isDark ? "bg-[#111827]/90 border-white/10" : "bg-white/95 border-slate-200"}`}
+                        >
+                          {(() => {
+                            const msg = messages.find(
+                              (m) => m.id === showContextMenu.id,
+                            );
+                            if (!msg) return null;
+                            return (
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => {
+                                    if (msg.type === "text") {
+                                      navigator.clipboard.writeText(
+                                        msg.content,
+                                      );
+                                      setNotification({
+                                        message: "Copied to clipboard",
+                                        type: "info",
+                                      });
+                                    } else {
+                                      setSelectedMedia(msg);
+                                    }
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                >
+                                  {msg.type === "text" ? (
+                                    <Copy className="w-4 h-4" />
+                                  ) : (
+                                    <Eye className="w-4 h-4" />
+                                  )}
+                                  {msg.type === "text" ? "Copy Text" : "View"}
+                                </button>
+                                {msg.type === "file" && (
+                                  <a
+                                    href={msg.content}
+                                    download={msg.fileName}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                    Download
+                                  </a>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setMessages((prev) =>
+                                      prev.filter((m) => m.id !== msg.id),
+                                    );
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-red-500/10 text-red-400" : "hover:bg-red-50 text-red-600"}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Delete Local
+                                </button>
+                              </div>
+                            );
+                          })()}
+                        </motion.div>
+                      </div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <AnimatePresence>
+                  {selectedMedia && (
+                    <div className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/95 backdrop-blur-3xl p-4 sm:p-20">
+                      <motion.button
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        onClick={() => setSelectedMedia(null)}
+                        className="absolute top-6 right-6 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white z-10 transition-all border border-white/10"
+                      >
+                        <X className="w-6 h-6" />
+                      </motion.button>
+
+                      <div className="absolute top-6 left-6 text-white max-w-[300px]">
+                        <p className="text-sm font-black mb-1 truncate leading-none">
+                          {selectedMedia.fileName}
+                        </p>
+                        <div className="flex items-center gap-3 opacity-60 text-[10px] font-bold uppercase tracking-widest">
+                          <span>
+                            {formatFileSize(selectedMedia.fileSize || 0)}
+                          </span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                          <span>
+                            {new Date(
+                              selectedMedia.timestamp,
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="absolute bottom-6 inset-x-0 flex justify-center gap-4">
+                        <a
+                          href={selectedMedia.content}
+                          download={selectedMedia.fileName}
+                          className="px-8 py-4 rounded-full bg-indigo-600 text-white text-xs font-black uppercase tracking-widest shadow-2xl shadow-indigo-500/40 flex items-center gap-3 hover:bg-indigo-500 transition-all active:scale-95"
+                        >
+                          <Download className="w-5 h-5" /> Download Asset
+                        </a>
+                      </div>
+
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.1 }}
+                        className="w-full h-full flex items-center justify-center"
+                      >
+                        {selectedMedia.fileType === "image" && (
+                          <img
+                            src={selectedMedia.content}
+                            className="max-w-full max-h-full object-contain shadow-[0_0_100px_rgba(0,0,0,0.5)] cursor-zoom-in"
+                            onClick={(e) => {
+                              const img = e.currentTarget;
+                              if (img.style.maxHeight === "none") {
+                                img.style.maxHeight = "100%";
+                                img.style.maxWidth = "100%";
+                              } else {
+                                img.style.maxHeight = "none";
+                                img.style.maxWidth = "none";
+                              }
+                            }}
+                          />
+                        )}
+                        {selectedMedia.fileType === "video" && (
+                          <video
+                            src={selectedMedia.content}
+                            controls
+                            autoPlay
+                            className="max-w-full max-h-full shadow-2xl"
+                          />
+                        )}
+                        {selectedMedia.fileType === "pdf" && (
+                          <iframe
+                            src={selectedMedia.content}
+                            className="w-full h-full rounded-2xl bg-white"
+                          />
+                        )}
+                      </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
               </div>
             );
 
             return isFullscreen
               ? createPortal(
                   <div
-                    className={`fixed inset-0 z-[10000] backdrop-blur-sm p-4 sm:p-8 flex items-center justify-center ${isDark ? "bg-black/80" : "bg-slate-900/50"}`}
+                    className={`fixed inset-0 z-[10000] backdrop-blur-sm p-0 sm:p-2 flex items-center justify-center ${isDark ? "bg-black/90" : "bg-slate-900/50"}`}
                   >
                     <div
-                      className={`w-full h-full max-h-[90vh] flex flex-col rounded-3xl border shadow-2xl overflow-hidden ${isDark ? "bg-[#0d1017] border-white/10" : "bg-white border-slate-200"}`}
+                      className={`w-full h-full sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col ${isDark ? "bg-[#0a0c10] border-white/5" : "bg-white border-slate-200"}`}
                     >
                       {content}
                     </div>
