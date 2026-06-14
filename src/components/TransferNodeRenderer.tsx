@@ -56,7 +56,13 @@ export const TransferNodeRenderer: React.FC<{
       return;
     }
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+    navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: "environment",
+        width: { ideal: 720 },
+        height: { ideal: 720 }
+      } 
+    })
       .then((str) => {
         streamRef.current = str;
         node.srcObject = str;
@@ -64,20 +70,27 @@ export const TransferNodeRenderer: React.FC<{
         node.play().catch(e => console.warn("Video play interrupted", e));
         
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         
         scanIntervalRef.current = setInterval(() => {
           if (node.readyState === node.HAVE_ENOUGH_DATA && ctx) {
-            canvas.width = node.videoWidth;
-            canvas.height = node.videoHeight;
-            ctx.drawImage(node, 0, 0, canvas.width, canvas.height);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            // Downscale for faster QR detection
+            const width = Math.min(node.videoWidth, 600);
+            const height = (node.videoHeight / node.videoWidth) * width;
+            
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(node, 0, 0, width, height);
+            
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+               inversionAttempts: "dontInvert"
+            });
             if (code && code.data) {
               handleScan(code.data);
             }
           }
-        }, 500);
+        }, 150);
       })
       .catch(err => {
          setNotification({ message: "Camera access denied or error: " + err.message, type: "error" });
