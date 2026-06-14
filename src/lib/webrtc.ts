@@ -1,4 +1,79 @@
 
+export function compressSDP(sdp: string): string {
+  const lines = sdp.split(/\r?\n/);
+  const remainingLines: string[] = [];
+  let candidateCount = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    
+    if (trimmed.startsWith("a=candidate:")) {
+      const lower = trimmed.toLowerCase();
+      // Keep only UDP candidates, skip IPv6, limit to max 3 candidates for ultra compactness
+      if (lower.includes("udp") && !lower.includes("ip6") && candidateCount < 3) {
+        remainingLines.push(trimmed);
+        candidateCount++;
+      }
+    } else if (
+      trimmed.startsWith("a=rtcp-") || 
+      trimmed.startsWith("a=extmap:") || 
+      trimmed.includes("ice-options:trickle")
+    ) {
+      // Drop optional non-essential metadata to save space
+      continue;
+    } else {
+      remainingLines.push(trimmed);
+    }
+  }
+
+  let cleanSdp = remainingLines.join("\r\n");
+
+  const replacements: [RegExp, string][] = [
+    [/a=fingerprint:sha-256 /g, "F:"],
+    [/a=ice-ufrag:/g, "U:"],
+    [/a=ice-pwd:/g, "P:"],
+    [/a=candidate:/g, "C:"],
+    [/a=setup:/g, "S:"],
+    [/a=mid:/g, "M:"],
+    [/a=sctp-port:5000/g, "K:"],
+    [/c=IN IP4 /g, "I:"],
+    [/a=max-message-size:/g, "X:"],
+    [/a=rtcp-mux/g, "R:"],
+    [/a=rtcp-rsize/g, "Z:"],
+  ];
+
+  for (const [pattern, rep] of replacements) {
+    cleanSdp = cleanSdp.replace(pattern, rep);
+  }
+
+  return cleanSdp;
+}
+
+export function decompressSDP(compressed: string): string {
+  let sdp = compressed;
+
+  const replacements: [string, RegExp][] = [
+    ["a=fingerprint:sha-256 ", /F:/g],
+    ["a=ice-ufrag:", /U:/g],
+    ["a=ice-pwd:", /P:/g],
+    ["a=candidate:", /C:/g],
+    ["a=setup:", /S:/g],
+    ["a=mid:", /M:/g],
+    ["a=sctp-port:5000", /K:/g],
+    ["c=IN IP4 ", /I:/g],
+    ["a=max-message-size:", /X:/g],
+    ["a=rtcp-mux", /R:/g],
+    ["a=rtcp-rsize", /Z:/g],
+  ];
+
+  for (const [rep, pattern] of replacements) {
+    sdp = sdp.replace(pattern, rep);
+  }
+
+  return sdp;
+}
+
 export type ConnectionState = "Waiting" | "Pairing" | "Connected" | "Transferring" | "Completed" | "Failed";
 
 export interface TransferProgress {
@@ -73,12 +148,19 @@ export class WebRTCPeer {
     await this.pc.setLocalDescription(offer);
 
     return new Promise((resolve) => {
+      const handleGathered = () => {
+        if (this.pc.localDescription) {
+          const compressed = compressSDP(this.pc.localDescription.sdp);
+          resolve("O:" + btoa(compressed));
+        }
+      };
+
       if (this.pc.iceGatheringState === "complete") {
-        resolve(btoa(JSON.stringify(this.pc.localDescription)));
+        handleGathered();
       } else {
         this.pc.onicecandidate = (event) => {
           if (event.candidate === null) {
-            resolve(btoa(JSON.stringify(this.pc.localDescription)));
+            handleGathered();
           }
         };
       }
@@ -86,19 +168,34 @@ export class WebRTCPeer {
   }
 
   async acceptOffer(offerStr: string): Promise<string> {
-    const offer = JSON.parse(atob(offerStr));
-    await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
+    let sdp = offerStr;
+    if (sdp.startsWith("O:")) {
+      sdp = sdp.slice(2);
+    }
+    const decompressed = decompressSDP(atob(sdp));
+
+    await this.pc.setRemoteDescription(new RTCSessionDescription({
+      type: "offer",
+      sdp: decompressed
+    }));
     
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
 
     return new Promise((resolve) => {
-       if (this.pc.iceGatheringState === "complete") {
-        resolve(btoa(JSON.stringify(this.pc.localDescription)));
+      const handleGathered = () => {
+        if (this.pc.localDescription) {
+          const compressed = compressSDP(this.pc.localDescription.sdp);
+          resolve("A:" + btoa(compressed));
+        }
+      };
+
+      if (this.pc.iceGatheringState === "complete") {
+        handleGathered();
       } else {
         this.pc.onicecandidate = (event) => {
           if (event.candidate === null) {
-            resolve(btoa(JSON.stringify(this.pc.localDescription)));
+            handleGathered();
           }
         };
       }
@@ -106,8 +203,15 @@ export class WebRTCPeer {
   }
 
   async acceptAnswer(answerStr: string) {
-    const answer = JSON.parse(atob(answerStr));
-    await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
+    let sdp = answerStr;
+    if (sdp.startsWith("A:")) {
+      sdp = sdp.slice(2);
+    }
+    const decompressed = decompressSDP(atob(sdp));
+    await this.pc.setRemoteDescription(new RTCSessionDescription({
+      type: "answer",
+      sdp: decompressed
+    }));
   }
 
   send(data: any) {

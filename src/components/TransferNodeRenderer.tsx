@@ -83,7 +83,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
     setState("Pairing");
   };
 
-  const startScanner = async () => {
+  const startScanner = async (isScanningAnswer = false, customCallback?: (text: string) => Promise<void>) => {
     setShowScanner(true);
     setScannerError(null);
     
@@ -111,11 +111,19 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
             await stopScanner();
             if (!peer) return;
             try {
-              const answer = await peer.acceptOffer(decodedText);
-              setAnswerCode(answer);
-              setState("Pairing");
+              if (customCallback) {
+                await customCallback(decodedText);
+              } else {
+                const answer = await peer.acceptOffer(decodedText);
+                setAnswerCode(answer);
+                setState("Pairing");
+              }
             } catch (err) {
-              setScannerError("Invalid QR code format. Please scan a valid Host Offer.");
+              setScannerError(
+                isScanningAnswer 
+                  ? "Invalid Answer QR code. Please scan a valid Joiner Answer."
+                  : "Invalid QR code format. Please scan a valid Host Offer."
+              );
             }
           },
           (errorMessage) => {
@@ -152,12 +160,27 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
             <p className="text-[10px] text-slate-500 dark:text-slate-400">P2P Secure Connection</p>
           </div>
         </div>
-        <div className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-          state === "Connected" ? "bg-emerald-500/10 text-emerald-500" :
-          state === "Failed" ? "bg-red-500/10 text-red-500" :
-          "bg-slate-500/10 text-slate-500"
-        }`}>
-          {state}
+        <div className="flex items-center gap-2">
+          <div className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+            state === "Connected" ? "bg-emerald-500/10 text-emerald-500" :
+            state === "Failed" ? "bg-red-500/10 text-red-500" :
+            "bg-slate-500/10 text-slate-500"
+          }`}>
+            {state}
+          </div>
+          {state !== "Waiting" && (
+            <button
+              onClick={() => {
+                setOfferCode("");
+                setAnswerCode("");
+                setState("Waiting");
+              }}
+              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              title="Cancel & Reset"
+            >
+              <X size={15} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -189,7 +212,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
                 <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">Host Transfer</span>
               </button>
               <button
-                onClick={startScanner}
+                onClick={() => startScanner(false)}
                 className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group"
               >
                 <Smartphone size={24} className="mb-2 text-slate-400 group-hover:text-emerald-500" />
@@ -206,37 +229,126 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
             animate={{ opacity: 1 }}
             className="flex flex-col items-center gap-4 py-2"
           >
+            {/* Host Mode: We generated offer code, now waiting for joiner's answer */}
             {offerCode && !answerCode && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="p-3 bg-white rounded-lg shadow-sm">
+              <div className="flex flex-col items-center gap-3 w-full">
+                <div className="p-3 bg-white rounded-lg shadow-sm border border-slate-100">
                   <QRCodeSVG value={offerCode} size={180} level="L" />
                 </div>
-                <p className="text-[10px] text-center text-slate-500 max-w-[200px]">
-                  Scan this QR code on the receiving device to link them.
+                <p className="text-[10px] text-center text-slate-500 max-w-[210px] leading-tight">
+                  <strong>Step 1:</strong> Scan this QR on the receiving device to link them.
                 </p>
-                <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 10, repeat: Infinity }}
-                    className="h-full bg-blue-500"
-                  />
+
+                <div className="w-full border-t border-slate-100 dark:border-slate-800 my-1 pt-3 flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      startScanner(true, async (ansText) => {
+                        if (!peer) return;
+                        try {
+                          await peer.acceptAnswer(ansText);
+                        } catch (err) {
+                          setScannerError("Invalid Answer QR code.");
+                        }
+                      });
+                    }}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 uppercase tracking-wide shadow-md shadow-emerald-500/10"
+                  >
+                    <Camera size={13} />
+                    Scan Joiner Answer QR
+                  </button>
+                  
+                  <div className="text-[9px] text-center text-slate-400 font-sans uppercase tracking-wider my-0.5">— OR —</div>
+                  
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      id="pastedAnswer"
+                      placeholder="Paste Answer code manually..."
+                      className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-1.5 text-[10px] focus:outline-none focus:border-blue-500 text-slate-800 dark:text-slate-100 font-mono"
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          const val = (e.currentTarget as HTMLInputElement).value.trim();
+                          if (val && peer) {
+                            try {
+                              await peer.acceptAnswer(val);
+                            } catch (err) {
+                              alert("Invalid Answer Code. Please try again.");
+                            }
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={async () => {
+                        const inputEl = document.getElementById("pastedAnswer") as HTMLInputElement;
+                        const val = inputEl?.value.trim();
+                        if (val && peer) {
+                          try {
+                            await peer.acceptAnswer(val);
+                          } catch (err) {
+                            alert("Invalid Answer Code. Please try again.");
+                          }
+                        }
+                      }}
+                      className="px-3 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded transition-colors"
+                    >
+                      Link
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {answerCode && (
+            {/* Join / Client Mode: We scanned Host's QR, generated Answer, and show Answer QR for Host */}
+            {!offerCode && answerCode && (
               <div className="flex flex-col items-center gap-3 w-full">
-                <CheckCircle2 size={40} className="text-emerald-500" />
+                <div className="p-3 bg-white rounded-lg shadow-sm border border-slate-100">
+                  <QRCodeSVG value={answerCode} size={180} level="L" />
+                </div>
                 <div className="text-center">
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Codes Generated</h4>
-                  <p className="text-[10px] text-slate-500 mt-1">Establishing secure tunnel...</p>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Answer QR Code</h4>
+                  <p className="text-[10px] text-slate-500 mt-1 max-w-[210px] leading-tight">
+                    <strong>Step 2:</strong> Point the Host device's camera at this QR code to finalize connection!
+                  </p>
+                </div>
+                
+                <div className="flex gap-2 w-full">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(answerCode);
+                    }}
+                    className="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] font-bold rounded-lg transition-all"
+                  >
+                    Copy Code
+                  </button>
+                  <button
+                    onClick={submitAnswer}
+                    className="flex-1 py-1 px-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded-lg transition-all shadow shadow-blue-500/10"
+                  >
+                    Force Connect
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 mt-2 px-3 py-2 bg-blue-500/5 rounded-lg border border-blue-500/10 w-full justify-center">
+                  <Loader2 size={11} className="text-blue-500 animate-spin" />
+                  <span className="text-[9px] text-slate-500 uppercase tracking-wider font-mono">Waiting for link confirmation...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Fallback */}
+            {offerCode && answerCode && (
+              <div className="flex flex-col items-center gap-3 w-full">
+                <CheckCircle2 size={40} className="text-emerald-500 animate-bounce" />
+                <div className="text-center">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Synchronizing...</h4>
+                  <p className="text-[10px] text-slate-500 mt-1">Establishing tunnel credentials.</p>
                 </div>
                 <button
                   onClick={submitAnswer}
-                  className="w-full py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20"
+                  className="w-full py-2 bg-blue-600 text-white text-[10px] font-bold rounded-lg shadow-lg shadow-blue-500/20"
                 >
-                  Finalize Connection
+                  Confirm Connect
                 </button>
               </div>
             )}
@@ -247,7 +359,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
                 setAnswerCode("");
                 setState("Waiting");
               }}
-              className="mt-3 text-[11px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-all px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 w-full active:scale-95"
+              className="mt-3 text-[11px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-all px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 w-full active:scale-95"
             >
               Cancel & Go Back
             </button>
