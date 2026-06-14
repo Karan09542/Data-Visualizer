@@ -79,7 +79,7 @@ export function ServiceWorkerUpdater() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-[99999] bg-white dark:bg-[#1e293b] border border-blue-500/30 dark:border-blue-400/30 rounded-2xl shadow-2xl p-5 flex flex-col gap-3 min-w-[300px] animate-in slide-in-from-bottom-5">
+    <div className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-[360px] z-[99999] bg-white dark:bg-[#1e293b] border border-blue-500/30 dark:border-blue-400/30 rounded-2xl shadow-2xl p-5 flex flex-col gap-3 animate-in slide-in-from-bottom-5">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
