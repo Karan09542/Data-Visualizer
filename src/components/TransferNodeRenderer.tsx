@@ -5,7 +5,7 @@ import { useStore } from "../store/useStore";
 import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
 import LZString from "lz-string";
-import { Copy, Plus, Video, Image as ImageIcon, Send, MessageSquare, X, RefreshCw, UploadCloud, Download, Check, File } from "lucide-react";
+import { Copy, Plus, Video, Image as ImageIcon, Send, MessageSquare, X, RefreshCw, UploadCloud, Download, Check, File, Globe } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion } from "motion/react";
 import { db } from "../lib/db";
