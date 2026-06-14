@@ -1,11 +1,26 @@
 import React, { useEffect, useState } from "react";
-import { Download, X } from "lucide-react";
+import { Download, X, RefreshCw } from "lucide-react";
 
 export function ServiceWorkerUpdater() {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [isPWA, setIsPWA] = useState(false);
 
   useEffect(() => {
+    // Detect if running in standalone mode (PWA)
+    const checkIsPWA = () => {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      // @ts-ignore - for iOS Safari
+      const isIOSStandalone = window.navigator.standalone === true;
+      setIsPWA(isStandalone || isIOSStandalone);
+    };
+    checkIsPWA();
+
+    // Listen for display mode changes just in case
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const handleChange = () => checkIsPWA();
+    mediaQuery.addEventListener('change', handleChange);
+
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
       return;
     }
@@ -40,6 +55,10 @@ export function ServiceWorkerUpdater() {
         window.location.reload();
       }
     });
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+    };
   }, []);
 
   const handleUpdate = () => {
@@ -55,6 +74,25 @@ export function ServiceWorkerUpdater() {
 
   if (!showPrompt) return null;
 
+  if (!isPWA) {
+    return (
+      <div className="fixed bottom-6 right-6 z-[99999] bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg px-4 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-5">
+        <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          New version available
+        </div>
+        <button
+          onClick={handleUpdate}
+          className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+        >
+          Refresh
+        </button>
+        <button onClick={handleDismiss} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-1">
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-6 right-6 z-[99999] bg-white dark:bg-[#1e293b] border border-blue-500/30 dark:border-blue-400/30 rounded-2xl shadow-2xl p-5 flex flex-col gap-3 min-w-[300px] animate-in slide-in-from-bottom-5">
       <div className="flex items-start justify-between">
@@ -64,7 +102,13 @@ export function ServiceWorkerUpdater() {
           </div>
           <div>
             <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm">Update Available</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">A new version of the app is ready.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {import.meta.env.VITE_APP_VERSION ? (
+                <>New version <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1 rounded">{import.meta.env.VITE_APP_VERSION}</span> is ready.</>
+              ) : (
+                "A new version has been downloaded and is ready to use."
+              )}
+            </p>
           </div>
         </div>
         <button 

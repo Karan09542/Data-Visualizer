@@ -6,6 +6,8 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const buildHash = Math.random().toString(36).substring(2, 10);
+  
   return {
     plugins: [
       react(), 
@@ -13,19 +15,18 @@ export default defineConfig(({mode}) => {
       {
         name: 'sw-versioning',
         closeBundle() {
-          const hash = Math.random().toString(36).substring(2, 10);
           const swPath = path.resolve(__dirname, 'dist/sw.js');
           if (fs.existsSync(swPath)) {
             let sw = fs.readFileSync(swPath, 'utf8');
-            sw = sw.replace(/CACHE_NAME\s*=\s*'[^']+'/, `CACHE_NAME = 'app-cache-${hash}'`);
+            sw = sw.replace(/CACHE_NAME\s*=\s*'[^']+'/, `CACHE_NAME = 'app-cache-${buildHash}'`);
             fs.writeFileSync(swPath, sw);
-            console.log(`[sw-versioning] Injected cache version: app-cache-${hash}`);
+            console.log(`[sw-versioning] Injected cache version: app-cache-${buildHash}`);
           }
         }
       }
     ],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(`v2.0.0-${buildHash}`),
     },
     optimizeDeps: {
       exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize']
@@ -40,7 +41,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };
