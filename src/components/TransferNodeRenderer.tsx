@@ -330,15 +330,24 @@ export const TransferNodeRenderer: React.FC<{
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    setTimeout(() => {
-      const currentDesc = pc.localDescription;
-      if (currentDesc) {
-        const payload = JSON.stringify(currentDesc);
-        const compressed = LZString.compressToBase64(payload);
-        setOfferQR(compressed);
-        setConnectionState("pairing");
-      }
-    }, 1000);
+    await new Promise<void>((resolve) => {
+      if (pc.iceGatheringState === "complete") return resolve();
+      const timeout = setTimeout(resolve, 2000);
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      };
+    });
+
+    const currentDesc = pc.localDescription;
+    if (currentDesc) {
+      const payload = JSON.stringify(currentDesc);
+      const compressed = LZString.compressToBase64(payload);
+      setOfferQR(compressed);
+      setConnectionState("pairing");
+    }
   };
 
   const handleScan = (code: string) => {
@@ -366,16 +375,25 @@ export const TransferNodeRenderer: React.FC<{
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
-    setTimeout(() => {
-      const currentDesc = pc.localDescription;
-      if (currentDesc) {
-        const payload = JSON.stringify(currentDesc);
-        const compressed = LZString.compressToBase64(payload);
-        setAnswerQR(compressed);
-        setScanMode(null);
-        setConnectionState("pairing");
-      }
-    }, 1000);
+    await new Promise<void>((resolve) => {
+      if (pc.iceGatheringState === "complete") return resolve();
+      const timeout = setTimeout(resolve, 2000);
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      };
+    });
+
+    const currentDesc = pc.localDescription;
+    if (currentDesc) {
+      const payload = JSON.stringify(currentDesc);
+      const compressed = LZString.compressToBase64(payload);
+      setAnswerQR(compressed);
+      setScanMode(null);
+      setConnectionState("pairing");
+    }
   };
 
   const processAnswer = async (answer: any) => {
