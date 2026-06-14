@@ -66,40 +66,6 @@ const getFileType = (fileName: string) => {
   return "file";
 };
 
-/**
- * Minimizes SDP by stripping unused media sections and attributes
- * Significant reduction for DataChannel-only connections
- */
-const minimizeSDP = (sdp: string) => {
-  return sdp
-    .split("\r\n")
-    .filter((line) => {
-      // Keep global headers and application (DataChannel) section
-      // Filter out audio/video completely
-      const isMediaBody =
-        line.startsWith("m=audio") ||
-        line.startsWith("m=video") ||
-        line.includes("SAVPF") || // Secure Audio Video Profile
-        line.startsWith("a=rtpmap") ||
-        line.startsWith("a=fmtp") ||
-        line.startsWith("a=rtcp") ||
-        line.startsWith("a=ssrc") ||
-        line.startsWith("a=extmap") ||
-        line.startsWith("a=msid") ||
-        line.startsWith("a=group:BUNDLE"); // Less critical for single m-line
-
-      // Filter ICE candidates: Prefer HOST only for LAN pairing
-      if (line.startsWith("a=candidate")) {
-        // Discard relay (TURN), srflx (STUN), and TCP candidates
-        return line.includes(" typ host ") && !line.includes(" tcptype ");
-      }
-
-      return !isMediaBody;
-    })
-    .join("\r\n")
-    .trim();
-};
-
 const formatFileSize = (bytes: number) => {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -159,18 +125,19 @@ export const TransferNodeRenderer: React.FC<{
     y: number;
   } | null>(null);
 
-  // Optimization & Diagnostic State
-  const [diagnostics, setDiagnostics] = useState<{
-    original: number;
-    minimized: number;
-    compressed: number;
-    version: number;
-  } | null>(null);
-
-  const [scanStability, setScanStability] = useState<{
-    lastCode: string;
-    count: number;
-  }>({ lastCode: "", count: 0 });
+  const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
+  const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnostics, setDiagnostics] = useState({
+    originalSdpSize: 0,
+    filteredSdpSize: 0,
+    candidateCount: 0,
+    compressedSize: 0,
+    compressionRatio: 0,
+    qrPayloadLength: 0,
+    genTime: 0,
+    scanTime: 0,
+  });
 
   const videoRefCallback = useCallback(
     (node: HTMLVideoElement | null) => {
@@ -202,47 +169,48 @@ export const TransferNodeRenderer: React.FC<{
 
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          
+          let scanHistory: string[] = [];
+          setDiagnostics(prev => ({ ...prev, scanTime: performance.now() }));
 
           scanIntervalRef.current = setInterval(() => {
             if (node.readyState === node.HAVE_ENOUGH_DATA && ctx) {
-              // Downscale for faster QR detection
               const width = Math.min(node.videoWidth, 600);
               const height = (node.videoHeight / node.videoWidth) * width;
 
               canvas.width = width;
               canvas.height = height;
-
-              // ROI Calculation: Scan the center 70% of the view for 60% faster processing
-              const roiSize = Math.min(width, height) * 0.7;
-              const roiX = (width - roiSize) / 2;
-              const roiY = (height - roiSize) / 2;
-
               ctx.drawImage(node, 0, 0, width, height);
 
-              const imageData = ctx.getImageData(roiX, roiY, roiSize, roiSize);
-              const code = jsQR(
-                imageData.data,
-                imageData.width,
-                imageData.height,
-                {
+              const roiSize = Math.min(width, height) * 0.7;
+              const sx = (width - roiSize) / 2;
+              const sy = (height - roiSize) / 2;
+
+              let code = null;
+
+              const roiData = ctx.getImageData(sx, sy, roiSize, roiSize);
+              code = jsQR(roiData.data, roiData.width, roiData.height, {
+                inversionAttempts: "dontInvert",
+              });
+
+              if (!code) {
+                const fullData = ctx.getImageData(0, 0, width, height);
+                code = jsQR(fullData.data, fullData.width, fullData.height, {
                   inversionAttempts: "dontInvert",
-                },
-              );
+                });
+              }
 
               if (code && code.data) {
-                // Auto-Capture Stability detection
-                setScanStability((prev) => {
-                  if (prev.lastCode === code.data) {
-                    const newCount = prev.count + 1;
-                    if (newCount >= 2) {
-                      // Confirmed stable for ~300ms
-                      handleScan(code.data);
-                      return { lastCode: "", count: 0 };
-                    }
-                    return { ...prev, count: newCount };
-                  }
-                  return { lastCode: code.data, count: 1 };
-                });
+                scanHistory.push(code.data);
+                if (scanHistory.length > 3) scanHistory.shift();
+
+                if (scanHistory.length === 3 && scanHistory.every((c) => c === code!.data)) {
+                  setDiagnostics(prev => ({ ...prev, scanTime: performance.now() - prev.scanTime }));
+                  handleScan(code.data);
+                  scanHistory = [];
+                }
+              } else {
+                scanHistory = [];
               }
             }
           }, 150);
@@ -303,12 +271,67 @@ export const TransferNodeRenderer: React.FC<{
     setTransferProgress(0);
   };
 
+  const minimizeSDP = (sdp: string, mode: "local" | "universal") => {
+    let candidateCount = 0;
+    const lines = sdp.split("\r\n");
+    const filtered = lines.filter((line) => {
+      if (line.startsWith("a=candidate:")) {
+        candidateCount++;
+        if (mode === "local") {
+          if (!line.includes("typ host")) return false;
+          if (line.includes("tcptype")) return false;
+        }
+      }
+      if (line.startsWith("a=extmap:")) return false;
+      if (line.startsWith("a=rtcp-fb:")) return false;
+      if (line.startsWith("a=rtcp-mux")) return false;
+      if (line.startsWith("a=rtpmap:")) return false;
+      if (line.startsWith("a=fmtp:")) return false;
+      return true;
+    });
+    return {
+      minimized: filtered.join("\r\n"),
+      candidateCount,
+    };
+  };
+
+  const compressPayload = (payload: string) => {
+    const b64 = LZString.compressToBase64(payload);
+    const utf16 = LZString.compressToUTF16(payload);
+    const uri = LZString.compressToEncodedURIComponent(payload);
+
+    let best = b64;
+    let prefix = "b64:";
+    if (uri.length < best.length) {
+      best = uri;
+      prefix = "uri:";
+    }
+    if (utf16.length < best.length) {
+      best = utf16;
+      prefix = "u16:";
+    }
+    return prefix + best;
+  };
+
+  const decompressPayload = (code: string) => {
+    if (code.startsWith("b64:"))
+      return LZString.decompressFromBase64(code.slice(4));
+    if (code.startsWith("uri:"))
+      return LZString.decompressFromEncodedURIComponent(code.slice(4));
+    if (code.startsWith("u16:"))
+      return LZString.decompressFromUTF16(code.slice(4));
+    return LZString.decompressFromBase64(code);
+  };
+
   const initPeer = () => {
     if (pcRef.current) pcRef.current.close();
 
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    const config: RTCConfiguration =
+      pairingMode === "universal"
+        ? { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+        : { iceServers: [] };
+
+    const pc = new RTCPeerConnection(config);
 
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === "connected") {
@@ -435,6 +458,7 @@ export const TransferNodeRenderer: React.FC<{
 
   const generateOffer = async () => {
     setIsHosting(true);
+    const start = performance.now();
     const pc = initPeer();
     const dc = pc.createDataChannel("transfer");
     handleDataChannel(dc);
@@ -444,7 +468,7 @@ export const TransferNodeRenderer: React.FC<{
 
     await new Promise<void>((resolve) => {
       if (pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 2000);
+      const timeout = setTimeout(resolve, 1000);
       pc.onicecandidate = (e) => {
         if (!e.candidate) {
           clearTimeout(timeout);
@@ -455,21 +479,27 @@ export const TransferNodeRenderer: React.FC<{
 
     const currentDesc = pc.localDescription;
     if (currentDesc) {
-      const minimizedSdp = minimizeSDP(currentDesc.sdp);
-      const payload = JSON.stringify({
-        type: currentDesc.type,
-        sdp: minimizedSdp,
-      });
+      const origSdp = currentDesc.sdp;
+      const { minimized, candidateCount } = minimizeSDP(
+        origSdp || "",
+        pairingMode,
+      );
+      const payloadObj = { type: currentDesc.type, sdp: minimized };
+      const payload = JSON.stringify(payloadObj);
+      const compressed = compressPayload(payload);
 
-      // Use EncodedURIComponent compression for better QR compatibility
-      const compressed = LZString.compressToEncodedURIComponent(payload);
-
-      setDiagnostics({
-        original: currentDesc.sdp.length,
-        minimized: minimizedSdp.length,
-        compressed: compressed.length,
-        version: Math.ceil(compressed.length / 25), // Rough estimation
-      });
+      setDiagnostics((prev) => ({
+        ...prev,
+        originalSdpSize: origSdp ? origSdp.length : 0,
+        filteredSdpSize: minimized.length,
+        candidateCount,
+        compressedSize: compressed.length - 4,
+        compressionRatio: Math.round(
+          ((compressed.length - 4) / minimized.length) * 100,
+        ),
+        qrPayloadLength: compressed.length,
+        genTime: performance.now() - start,
+      }));
 
       setOfferQR(compressed);
       setConnectionState("pairing");
@@ -479,7 +509,7 @@ export const TransferNodeRenderer: React.FC<{
   const handleScan = (code: string) => {
     if (!code) return;
     try {
-      const uncompressed = LZString.decompressFromEncodedURIComponent(code);
+      const uncompressed = decompressPayload(code);
       const desc = JSON.parse(uncompressed || code);
       if (desc.type === "offer") {
         processOffer(desc);
@@ -496,6 +526,7 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const processOffer = async (offer: any) => {
+    const start = performance.now();
     const pc = initPeer();
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
@@ -503,7 +534,7 @@ export const TransferNodeRenderer: React.FC<{
 
     await new Promise<void>((resolve) => {
       if (pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 2000);
+      const timeout = setTimeout(resolve, 1000);
       pc.onicecandidate = (e) => {
         if (!e.candidate) {
           clearTimeout(timeout);
@@ -514,18 +545,26 @@ export const TransferNodeRenderer: React.FC<{
 
     const currentDesc = pc.localDescription;
     if (currentDesc) {
-      const minimizedSdp = minimizeSDP(currentDesc.sdp);
-      const payload = JSON.stringify({
-        type: currentDesc.type,
-        sdp: minimizedSdp,
-      });
-      const compressed = LZString.compressToEncodedURIComponent(payload);
+      const origSdp = currentDesc.sdp;
+      const { minimized, candidateCount } = minimizeSDP(
+        origSdp || "",
+        pairingMode,
+      );
+      const payloadObj = { type: currentDesc.type, sdp: minimized };
+      const payload = JSON.stringify(payloadObj);
+      const compressed = compressPayload(payload);
 
       setDiagnostics((prev) => ({
-        original: currentDesc.sdp.length,
-        minimized: minimizedSdp.length,
-        compressed: compressed.length,
-        version: Math.ceil(compressed.length / 25),
+        ...prev,
+        originalSdpSize: origSdp ? origSdp.length : 0,
+        filteredSdpSize: minimized.length,
+        candidateCount,
+        compressedSize: compressed.length - 4,
+        compressionRatio: Math.round(
+          ((compressed.length - 4) / minimized.length) * 100,
+        ),
+        qrPayloadLength: compressed.length,
+        genTime: performance.now() - start,
       }));
 
       setAnswerQR(compressed);
@@ -781,6 +820,52 @@ export const TransferNodeRenderer: React.FC<{
                 </span>
               </button>
             </div>
+
+            <div className="flex flex-col gap-3 mt-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pairing Mode</span>
+                <div className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
+                  <button
+                    onClick={() => setPairingMode("local")}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                      pairingMode === "local" 
+                        ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Local Only
+                  </button>
+                  <button
+                    onClick={() => setPairingMode("universal")}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                      pairingMode === "universal" 
+                        ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Universal
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">QR Density</span>
+                <div className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
+                  {(["L", "M", "Q", "H"] as const).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setQrDensity(d)}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${
+                        qrDensity === d 
+                          ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -790,37 +875,42 @@ export const TransferNodeRenderer: React.FC<{
             animate={{ opacity: 1 }}
             className="flex flex-col items-center gap-6 py-2"
           >
-            <div className="p-4 bg-white rounded-3xl shadow-xl relative group">
-              <QRCodeSVG
-                value={offerQR || answerQR}
-                size={240}
-                level="L"
-                marginSize={1}
-              />
-              {diagnostics && (
-                <div className="absolute -bottom-2 -right-2 bg-indigo-600 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                  -{Math.round((1 - diagnostics.compressed / diagnostics.original) * 100)}% PAYLOAD
+            {showDiagnostics ? (
+              <div className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}>
+                <div className="flex items-center justify-between pb-2 border-b border-gray-500/20">
+                  <span className="text-[10px] font-black uppercase text-indigo-400">Diagnostics</span>
+                  <button onClick={() => setShowDiagnostics(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
                 </div>
-              )}
-            </div>
-
-            <div className="text-center space-y-2">
-              <div className="flex flex-col items-center">
-                <p className="text-sm font-bold text-white">
-                  Device Pairing Required
-                </p>
-                {diagnostics && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
-                      {diagnostics.compressed} chars
-                    </span>
-                    <span className="w-1 h-1 rounded-full bg-slate-700" />
-                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
-                      Optimized SDP
-                    </span>
-                  </div>
-                )}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-mono mt-2">
+                  <div className="text-slate-500">Original SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.originalSdpSize} B</div>
+                  <div className="text-slate-500">Filtered SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.filteredSdpSize} B</div>
+                  <div className="text-slate-500">ICE Candidates:</div><div className={isDark ? "text-white" : "text-slate-900"}>{diagnostics.candidateCount}</div>
+                  <div className="text-slate-500">Compressed:</div><div className={isDark ? "text-emerald-400" : "text-emerald-600"}>{diagnostics.compressedSize} B ({diagnostics.compressionRatio}%)</div>
+                  <div className="text-slate-500">Gen Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.genTime.toFixed(1)} ms</div>
+                  {diagnostics.scanTime > 0 && <><div className="text-slate-500">Scan Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.scanTime.toFixed(1)} ms</div></>}
+                </div>
               </div>
+            ) : (
+              <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group">
+                <button 
+                  onClick={() => setShowDiagnostics(true)}
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"
+                >
+                  <Activity className="w-3.5 h-3.5 text-slate-500" />
+                </button>
+                <QRCodeSVG
+                  value={offerQR || answerQR}
+                  size={200}
+                  level={qrDensity}
+                  marginSize={1}
+                />
+              </div>
+            )}
+
+            <div className="text-center space-y-1">
+              <p className="text-sm font-bold text-white">
+                Device Pairing Required
+              </p>
               <p className="text-xs text-slate-500">
                 Scan this code on the other device to link
               </p>
