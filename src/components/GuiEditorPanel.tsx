@@ -30,6 +30,7 @@ import {
   Calculator,
   CheckSquare,
   ImageIcon,
+  ArrowRightLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -71,7 +72,7 @@ export default function GuiEditorPanel() {
 
   // Selected Type for new field
   const [newKeyType, setNewKeyType] = useState<
-    "string" | "number" | "boolean" | "array" | "object" | "api_node" | "js_node" | "ts_node" | "py_node" | "math_node" | "todo_node" | "image_node"
+    "string" | "number" | "boolean" | "array" | "object" | "api_node" | "js_node" | "ts_node" | "py_node" | "math_node" | "todo_node" | "image_node" | "transfer_node"
   >("string");
   const [newParentPath, setNewParentPath] = useState<string>("root");
   const [newKeyName, setNewKeyName] = useState<string>("");
@@ -420,6 +421,7 @@ export default function GuiEditorPanel() {
     if (newKeyType === "math_node" && !key.endsWith("_math_node")) key += "_math_node";
     if (newKeyType === "todo_node" && !key.endsWith("_todo_node")) key += "_todo_node";
     if (newKeyType === "image_node" && !key.endsWith("_image_node")) key += "_image_node";
+    if (newKeyType === "transfer_node" && !key.endsWith("_transfer_node")) key += "_transfer_node";
 
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
       setFormError(
@@ -466,7 +468,7 @@ export default function GuiEditorPanel() {
     else if (newKeyType === "boolean") finalValue = booleanValue;
     else if (newKeyType === "array") finalValue = [];
     else if (newKeyType === "object") finalValue = {};
-    else if (["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node"].includes(newKeyType)) finalValue = "";
+    else if (["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node", "transfer_node"].includes(newKeyType)) finalValue = "";
 
     targetParent[key] = finalValue;
 
@@ -954,6 +956,7 @@ export default function GuiEditorPanel() {
                       { type: "math_node", icon: Calculator, label: "Math Node" },
                       { type: "todo_node", icon: CheckSquare, label: "Todo Node" },
                       { type: "image_node", icon: ImageIcon, label: "Image Node" },
+                      { type: "transfer_node", icon: ArrowRightLeft, label: "Transfer Node" },
                     ].map((item) => {
                       const Icon = item.icon;
                       const isSelected = newKeyType === item.type;
@@ -1067,7 +1070,7 @@ export default function GuiEditorPanel() {
                     </p>
                   )}
 
-                  {["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node"].includes(newKeyType) && (
+                  {["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node", "transfer_node"].includes(newKeyType) && (
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
                       Creates a <strong className="text-blue-500 dark:text-blue-400">{newKeyType.replace("_", " ").toUpperCase()}</strong>. It will be injected into the data structure as an empty <code className="font-mono text-slate-700 dark:text-slate-300">""</code> string with the required suffix for the canvas engine to recognize it automatically. You can edit the node content fully through the interactive canvas.
                     </p>
@@ -1191,6 +1194,7 @@ export default function GuiEditorPanel() {
                       { type: "math_node", icon: Calculator, label: "Math" },
                       { type: "todo_node", icon: CheckSquare, label: "Todo" },
                       { type: "image_node", icon: ImageIcon, label: "Image" },
+                      { type: "transfer_node", icon: ArrowRightLeft, label: "Transfer" },
                     ].map((item) => (
                       <button
                         key={item.type}
@@ -1258,7 +1262,7 @@ export default function GuiEditorPanel() {
                       instantly.
                     </span>
                   )}
-                  {["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node"].includes(newKeyType) && (
+                  {["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node", "transfer_node"].includes(newKeyType) && (
                     <span className="text-[10px] text-slate-400">
                       Installs a {newKeyType.replace("_", " ").toUpperCase()} ready to be configured via visual canvas.
                     </span>

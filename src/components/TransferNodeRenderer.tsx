@@ -1193,7 +1193,10 @@ export const TransferNodeRenderer: React.FC<{
                                       <div
                                         className={`p-3 rounded-2xl min-w-[240px] flex items-center gap-4 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white"}`}
                                       >
-                                        <button className="p-2.5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30">
+                                        <button 
+                                          onClick={() => setSelectedMedia(msg)}
+                                          className="p-2.5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:scale-110 active:scale-95 transition-all"
+                                        >
                                           <Play className="w-4 h-4 fill-current" />
                                         </button>
                                         <div className="flex-1 flex flex-col gap-1.5">
@@ -1203,7 +1206,7 @@ export const TransferNodeRenderer: React.FC<{
                                                 key={i}
                                                 className="w-0.5 bg-current opacity-30"
                                                 style={{
-                                                  height: `${Math.random() * 100}%`,
+                                                  height: `${10 + Math.random() * 80}%`,
                                                   minHeight: "4px",
                                                 }}
                                               />
@@ -1218,17 +1221,32 @@ export const TransferNodeRenderer: React.FC<{
                                             </span>
                                           </div>
                                         </div>
+                                        <a
+                                          href={msg.content}
+                                          download={msg.fileName || "audio.mp3"}
+                                          className={`p-2 rounded-lg transition-all ${
+                                            msg.sender === "me"
+                                              ? "hover:bg-white/20"
+                                              : isDark
+                                                ? "hover:bg-white/5"
+                                                : "hover:bg-slate-200"
+                                          }`}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                        </a>
                                       </div>
                                     )}
 
                                     {(msg.fileType === "file" ||
                                       msg.fileType === "pdf") && (
                                       <div
-                                        className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${
+                                        className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${
                                           msg.sender === "me"
                                             ? "hover:bg-white/5"
                                             : "hover:bg-black/5"
                                         }`}
+                                        onClick={() => msg.fileType === "pdf" && setSelectedMedia(msg)}
                                       >
                                         <div
                                           className={`p-3 rounded-xl ${
@@ -1641,11 +1659,45 @@ export const TransferNodeRenderer: React.FC<{
                             className="max-w-full max-h-full shadow-2xl"
                           />
                         )}
+                        {selectedMedia.fileType === "audio" && (
+                          <div className="flex flex-col items-center gap-8 p-10 bg-white/5 rounded-[40px] border border-white/10 backdrop-blur-3xl">
+                            <div className="w-40 h-40 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
+                              <motion.div
+                                animate={{ scale: [1, 1.1, 1] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                              >
+                                <Volume2 className="w-16 h-16 text-indigo-400" />
+                              </motion.div>
+                            </div>
+                            <audio
+                              src={selectedMedia.content}
+                              controls
+                              autoPlay
+                              className="w-80 h-12 accent-indigo-500 rounded-full"
+                            />
+                          </div>
+                        )}
                         {selectedMedia.fileType === "pdf" && (
-                          <iframe
-                            src={selectedMedia.content}
-                            className="w-full h-full rounded-2xl bg-white"
-                          />
+                          <div className="w-full h-full max-w-5xl bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+                            <div className="p-4 border-b bg-slate-50 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <FileText className="w-5 h-5 text-indigo-600" />
+                                <span className="text-sm font-bold text-slate-800 truncate">{selectedMedia.fileName}</span>
+                              </div>
+                              <a 
+                                href={selectedMedia.content} 
+                                download={selectedMedia.fileName}
+                                className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
+                              >
+                                <Download className="w-3.5 h-3.5" /> Download PDF
+                              </a>
+                            </div>
+                            <iframe
+                              src={`${selectedMedia.content}#toolbar=0`}
+                              className="w-full flex-1 border-none"
+                              title="PDF Preview"
+                            />
+                          </div>
                         )}
                       </motion.div>
                     </div>
