@@ -22,6 +22,8 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
   const [showScanner, setShowScanner] = useState(false);
   const [receivedData, setReceivedData] = useState<any>(null);
   const [scannerError, setScannerError] = useState<string | null>(null);
+  const [transferProgress, setTransferProgress] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const setCode = useStore(s => s.setCode);
@@ -34,6 +36,21 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
       if (msg.type === "workspace_snapshot") {
         handleReceivedSnapshot(msg.data);
       }
+    });
+    newPeer.on("transferProgress", (progressInfo) => {
+        setTransferProgress(progressInfo);
+    });
+    newPeer.on("fileReceived", ({ file, meta }) => {
+        setReceivedData({ type: "file", data: meta });
+        // Handle file download
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = meta.name || 'received-file';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
     setPeer(newPeer);
@@ -99,9 +116,11 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
         scannerRef.current = scanner;
         
         const config = { 
-          fps: 30, 
-          qrbox: { width: 260, height: 260 },
-          aspectRatio: 1.0
+          fps: 10, 
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+          disableFlip: false,
+          formatsToSupport: [ 0 ] // Html5QrcodeSupportedFormats.QR_CODE = 0
         };
 
         await scanner.start(
@@ -148,6 +167,13 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
     peer.send({ type: "workspace_snapshot", data: snapshot });
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && peer) {
+      await peer.sendFile(file);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 p-5 bg-white dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden min-w-[320px]">
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-2">
@@ -163,6 +189,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
         <div className="flex items-center gap-2">
           <div className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
             state === "Connected" ? "bg-emerald-500/10 text-emerald-500" :
+            state === "Transferring" ? "bg-blue-500/10 text-blue-500" :
             state === "Failed" ? "bg-red-500/10 text-red-500" :
             "bg-slate-500/10 text-slate-500"
           }`}>
@@ -366,7 +393,7 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
           </motion.div>
         )}
 
-        {state === "Connected" && (
+        {(state === "Connected" || state === "Transferring") && (
           <motion.div 
             key="connected"
             initial={{ opacity: 0 }}
@@ -383,19 +410,43 @@ export const TransferNodeRenderer: React.FC<TransferNodeRendererProps> = ({ node
               </div>
             </div>
 
+            {state === "Transferring" && transferProgress && (
+              <div className="flex flex-col gap-1 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="flex justify-between text-[10px] text-slate-600 dark:text-slate-300">
+                  <span className="truncate max-w-[150px]">{transferProgress.fileName}</span>
+                  <span>{Math.round(transferProgress.progress)}%</span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-blue-500 h-full transition-all duration-300"
+                    style={{ width: `${transferProgress.progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
+              <input
+                type="file"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+              />
               <button
-                onClick={sendWorkspace}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={state === "Transferring"}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <Share2 size={14} />
-                Send Current Workspace
+                Send File
               </button>
+              
               <button
-                className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 opacity-50 cursor-not-allowed"
-                disabled
+                onClick={sendWorkspace}
+                disabled={state === "Transferring"}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700"
               >
-                Send Selective Nodes (Coming Soon)
+                Send Workspace Snapshot
               </button>
             </div>
 

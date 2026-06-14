@@ -121,6 +121,11 @@ export class WebRTCPeer {
   private dc: RTCDataChannel | null = null;
   private state: ConnectionState = "Waiting";
   private listeners: Record<string, Listener[]> = {};
+  
+  // File transfer state
+  private incomingFileInfo: any = null;
+  private incomingFileData: Uint8Array[] = [];
+  private incomingBytesReceived = 0;
 
   constructor() {
     this.pc = new RTCPeerConnection({
@@ -159,16 +164,120 @@ export class WebRTCPeer {
 
   private setDataChannel(channel: RTCDataChannel) {
     this.dc = channel;
+    this.dc.binaryType = "arraybuffer"; // Support binary chunks
     this.dc.onopen = () => this.updateState("Connected");
     this.dc.onclose = () => this.updateState("Waiting");
     this.dc.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        this.emit("message", data);
-      } catch (err) {
-        console.error("Failed to parse data channel message", err);
-      }
+      this.handleMessage(e.data);
     };
+  }
+
+  private handleMessage(data: any) {
+    if (typeof data === "string") {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === "file_start") {
+          this.incomingFileInfo = msg.meta;
+          this.incomingFileData = [];
+          this.incomingBytesReceived = 0;
+          this.updateState("Transferring");
+          this.emit("transferProgress", {
+            progress: 0,
+            total: msg.meta.size,
+            current: 0,
+            fileName: msg.meta.name
+          });
+        } else if (msg.type === "file_end") {
+          const blob = new Blob(this.incomingFileData, { type: this.incomingFileInfo.type });
+          this.emit("fileReceived", { file: blob, meta: this.incomingFileInfo });
+          this.incomingFileInfo = null;
+          this.incomingFileData = [];
+          this.incomingBytesReceived = 0;
+          this.updateState("Completed");
+          setTimeout(() => this.updateState("Connected"), 3000);
+        } else {
+          this.emit("message", msg);
+        }
+      } catch (err) {
+        console.error("Failed to parse data channel string message", err);
+      }
+    } else if (data instanceof ArrayBuffer) {
+      if (this.incomingFileInfo) {
+        this.incomingFileData.push(new Uint8Array(data));
+        this.incomingBytesReceived += data.byteLength;
+        const progress = Math.min((this.incomingBytesReceived / this.incomingFileInfo.size) * 100, 100);
+        
+        this.emit("transferProgress", {
+          progress,
+          total: this.incomingFileInfo.size,
+          current: this.incomingBytesReceived,
+          fileName: this.incomingFileInfo.name
+        });
+      }
+    }
+  }
+
+  async sendFile(file: File) {
+    if (!this.dc || this.dc.readyState !== "open") return false;
+    
+    this.updateState("Transferring");
+    
+    // Notify start
+    this.dc.send(JSON.stringify({
+      type: "file_start",
+      meta: {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      }
+    }));
+
+    const chunkSize = 16384; // 16KB per chunk
+    let offset = 0;
+
+    const readReader = async () => {
+        while (offset < file.size) {
+            if (this.dc!.bufferedAmount > this.dc!.bufferedAmountLowThreshold + 65536) {
+                // Wait for buffer to drain
+                await new Promise(r => {
+                  if (this.dc) {
+                     this.dc.onbufferedamountlow = r;
+                  } else {
+                     setTimeout(r, 50);
+                  }
+                });
+            }
+            if (!this.dc || this.dc.readyState !== "open") break;
+
+            const slice = file.slice(offset, offset + chunkSize);
+            const buffer = await slice.arrayBuffer();
+            this.dc.send(buffer);
+            offset += buffer.byteLength;
+
+            const progress = Math.min((offset / file.size) * 100, 100);
+            this.emit("transferProgress", {
+                progress,
+                total: file.size,
+                current: offset,
+                fileName: file.name
+            });
+        }
+        
+        if (this.dc && this.dc.readyState === "open") {
+            this.dc.send(JSON.stringify({ type: "file_end" }));
+            this.updateState("Completed");
+            setTimeout(() => {
+                if (this.state === "Completed") this.updateState("Connected");
+            }, 3000);
+        }
+    };
+
+    readReader().catch(e => {
+        console.error("File transfer error", e);
+        this.updateState("Failed");
+    });
+    
+    return true;
   }
 
   async createOffer(): Promise<string> {
