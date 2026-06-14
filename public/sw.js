@@ -14,9 +14,9 @@ const pendingRequests = new Map();
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Pre-caching offline shell...');
+      console.log('[Service Worker] Pre-caching offline shell...', CACHE_NAME);
       return cache.addAll(PRECACHE_ASSETS);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -36,12 +36,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Message Event: STDIN IO Bridge
+// 3. Message Event: STDIN IO Bridge & Lifecycle
 self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data) return;
 
-  if (data.type === 'STDIN_SUBMIT') {
+  if (data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  } else if (data.type === 'STDIN_SUBMIT') {
     const { sessionId, value } = data;
     if (pendingRequests.has(sessionId)) {
       const resolve = pendingRequests.get(sessionId);
@@ -105,7 +107,17 @@ self.addEventListener('fetch', (event) => {
   // SPA Navigation Fallback (serve index.html when offline and browser navigates to path)
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => {
+      fetch(event.request).then(response => {
+        // Cache the newest index.html
+        if (response && response.status === 200) {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put('/index.html', responseToCache);
+            cache.put('/', responseToCache.clone());
+          });
+        }
+        return response;
+      }).catch(() => {
         return caches.match('/index.html') || caches.match('/');
       })
     );

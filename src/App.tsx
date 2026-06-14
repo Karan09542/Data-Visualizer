@@ -23,6 +23,7 @@ import { CodeWorkspace } from "./components/CodeWorkspace";
 import { initDexieSync } from "./store/dexieSync";
 import { PyMissingPromptModal } from "./components/PyMissingPromptModal";
 import ProductivityLayer from "./components/ProductivityLayer";
+import { ServiceWorkerUpdater } from "./components/ServiceWorkerUpdater";
 
 function getValueByPath(parsedData: any, path: string): string {
   if (!parsedData || !path) return "";
@@ -376,6 +377,7 @@ export default function App() {
           </div>
         </div>
       )}
+      <ServiceWorkerUpdater />
       <AutosaveManager />
       <NotificationToast />
 
