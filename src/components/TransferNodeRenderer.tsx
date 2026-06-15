@@ -53,7 +53,9 @@ interface Message {
   fileSize?: number;
   thumbnail?: string;
   timestamp: number;
-  status: "sending" | "sent" | "delivered" | "error";
+  status: "sending" | "sent" | "delivered" | "received" | "error";
+  chunksSent?: number;
+  chunksTotal?: number;
 }
 
 const getFileType = (fileName: string) => {
@@ -118,6 +120,49 @@ export const TransferNodeRenderer: React.FC<{
   const [transferProgress, setTransferProgress] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
+
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+
+  const [diagnostics, setDiagnostics] = useState({
+    originalSdpSize: 0,
+    filteredSdpSize: 0,
+    candidateCount: 0,
+    compressedSize: 0,
+    compressionRatio: 0,
+    qrPayloadLength: 0,
+    genTime: 0,
+    scanTime: 0,
+    transferSpeed: 0,
+    bufferedAmount: 0,
+  });
+
+  useEffect(() => {
+    if ("Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotificationPermission = () => {
+    if ("Notification" in window) {
+      Notification.requestPermission().then(setNotificationPermission);
+    }
+  };
+
+  const sendLocalNotification = (title: string, body: string) => {
+    if (document.visibilityState === "hidden" && notificationPermission === "granted") {
+      try {
+        new Notification(title, { body, icon: "/icon.png" });
+      } catch (e) {
+        console.warn("Notification failed", e);
+      }
+    }
+  };
+
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [showContextMenu, setShowContextMenu] = useState<{
     id: string;
@@ -128,16 +173,46 @@ export const TransferNodeRenderer: React.FC<{
   const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [diagnostics, setDiagnostics] = useState({
-    originalSdpSize: 0,
-    filteredSdpSize: 0,
-    candidateCount: 0,
-    compressedSize: 0,
-    compressionRatio: 0,
-    qrPayloadLength: 0,
-    genTime: 0,
-    scanTime: 0,
-  });
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!scrollRef.current) return;
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setIsAtBottom(atBottom);
+      if (atBottom) {
+        setUnreadCount(0);
+        setShowScrollDown(false);
+      }
+    };
+
+    const container = scrollRef.current;
+    if (container) {
+      container.addEventListener("scroll", handleScroll);
+    }
+    return () => container?.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isAtBottom && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages, isAtBottom]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (dcRef.current) {
+        setDiagnostics(prev => ({
+          ...prev,
+          bufferedAmount: dcRef.current?.bufferedAmount || 0,
+        }));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const videoRefCallback = useCallback(
     (node: HTMLVideoElement | null) => {
@@ -238,6 +313,25 @@ export const TransferNodeRenderer: React.FC<{
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
     const msgId = uuidv4();
     const totalChunks = Math.ceil(payloadStr.length / CHUNK_SIZE);
+    const startTime = performance.now();
+
+    const initialMsg: Message = {
+      id: msgId,
+      sender: "me",
+      type: type as any,
+      content: type === "file" ? "" : payloadStr,
+      fileName,
+      fileType: fileName ? getFileType(fileName) : undefined,
+      fileSize: payloadStr.length,
+      timestamp: Date.now(),
+      status: "sending",
+      chunksSent: 0,
+      chunksTotal: totalChunks,
+    };
+    
+    if (type === "file") {
+      setMessages(prev => [...prev, initialMsg]);
+    }
 
     dcRef.current.send(
       JSON.stringify({
@@ -246,6 +340,7 @@ export const TransferNodeRenderer: React.FC<{
         msgType: type,
         totalChunks,
         fileName,
+        fileSize: payloadStr.length,
       }),
     );
 
@@ -253,7 +348,7 @@ export const TransferNodeRenderer: React.FC<{
       const chunk = payloadStr.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
 
       while (dcRef.current.bufferedAmount > 1024 * 1024) {
-        await new Promise((r) => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 50));
       }
 
       dcRef.current.send(
@@ -265,10 +360,25 @@ export const TransferNodeRenderer: React.FC<{
         }),
       );
 
-      setTransferProgress(Math.floor(((i + 1) / totalChunks) * 100));
+      const progress = Math.floor(((i + 1) / totalChunks) * 100);
+      setTransferProgress(progress);
+      
+      if (type === "file") {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, chunksSent: i + 1 } : m));
+      }
+
+      // Update diagnostics
+      const elapsed = (performance.now() - startTime) / 1000;
+      const speed = (i + 1) * CHUNK_SIZE / elapsed;
+      setDiagnostics(prev => ({ ...prev, transferSpeed: speed }));
     }
 
+    dcRef.current.send(JSON.stringify({ type: "chunk_end", msgId }));
     setTransferProgress(0);
+    
+    if (type === "file") {
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: "sent" } : m));
+    }
   };
 
   const minimizeSDP = (sdp: string, mode: "local" | "universal") => {
@@ -364,18 +474,29 @@ export const TransferNodeRenderer: React.FC<{
     dc.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
+        if (msg.type === "msg_ack") {
+          setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, status: "delivered" } : m));
+          return;
+        }
+
         if (msg.type === "text") {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: uuidv4(),
-              sender: "remote",
-              type: "text",
-              content: msg.content,
-              timestamp: Date.now(),
-              status: "delivered",
-            },
-          ]);
+          const newMsg: Message = {
+            id: uuidv4(),
+            sender: "remote",
+            type: "text",
+            content: msg.content,
+            timestamp: Date.now(),
+            status: "received",
+          };
+          setMessages((prev) => [...prev, newMsg]);
+          
+          if (!isAtBottom || document.visibilityState === "hidden") {
+            setUnreadCount(prev => prev + 1);
+            setShowScrollDown(true);
+            sendLocalNotification("New Message", msg.content);
+          }
+          
+          dc.send(JSON.stringify({ type: "msg_ack", msgId: msg.id }));
         } else if (msg.type === "chunk_start") {
           chunksRef.current[msg.msgId] = {
             type: msg.msgType,
@@ -385,74 +506,71 @@ export const TransferNodeRenderer: React.FC<{
             count: 0,
           };
           setConnectionState("transferring");
+          
+          if (msg.msgType === "file") {
+            sendLocalNotification("Incoming File", `Receiving ${msg.fileName || "unknown file"}...`);
+          }
         } else if (msg.type === "chunk_data") {
           const chunkData = chunksRef.current[msg.msgId];
           if (chunkData) {
             chunkData.received[msg.chunkIndex] = msg.chunk;
             chunkData.count++;
-            setTransferProgress(
-              Math.floor((chunkData.count / chunkData.total) * 100),
-            );
-
-            if (chunkData.count === chunkData.total) {
-              const fullPayload = chunkData.received.join("");
+            const progress = Math.floor((chunkData.count / chunkData.total) * 100);
+            setTransferProgress(progress);
+          }
+        } else if (msg.type === "chunk_end") {
+          const chunkData = chunksRef.current[msg.msgId];
+          if (chunkData) {
+            const fullPayload = chunkData.received.join("");
+            const isCorrupted = chunkData.count !== chunkData.total || chunkData.received.includes(undefined as any);
+            
+            if (isCorrupted || (msg.fileSize && fullPayload.length !== msg.fileSize)) {
+              console.error("Integrity check failed", { count: chunkData.count, total: chunkData.total, expectedSize: msg.fileSize, actualSize: fullPayload.length });
+              setNotification({ message: "File transfer corrupted or incomplete. Please retry.", type: "error" });
               delete chunksRef.current[msg.msgId];
-              setTransferProgress(0);
               setConnectionState("connected");
+              return;
+            }
 
-              if (chunkData.type === "workspace") {
-                try {
-                  const parsed = JSON.parse(fullPayload);
-                  setCode(JSON.stringify(parsed, null, 2));
-                  setNotification({
-                    message: "Received and loaded workspace!",
-                    type: "success",
-                  });
-                } catch (err) {}
-              } else if (chunkData.type === "file") {
-                const fType = chunkData.fileName
-                  ? getFileType(chunkData.fileName)
-                  : "file";
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: uuidv4(),
-                    sender: "remote",
-                    type: "file",
-                    fileName: chunkData.fileName,
-                    fileType: fType,
-                    fileSize: fullPayload.length,
-                    content: fullPayload,
-                    timestamp: Date.now(),
-                    status: "delivered",
-                  },
-                ]);
+            delete chunksRef.current[msg.msgId];
+            setTransferProgress(0);
+            setConnectionState("connected");
+
+            if (chunkData.type === "workspace") {
+              try {
+                const parsed = JSON.parse(fullPayload);
+                setCode(JSON.stringify(parsed, null, 2));
+                setNotification({
+                  message: "Received and loaded workspace!",
+                  type: "success",
+                });
+              } catch (err) {}
+            } else if (chunkData.type === "file") {
+              const fType = chunkData.fileName ? getFileType(chunkData.fileName) : "file";
+              const newMsg: Message = {
+                id: msg.msgId,
+                sender: "remote",
+                type: "file",
+                fileName: chunkData.fileName,
+                fileType: fType,
+                fileSize: fullPayload.length,
+                content: fullPayload,
+                timestamp: Date.now(),
+                status: "received",
+              };
+              setMessages((prev) => [...prev, newMsg]);
+              
+              if (!isAtBottom || document.visibilityState === "hidden") {
+                setUnreadCount(prev => prev + 1);
+                setShowScrollDown(true);
+                sendLocalNotification("File Received", chunkData.fileName || "New file received");
               }
             }
           }
-        } else if (msg.type === "file") {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: uuidv4(),
-              sender: "remote",
-              type: "file",
-              fileName: msg.fileName,
-              content: msg.content,
-              timestamp: Date.now(),
-            },
-          ]);
-        } else if (msg.type === "workspace") {
-          try {
-            const parsed = JSON.parse(msg.content);
-            setCode(JSON.stringify(parsed, null, 2));
-            setNotification({
-              message: "Received and loaded workspace!",
-              type: "success",
-            });
-          } catch (err) {}
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error("DataChannel error", err);
+      }
     };
   };
 
@@ -590,15 +708,20 @@ export const TransferNodeRenderer: React.FC<{
       dcRef.current.readyState !== "open"
     )
       return;
+    const msgId = uuidv4();
     const msg: Message = {
-      id: uuidv4(),
+      id: msgId,
       sender: "me",
       type: "text",
       content: chatInput,
       timestamp: Date.now(),
       status: "sent",
     };
-    dcRef.current.send(JSON.stringify(msg));
+    dcRef.current.send(JSON.stringify({
+      type: "text",
+      id: msgId,
+      content: chatInput
+    }));
     setMessages((prev) => [...prev, msg]);
     setChatInput("");
   };
@@ -888,6 +1011,8 @@ export const TransferNodeRenderer: React.FC<{
                   <div className="text-slate-500">Compressed:</div><div className={isDark ? "text-emerald-400" : "text-emerald-600"}>{diagnostics.compressedSize} B ({diagnostics.compressionRatio}%)</div>
                   <div className="text-slate-500">Gen Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.genTime.toFixed(1)} ms</div>
                   {diagnostics.scanTime > 0 && <><div className="text-slate-500">Scan Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.scanTime.toFixed(1)} ms</div></>}
+                  {diagnostics.transferSpeed > 0 && <><div className="text-slate-500">TX Speed:</div><div className="text-blue-400">{formatFileSize(diagnostics.transferSpeed)}/s</div></>}
+                  <div className="text-slate-500">Buffer:</div><div className={diagnostics.bufferedAmount > 1024 * 512 ? "text-amber-400" : "text-slate-400"}>{formatFileSize(diagnostics.bufferedAmount)}</div>
                 </div>
               </div>
             ) : (
@@ -914,6 +1039,14 @@ export const TransferNodeRenderer: React.FC<{
               <p className="text-xs text-slate-500">
                 Scan this code on the other device to link
               </p>
+              {notificationPermission === "default" && (
+                <button 
+                  onClick={requestNotificationPermission}
+                  className="mt-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
+                >
+                  Enable Browser Notifications
+                </button>
+              )}
             </div>
 
             <div className="w-full flex flex-col gap-2">
@@ -1046,7 +1179,7 @@ export const TransferNodeRenderer: React.FC<{
                     >
                       <button
                         onClick={() => setViewMode("chat")}
-                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-2 ${
                           viewMode === "chat"
                             ? isDark
                               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
@@ -1055,6 +1188,9 @@ export const TransferNodeRenderer: React.FC<{
                         }`}
                       >
                         Chat
+                        {unreadCount > 0 && viewMode !== "chat" && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        )}
                       </button>
                       <button
                         onClick={() => setViewMode("media")}
@@ -1083,7 +1219,19 @@ export const TransferNodeRenderer: React.FC<{
                   </div>
                 </div>
 
-                <div className="flex-1 relative overflow-hidden bg-transparent">
+                <div className="flex-1 relative overflow-hidden bg-transparent flex flex-col">
+                  {showScrollDown && (
+                    <button 
+                      onClick={() => {
+                        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+                        setShowScrollDown(false);
+                      }}
+                      className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-full shadow-lg flex items-center gap-2 hover:bg-indigo-700 transition-all border border-indigo-400/30"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                      {unreadCount > 0 ? `${unreadCount} New Messages` : "Go to bottom"}
+                    </button>
+                  )}
                   <AnimatePresence mode="wait">
                     {viewMode === "chat" ? (
                       <motion.div
@@ -1094,6 +1242,7 @@ export const TransferNodeRenderer: React.FC<{
                         className="flex flex-col h-full"
                       >
                         <div
+                          ref={scrollRef}
                           className={`flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
                           style={{
                             backgroundImage: isDark
