@@ -213,7 +213,7 @@ export const TransferNodeRenderer: React.FC<{
   useEffect(() => {
     if (!mqttClient) return;
 
-    const handleBtMessage = (topic: string, message: Buffer) => {
+    const handleBtMessage = (topic: string, message: any) => {
       try {
         const data = JSON.parse(message.toString());
         if (data.type === "DISCOVER" && btState === "hosting") {
@@ -266,10 +266,42 @@ export const TransferNodeRenderer: React.FC<{
       mqttClient.publish(mqttTopic, JSON.stringify({ type: "DISCOVER" }));
       const interval = setInterval(() => {
         mqttClient.publish(mqttTopic, JSON.stringify({ type: "DISCOVER" }));
-      }, 3000);
-      return () => clearInterval(interval);
+      }, 1500); // Faster discovery
+
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        if (btDiscoveredDevices.length === 0) {
+          setNotification({ message: "Discovery timeout. No devices found.", type: "error" });
+          setBtState("idle");
+        }
+      }, 15000); // 15s timeout
+
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      }
     }
-  }, [btState, mqttClient, mqttTopic]);
+  }, [btState, mqttClient, mqttTopic, btDiscoveredDevices.length]);
+
+  useEffect(() => {
+    if (btState === "exchanging") {
+      const timeout = setTimeout(() => {
+        if (connectionState !== "connected" && connectionState !== "transferring") {
+          setNotification({ message: "SDP Exchange timeout. Try again.", type: "error" });
+          setBtState("idle");
+        }
+      }, 15000); // 15 seconds for SDP negotiation
+      return () => clearTimeout(timeout);
+    }
+  }, [btState, connectionState]);
+
+  // Reset pairing if connection state changes
+  useEffect(() => {
+    if (connectionState === "connected" && btState !== "idle") {
+      setPairingWorkflow("qr"); // go back to normal view
+      setBtState("idle");
+    }
+  }, [connectionState, btState]);
 
   const saveDeviceName = (name: string) => {
     const newName = name.trim() || "My Device";
@@ -1232,12 +1264,14 @@ export const TransferNodeRenderer: React.FC<{
                           <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Discoverable over Bluetooth</p>
                           <p className="text-[10px] text-slate-500 mt-1">Waiting for nearby devices to initiate pairing...</p>
                         </div>
-                        <button 
-                          onClick={() => setBtState("idle")}
-                          className={`mt-2 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
-                        >
-                          Cancel
-                        </button>
+                        <div className="w-full mt-2 flex gap-2">
+                          <button 
+                            onClick={() => setBtState("idle")}
+                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1245,7 +1279,7 @@ export const TransferNodeRenderer: React.FC<{
                       <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
                         <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
                         <div className="text-center">
-                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Searching for devices...</p>
+                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Scanning for devices...</p>
                         </div>
                         
                         {btDiscoveredDevices.length > 0 ? (
@@ -1268,15 +1302,26 @@ export const TransferNodeRenderer: React.FC<{
                             ))}
                           </div>
                         ) : (
-                          <p className="text-[10px] text-slate-500">Make sure the other device is Hosting.</p>
+                          <p className="text-[10px] text-slate-500 my-2">Ensure the other device is online and hosting.</p>
                         )}
                         
-                        <button 
-                          onClick={() => setBtState("idle")}
-                          className={`mt-2 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
-                        >
-                          Cancel
-                        </button>
+                        <div className="w-full mt-2 gap-2 flex flex-col">
+                          <button 
+                            onClick={() => {
+                               setPairingWorkflow("qr");
+                               setBtState("idle");
+                            }}
+                            className={`w-full py-2 rounded-lg text-xs font-bold transition-all border ${isDark ? "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border-indigo-500/30" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200"}`}
+                          >
+                            Use QR Pairing Instead
+                          </button>
+                          <button 
+                            onClick={() => setBtState("idle")}
+                            className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
+                          >
+                            Cancel Search
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1287,6 +1332,12 @@ export const TransferNodeRenderer: React.FC<{
                           <p className={`text-xs font-bold ${isDark ? "text-indigo-400" : "text-indigo-700"}`}>Exchanging SDP Payload...</p>
                           <p className="text-[10px] font-medium text-slate-500 mt-1">Please wait while securing connection</p>
                         </div>
+                        <button 
+                          onClick={() => setBtState("idle")}
+                          className={`mt-2 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
+                        >
+                          Cancel
+                        </button>
                       </div>
                     )}
                   </div>
