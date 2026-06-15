@@ -47,7 +47,6 @@
     "mafs": "^0.21.0",
     "mathjs": "^15.2.0",
     "motion": "^12.40.0",
-    "mqtt": "^5.15.1",
     "papaparse": "^5.5.3",
     "pdfjs-dist": "^5.7.284",
     "prism-react-renderer": "^2.4.1",

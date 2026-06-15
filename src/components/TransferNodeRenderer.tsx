@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import mqtt from "mqtt";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore } from "../store/useStore";
@@ -42,10 +41,7 @@ import {
   ClipboardPaste,
   QrCode,
   LogIn,
-  Radio,
-  Wifi,
-  MonitorSmartphone,
-  SmartphoneNfc,
+  Plus,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -136,7 +132,8 @@ export const TransferNodeRenderer: React.FC<{
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
 
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>("default");
 
   const [diagnostics, setDiagnostics] = useState({
     originalSdpSize: 0,
@@ -164,7 +161,10 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const sendLocalNotification = (title: string, body: string) => {
-    if (document.visibilityState === "hidden" && notificationPermission === "granted") {
+    if (
+      document.visibilityState === "hidden" &&
+      notificationPermission === "granted"
+    ) {
       try {
         new Notification(title, { body, icon: "/icon.png" });
       } catch (e) {
@@ -180,147 +180,35 @@ export const TransferNodeRenderer: React.FC<{
     y: number;
   } | null>(null);
 
-  const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
-  const [pairingWorkflow, setPairingWorkflow] = useState<"local_net" | "qr" | "manual">("local_net");
-  const [btSupported, setBtSupported] = useState(true);
-  const [btState, setBtState] = useState<"idle" | "hosting" | "searching" | "found" | "exchanging">("idle");
-  const [btDeviceName, setBtDeviceName] = useState(() => localStorage.getItem("transfer_device_name") || "My Device");
-  const [isEditingDeviceName, setIsEditingDeviceName] = useState(false);
-  const [btDiscoveredDevices, setBtDiscoveredDevices] = useState<{id: string, name: string}[]>([]);
-  const btDeviceId = useMemo(() => uuidv4(), []);
-  const mqttTopic = useMemo(() => "transfer-node-bt-" + window.location.hostname, []);
-  
-  const [mqttClient, setMqttClient] = useState<mqtt.MqttClient | null>(null);
-
-  const offerRef = useRef(offerQR);
-  offerRef.current = offerQR;
-  const answerRef = useRef(answerQR);
-  answerRef.current = answerQR;
-  const handleScanRef = useRef<any>(null);
-
-  useEffect(() => {
-    const client = mqtt.connect("wss://test.mosquitto.org:8081/mqtt");
-    
-    client.on("connect", () => {
-      client.subscribe(mqttTopic);
-      setMqttClient(client);
-    });
-
-    return () => {
-      client.end();
-    };
-  }, [mqttTopic]);
-
-  useEffect(() => {
-    if (!mqttClient) return;
-
-    const handleBtMessage = (topic: string, message: any) => {
-      try {
-        const data = JSON.parse(message.toString());
-        if (data.type === "DISCOVER" && btState === "hosting") {
-          mqttClient.publish(mqttTopic, JSON.stringify({ type: "DEVICE_HERE", id: btDeviceId, name: btDeviceName }));
-        } else if (data.type === "DEVICE_HERE" && btState === "searching" && data.id !== btDeviceId) {
-          setBtDiscoveredDevices(prev => {
-            if (!prev.find(d => d.id === data.id)) return [...prev, { id: data.id, name: data.name }];
-            return prev;
-          });
-        } else if (data.type === "REQUEST_OFFER" && data.targetId === btDeviceId && btState === "hosting") {
-          if (offerRef.current) {
-            mqttClient.publish(mqttTopic, JSON.stringify({ type: "OFFER_SDP", targetId: data.sourceId, sdp: offerRef.current, sourceId: btDeviceId }));
-            setBtState("exchanging");
-            setNotification({ message: "Sending Offer SDP...", type: "success" });
-          }
-        } else if (data.type === "OFFER_SDP" && data.targetId === btDeviceId) {
-          handleScanRef.current(data.sdp);
-          setBtState("exchanging");
-          setNotification({ message: "Received Offer. Generating Answer...", type: "success" });
-          
-          let attempts = 0;
-          const checkAnswer = setInterval(() => {
-            attempts++;
-            if (answerRef.current) {
-              clearInterval(checkAnswer);
-              mqttClient.publish(mqttTopic, JSON.stringify({ type: "ANSWER_SDP", targetId: data.sourceId, sdp: answerRef.current }));
-              setNotification({ message: "Answer Generated & Sent!", type: "success" });
-            } else if (attempts > 20) {
-              clearInterval(checkAnswer);
-            }
-          }, 500);
-        } else if (data.type === "ANSWER_SDP" && data.targetId === btDeviceId) {
-           handleScanRef.current(data.sdp);
-           setNotification({ message: "Received Answer. Establishing Connection!", type: "success" });
-        }
-      } catch (err) {
-        console.error("MQTT parse err", err);
-      }
-    };
-    
-    mqttClient.on("message", handleBtMessage);
-    return () => {
-      mqttClient.off("message", handleBtMessage);
-    }
-  }, [btState, btDeviceId, btDeviceName, mqttClient, mqttTopic]);
-
-  useEffect(() => {
-    if (btState === "searching" && mqttClient) {
-      setBtDiscoveredDevices([]);
-      mqttClient.publish(mqttTopic, JSON.stringify({ type: "DISCOVER" }));
-      const interval = setInterval(() => {
-        mqttClient.publish(mqttTopic, JSON.stringify({ type: "DISCOVER" }));
-      }, 1500); // Faster discovery
-
-      const timeout = setTimeout(() => {
-        clearInterval(interval);
-        if (btDiscoveredDevices.length === 0) {
-          setNotification({ message: "Discovery timeout. No devices found.", type: "error" });
-          setBtState("idle");
-        }
-      }, 15000); // 15s timeout
-
-      return () => {
-        clearInterval(interval);
-        clearTimeout(timeout);
-      }
-    }
-  }, [btState, mqttClient, mqttTopic, btDiscoveredDevices.length]);
-
-  useEffect(() => {
-    if (btState === "exchanging") {
-      const timeout = setTimeout(() => {
-        if (connectionState !== "connected" && connectionState !== "transferring") {
-          setNotification({ message: "SDP Exchange timeout. Try again.", type: "error" });
-          setBtState("idle");
-        }
-      }, 15000); // 15 seconds for SDP negotiation
-      return () => clearTimeout(timeout);
-    }
-  }, [btState, connectionState]);
-
-  // Reset pairing if connection state changes
-  useEffect(() => {
-    if (connectionState === "connected" && btState !== "idle") {
-      setPairingWorkflow("qr"); // go back to normal view
-      setBtState("idle");
-    }
-  }, [connectionState, btState]);
-
-  const saveDeviceName = (name: string) => {
-    const newName = name.trim() || "My Device";
-    setBtDeviceName(newName);
-    localStorage.setItem("transfer_device_name", newName);
-    setIsEditingDeviceName(false);
-  };
-  const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<string | null>(null);
+  const [pairingMode, setPairingMode] = useState<"local" | "universal">(
+    "local",
+  );
+  const [pairingWorkflow, setPairingWorkflow] = useState<"qr" | "manual">("qr");
+  const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<
+    string | null
+  >(null);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
 
   useEffect(() => {
     const checkClipboardForSdp = async () => {
       if (connectionState === "pairing") {
         try {
           const text = await navigator.clipboard.readText();
-          if (text && text.length > 50 && (text.startsWith("b64:") || text.startsWith("uri:") || text.startsWith("u16:"))) {
-            if (text !== offerQR && text !== answerQR && text !== copyPasteOffer && text !== copyPasteAnswer) {
+          if (
+            text &&
+            text.length > 50 &&
+            (text.startsWith("b64:") ||
+              text.startsWith("uri:") ||
+              text.startsWith("u16:"))
+          ) {
+            if (
+              text !== offerQR &&
+              text !== answerQR &&
+              text !== copyPasteOffer &&
+              text !== copyPasteAnswer
+            ) {
               setClipboardDetectedSdp(text.trim());
             } else {
               setClipboardDetectedSdp(null);
@@ -374,7 +262,7 @@ export const TransferNodeRenderer: React.FC<{
   useEffect(() => {
     const interval = setInterval(() => {
       if (dcRef.current) {
-        setDiagnostics(prev => ({
+        setDiagnostics((prev) => ({
           ...prev,
           bufferedAmount: dcRef.current?.bufferedAmount || 0,
         }));
@@ -413,9 +301,9 @@ export const TransferNodeRenderer: React.FC<{
 
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d", { willReadFrequently: true });
-          
+
           let scanHistory: string[] = [];
-          setDiagnostics(prev => ({ ...prev, scanTime: performance.now() }));
+          setDiagnostics((prev) => ({ ...prev, scanTime: performance.now() }));
 
           scanIntervalRef.current = setInterval(() => {
             if (node.readyState === node.HAVE_ENOUGH_DATA && ctx) {
@@ -448,8 +336,14 @@ export const TransferNodeRenderer: React.FC<{
                 scanHistory.push(code.data);
                 if (scanHistory.length > 3) scanHistory.shift();
 
-                if (scanHistory.length === 3 && scanHistory.every((c) => c === code!.data)) {
-                  setDiagnostics(prev => ({ ...prev, scanTime: performance.now() - prev.scanTime }));
+                if (
+                  scanHistory.length === 3 &&
+                  scanHistory.every((c) => c === code!.data)
+                ) {
+                  setDiagnostics((prev) => ({
+                    ...prev,
+                    scanTime: performance.now() - prev.scanTime,
+                  }));
                   handleScan(code.data);
                   scanHistory = [];
                 }
@@ -495,9 +389,9 @@ export const TransferNodeRenderer: React.FC<{
       chunksSent: 0,
       chunksTotal: totalChunks,
     };
-    
+
     if (type === "file") {
-      setMessages(prev => [...prev, initialMsg]);
+      setMessages((prev) => [...prev, initialMsg]);
     }
 
     dcRef.current.send(
@@ -529,22 +423,26 @@ export const TransferNodeRenderer: React.FC<{
 
       const progress = Math.floor(((i + 1) / totalChunks) * 100);
       setTransferProgress(progress);
-      
+
       if (type === "file") {
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, chunksSent: i + 1 } : m));
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msgId ? { ...m, chunksSent: i + 1 } : m)),
+        );
       }
 
       // Update diagnostics
       const elapsed = (performance.now() - startTime) / 1000;
-      const speed = (i + 1) * CHUNK_SIZE / elapsed;
-      setDiagnostics(prev => ({ ...prev, transferSpeed: speed }));
+      const speed = ((i + 1) * CHUNK_SIZE) / elapsed;
+      setDiagnostics((prev) => ({ ...prev, transferSpeed: speed }));
     }
 
     dcRef.current.send(JSON.stringify({ type: "chunk_end", msgId }));
     setTransferProgress(0);
-    
+
     if (type === "file") {
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: "sent" } : m));
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, status: "sent" } : m)),
+      );
     }
   };
 
@@ -642,7 +540,11 @@ export const TransferNodeRenderer: React.FC<{
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "msg_ack") {
-          setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, status: "delivered" } : m));
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === msg.msgId ? { ...m, status: "delivered" } : m,
+            ),
+          );
           return;
         }
 
@@ -656,13 +558,13 @@ export const TransferNodeRenderer: React.FC<{
             status: "received",
           };
           setMessages((prev) => [...prev, newMsg]);
-          
+
           if (!isAtBottom || document.visibilityState === "hidden") {
-            setUnreadCount(prev => prev + 1);
+            setUnreadCount((prev) => prev + 1);
             setShowScrollDown(true);
             sendLocalNotification("New Message", msg.content);
           }
-          
+
           dc.send(JSON.stringify({ type: "msg_ack", msgId: msg.id }));
         } else if (msg.type === "chunk_start") {
           chunksRef.current[msg.msgId] = {
@@ -673,27 +575,45 @@ export const TransferNodeRenderer: React.FC<{
             count: 0,
           };
           setConnectionState("transferring");
-          
+
           if (msg.msgType === "file") {
-            sendLocalNotification("Incoming File", `Receiving ${msg.fileName || "unknown file"}...`);
+            sendLocalNotification(
+              "Incoming File",
+              `Receiving ${msg.fileName || "unknown file"}...`,
+            );
           }
         } else if (msg.type === "chunk_data") {
           const chunkData = chunksRef.current[msg.msgId];
           if (chunkData) {
             chunkData.received[msg.chunkIndex] = msg.chunk;
             chunkData.count++;
-            const progress = Math.floor((chunkData.count / chunkData.total) * 100);
+            const progress = Math.floor(
+              (chunkData.count / chunkData.total) * 100,
+            );
             setTransferProgress(progress);
           }
         } else if (msg.type === "chunk_end") {
           const chunkData = chunksRef.current[msg.msgId];
           if (chunkData) {
             const fullPayload = chunkData.received.join("");
-            const isCorrupted = chunkData.count !== chunkData.total || chunkData.received.includes(undefined as any);
-            
-            if (isCorrupted || (msg.fileSize && fullPayload.length !== msg.fileSize)) {
-              console.error("Integrity check failed", { count: chunkData.count, total: chunkData.total, expectedSize: msg.fileSize, actualSize: fullPayload.length });
-              setNotification({ message: "File transfer corrupted or incomplete. Please retry.", type: "error" });
+            const isCorrupted =
+              chunkData.count !== chunkData.total ||
+              chunkData.received.includes(undefined as any);
+
+            if (
+              isCorrupted ||
+              (msg.fileSize && fullPayload.length !== msg.fileSize)
+            ) {
+              console.error("Integrity check failed", {
+                count: chunkData.count,
+                total: chunkData.total,
+                expectedSize: msg.fileSize,
+                actualSize: fullPayload.length,
+              });
+              setNotification({
+                message: "File transfer corrupted or incomplete. Please retry.",
+                type: "error",
+              });
               delete chunksRef.current[msg.msgId];
               setConnectionState("connected");
               return;
@@ -713,7 +633,9 @@ export const TransferNodeRenderer: React.FC<{
                 });
               } catch (err) {}
             } else if (chunkData.type === "file") {
-              const fType = chunkData.fileName ? getFileType(chunkData.fileName) : "file";
+              const fType = chunkData.fileName
+                ? getFileType(chunkData.fileName)
+                : "file";
               const newMsg: Message = {
                 id: msg.msgId,
                 sender: "remote",
@@ -726,11 +648,14 @@ export const TransferNodeRenderer: React.FC<{
                 status: "received",
               };
               setMessages((prev) => [...prev, newMsg]);
-              
+
               if (!isAtBottom || document.visibilityState === "hidden") {
-                setUnreadCount(prev => prev + 1);
+                setUnreadCount((prev) => prev + 1);
                 setShowScrollDown(true);
-                sendLocalNotification("File Received", chunkData.fileName || "New file received");
+                sendLocalNotification(
+                  "File Received",
+                  chunkData.fileName || "New file received",
+                );
               }
             }
           }
@@ -857,7 +782,6 @@ export const TransferNodeRenderer: React.FC<{
       setConnectionState("pairing");
     }
   };
-  handleScanRef.current = handleScan;
 
   const processAnswer = async (answer: any) => {
     if (pcRef.current) {
@@ -885,11 +809,13 @@ export const TransferNodeRenderer: React.FC<{
       timestamp: Date.now(),
       status: "sent",
     };
-    dcRef.current.send(JSON.stringify({
-      type: "text",
-      id: msgId,
-      content: chatInput
-    }));
+    dcRef.current.send(
+      JSON.stringify({
+        type: "text",
+        id: msgId,
+        content: chatInput,
+      }),
+    );
     setMessages((prev) => [...prev, msg]);
     setChatInput("");
   };
@@ -1041,20 +967,132 @@ export const TransferNodeRenderer: React.FC<{
             </p>
           </div>
         </div>
-        <div
-          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-            connectionState === "connected"
-              ? "bg-emerald-500/10 text-emerald-500"
-              : connectionState === "transferring"
-                ? "bg-blue-500/10 text-blue-500"
-                : connectionState === "failed"
-                  ? "bg-red-500/10 text-red-500"
-                  : isDark
-                    ? "bg-white/5 text-slate-500"
-                    : "bg-slate-100 text-slate-500"
-          }`}
-        >
-          {connectionState}
+        <div className="flex items-center gap-2 relative">
+          <div
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+              connectionState === "connected"
+                ? "bg-emerald-500/10 text-emerald-500"
+                : connectionState === "transferring"
+                  ? "bg-blue-500/10 text-blue-500"
+                  : connectionState === "failed"
+                    ? "bg-red-500/10 text-red-500"
+                    : isDark
+                      ? "bg-white/5 text-slate-500"
+                      : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {connectionState === "pairing" && pairingWorkflow === "manual"
+              ? isHosting
+                ? offerQR
+                  ? "Waiting For Answer"
+                  : "Generating Offer"
+                : answerQR
+                  ? "Generated Answer"
+                  : "Waiting For Offer"
+              : connectionState}
+          </div>
+          <button
+            onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+            className={`p-1.5 rounded-lg transition-colors ${
+              showSettingsDropdown
+                ? isDark
+                  ? "bg-white/10 text-white"
+                  : "bg-slate-200 text-slate-900"
+                : isDark
+                  ? "hover:bg-white/5 text-slate-400 hover:text-white"
+                  : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+
+          <AnimatePresence>
+            {showSettingsDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSettingsDropdown(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`absolute top-full right-0 mt-2 w-64 p-4 rounded-2xl border shadow-2xl z-50 origin-top-right backdrop-blur-xl ${
+                    isDark
+                      ? "bg-[#111827]/95 border-white/10"
+                      : "bg-white/95 border-slate-200"
+                  }`}
+                >
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 block">
+                        Pairing Mode
+                      </span>
+                      <div
+                        className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                      >
+                        <button
+                          onClick={() => {
+                            setPairingMode("local");
+                          }}
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                            pairingMode === "local"
+                              ? isDark
+                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                                : "bg-white text-indigo-600 shadow-sm"
+                              : "text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Local
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPairingMode("universal");
+                          }}
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                            pairingMode === "universal"
+                              ? isDark
+                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                                : "bg-white text-indigo-600 shadow-sm"
+                              : "text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Universal
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 block">
+                        QR Density
+                      </span>
+                      <div
+                        className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                      >
+                        {(["L", "M", "Q", "H"] as const).map((d) => (
+                          <button
+                            key={d}
+                            onClick={() => {
+                              setQrDensity(d);
+                            }}
+                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold transition-all ${
+                              qrDensity === d
+                                ? isDark
+                                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                                  : "bg-white text-indigo-600 shadow-sm"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -1112,50 +1150,17 @@ export const TransferNodeRenderer: React.FC<{
               </button>
             </div>
 
-            <div className="flex flex-col gap-3 mt-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pairing Mode</span>
-                <div className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
-                  <button
-                    onClick={() => setPairingMode("local")}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                      pairingMode === "local" 
-                        ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Local Only
-                  </button>
-                  <button
-                    onClick={() => setPairingMode("universal")}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                      pairingMode === "universal" 
-                        ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    Universal
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">QR Density</span>
-                <div className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
-                  {(["L", "M", "Q", "H"] as const).map(d => (
-                    <button
-                      key={d}
-                      onClick={() => setQrDensity(d)}
-                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold transition-all ${
-                        qrDensity === d 
-                          ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
-                          : "text-slate-400 hover:text-slate-200"
-                      }`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="flex justify-center -mt-2">
+              <button
+                onClick={() => {
+                  setConnectionState("pairing");
+                  setPairingWorkflow("manual");
+                  setIsHosting(true);
+                }}
+                className={`text-[9px] font-bold uppercase tracking-widest transition-colors ${isDark ? "text-slate-500 hover:text-slate-300" : "text-slate-400 hover:text-slate-600"}`}
+              >
+                Use Manual SDP Exchange
+              </button>
             </div>
           </motion.div>
         )}
@@ -1166,25 +1171,16 @@ export const TransferNodeRenderer: React.FC<{
             animate={{ opacity: 1 }}
             className="flex flex-col items-center gap-6 py-2 w-full"
           >
-            <div className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}>
-              {btSupported && (
-                <button
-                  onClick={() => setPairingWorkflow("local_net")}
-                  className={`flex-[1.5] py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                    pairingWorkflow === "local_net"
-                      ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  <Wifi className="w-3.5 h-3.5" />
-                  Local Net
-                </button>
-              )}
+            <div
+              className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}
+            >
               <button
                 onClick={() => setPairingWorkflow("qr")}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
                   pairingWorkflow === "qr"
-                    ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                    ? isDark
+                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                      : "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-300"
                 }`}
               >
@@ -1193,182 +1189,103 @@ export const TransferNodeRenderer: React.FC<{
               </button>
               <button
                 onClick={() => setPairingWorkflow("manual")}
-                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
                   pairingWorkflow === "manual"
-                    ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                    ? isDark
+                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                      : "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-300"
                 }`}
               >
                 <ClipboardPaste className="w-3.5 h-3.5" />
-                Manual
+                Manual SDP
               </button>
             </div>
 
-            {pairingWorkflow === "local_net" ? (
-              <div className="w-full flex justify-center items-center py-4">
-                <div className={`w-full p-6 text-center rounded-[24px] border border-dashed ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-                  <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${isDark ? "bg-indigo-500/20 text-indigo-400" : "bg-indigo-100 text-indigo-600"}`}>
-                    <Radio className="w-8 h-8" />
-                  </div>
-                  
-                  {isEditingDeviceName ? (
-                    <div className="flex gap-2 max-w-[200px] mx-auto mb-6">
-                      <input 
-                        type="text" 
-                        autoFocus
-                        defaultValue={btDeviceName}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveDeviceName(e.currentTarget.value);
-                          if (e.key === 'Escape') setIsEditingDeviceName(false);
-                        }}
-                        onBlur={(e) => saveDeviceName(e.target.value)}
-                        className={`flex-1 w-full text-center text-sm font-bold bg-transparent border-b outline-none ${isDark ? "text-white border-white/20 focus:border-indigo-400" : "text-slate-900 border-slate-300 focus:border-indigo-500"}`}
-                      />
-                    </div>
-                  ) : (
-                    <div 
-                      className="group flex items-center justify-center gap-2 mb-6 cursor-pointer"
-                      onClick={() => setIsEditingDeviceName(true)}
-                    >
-                      <h3 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}>{btDeviceName}</h3>
-                      <div className={`opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md ${isDark ? "bg-white/10" : "bg-slate-200"}`}>
-                        <MonitorSmartphone className="w-3.5 h-3.5 text-slate-400" />
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="space-y-3">
-                    {btState === "idle" && (
-                      <>
-                        <button 
-                          onClick={() => setBtState("hosting")}
-                          className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
-                            isDark ? "bg-white/5 hover:bg-white/10 text-white border-white/5" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
-                          }`}
-                        >
-                          <Radio className="w-4 h-4" /> Start Local Discovery (Host)
-                        </button>
-                        
-                        <button 
-                          onClick={() => setBtState("searching")}
-                          className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
-                        >
-                          <Search className="w-4 h-4" /> Join Nearby Device
-                        </button>
-                      </>
-                    )}
-
-                    {btState === "hosting" && (
-                      <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-                        <div className="text-center">
-                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Discoverable on Local Network</p>
-                          <p className="text-[10px] text-slate-500 mt-1">Waiting for nearby devices to initiate pairing...</p>
-                        </div>
-                        <div className="w-full mt-2 flex gap-2">
-                          <button 
-                            onClick={() => setBtState("idle")}
-                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {btState === "searching" && (
-                      <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-                        <div className="text-center">
-                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Scanning for devices...</p>
-                        </div>
-                        
-                        {btDiscoveredDevices.length > 0 ? (
-                          <div className="w-full mt-2 space-y-2">
-                            {btDiscoveredDevices.map(device => (
-                              <button
-                                key={device.id}
-                                onClick={() => {
-                                  mqttClient?.publish(mqttTopic, JSON.stringify({ type: "REQUEST_OFFER", targetId: device.id, sourceId: btDeviceId }));
-                                  setBtState("exchanging");
-                                }}
-                                className={`w-full p-3 rounded-lg flex items-center justify-between border transition-all ${isDark ? "bg-black/40 border-white/10 hover:border-indigo-500/50" : "bg-white border-slate-200 hover:border-indigo-400"}`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <MonitorSmartphone className={`w-4 h-4 ${isDark ? "text-slate-400" : "text-slate-500"}`} />
-                                  <span className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{device.name}</span>
-                                </div>
-                                <span className={`text-[9px] font-bold uppercase px-2 py-1 rounded ${isDark ? "bg-indigo-500/20 text-indigo-300" : "bg-indigo-50 text-indigo-600"}`}>Connect</span>
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[10px] text-slate-500 my-2">Ensure the other device is online and hosting.</p>
-                        )}
-                        
-                        <div className="w-full mt-2 gap-2 flex flex-col">
-                          <button 
-                            onClick={() => {
-                               setPairingWorkflow("qr");
-                               setBtState("idle");
-                            }}
-                            className={`w-full py-2 rounded-lg text-xs font-bold transition-all border ${isDark ? "bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 border-indigo-500/30" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200"}`}
-                          >
-                            Use QR Pairing Instead
-                          </button>
-                          <button 
-                            onClick={() => setBtState("idle")}
-                            className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
-                          >
-                            Cancel Search
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {btState === "exchanging" && (
-                      <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"}`}>
-                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
-                        <div className="text-center">
-                          <p className={`text-xs font-bold ${isDark ? "text-indigo-400" : "text-indigo-700"}`}>Exchanging SDP Payload...</p>
-                          <p className="text-[10px] font-medium text-slate-500 mt-1">Please wait while securing connection</p>
-                        </div>
-                        <button 
-                          onClick={() => setBtState("idle")}
-                          className={`mt-2 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <p className="mt-4 text-[10px] text-slate-500">
-                    Local Network relay allows secure peer discovery without cameras.
-                  </p>
-                </div>
-              </div>
-            ) : pairingWorkflow === "qr" ? (
+            {pairingWorkflow === "qr" ? (
               <>
                 {showDiagnostics ? (
-                  <div className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}>
+                  <div
+                    className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}
+                  >
                     <div className="flex items-center justify-between pb-2 border-b border-gray-500/20">
-                      <span className="text-[10px] font-black uppercase text-indigo-400">Diagnostics</span>
-                      <button onClick={() => setShowDiagnostics(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+                      <span className="text-[10px] font-black uppercase text-indigo-400">
+                        Diagnostics
+                      </span>
+                      <button
+                        onClick={() => setShowDiagnostics(false)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-mono mt-2">
-                      <div className="text-slate-500">Original SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.originalSdpSize} B</div>
-                      <div className="text-slate-500">Filtered SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.filteredSdpSize} B</div>
-                      <div className="text-slate-500">ICE Candidates:</div><div className={isDark ? "text-white" : "text-slate-900"}>{diagnostics.candidateCount}</div>
-                      <div className="text-slate-500">Compressed:</div><div className={isDark ? "text-emerald-400" : "text-emerald-600"}>{diagnostics.compressedSize} B ({diagnostics.compressionRatio}%)</div>
-                      <div className="text-slate-500">Gen Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.genTime.toFixed(1)} ms</div>
-                      {diagnostics.scanTime > 0 && <><div className="text-slate-500">Scan Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.scanTime.toFixed(1)} ms</div></>}
-                      {diagnostics.transferSpeed > 0 && <><div className="text-slate-500">TX Speed:</div><div className="text-blue-400">{formatFileSize(diagnostics.transferSpeed)}/s</div></>}
-                      <div className="text-slate-500">Buffer:</div><div className={diagnostics.bufferedAmount > 1024 * 512 ? "text-amber-400" : "text-slate-400"}>{formatFileSize(diagnostics.bufferedAmount)}</div>
+                      <div className="text-slate-500">Original SDP:</div>
+                      <div
+                        className={isDark ? "text-slate-300" : "text-slate-700"}
+                      >
+                        {diagnostics.originalSdpSize} B
+                      </div>
+                      <div className="text-slate-500">Filtered SDP:</div>
+                      <div
+                        className={isDark ? "text-slate-300" : "text-slate-700"}
+                      >
+                        {diagnostics.filteredSdpSize} B
+                      </div>
+                      <div className="text-slate-500">ICE Candidates:</div>
+                      <div className={isDark ? "text-white" : "text-slate-900"}>
+                        {diagnostics.candidateCount}
+                      </div>
+                      <div className="text-slate-500">Compressed:</div>
+                      <div
+                        className={
+                          isDark ? "text-emerald-400" : "text-emerald-600"
+                        }
+                      >
+                        {diagnostics.compressedSize} B (
+                        {diagnostics.compressionRatio}%)
+                      </div>
+                      <div className="text-slate-500">Gen Time:</div>
+                      <div
+                        className={isDark ? "text-slate-300" : "text-slate-700"}
+                      >
+                        {diagnostics.genTime.toFixed(1)} ms
+                      </div>
+                      {diagnostics.scanTime > 0 && (
+                        <>
+                          <div className="text-slate-500">Scan Time:</div>
+                          <div
+                            className={
+                              isDark ? "text-slate-300" : "text-slate-700"
+                            }
+                          >
+                            {diagnostics.scanTime.toFixed(1)} ms
+                          </div>
+                        </>
+                      )}
+                      {diagnostics.transferSpeed > 0 && (
+                        <>
+                          <div className="text-slate-500">TX Speed:</div>
+                          <div className="text-blue-400">
+                            {formatFileSize(diagnostics.transferSpeed)}/s
+                          </div>
+                        </>
+                      )}
+                      <div className="text-slate-500">Buffer:</div>
+                      <div
+                        className={
+                          diagnostics.bufferedAmount > 1024 * 512
+                            ? "text-amber-400"
+                            : "text-slate-400"
+                        }
+                      >
+                        {formatFileSize(diagnostics.bufferedAmount)}
+                      </div>
                     </div>
                   </div>
                 ) : (
                   <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group">
-                    <button 
+                    <button
                       onClick={() => setShowDiagnostics(true)}
                       className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"
                     >
@@ -1391,7 +1308,7 @@ export const TransferNodeRenderer: React.FC<{
                     Scan this code on the other device to link
                   </p>
                   {notificationPermission === "default" && (
-                    <button 
+                    <button
                       onClick={requestNotificationPermission}
                       className="mt-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
                     >
@@ -1403,7 +1320,10 @@ export const TransferNodeRenderer: React.FC<{
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(offerQR || answerQR);
-                      setNotification({ message: "SDP Copied to Clipboard", type: "success" });
+                      setNotification({
+                        message: "SDP Copied to Clipboard",
+                        type: "success",
+                      });
                     }}
                     disabled={!(offerQR || answerQR)}
                     className={`flex-1 py-1.5 px-3 rounded-lg border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap ${
@@ -1418,163 +1338,349 @@ export const TransferNodeRenderer: React.FC<{
               </>
             ) : (
               <div className="w-full space-y-3">
-                {/* Manual Section - Your SDP */}
-                <div className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${
-                  isDark ? "bg-white/5 border-white/10 hover:border-indigo-500/30" : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
-                }`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`p-1 rounded-lg ${isDark ? "bg-indigo-500/10" : "bg-indigo-50"}`}>
-                        <Share2 className={`w-3.5 h-3.5 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
-                      </div>
-                      <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                        1. Your {isHosting ? "Offer" : "Answer"} SDP
-                      </p>
-                    </div>
-                    {offerQR || answerQR ? (
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${
-                        isDark ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600"
-                      }`}>
-                        Generated
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="flex gap-3 items-stretch">
-                    <div className="flex-1 min-w-0">
-                      {offerQR || answerQR ? (
-                        <div className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${
-                          isDark ? "bg-black/40 border border-white/5" : "bg-slate-50 border border-slate-100"
-                        }`}>
-                          <div className={`text-[11px] font-mono truncate leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                            {offerQR || answerQR}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5 shrink-0">
-                            <Activity className="w-2.5 h-2.5 text-slate-500" />
-                            <span className="text-[9px] font-medium text-slate-500">Payload: {(offerQR || answerQR).length} bytes</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex items-center justify-center p-3 text-center ${
-                          isDark ? "border-white/5 bg-black/20" : "border-slate-100 bg-slate-50/50"
-                        }`}>
-                          <p className={`text-[9px] font-medium italic ${isDark ? "text-slate-600" : "text-slate-400"}`}>
-                            Waiting for remote {isHosting ? "connection" : "offer"}...
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(offerQR || answerQR);
-                        setNotification({ message: "SDP Copied to Clipboard", type: "success" });
-                      }}
-                      disabled={!(offerQR || answerQR)}
-                      className="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-white transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg shadow-indigo-500/20"
-                    >
-                      <Copy className="w-4 h-4" />
-                      <span className="text-[9px] font-black uppercase tracking-widest">Copy</span>
-                    </button>
-                  </div>
+                <div
+                  className={`p-1 flex rounded-xl ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                >
+                  <button
+                    onClick={() => {
+                      if (!isHosting) {
+                        setOfferQR("");
+                        setAnswerQR("");
+                        setCopyPasteAnswer("");
+                        setIsHosting(true);
+                      }
+                    }}
+                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${
+                      isHosting
+                        ? isDark
+                          ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30"
+                          : "bg-indigo-50 text-indigo-600 border border-indigo-200"
+                        : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
+                    }`}
+                  >
+                    <span>Initiator</span>
+                    <span className="text-[7px] tracking-tight opacity-70">
+                      Create Offer
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isHosting) {
+                        setOfferQR("");
+                        setAnswerQR("");
+                        setCopyPasteOffer("");
+                        setIsHosting(false);
+                      }
+                    }}
+                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${
+                      !isHosting
+                        ? isDark
+                          ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                          : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                        : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
+                    }`}
+                  >
+                    <span>Responder</span>
+                    <span className="text-[7px] tracking-tight opacity-70">
+                      Reply to Offer
+                    </span>
+                  </button>
                 </div>
 
-                {/* Manual Section - Remote SDP */}
-                <div className={`p-4 rounded-[24px] border relative transition-all duration-300 ${
-                  isDark ? "bg-white/5 border-white/10" : "bg-white border-slate-200 shadow-sm"
-                }`}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={`p-1 rounded-lg ${isDark ? "bg-emerald-500/10" : "bg-emerald-50"}`}>
-                      <LogIn className={`w-3.5 h-3.5 ${isDark ? "text-emerald-400" : "text-emerald-600"}`} />
-                    </div>
-                    <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                      2. Remote {isHosting ? "Answer" : "Offer"} SDP
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <textarea
-                        placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
-                        className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${
-                          isDark ? "bg-black/40 text-white placeholder-slate-600 border border-white/5" : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
-                        }`}
-                        value={isHosting ? copyPasteAnswer : copyPasteOffer}
-                        onChange={(e) => isHosting ? setCopyPasteAnswer(e.target.value) : setCopyPasteOffer(e.target.value)}
-                      />
-                      {(isHosting ? copyPasteAnswer : copyPasteOffer) && (
-                        <button
-                          onClick={() => isHosting ? setCopyPasteAnswer("") : setCopyPasteOffer("")}
-                          className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${
-                            isDark ? "text-slate-400 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
-                          }`}
-                          title="Clear input"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            const text = await navigator.clipboard.readText();
-                            if (text && text.trim().length > 50) {
-                              isHosting ? setCopyPasteAnswer(text.trim()) : setCopyPasteOffer(text.trim());
-                              setNotification({ message: "SDP Pasted from Clipboard", type: "success" });
-                              setClipboardDetectedSdp(null);
-                            } else {
-                              setNotification({ message: "No valid SDP payload in clipboard", type: "error" });
-                            }
-                          } catch (err) {
-                            setNotification({ message: "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.", type: "error" });
-                          }
-                        }}
-                        className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${
-                          isDark ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400" : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
+                <div className="flex flex-col gap-3">
+                  {(() => {
+                    const yourSdpSection = (
+                      <div
+                        className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${
+                          isDark
+                            ? "bg-white/5 border-white/10 hover:border-indigo-500/30"
+                            : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
                         }`}
                       >
-                        <ClipboardPaste className="w-3.5 h-3.5" />
-                        <span className="text-[9px] font-bold uppercase tracking-wider">Paste</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleScan(isHosting ? copyPasteAnswer : copyPasteOffer)}
-                        disabled={isHosting ? !copyPasteAnswer.trim() : !copyPasteOffer.trim()}
-                        className="flex-[2] py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:opacity-30 disabled:grayscale text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        {isHosting ? "Establish" : "Verify & Generate"}
-                      </button>
-                    </div>
-
-                    <AnimatePresence>
-                      {clipboardDetectedSdp && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0, marginTop: 0 }} 
-                          animate={{ opacity: 1, height: "auto", marginTop: 8 }} 
-                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                          className={`overflow-hidden rounded-xl border ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-100"}`}
-                        >
-                          <div className="p-2 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Activity className={`w-3 h-3 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
-                              <span className={`text-[9px] font-black uppercase tracking-wider ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>Detected</span>
-                            </div>
-                            <button
-                              onClick={() => {
-                                isHosting ? setCopyPasteAnswer(clipboardDetectedSdp) : setCopyPasteOffer(clipboardDetectedSdp);
-                                setClipboardDetectedSdp(null);
-                              }}
-                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.1em] transition-all"
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`p-1 rounded-lg ${isDark ? "bg-indigo-500/10" : "bg-indigo-50"}`}
                             >
-                              Import
+                              <Share2
+                                className={`w-3.5 h-3.5 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}
+                              />
+                            </div>
+                            <p
+                              className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                            >
+                              {isHosting ? "1" : "2"}. Your{" "}
+                              {isHosting ? "Offer" : "Answer"} SDP
+                            </p>
+                          </div>
+                          {offerQR || answerQR ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${
+                                isDark
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : "bg-emerald-50 text-emerald-600"
+                              }`}
+                            >
+                              Generated
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="flex gap-3 items-stretch">
+                          <div className="flex-1 min-w-0">
+                            {offerQR || answerQR ? (
+                              <div
+                                className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${
+                                  isDark
+                                    ? "bg-black/40 border border-white/5"
+                                    : "bg-slate-50 border border-slate-100"
+                                }`}
+                              >
+                                <div
+                                  className={`text-[11px] font-mono truncate leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                                >
+                                  {offerQR || answerQR}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5 shrink-0">
+                                  <Activity className="w-2.5 h-2.5 text-slate-500" />
+                                  <span className="text-[9px] font-medium text-slate-500">
+                                    Payload: {(offerQR || answerQR).length}{" "}
+                                    bytes
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-3 text-center ${
+                                  isDark
+                                    ? "border-white/5 bg-black/20"
+                                    : "border-slate-100 bg-slate-50/50"
+                                }`}
+                              >
+                                {isHosting ? (
+                                  <button
+                                    onClick={generateOffer}
+                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-2 transition-colors"
+                                  >
+                                    <Plus className="w-3 h-3" /> Generate Offer
+                                  </button>
+                                ) : (
+                                  <p
+                                    className={`text-[9px] font-medium italic ${isDark ? "text-slate-600" : "text-slate-400"}`}
+                                  >
+                                    Waiting for remote{" "}
+                                    {isHosting ? "connection" : "offer"}...
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                offerQR || answerQR,
+                              );
+                              setNotification({
+                                message: "SDP Copied to Clipboard",
+                                type: "success",
+                              });
+                            }}
+                            disabled={!(offerQR || answerQR)}
+                            className="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-white transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg shadow-indigo-500/20"
+                          >
+                            <Copy className="w-4 h-4" />
+                            <span className="text-[9px] font-black uppercase tracking-widest">
+                              Copy
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+
+                    const remoteSdpSection = (
+                      <div
+                        className={`p-4 rounded-[24px] border relative transition-all duration-300 ${
+                          isDark
+                            ? "bg-white/5 border-white/10"
+                            : "bg-white border-slate-200 shadow-sm"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-3">
+                          <div
+                            className={`p-1 rounded-lg ${isDark ? "bg-emerald-500/10" : "bg-emerald-50"}`}
+                          >
+                            <LogIn
+                              className={`w-3.5 h-3.5 ${isDark ? "text-emerald-400" : "text-emerald-600"}`}
+                            />
+                          </div>
+                          <p
+                            className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                          >
+                            {isHosting ? "2" : "1"}. Remote{" "}
+                            {isHosting ? "Answer" : "Offer"} SDP
+                          </p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="relative">
+                            <textarea
+                              placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
+                              className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${
+                                isDark
+                                  ? "bg-black/40 text-white placeholder-slate-600 border border-white/5"
+                                  : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
+                              }`}
+                              value={
+                                isHosting ? copyPasteAnswer : copyPasteOffer
+                              }
+                              onChange={(e) =>
+                                isHosting
+                                  ? setCopyPasteAnswer(e.target.value)
+                                  : setCopyPasteOffer(e.target.value)
+                              }
+                              onWheelCapture={(e) => e.stopPropagation()}
+                            />
+                            {(isHosting ? copyPasteAnswer : copyPasteOffer) && (
+                              <button
+                                onClick={() =>
+                                  isHosting
+                                    ? setCopyPasteAnswer("")
+                                    : setCopyPasteOffer("")
+                                }
+                                className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${
+                                  isDark
+                                    ? "text-slate-400 hover:text-white hover:bg-white/10"
+                                    : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
+                                }`}
+                                title="Clear input"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const text =
+                                    await navigator.clipboard.readText();
+                                  if (text && text.trim().length > 50) {
+                                    isHosting
+                                      ? setCopyPasteAnswer(text.trim())
+                                      : setCopyPasteOffer(text.trim());
+                                    setNotification({
+                                      message: "SDP Pasted from Clipboard",
+                                      type: "success",
+                                    });
+                                    setClipboardDetectedSdp(null);
+                                  } else {
+                                    setNotification({
+                                      message:
+                                        "No valid SDP payload in clipboard",
+                                      type: "error",
+                                    });
+                                  }
+                                } catch (err) {
+                                  setNotification({
+                                    message:
+                                      "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.",
+                                    type: "error",
+                                  });
+                                }
+                              }}
+                              className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${
+                                isDark
+                                  ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400"
+                                  : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
+                              }`}
+                            >
+                              <ClipboardPaste className="w-3.5 h-3.5" />
+                              <span className="text-[9px] font-bold uppercase tracking-wider">
+                                Paste
+                              </span>
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleScan(
+                                  isHosting ? copyPasteAnswer : copyPasteOffer,
+                                )
+                              }
+                              disabled={
+                                isHosting
+                                  ? !copyPasteAnswer.trim()
+                                  : !copyPasteOffer.trim()
+                              }
+                              className="flex-[2] py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:opacity-30 disabled:grayscale text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              {isHosting ? "Establish" : "Verify & Generate"}
                             </button>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+
+                          <AnimatePresence>
+                            {clipboardDetectedSdp && (
+                              <motion.div
+                                initial={{
+                                  opacity: 0,
+                                  height: 0,
+                                  marginTop: 0,
+                                }}
+                                animate={{
+                                  opacity: 1,
+                                  height: "auto",
+                                  marginTop: 8,
+                                }}
+                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                className={`overflow-hidden rounded-xl border ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-100"}`}
+                              >
+                                <div className="p-2 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Activity
+                                      className={`w-3 h-3 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}
+                                    />
+                                    <span
+                                      className={`text-[9px] font-black uppercase tracking-wider ${isDark ? "text-indigo-300" : "text-indigo-700"}`}
+                                    >
+                                      Detected
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      isHosting
+                                        ? setCopyPasteAnswer(
+                                            clipboardDetectedSdp,
+                                          )
+                                        : setCopyPasteOffer(
+                                            clipboardDetectedSdp,
+                                          );
+                                      setClipboardDetectedSdp(null);
+                                    }}
+                                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.1em] transition-all"
+                                  >
+                                    Import
+                                  </button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    );
+
+                    return isHosting ? (
+                      <>
+                        {yourSdpSection}
+                        {remoteSdpSection}
+                      </>
+                    ) : (
+                      <>
+                        {remoteSdpSection}
+                        {yourSdpSection}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1712,15 +1818,20 @@ export const TransferNodeRenderer: React.FC<{
 
                 <div className="flex-1 relative overflow-hidden bg-transparent flex flex-col">
                   {showScrollDown && (
-                    <button 
+                    <button
                       onClick={() => {
-                        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+                        scrollRef.current?.scrollTo({
+                          top: scrollRef.current.scrollHeight,
+                          behavior: "smooth",
+                        });
                         setShowScrollDown(false);
                       }}
                       className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-full shadow-lg flex items-center gap-2 hover:bg-indigo-700 transition-all border border-indigo-400/30"
                     >
                       <ChevronRight className="w-3.5 h-3.5 rotate-90" />
-                      {unreadCount > 0 ? `${unreadCount} New Messages` : "Go to bottom"}
+                      {unreadCount > 0
+                        ? `${unreadCount} New Messages`
+                        : "Go to bottom"}
                     </button>
                   )}
                   <AnimatePresence mode="wait">
@@ -1734,6 +1845,7 @@ export const TransferNodeRenderer: React.FC<{
                       >
                         <div
                           ref={scrollRef}
+                          onWheelCapture={(e) => e.stopPropagation()}
                           className={`flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
                           style={{
                             backgroundImage: isDark
@@ -1833,7 +1945,7 @@ export const TransferNodeRenderer: React.FC<{
                                       <div
                                         className={`p-3 rounded-2xl min-w-[240px] flex items-center gap-4 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white"}`}
                                       >
-                                        <button 
+                                        <button
                                           onClick={() => setSelectedMedia(msg)}
                                           className="p-2.5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:scale-110 active:scale-95 transition-all"
                                         >
@@ -1886,7 +1998,10 @@ export const TransferNodeRenderer: React.FC<{
                                             ? "hover:bg-white/5"
                                             : "hover:bg-black/5"
                                         }`}
-                                        onClick={() => msg.fileType === "pdf" && setSelectedMedia(msg)}
+                                        onClick={() =>
+                                          msg.fileType === "pdf" &&
+                                          setSelectedMedia(msg)
+                                        }
                                       >
                                         <div
                                           className={`p-3 rounded-xl ${
@@ -2018,8 +2133,8 @@ export const TransferNodeRenderer: React.FC<{
                                   files.forEach((file) => {
                                     const reader = new FileReader();
                                     reader.onload = (re) => {
-                                      const content =
-                                        re.target?.result as string;
+                                      const content = re.target
+                                        ?.result as string;
                                       const fType = getFileType(file.name);
                                       sendLargeMessage(
                                         "file",
@@ -2097,6 +2212,7 @@ export const TransferNodeRenderer: React.FC<{
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 1.02 }}
                         className="h-full overflow-y-auto p-4 flex flex-col"
+                        onWheelCapture={(e) => e.stopPropagation()}
                       >
                         <div className="flex items-center justify-between mb-4 px-2">
                           <h4
@@ -2252,9 +2368,7 @@ export const TransferNodeRenderer: React.FC<{
                           </span>
                           <span className="w-1.5 h-1.5 rounded-full bg-white" />
                           <span>
-                            {new Date(
-                              selectedMedia.timestamp,
-                            ).toLocaleString()}
+                            {new Date(selectedMedia.timestamp).toLocaleString()}
                           </span>
                         </div>
                       </div>
@@ -2322,14 +2436,17 @@ export const TransferNodeRenderer: React.FC<{
                             <div className="p-4 border-b bg-slate-50 flex items-center justify-between">
                               <div className="flex items-center gap-3">
                                 <FileText className="w-5 h-5 text-indigo-600" />
-                                <span className="text-sm font-bold text-slate-800 truncate">{selectedMedia.fileName}</span>
+                                <span className="text-sm font-bold text-slate-800 truncate">
+                                  {selectedMedia.fileName}
+                                </span>
                               </div>
-                              <a 
-                                href={selectedMedia.content} 
+                              <a
+                                href={selectedMedia.content}
                                 download={selectedMedia.fileName}
                                 className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
                               >
-                                <Download className="w-3.5 h-3.5" /> Download PDF
+                                <Download className="w-3.5 h-3.5" /> Download
+                                PDF
                               </a>
                             </div>
                             <iframe
