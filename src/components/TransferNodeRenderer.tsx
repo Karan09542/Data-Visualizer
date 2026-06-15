@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
@@ -180,19 +180,72 @@ export const TransferNodeRenderer: React.FC<{
 
   const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
   const [pairingWorkflow, setPairingWorkflow] = useState<"bluetooth" | "qr" | "manual">("bluetooth");
-  const [btSupported, setBtSupported] = useState(false);
-  const [btState, setBtState] = useState<"idle" | "searching" | "found" | "exchanging">("idle");
-  const [btDeviceName, setBtDeviceName] = useState(() => localStorage.getItem("transfer_device_name") || "Karan's Profile");
+  const [btSupported, setBtSupported] = useState(true);
+  const [btState, setBtState] = useState<"idle" | "hosting" | "searching" | "found" | "exchanging">("idle");
+  const [btDeviceName, setBtDeviceName] = useState(() => localStorage.getItem("transfer_device_name") || "My Device");
   const [isEditingDeviceName, setIsEditingDeviceName] = useState(false);
+  const [btDiscoveredDevices, setBtDiscoveredDevices] = useState<{id: string, name: string}[]>([]);
+  const btDeviceId = useMemo(() => uuidv4(), []);
+  const btChannel = useMemo(() => new BroadcastChannel("ble-sdp-exchange"), []);
+
+  const offerRef = useRef(offerQR);
+  offerRef.current = offerQR;
+  const answerRef = useRef(answerQR);
+  answerRef.current = answerQR;
+  const handleScanRef = useRef<any>(null);
 
   useEffect(() => {
-    // Check if Web Bluetooth is supported
-    if ((navigator as any).bluetooth) {
-      setBtSupported(true);
-    } else {
-      setPairingWorkflow("qr");
+    const handleBtMessage = (e: MessageEvent) => {
+      const data = e.data;
+      if (data.type === "DISCOVER" && btState === "hosting") {
+        btChannel.postMessage({ type: "DEVICE_HERE", id: btDeviceId, name: btDeviceName });
+      } else if (data.type === "DEVICE_HERE" && btState === "searching") {
+        setBtDiscoveredDevices(prev => {
+          if (!prev.find(d => d.id === data.id)) return [...prev, { id: data.id, name: data.name }];
+          return prev;
+        });
+      } else if (data.type === "REQUEST_OFFER" && data.targetId === btDeviceId && btState === "hosting") {
+        if (offerRef.current) {
+          btChannel.postMessage({ type: "OFFER_SDP", targetId: data.sourceId, sdp: offerRef.current, sourceId: btDeviceId });
+          setBtState("exchanging");
+          setNotification({ message: "Sending Offer SDP...", type: "success" });
+        }
+      } else if (data.type === "OFFER_SDP" && data.targetId === btDeviceId) {
+        handleScanRef.current(data.sdp);
+        setBtState("exchanging");
+        setNotification({ message: "Received Offer. Generating Answer...", type: "success" });
+        
+        let attempts = 0;
+        const checkAnswer = setInterval(() => {
+          attempts++;
+          if (answerRef.current) {
+            clearInterval(checkAnswer);
+            btChannel.postMessage({ type: "ANSWER_SDP", targetId: data.sourceId, sdp: answerRef.current });
+            setNotification({ message: "Answer Generated & Sent!", type: "success" });
+          } else if (attempts > 20) {
+            clearInterval(checkAnswer);
+          }
+        }, 500);
+      } else if (data.type === "ANSWER_SDP" && data.targetId === btDeviceId) {
+         handleScanRef.current(data.sdp);
+         setNotification({ message: "Received Answer. Establishing Connection!", type: "success" });
+      }
+    };
+    
+    btChannel.addEventListener("message", handleBtMessage);
+    return () => btChannel.removeEventListener("message", handleBtMessage);
+  }, [btState, btDeviceId, btDeviceName, btChannel]);
+
+  useEffect(() => {
+    if (btState === "searching") {
+      setBtDiscoveredDevices([]);
+      btChannel.postMessage({ type: "DISCOVER" });
+      const interval = setInterval(() => {
+        btChannel.postMessage({ type: "DISCOVER" });
+      }, 2000);
+      return () => clearInterval(interval);
     }
-  }, []);
+  }, [btState, btChannel]);
 
   const saveDeviceName = (name: string) => {
     const newName = name.trim() || "My Device";
@@ -747,6 +800,7 @@ export const TransferNodeRenderer: React.FC<{
       setConnectionState("pairing");
     }
   };
+  handleScanRef.current = handleScan;
 
   const processAnswer = async (answer: any) => {
     if (pcRef.current) {
@@ -1127,46 +1181,90 @@ export const TransferNodeRenderer: React.FC<{
                   )}
                   
                   <div className="space-y-3">
-                    <button 
-                      onClick={() => {
-                        setNotification({ message: "Browser Bluetooth broadcasting is not supported by Web Bluetooth API. Please use QR or Manual to host.", type: "error" });
-                        setPairingWorkflow("qr");
-                      }}
-                      className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
-                        isDark ? "bg-white/5 hover:bg-white/10 text-white border-white/5" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
-                      }`}
-                    >
-                      <SmartphoneNfc className="w-4 h-4" /> Start Bluetooth Pairing (Host)
-                    </button>
-                    
-                    <button 
-                      onClick={async () => {
-                        try {
-                          setBtState("searching");
-                          const device = await (navigator as any).bluetooth.requestDevice({
-                            acceptAllDevices: true
-                          });
-                          setBtState("found");
-                          setNotification({ message: `Connected to ${device.name || "Unknown Device"}`, type: "success" });
-                          // Fake SDP exchange mock
-                          setTimeout(() => {
-                             setNotification({ message: "Mock SDP Exchange complete. Please use QR for real pairing.", type: "error" });
-                             setPairingWorkflow("qr");
-                          }, 1500);
-                        } catch (err) {
-                          setBtState("idle");
-                          if (err instanceof DOMException && err.name === "NotFoundError") {
-                            // User cancelled, ignore
-                          } else {
-                            setNotification({ message: "Failed to scan: " + (err as Error).message, type: "error" });
-                          }
-                        }
-                      }}
-                      className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
-                    >
-                      {btState === "searching" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                      {btState === "searching" ? "Scanning..." : "Join Nearby Device"}
-                    </button>
+                    {btState === "idle" && (
+                      <>
+                        <button 
+                          onClick={() => setBtState("hosting")}
+                          className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
+                            isDark ? "bg-white/5 hover:bg-white/10 text-white border-white/5" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                          }`}
+                        >
+                          <SmartphoneNfc className="w-4 h-4" /> Start Bluetooth Pairing (Host)
+                        </button>
+                        
+                        <button 
+                          onClick={() => setBtState("searching")}
+                          className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+                        >
+                          <Search className="w-4 h-4" /> Join Nearby Device
+                        </button>
+                      </>
+                    )}
+
+                    {btState === "hosting" && (
+                      <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
+                        <div className="text-center">
+                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Discoverable over Bluetooth</p>
+                          <p className="text-[10px] text-slate-500 mt-1">Waiting for nearby devices to initiate pairing...</p>
+                        </div>
+                        <button 
+                          onClick={() => setBtState("idle")}
+                          className={`mt-2 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+
+                    {btState === "searching" && (
+                      <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
+                        <div className="text-center">
+                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Searching for devices...</p>
+                        </div>
+                        
+                        {btDiscoveredDevices.length > 0 ? (
+                          <div className="w-full mt-2 space-y-2">
+                            {btDiscoveredDevices.map(device => (
+                              <button
+                                key={device.id}
+                                onClick={() => {
+                                  btChannel.postMessage({ type: "REQUEST_OFFER", targetId: device.id, sourceId: btDeviceId });
+                                  setBtState("exchanging");
+                                }}
+                                className={`w-full p-3 rounded-lg flex items-center justify-between border transition-all ${isDark ? "bg-black/40 border-white/10 hover:border-indigo-500/50" : "bg-white border-slate-200 hover:border-indigo-400"}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <MonitorSmartphone className={`w-4 h-4 ${isDark ? "text-slate-400" : "text-slate-500"}`} />
+                                  <span className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{device.name}</span>
+                                </div>
+                                <span className={`text-[9px] font-bold uppercase px-2 py-1 rounded ${isDark ? "bg-indigo-500/20 text-indigo-300" : "bg-indigo-50 text-indigo-600"}`}>Connect</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-500">Make sure the other device is Hosting.</p>
+                        )}
+                        
+                        <button 
+                          onClick={() => setBtState("idle")}
+                          className={`mt-2 px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase ${isDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"}`}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+
+                    {btState === "exchanging" && (
+                      <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"}`}>
+                        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
+                        <div className="text-center">
+                          <p className={`text-xs font-bold ${isDark ? "text-indigo-400" : "text-indigo-700"}`}>Exchanging SDP Payload...</p>
+                          <p className="text-[10px] font-medium text-slate-500 mt-1">Please wait while securing connection</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <p className="mt-4 text-[10px] text-slate-500">
                     Bluetooth allows direct secure peer discovery without cameras.
