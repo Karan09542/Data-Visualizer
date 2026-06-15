@@ -38,6 +38,9 @@ import {
   Search,
   Clock,
   Eye,
+  ClipboardPaste,
+  QrCode,
+  LogIn,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -99,6 +102,8 @@ export const TransferNodeRenderer: React.FC<{
 
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [copyPasteOffer, setCopyPasteOffer] = useState("");
+  const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -171,8 +176,39 @@ export const TransferNodeRenderer: React.FC<{
   } | null>(null);
 
   const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
+  const [pairingWorkflow, setPairingWorkflow] = useState<"qr" | "manual">("qr");
+  const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<string | null>(null);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  useEffect(() => {
+    const checkClipboardForSdp = async () => {
+      if (connectionState === "pairing") {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text && text.length > 50 && (text.startsWith("b64:") || text.startsWith("uri:") || text.startsWith("u16:"))) {
+            if (text !== offerQR && text !== answerQR && text !== copyPasteOffer && text !== copyPasteAnswer) {
+              setClipboardDetectedSdp(text.trim());
+            } else {
+              setClipboardDetectedSdp(null);
+            }
+          } else {
+            setClipboardDetectedSdp(null);
+          }
+        } catch (err) {
+          setClipboardDetectedSdp(null);
+        }
+      }
+    };
+
+    window.addEventListener("focus", checkClipboardForSdp);
+    // Also check once when entering pairing state if focused
+    if (document.hasFocus()) {
+      checkClipboardForSdp();
+    }
+
+    return () => window.removeEventListener("focus", checkClipboardForSdp);
+  }, [connectionState, offerQR, answerQR, copyPasteOffer, copyPasteAnswer]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -300,8 +336,6 @@ export const TransferNodeRenderer: React.FC<{
     },
     [scanMode],
   );
-  const [copyPasteOffer, setCopyPasteOffer] = useState("");
-  const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
 
   const CHUNK_SIZE = 16384;
 
@@ -996,109 +1030,265 @@ export const TransferNodeRenderer: React.FC<{
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center gap-6 py-2"
+            className="flex flex-col items-center gap-6 py-2 w-full"
           >
-            {showDiagnostics ? (
-              <div className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}>
-                <div className="flex items-center justify-between pb-2 border-b border-gray-500/20">
-                  <span className="text-[10px] font-black uppercase text-indigo-400">Diagnostics</span>
-                  <button onClick={() => setShowDiagnostics(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+            <div className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}>
+              <button
+                onClick={() => setPairingWorkflow("qr")}
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  pairingWorkflow === "qr"
+                    ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                QR Scan
+              </button>
+              <button
+                onClick={() => setPairingWorkflow("manual")}
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  pairingWorkflow === "manual"
+                    ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                Manual SDP
+              </button>
+            </div>
+
+            {pairingWorkflow === "qr" ? (
+              <>
+                {showDiagnostics ? (
+                  <div className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}>
+                    <div className="flex items-center justify-between pb-2 border-b border-gray-500/20">
+                      <span className="text-[10px] font-black uppercase text-indigo-400">Diagnostics</span>
+                      <button onClick={() => setShowDiagnostics(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-mono mt-2">
+                      <div className="text-slate-500">Original SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.originalSdpSize} B</div>
+                      <div className="text-slate-500">Filtered SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.filteredSdpSize} B</div>
+                      <div className="text-slate-500">ICE Candidates:</div><div className={isDark ? "text-white" : "text-slate-900"}>{diagnostics.candidateCount}</div>
+                      <div className="text-slate-500">Compressed:</div><div className={isDark ? "text-emerald-400" : "text-emerald-600"}>{diagnostics.compressedSize} B ({diagnostics.compressionRatio}%)</div>
+                      <div className="text-slate-500">Gen Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.genTime.toFixed(1)} ms</div>
+                      {diagnostics.scanTime > 0 && <><div className="text-slate-500">Scan Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.scanTime.toFixed(1)} ms</div></>}
+                      {diagnostics.transferSpeed > 0 && <><div className="text-slate-500">TX Speed:</div><div className="text-blue-400">{formatFileSize(diagnostics.transferSpeed)}/s</div></>}
+                      <div className="text-slate-500">Buffer:</div><div className={diagnostics.bufferedAmount > 1024 * 512 ? "text-amber-400" : "text-slate-400"}>{formatFileSize(diagnostics.bufferedAmount)}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group">
+                    <button 
+                      onClick={() => setShowDiagnostics(true)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"
+                    >
+                      <Activity className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                    <QRCodeSVG
+                      value={offerQR || answerQR}
+                      size={200}
+                      level={qrDensity}
+                      marginSize={1}
+                    />
+                  </div>
+                )}
+
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-bold text-white">
+                    Device Pairing Required
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Scan this code on the other device to link
+                  </p>
+                  {notificationPermission === "default" && (
+                    <button 
+                      onClick={requestNotificationPermission}
+                      className="mt-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
+                    >
+                      Enable Browser Notifications
+                    </button>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-mono mt-2">
-                  <div className="text-slate-500">Original SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.originalSdpSize} B</div>
-                  <div className="text-slate-500">Filtered SDP:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.filteredSdpSize} B</div>
-                  <div className="text-slate-500">ICE Candidates:</div><div className={isDark ? "text-white" : "text-slate-900"}>{diagnostics.candidateCount}</div>
-                  <div className="text-slate-500">Compressed:</div><div className={isDark ? "text-emerald-400" : "text-emerald-600"}>{diagnostics.compressedSize} B ({diagnostics.compressionRatio}%)</div>
-                  <div className="text-slate-500">Gen Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.genTime.toFixed(1)} ms</div>
-                  {diagnostics.scanTime > 0 && <><div className="text-slate-500">Scan Time:</div><div className={isDark ? "text-slate-300" : "text-slate-700"}>{diagnostics.scanTime.toFixed(1)} ms</div></>}
-                  {diagnostics.transferSpeed > 0 && <><div className="text-slate-500">TX Speed:</div><div className="text-blue-400">{formatFileSize(diagnostics.transferSpeed)}/s</div></>}
-                  <div className="text-slate-500">Buffer:</div><div className={diagnostics.bufferedAmount > 1024 * 512 ? "text-amber-400" : "text-slate-400"}>{formatFileSize(diagnostics.bufferedAmount)}</div>
+                <div className="flex gap-2 w-full max-w-[200px]">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(offerQR || answerQR);
+                      setNotification({ message: "SDP Copied to Clipboard", type: "success" });
+                    }}
+                    disabled={!(offerQR || answerQR)}
+                    className={`flex-1 py-1.5 px-3 rounded-lg border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap ${
+                      isDark
+                        ? "border-white/5 bg-white/5 hover:bg-white/10 text-white"
+                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <Copy className="w-3 h-3" /> Copy SDP
+                  </button>
                 </div>
-              </div>
+              </>
             ) : (
-              <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group">
-                <button 
-                  onClick={() => setShowDiagnostics(true)}
-                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"
-                >
-                  <Activity className="w-3.5 h-3.5 text-slate-500" />
-                </button>
-                <QRCodeSVG
-                  value={offerQR || answerQR}
-                  size={200}
-                  level={qrDensity}
-                  marginSize={1}
-                />
+              <div className="w-full space-y-3">
+                {/* Manual Section - Your SDP */}
+                <div className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${
+                  isDark ? "bg-white/5 border-white/10 hover:border-indigo-500/30" : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1 rounded-lg ${isDark ? "bg-indigo-500/10" : "bg-indigo-50"}`}>
+                        <Share2 className={`w-3.5 h-3.5 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
+                      </div>
+                      <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                        1. Your {isHosting ? "Offer" : "Answer"} SDP
+                      </p>
+                    </div>
+                    {offerQR || answerQR ? (
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${
+                        isDark ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600"
+                      }`}>
+                        Generated
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex gap-3 items-stretch">
+                    <div className="flex-1 min-w-0">
+                      {offerQR || answerQR ? (
+                        <div className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors ${
+                          isDark ? "bg-black/40 border border-white/5" : "bg-slate-50 border border-slate-100"
+                        }`}>
+                          <div className={`text-[11px] font-mono break-all line-clamp-1 leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                            {offerQR || answerQR}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5">
+                            <Activity className="w-2.5 h-2.5 text-slate-500" />
+                            <span className="text-[9px] font-medium text-slate-500">Payload: {(offerQR || answerQR).length} bytes</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex items-center justify-center p-3 text-center ${
+                          isDark ? "border-white/5 bg-black/20" : "border-slate-100 bg-slate-50/50"
+                        }`}>
+                          <p className={`text-[9px] font-medium italic ${isDark ? "text-slate-600" : "text-slate-400"}`}>
+                            Waiting for remote {isHosting ? "connection" : "offer"}...
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(offerQR || answerQR);
+                        setNotification({ message: "SDP Copied to Clipboard", type: "success" });
+                      }}
+                      disabled={!(offerQR || answerQR)}
+                      className="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-white transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg shadow-indigo-500/20"
+                    >
+                      <Copy className="w-4 h-4" />
+                      <span className="text-[9px] font-black uppercase tracking-widest">Copy</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Manual Section - Remote SDP */}
+                <div className={`p-4 rounded-[24px] border relative transition-all duration-300 ${
+                  isDark ? "bg-white/5 border-white/10" : "bg-white border-slate-200 shadow-sm"
+                }`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={`p-1 rounded-lg ${isDark ? "bg-emerald-500/10" : "bg-emerald-50"}`}>
+                      <LogIn className={`w-3.5 h-3.5 ${isDark ? "text-emerald-400" : "text-emerald-600"}`} />
+                    </div>
+                    <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                      2. Remote {isHosting ? "Answer" : "Offer"} SDP
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <textarea
+                        placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
+                        className={`w-full h-24 p-3 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${
+                          isDark ? "bg-black/40 text-white placeholder-slate-600 border border-white/5" : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
+                        }`}
+                        value={isHosting ? copyPasteAnswer : copyPasteOffer}
+                        onChange={(e) => isHosting ? setCopyPasteAnswer(e.target.value) : setCopyPasteOffer(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                       <button
+                         onClick={async () => {
+                           try {
+                             const text = await navigator.clipboard.readText();
+                             if (text && text.trim().length > 50) {
+                               isHosting ? setCopyPasteAnswer(text.trim()) : setCopyPasteOffer(text.trim());
+                               setNotification({ message: "SDP Pasted from Clipboard", type: "success" });
+                               setClipboardDetectedSdp(null);
+                             } else {
+                               setNotification({ message: "No valid SDP payload in clipboard", type: "error" });
+                             }
+                           } catch (err) {
+                             setNotification({ message: "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.", type: "error" });
+                           }
+                         }}
+                         className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${
+                           isDark ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400" : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
+                         }`}
+                       >
+                         <ClipboardPaste className="w-3.5 h-3.5" />
+                         <span className="text-[9px] font-bold uppercase tracking-wider">Paste</span>
+                       </button>
+
+                      <button
+                        onClick={() => handleScan(isHosting ? copyPasteAnswer : copyPasteOffer)}
+                        disabled={isHosting ? !copyPasteAnswer.trim() : !copyPasteOffer.trim()}
+                        className="flex-[2] py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:opacity-30 disabled:grayscale text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        {isHosting ? "Establish" : "Verify & Generate"}
+                      </button>
+                    </div>
+
+                    <AnimatePresence>
+                      {clipboardDetectedSdp && (
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0, marginTop: 0 }} 
+                          animate={{ opacity: 1, height: "auto", marginTop: 8 }} 
+                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                          className={`overflow-hidden rounded-xl border ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-100"}`}
+                        >
+                          <div className="p-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Activity className={`w-3 h-3 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
+                              <span className={`text-[9px] font-black uppercase tracking-wider ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>Detected</span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                isHosting ? setCopyPasteAnswer(clipboardDetectedSdp) : setCopyPasteOffer(clipboardDetectedSdp);
+                                setClipboardDetectedSdp(null);
+                              }}
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.1em] transition-all"
+                            >
+                              Import
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
               </div>
             )}
 
-            <div className="text-center space-y-1">
-              <p className="text-sm font-bold text-white">
-                Device Pairing Required
-              </p>
-              <p className="text-xs text-slate-500">
-                Scan this code on the other device to link
-              </p>
-              {notificationPermission === "default" && (
-                <button 
-                  onClick={requestNotificationPermission}
-                  className="mt-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
-                >
-                  Enable Browser Notifications
-                </button>
-              )}
-            </div>
-
-            <div className="w-full flex flex-col gap-2">
-              <div
-                className={`flex gap-2 p-1.5 rounded-xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-100"}`}
+            <div className="w-full flex gap-2">
+              <button
+                onClick={resetState}
+                className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${
+                  isDark
+                    ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
+                    : "border-red-200 text-red-600 hover:bg-red-50"
+                }`}
               >
-                <input
-                  type="text"
-                  placeholder={
-                    offerQR ? "Paste answer code..." : "Paste offer code..."
-                  }
-                  className="flex-1 bg-transparent text-xs px-3 focus:outline-none"
-                  value={offerQR ? copyPasteAnswer : copyPasteOffer}
-                  onChange={(e) =>
-                    offerQR
-                      ? setCopyPasteAnswer(e.target.value)
-                      : setCopyPasteOffer(e.target.value)
-                  }
-                />
-                <button
-                  onClick={() =>
-                    handleScan(offerQR ? copyPasteAnswer : copyPasteOffer)
-                  }
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
-                >
-                  Verify
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    navigator.clipboard.writeText(offerQR || answerQR)
-                  }
-                  className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${
-                    isDark
-                      ? "border-white/5 bg-white/5 hover:bg-white/10"
-                      : "border-slate-100 bg-slate-50 hover:bg-slate-100"
-                  }`}
-                >
-                  <Copy className="w-3.5 h-3.5" /> Copy String
-                </button>
-                <button
-                  onClick={resetState}
-                  className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${
-                    isDark
-                      ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
-                      : "border-red-200 text-red-600 hover:bg-red-50"
-                  }`}
-                >
-                  Cancel
-                </button>
-              </div>
+                Cancel Pairing
+              </button>
             </div>
           </motion.div>
         )}
