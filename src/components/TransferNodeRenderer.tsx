@@ -42,7 +42,8 @@ import {
   ClipboardPaste,
   QrCode,
   LogIn,
-  Bluetooth,
+  Radio,
+  Wifi,
   MonitorSmartphone,
   SmartphoneNfc,
 } from "lucide-react";
@@ -180,7 +181,7 @@ export const TransferNodeRenderer: React.FC<{
   } | null>(null);
 
   const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
-  const [pairingWorkflow, setPairingWorkflow] = useState<"bluetooth" | "qr" | "manual">("bluetooth");
+  const [pairingWorkflow, setPairingWorkflow] = useState<"local_net" | "qr" | "manual">("local_net");
   const [btSupported, setBtSupported] = useState(true);
   const [btState, setBtState] = useState<"idle" | "hosting" | "searching" | "found" | "exchanging">("idle");
   const [btDeviceName, setBtDeviceName] = useState(() => localStorage.getItem("transfer_device_name") || "My Device");
@@ -1168,15 +1169,15 @@ export const TransferNodeRenderer: React.FC<{
             <div className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}>
               {btSupported && (
                 <button
-                  onClick={() => setPairingWorkflow("bluetooth")}
-                  className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                    pairingWorkflow === "bluetooth"
+                  onClick={() => setPairingWorkflow("local_net")}
+                  className={`flex-[1.5] py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    pairingWorkflow === "local_net"
                       ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
                       : "text-slate-500 hover:text-slate-300"
                   }`}
                 >
-                  <Bluetooth className="w-3.5 h-3.5" />
-                  Bluetooth
+                  <Wifi className="w-3.5 h-3.5" />
+                  Local Net
                 </button>
               )}
               <button
@@ -1203,11 +1204,11 @@ export const TransferNodeRenderer: React.FC<{
               </button>
             </div>
 
-            {pairingWorkflow === "bluetooth" ? (
+            {pairingWorkflow === "local_net" ? (
               <div className="w-full flex justify-center items-center py-4">
                 <div className={`w-full p-6 text-center rounded-[24px] border border-dashed ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
                   <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${isDark ? "bg-indigo-500/20 text-indigo-400" : "bg-indigo-100 text-indigo-600"}`}>
-                    <Bluetooth className="w-8 h-8" />
+                    <Radio className="w-8 h-8" />
                   </div>
                   
                   {isEditingDeviceName ? (
@@ -1245,7 +1246,7 @@ export const TransferNodeRenderer: React.FC<{
                             isDark ? "bg-white/5 hover:bg-white/10 text-white border-white/5" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
                           }`}
                         >
-                          <SmartphoneNfc className="w-4 h-4" /> Start Bluetooth Pairing (Host)
+                          <Radio className="w-4 h-4" /> Start Local Discovery (Host)
                         </button>
                         
                         <button 
@@ -1261,7 +1262,7 @@ export const TransferNodeRenderer: React.FC<{
                       <div className={`p-4 rounded-xl border flex flex-col items-center gap-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
                         <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
                         <div className="text-center">
-                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Discoverable over Bluetooth</p>
+                          <p className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Discoverable on Local Network</p>
                           <p className="text-[10px] text-slate-500 mt-1">Waiting for nearby devices to initiate pairing...</p>
                         </div>
                         <div className="w-full mt-2 flex gap-2">
@@ -1342,7 +1343,7 @@ export const TransferNodeRenderer: React.FC<{
                     )}
                   </div>
                   <p className="mt-4 text-[10px] text-slate-500">
-                    Bluetooth allows direct secure peer discovery without cameras.
+                    Local Network relay allows secure peer discovery without cameras.
                   </p>
                 </div>
               </div>
