@@ -90,6 +90,8 @@ export function SmartFallbackMedia({
         src={currentUrl}
         crossOrigin={crossOrigin as any}
         onError={handleError}
+        playsInline={true}
+        webkit-playsinline="true"
         {...(props as any)}
       />
     );

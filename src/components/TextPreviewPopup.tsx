@@ -60,27 +60,27 @@ const TextPreviewPopup: React.FC = () => {
              className="relative w-full max-w-4xl h-full max-h-[85vh] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-slate-800/80 border-b border-slate-700 backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg hidden sm:block">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-slate-800/80 border-b border-slate-700 backdrop-blur-sm shrink-0">
+              <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
+                <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg hidden sm:block shrink-0">
                   <Type size={18} />
                 </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-semibold text-white tracking-tight flex items-center gap-2">
-                    {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown View' : (viewMode === 'html' ? 'HTML HTML Preview' : 'Raw View'))}
-                    <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 font-mono uppercase">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm sm:text-base font-semibold text-white tracking-tight flex items-center gap-2 whitespace-nowrap overflow-hidden text-ellipsis">
+                    {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown View' : (viewMode === 'html' ? 'HTML Preview' : 'Raw View'))}
+                    <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 font-mono uppercase shrink-0">
                       {activePreviewPath?.split('.').pop()}
                     </span>
                   </h3>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5 max-w-[150px] sm:max-w-xs truncate" title={activePreviewPath || ''}>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate w-full" title={activePreviewPath || ''}>
                     {activePreviewPath}
                   </p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 w-full sm:w-auto overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
                 {/* Mode Toggles */}
-                <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 mr-2">
+                <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 mr-2 shrink-0">
                   <button
                     onClick={() => setViewMode('raw')}
                     className={`p-1.5 rounded-md transition-all ${viewMode === 'raw' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}

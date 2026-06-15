@@ -263,36 +263,38 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
     return (
       <div className="flex flex-col h-full w-full bg-slate-950/20 dark:bg-slate-950/60 rounded-xl overflow-hidden border border-slate-200/60 dark:border-slate-850">
         {/* PDF Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-slate-700 dark:text-slate-200 z-10 w-full">
-          <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
-            <AlertCircle size={14} className="animate-pulse text-amber-500" />
-            <span>CORS Bypass: Loaded via Google Docs Embed Mode</span>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 px-4 py-2 sm:py-3 text-slate-700 dark:text-slate-200 z-10 w-full">
+          <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 font-medium text-center">
+            <div className="flex items-center gap-1.5">
+              <AlertCircle size={14} className="animate-pulse text-amber-500 flex-shrink-0" />
+              <span>CORS Bypass: Loaded via Google Docs Embed Mode</span>
+            </div>
             <button
               onClick={() => {
                 setReloadKey((prev) => prev + 1);
               }}
-              className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-[10px] uppercase font-bold tracking-wider transition border border-amber-500/20 cursor-pointer"
+              className="mt-1 sm:mt-0 px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-[10px] uppercase font-bold tracking-wider transition border border-amber-500/20 cursor-pointer"
             >
               Retry Interactive
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 ml-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-center">
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 transition"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 transition"
               title="Open in New Tab"
             >
-              <ExternalLink size={15} />
+              <ExternalLink size={16} />
             </a>
             <button
               onClick={downloadFile}
-              className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 transition"
+              className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-850 text-slate-500 dark:text-slate-400 transition"
               title="Download PDF"
             >
-              <Download size={15} />
+              <Download size={16} />
             </button>
           </div>
         </div>
@@ -313,80 +315,80 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
   return (
     <div className="flex flex-col h-full w-full bg-slate-950/20 dark:bg-slate-950/60 rounded-xl overflow-hidden border border-slate-200/60 dark:border-slate-850">
       {/* PDF Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-slate-700 dark:text-slate-200 z-10">
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center justify-center sm:justify-between gap-3 sm:gap-2 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-2 sm:py-2 text-slate-700 dark:text-slate-200 z-10">
+        <div className="flex items-center justify-center gap-1 w-full sm:w-auto">
           <button
             onClick={handlePrevPage}
             disabled={currentPage <= 1 || rendering}
-            className="p-1.5 rounded bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
+            className="p-1.5 sm:p-2 rounded-lg bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
             title="Previous Page"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={18} />
           </button>
-          <span className="text-xs font-mono px-2 font-medium">
+          <span className="text-xs sm:text-sm font-mono px-2 sm:px-3 font-medium min-w-[90px] text-center">
             Page {currentPage} / {totalPages}
           </span>
           <button
             onClick={handleNextPage}
             disabled={currentPage >= totalPages || rendering}
-            className="p-1.5 rounded bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
+            className="p-1.5 sm:p-2 rounded-lg bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
             title="Next Page"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={18} />
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto">
           <button
             onClick={handleZoomOut}
             disabled={scale <= 0.5 || rendering}
-            className="p-1.5 rounded bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
+            className="p-1.5 sm:p-2 rounded-lg bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
             title="Zoom Out"
           >
             <ZoomOut size={16} />
           </button>
-          <span className="text-xs font-mono font-medium min-w-[36px] text-center">
+          <span className="text-xs sm:text-sm font-mono font-medium min-w-[48px] text-center">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={handleZoomIn}
             disabled={scale >= 3.0 || rendering}
-            className="p-1.5 rounded bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
+            className="p-1.5 sm:p-2 rounded-lg bg-slate-200/50 hover:bg-slate-200 dark:bg-slate-800/50 dark:hover:bg-slate-800 disabled:opacity-40 transition"
             title="Zoom In"
           >
             <ZoomIn size={16} />
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex items-center justify-center gap-1.5 w-full sm:w-auto mt-1 sm:mt-0">
           {rendering && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-blue-500 mr-2">
-              <Loader2 size={12} className="animate-spin" /> Rendering...
+            <span className="flex items-center gap-1 text-[11px] sm:text-xs font-medium text-blue-500 mr-2">
+              <Loader2 size={14} className="animate-spin" /> Rendering...
             </span>
           )}
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1.5 rounded hover:bg-slate-250 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition"
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-250 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition"
             title="Open in New Tab"
           >
-            <ExternalLink size={15} />
+            <ExternalLink size={18} />
           </a>
           <button
             onClick={downloadFile}
-            className="p-1.5 rounded hover:bg-slate-250 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition"
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-250 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition"
             title="Download PDF"
           >
-            <Download size={15} />
+            <Download size={18} />
           </button>
         </div>
       </div>
 
       {/* Canvas container with scrollbars */}
-      <div className="flex-1 w-full overflow-auto custom-scrollbar p-6 bg-slate-800 dark:bg-slate-900/40 flex items-start justify-center min-h-[300px]">
-        <div className="shadow-xl border border-slate-350 dark:border-slate-800 rounded bg-white overflow-hidden">
-          <canvas ref={canvasRef} className="block max-w-full" />
+      <div className="flex-1 w-full overflow-auto custom-scrollbar p-2 sm:p-6 bg-slate-800 dark:bg-slate-900/40 flex items-start justify-center min-h-[300px] touch-pan-x touch-pan-y relative" style={{ overscrollBehavior: 'contain' }}>
+        <div className="shadow-xl border border-slate-350 dark:border-slate-800 rounded bg-white overflow-visible flex-shrink-0">
+          <canvas ref={canvasRef} className="block" />
         </div>
       </div>
     </div>

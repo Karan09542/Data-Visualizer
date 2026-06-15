@@ -41,7 +41,6 @@ import {
   ClipboardPaste,
   QrCode,
   LogIn,
-  Plus,
   Scan,
   CornerDownRight,
 } from "lucide-react";
