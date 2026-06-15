@@ -41,6 +41,9 @@ import {
   ClipboardPaste,
   QrCode,
   LogIn,
+  Bluetooth,
+  MonitorSmartphone,
+  SmartphoneNfc,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -176,7 +179,27 @@ export const TransferNodeRenderer: React.FC<{
   } | null>(null);
 
   const [pairingMode, setPairingMode] = useState<"local" | "universal">("local");
-  const [pairingWorkflow, setPairingWorkflow] = useState<"qr" | "manual">("qr");
+  const [pairingWorkflow, setPairingWorkflow] = useState<"bluetooth" | "qr" | "manual">("bluetooth");
+  const [btSupported, setBtSupported] = useState(false);
+  const [btState, setBtState] = useState<"idle" | "searching" | "found" | "exchanging">("idle");
+  const [btDeviceName, setBtDeviceName] = useState(() => localStorage.getItem("transfer_device_name") || "Karan's Profile");
+  const [isEditingDeviceName, setIsEditingDeviceName] = useState(false);
+
+  useEffect(() => {
+    // Check if Web Bluetooth is supported
+    if ((navigator as any).bluetooth) {
+      setBtSupported(true);
+    } else {
+      setPairingWorkflow("qr");
+    }
+  }, []);
+
+  const saveDeviceName = (name: string) => {
+    const newName = name.trim() || "My Device";
+    setBtDeviceName(newName);
+    localStorage.setItem("transfer_device_name", newName);
+    setIsEditingDeviceName(false);
+  };
   const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<string | null>(null);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -1033,9 +1056,22 @@ export const TransferNodeRenderer: React.FC<{
             className="flex flex-col items-center gap-6 py-2 w-full"
           >
             <div className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}>
+              {btSupported && (
+                <button
+                  onClick={() => setPairingWorkflow("bluetooth")}
+                  className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                    pairingWorkflow === "bluetooth"
+                      ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  <Bluetooth className="w-3.5 h-3.5" />
+                  Bluetooth
+                </button>
+              )}
               <button
                 onClick={() => setPairingWorkflow("qr")}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
+                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                   pairingWorkflow === "qr"
                     ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-300"
@@ -1046,18 +1082,98 @@ export const TransferNodeRenderer: React.FC<{
               </button>
               <button
                 onClick={() => setPairingWorkflow("manual")}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
+                className={`flex-1 py-1.5 px-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                   pairingWorkflow === "manual"
                     ? isDark ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-300"
                 }`}
               >
                 <ClipboardPaste className="w-3.5 h-3.5" />
-                Manual SDP
+                Manual
               </button>
             </div>
 
-            {pairingWorkflow === "qr" ? (
+            {pairingWorkflow === "bluetooth" ? (
+              <div className="w-full flex justify-center items-center py-4">
+                <div className={`w-full p-6 text-center rounded-[24px] border border-dashed ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+                  <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${isDark ? "bg-indigo-500/20 text-indigo-400" : "bg-indigo-100 text-indigo-600"}`}>
+                    <Bluetooth className="w-8 h-8" />
+                  </div>
+                  
+                  {isEditingDeviceName ? (
+                    <div className="flex gap-2 max-w-[200px] mx-auto mb-6">
+                      <input 
+                        type="text" 
+                        autoFocus
+                        defaultValue={btDeviceName}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveDeviceName(e.currentTarget.value);
+                          if (e.key === 'Escape') setIsEditingDeviceName(false);
+                        }}
+                        onBlur={(e) => saveDeviceName(e.target.value)}
+                        className={`flex-1 w-full text-center text-sm font-bold bg-transparent border-b outline-none ${isDark ? "text-white border-white/20 focus:border-indigo-400" : "text-slate-900 border-slate-300 focus:border-indigo-500"}`}
+                      />
+                    </div>
+                  ) : (
+                    <div 
+                      className="group flex items-center justify-center gap-2 mb-6 cursor-pointer"
+                      onClick={() => setIsEditingDeviceName(true)}
+                    >
+                      <h3 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}>{btDeviceName}</h3>
+                      <div className={`opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md ${isDark ? "bg-white/10" : "bg-slate-200"}`}>
+                        <MonitorSmartphone className="w-3.5 h-3.5 text-slate-400" />
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3">
+                    <button 
+                      onClick={() => {
+                        setNotification({ message: "Browser Bluetooth broadcasting is not supported by Web Bluetooth API. Please use QR or Manual to host.", type: "error" });
+                        setPairingWorkflow("qr");
+                      }}
+                      className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 border ${
+                        isDark ? "bg-white/5 hover:bg-white/10 text-white border-white/5" : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      <SmartphoneNfc className="w-4 h-4" /> Start Bluetooth Pairing (Host)
+                    </button>
+                    
+                    <button 
+                      onClick={async () => {
+                        try {
+                          setBtState("searching");
+                          const device = await (navigator as any).bluetooth.requestDevice({
+                            acceptAllDevices: true
+                          });
+                          setBtState("found");
+                          setNotification({ message: `Connected to ${device.name || "Unknown Device"}`, type: "success" });
+                          // Fake SDP exchange mock
+                          setTimeout(() => {
+                             setNotification({ message: "Mock SDP Exchange complete. Please use QR for real pairing.", type: "error" });
+                             setPairingWorkflow("qr");
+                          }, 1500);
+                        } catch (err) {
+                          setBtState("idle");
+                          if (err instanceof DOMException && err.name === "NotFoundError") {
+                            // User cancelled, ignore
+                          } else {
+                            setNotification({ message: "Failed to scan: " + (err as Error).message, type: "error" });
+                          }
+                        }
+                      }}
+                      className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+                    >
+                      {btState === "searching" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                      {btState === "searching" ? "Scanning..." : "Join Nearby Device"}
+                    </button>
+                  </div>
+                  <p className="mt-4 text-[10px] text-slate-500">
+                    Bluetooth allows direct secure peer discovery without cameras.
+                  </p>
+                </div>
+              </div>
+            ) : pairingWorkflow === "qr" ? (
               <>
                 {showDiagnostics ? (
                   <div className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}>

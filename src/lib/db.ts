@@ -95,6 +95,14 @@ export interface SavedSearchArticle {
   timestamp: number;
 }
 
+export interface TransferDevice {
+  id: string;
+  name: string;
+  icon?: string;
+  lastSeen: number;
+  isTrusted?: boolean;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -106,6 +114,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   history: EntityTable<HistoryRecord, 'id'>;
   searchHistory: EntityTable<SearchHistoryRecord, 'id'>;
   savedArticles: EntityTable<SavedSearchArticle, 'id'>;
+  transferDevices: EntityTable<TransferDevice, 'id'>;
 };
 
 db.version(8).stores({
@@ -122,6 +131,10 @@ db.version(8).stores({
 db.version(9).stores({
   searchHistory: '++id, query, timestamp, isPinned',
   savedArticles: 'id, title, timestamp'
+});
+
+db.version(10).stores({
+  transferDevices: 'id, name, lastSeen, isTrusted'
 });
 
 export { db };
