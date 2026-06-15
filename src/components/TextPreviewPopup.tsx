@@ -52,7 +52,12 @@ const TextPreviewPopup: React.FC = () => {
   return createPortal(
     <AnimatePresence>
       {activePreviewText && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-md">
+        <div 
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-md"
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
           <motion.div
              initial={{ opacity: 0, scale: 0.9, y: 20 }}
              animate={{ opacity: 1, scale: 1, y: 0 }}

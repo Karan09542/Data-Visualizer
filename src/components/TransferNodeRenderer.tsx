@@ -6,6 +6,7 @@ import { useStore } from "../store/useStore";
 import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
 import LZString from "lz-string";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import {
   Copy,
   Plus,
@@ -910,7 +911,10 @@ export const TransferNodeRenderer: React.FC<{
 
   return (
     <div
-      className={`w-[400px] min-h-[340px] rounded-2xl overflow-hidden border shadow-2xl flex flex-col ${isDark ? "bg-[#111829] border-white/10 text-slate-300" : "bg-white border-slate-200 text-slate-800"}`}
+      className={`w-[400px] min-h-[340px] rounded-2xl overflow-hidden border shadow-2xl flex flex-col nowheel ${isDark ? "bg-[#111829] border-white/10 text-slate-300" : "bg-white border-slate-200 text-slate-800"}`}
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
     >
       {/* Immersive Camera Overlay - Rendered in Portal */}
       {createPortal(
@@ -921,6 +925,9 @@ export const TransferNodeRenderer: React.FC<{
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-[10000] bg-black flex flex-col items-center justify-center overflow-hidden"
+              onKeyDown={(e) => e.stopPropagation()}
+              onKeyUp={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
             >
               <video
                 ref={videoRefCallback}
@@ -1868,7 +1875,10 @@ export const TransferNodeRenderer: React.FC<{
 
             const content = (
               <div
-                className={`flex flex-col relative ${isFullscreen ? "w-full max-w-4xl mx-auto h-full" : "h-[420px]"}`}
+                className={`flex flex-col relative nowheel ${isFullscreen ? "w-full max-w-4xl mx-auto h-full" : "h-[420px]"}`}
+                onKeyDown={(e) => e.stopPropagation()}
+                onKeyUp={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
               >
                 {/* Modern Compact Header */}
                 <div
@@ -2380,9 +2390,11 @@ export const TransferNodeRenderer: React.FC<{
                                 type="text"
                                 value={chatInput}
                                 onChange={(e) => setChatInput(e.target.value)}
-                                onKeyDown={(e) =>
-                                  e.key === "Enter" && sendMessage()
-                                }
+                                onKeyDown={(e) => {
+                                  e.stopPropagation();
+                                  if (e.key === "Enter") sendMessage();
+                                }}
+                                onKeyUp={(e) => e.stopPropagation()}
                                 placeholder="Type a message..."
                                 className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium"
                               />
@@ -2627,7 +2639,12 @@ export const TransferNodeRenderer: React.FC<{
 
                 <AnimatePresence>
                   {selectedMedia && (
-                    <div className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/95 backdrop-blur-3xl p-4 sm:p-20">
+                    <div
+                      className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/95 backdrop-blur-3xl p-4 sm:p-20"
+                      onKeyDown={(e) => e.stopPropagation()}
+                      onKeyUp={(e) => e.stopPropagation()}
+                      onWheel={(e) => e.stopPropagation()}
+                    >
                       <motion.button
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -2669,20 +2686,25 @@ export const TransferNodeRenderer: React.FC<{
                         className="w-full h-full flex items-center justify-center"
                       >
                         {selectedMedia.fileType === "image" && (
-                          <img
-                            src={selectedMedia.content}
-                            className="max-w-full max-h-full object-contain shadow-[0_0_100px_rgba(0,0,0,0.5)] cursor-zoom-in"
-                            onClick={(e) => {
-                              const img = e.currentTarget;
-                              if (img.style.maxHeight === "none") {
-                                img.style.maxHeight = "100%";
-                                img.style.maxWidth = "100%";
-                              } else {
-                                img.style.maxHeight = "none";
-                                img.style.maxWidth = "none";
-                              }
-                            }}
-                          />
+                          <div className="w-full h-full relative cursor-move touch-none flex items-center justify-center">
+                            <TransformWrapper
+                              initialScale={1}
+                              minScale={0.5}
+                              maxScale={10}
+                              centerOnInit={true}
+                              wheel={{ step: 0.1 }}
+                              doubleClick={{ disabled: false, step: 2 }}
+                              pinch={{ step: 5 }}
+                            >
+                              <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
+                                <img
+                                  src={selectedMedia.content}
+                                  className="max-w-full max-h-full object-contain pointer-events-auto"
+                                  draggable={false}
+                                />
+                              </TransformComponent>
+                            </TransformWrapper>
+                          </div>
                         )}
                         {selectedMedia.fileType === "video" && (
                           <video

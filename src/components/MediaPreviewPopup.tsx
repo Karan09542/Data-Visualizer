@@ -180,6 +180,9 @@ const MediaPreviewPopup: React.FC = () => {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[10001] flex flex-col bg-slate-950/95 backdrop-blur-xl group"
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
         >
           {/* Top Header */}
           <div className="flex items-center justify-between px-8 py-6 bg-gradient-to-b from-slate-900/80 to-transparent z-50">
