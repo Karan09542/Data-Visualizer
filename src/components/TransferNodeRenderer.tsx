@@ -42,6 +42,7 @@ import {
   QrCode,
   LogIn,
   Plus,
+  Scan,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -190,6 +191,7 @@ export const TransferNodeRenderer: React.FC<{
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+  const [copiedSDP, setCopiedSDP] = useState(false);
 
   useEffect(() => {
     const checkClipboardForSdp = async () => {
@@ -1316,23 +1318,39 @@ export const TransferNodeRenderer: React.FC<{
                     </button>
                   )}
                 </div>
-                <div className="flex gap-2 w-full max-w-[200px]">
+                <div className="flex gap-2 w-full max-w-[250px]">
+                  <button
+                    onClick={() => setScanMode(isHosting ? "answer" : "offer")}
+                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap shadow-sm active:scale-95 ${
+                      isDark
+                        ? "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 shadow-indigo-500/10"
+                        : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
+                    }`}
+                  >
+                    <Scan className="w-3.5 h-3.5" /> Scan {isHosting ? "Answer" : "Offer"}
+                  </button>
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(offerQR || answerQR);
+                      setCopiedSDP(true);
+                      setTimeout(() => setCopiedSDP(false), 2000);
                       setNotification({
                         message: "SDP Copied to Clipboard",
                         type: "success",
                       });
                     }}
                     disabled={!(offerQR || answerQR)}
-                    className={`flex-1 py-1.5 px-3 rounded-lg border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap ${
+                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${
                       isDark
-                        ? "border-white/5 bg-white/5 hover:bg-white/10 text-white"
-                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        ? copiedSDP
+                           ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
+                           : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
+                        : copiedSDP
+                           ? "border-emerald-200 bg-emerald-50 text-emerald-700" 
+                           : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
+                    } disabled:opacity-50 disabled:pointer-events-none`}
                   >
-                    <Copy className="w-3 h-3" /> Copy SDP
+                    {copiedSDP ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copiedSDP ? "Copied" : "Copy SDP"}
                   </button>
                 </div>
               </>
@@ -1480,17 +1498,23 @@ export const TransferNodeRenderer: React.FC<{
                               navigator.clipboard.writeText(
                                 offerQR || answerQR,
                               );
+                              setCopiedSDP(true);
+                              setTimeout(() => setCopiedSDP(false), 2000);
                               setNotification({
                                 message: "SDP Copied to Clipboard",
                                 type: "success",
                               });
                             }}
                             disabled={!(offerQR || answerQR)}
-                            className="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-white transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg shadow-indigo-500/20"
+                            className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${
+                              copiedSDP 
+                                ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white" 
+                                : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
+                            }`}
                           >
-                            <Copy className="w-4 h-4" />
+                            {copiedSDP ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                             <span className="text-[9px] font-black uppercase tracking-widest">
-                              Copy
+                              {copiedSDP ? "Copied" : "Copy"}
                             </span>
                           </button>
                         </div>

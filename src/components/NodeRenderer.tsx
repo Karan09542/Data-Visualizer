@@ -1289,9 +1289,19 @@ function NodeRenderer({
               setSelectedNodeId(data.id);
             }}
             onContextMenu={(e) => {
+              const target = e.target as HTMLElement;
+              if (
+                target.closest("input") ||
+                target.closest("textarea") ||
+                target.closest("select")
+              ) {
+                e.stopPropagation();
+                return;
+              }
               if (onContextMenu) {
                 e.preventDefault();
                 e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
                 onContextMenu(e, data);
               }
             }}
