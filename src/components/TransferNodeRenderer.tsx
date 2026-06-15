@@ -43,6 +43,7 @@ import {
   LogIn,
   Plus,
   Scan,
+  CornerDownRight,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -61,6 +62,13 @@ interface Message {
   status: "sending" | "sent" | "delivered" | "received" | "error";
   chunksSent?: number;
   chunksTotal?: number;
+  replyTo?: {
+    id: string;
+    sender: string;
+    content: string;
+    type: string;
+    fileName?: string;
+  };
 }
 
 const getFileType = (fileName: string) => {
@@ -70,6 +78,8 @@ const getFileType = (fileName: string) => {
   if (["mp4", "webm", "ogg", "mov"].includes(ext || "")) return "video";
   if (["mp3", "wav", "m4a", "flac"].includes(ext || "")) return "audio";
   if (["pdf"].includes(ext || "")) return "pdf";
+  if (["txt", "md", "json", "yaml", "yml", "csv", "log"].includes(ext || ""))
+    return "text_file";
   return "file";
 };
 
@@ -79,6 +89,37 @@ const formatFileSize = (bytes: number) => {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
+
+const dataURItoBlobURL = (dataURI: string) => {
+  try {
+    const splitIndex = dataURI.indexOf(",");
+    if (splitIndex === -1) return dataURI; // might be already an object url or plain text string
+    const byteString = atob(dataURI.slice(splitIndex + 1));
+    const mimeString = dataURI.slice(0, splitIndex).split(":")[1].split(";")[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const Math_min = Math.min;
+    // Process in chunks to avoid max call stack size, or just simple loop
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mimeString });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    return dataURI; // fallback
+  }
+};
+
+const TextFileViewer: React.FC<{ url: string }> = ({ url }) => {
+  const [content, setContent] = useState<string>("Loading...");
+  useEffect(() => {
+    fetch(url)
+      .then((res) => res.text())
+      .then((text) => setContent(text))
+      .catch((err) => setContent("Error loading file: " + err.message));
+  }, [url]);
+  return <>{content}</>;
 };
 
 export const TransferNodeRenderer: React.FC<{
@@ -98,6 +139,7 @@ export const TransferNodeRenderer: React.FC<{
   const [isHosting, setIsHosting] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
@@ -118,6 +160,7 @@ export const TransferNodeRenderer: React.FC<{
         total: number;
         received: string[];
         count: number;
+        replyTo?: Message["replyTo"];
       }
     >
   >({});
@@ -372,6 +415,7 @@ export const TransferNodeRenderer: React.FC<{
     type: string,
     payloadStr: string,
     fileName?: string,
+    replyTo?: Message["replyTo"],
   ) => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
     const msgId = uuidv4();
@@ -382,7 +426,7 @@ export const TransferNodeRenderer: React.FC<{
       id: msgId,
       sender: "me",
       type: type as any,
-      content: type === "file" ? "" : payloadStr,
+      content: type === "file" ? dataURItoBlobURL(payloadStr) : payloadStr,
       fileName,
       fileType: fileName ? getFileType(fileName) : undefined,
       fileSize: payloadStr.length,
@@ -390,6 +434,7 @@ export const TransferNodeRenderer: React.FC<{
       status: "sending",
       chunksSent: 0,
       chunksTotal: totalChunks,
+      replyTo,
     };
 
     if (type === "file") {
@@ -404,6 +449,7 @@ export const TransferNodeRenderer: React.FC<{
         totalChunks,
         fileName,
         fileSize: payloadStr.length,
+        replyTo,
       }),
     );
 
@@ -558,6 +604,7 @@ export const TransferNodeRenderer: React.FC<{
             content: msg.content,
             timestamp: Date.now(),
             status: "received",
+            replyTo: msg.replyTo,
           };
           setMessages((prev) => [...prev, newMsg]);
 
@@ -575,6 +622,7 @@ export const TransferNodeRenderer: React.FC<{
             total: msg.totalChunks,
             received: new Array(msg.totalChunks),
             count: 0,
+            replyTo: msg.replyTo,
           };
           setConnectionState("transferring");
 
@@ -645,9 +693,10 @@ export const TransferNodeRenderer: React.FC<{
                 fileName: chunkData.fileName,
                 fileType: fType,
                 fileSize: fullPayload.length,
-                content: fullPayload,
+                content: dataURItoBlobURL(fullPayload),
                 timestamp: Date.now(),
                 status: "received",
+                replyTo: chunkData.replyTo,
               };
               setMessages((prev) => [...prev, newMsg]);
 
@@ -802,6 +851,17 @@ export const TransferNodeRenderer: React.FC<{
       dcRef.current.readyState !== "open"
     )
       return;
+
+    const replyData = replyingTo
+      ? {
+          id: replyingTo.id,
+          sender: replyingTo.sender,
+          content: replyingTo.content,
+          type: replyingTo.type,
+          fileName: replyingTo.fileName,
+        }
+      : undefined;
+
     const msgId = uuidv4();
     const msg: Message = {
       id: msgId,
@@ -810,16 +870,19 @@ export const TransferNodeRenderer: React.FC<{
       content: chatInput,
       timestamp: Date.now(),
       status: "sent",
+      replyTo: replyData,
     };
     dcRef.current.send(
       JSON.stringify({
         type: "text",
         id: msgId,
         content: chatInput,
+        replyTo: replyData,
       }),
     );
     setMessages((prev) => [...prev, msg]);
     setChatInput("");
+    setReplyingTo(null);
   };
 
   const sendWorkspace = () => {
@@ -1327,7 +1390,8 @@ export const TransferNodeRenderer: React.FC<{
                         : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
                     }`}
                   >
-                    <Scan className="w-3.5 h-3.5" /> Scan {isHosting ? "Answer" : "Offer"}
+                    <Scan className="w-3.5 h-3.5" /> Scan{" "}
+                    {isHosting ? "Answer" : "Offer"}
                   </button>
                   <button
                     onClick={() => {
@@ -1343,14 +1407,19 @@ export const TransferNodeRenderer: React.FC<{
                     className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${
                       isDark
                         ? copiedSDP
-                           ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
-                           : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
+                          ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
+                          : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
                         : copiedSDP
-                           ? "border-emerald-200 bg-emerald-50 text-emerald-700" 
-                           : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
                     } disabled:opacity-50 disabled:pointer-events-none`}
                   >
-                    {copiedSDP ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} {copiedSDP ? "Copied" : "Copy SDP"}
+                    {copiedSDP ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}{" "}
+                    {copiedSDP ? "Copied" : "Copy SDP"}
                   </button>
                 </div>
               </>
@@ -1507,12 +1576,16 @@ export const TransferNodeRenderer: React.FC<{
                             }}
                             disabled={!(offerQR || answerQR)}
                             className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${
-                              copiedSDP 
-                                ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white" 
+                              copiedSDP
+                                ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white"
                                 : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
                             }`}
                           >
-                            {copiedSDP ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                            {copiedSDP ? (
+                              <Check className="w-4 h-4" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
                             <span className="text-[9px] font-black uppercase tracking-widest">
                               {copiedSDP ? "Copied" : "Copy"}
                             </span>
@@ -1765,6 +1838,35 @@ export const TransferNodeRenderer: React.FC<{
             const chatMessages = messages;
             const mediaMessages = messages.filter((m) => m.type === "file");
 
+            const scrollToMessage = (id: string) => {
+              const el = document.getElementById(`msg-${id}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                const pulseClasses = [
+                  "ring-2",
+                  "ring-indigo-500",
+                  "ring-offset-2",
+                ];
+                el.classList.add(...pulseClasses);
+                setTimeout(() => {
+                  el.classList.remove(...pulseClasses);
+                }, 2000);
+              } else {
+                setNotification({
+                  message: "Message not found in history",
+                  type: "info",
+                });
+              }
+            };
+
+            const handleCopyMessage = (content: string) => {
+              navigator.clipboard.writeText(content);
+              setNotification({
+                message: "Message copied",
+                type: "success",
+              });
+            };
+
             const content = (
               <div
                 className={`flex flex-col relative ${isFullscreen ? "w-full max-w-4xl mx-auto h-full" : "h-[420px]"}`}
@@ -1901,10 +2003,11 @@ export const TransferNodeRenderer: React.FC<{
                           {chatMessages.map((msg) => (
                             <motion.div
                               key={msg.id}
+                              id={`msg-${msg.id}`}
                               layout
                               initial={{ opacity: 0, scale: 0.95, y: 10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
-                              className={`flex flex-col ${msg.sender === "me" ? "items-end" : "items-start"}`}
+                              className={`flex flex-col mb-4 ${msg.sender === "me" ? "items-end" : "items-start"}`}
                             >
                               <div
                                 onContextMenu={(e) => {
@@ -1923,6 +2026,57 @@ export const TransferNodeRenderer: React.FC<{
                                       : "bg-slate-100 text-slate-800 rounded-tl-sm"
                                 }`}
                               >
+                                {/* Hover Actions Bar - Desktop only */}
+                                <div
+                                  className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 shadow-lg ${
+                                    msg.sender === "me"
+                                      ? "right-full mr-2"
+                                      : "left-full ml-2"
+                                  }`}
+                                >
+                                  <button
+                                    onClick={() =>
+                                      handleCopyMessage(msg.content)
+                                    }
+                                    title="Copy"
+                                    className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setReplyingTo(msg)}
+                                    title="Reply"
+                                    className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
+                                  >
+                                    <CornerDownRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                {msg.replyTo && (
+                                  <button
+                                    onClick={() =>
+                                      scrollToMessage(msg.replyTo!.id)
+                                    }
+                                    className={`mx-1 mt-1 mb-0.5 p-2 rounded-2xl flex flex-col gap-0.5 text-left transition-all border-l-4 ${
+                                      msg.sender === "me"
+                                        ? "bg-black/20 border-white/40 text-white/80 hover:bg-black/30"
+                                        : isDark
+                                          ? "bg-white/5 border-indigo-500/50 text-slate-400 hover:bg-white/10"
+                                          : "bg-black/5 border-indigo-400 text-slate-500 hover:bg-black/10"
+                                    }`}
+                                  >
+                                    <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
+                                      {msg.replyTo.sender === "me"
+                                        ? "You"
+                                        : "Remote"}
+                                    </span>
+                                    <span className="text-[10px] font-bold line-clamp-1">
+                                      {msg.replyTo.type === "file"
+                                        ? `📄 ${msg.replyTo.fileName}`
+                                        : msg.replyTo.content}
+                                    </span>
+                                  </button>
+                                )}
                                 {msg.type === "text" ? (
                                   <div className="px-4 py-2.5 text-xs font-medium">
                                     {msg.content}
@@ -1946,16 +2100,25 @@ export const TransferNodeRenderer: React.FC<{
                                     )}
 
                                     {msg.fileType === "video" && (
-                                      <div className="relative rounded-2xl overflow-hidden bg-black aspect-video group/vid">
+                                      <div className="relative rounded-2xl overflow-hidden bg-black group/vid w-full min-w-[200px] sm:min-w-[280px]">
                                         <video
                                           src={msg.content}
-                                          className="w-full h-full object-cover opacity-80"
+                                          className="w-full h-auto max-h-[300px] block object-contain opacity-90 mx-auto"
+                                          onLoadedMetadata={(e) => {
+                                            const video = e.target as HTMLVideoElement;
+                                            if (
+                                              video.videoHeight >
+                                              video.videoWidth * 1.5
+                                            ) {
+                                              video.style.maxHeight = "400px";
+                                            }
+                                          }}
                                         />
                                         <button
                                           onClick={() => setSelectedMedia(msg)}
-                                          className="absolute inset-0 flex items-center justify-center text-white transition-transform group-hover/vid:scale-110"
+                                          className="absolute inset-0 flex items-center justify-center text-white"
                                         >
-                                          <div className="p-4 rounded-full bg-white/20 backdrop-blur-md">
+                                          <div className="p-4 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
                                             <Play className="w-8 h-8 fill-current" />
                                           </div>
                                         </button>
@@ -2015,7 +2178,8 @@ export const TransferNodeRenderer: React.FC<{
                                     )}
 
                                     {(msg.fileType === "file" ||
-                                      msg.fileType === "pdf") && (
+                                      msg.fileType === "pdf" ||
+                                      msg.fileType === "text_file") && (
                                       <div
                                         className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${
                                           msg.sender === "me"
@@ -2023,7 +2187,8 @@ export const TransferNodeRenderer: React.FC<{
                                             : "hover:bg-black/5"
                                         }`}
                                         onClick={() =>
-                                          msg.fileType === "pdf" &&
+                                          (msg.fileType === "pdf" ||
+                                            msg.fileType === "text_file") &&
                                           setSelectedMedia(msg)
                                         }
                                       >
@@ -2036,7 +2201,8 @@ export const TransferNodeRenderer: React.FC<{
                                                 : "bg-indigo-50 text-indigo-600"
                                           }`}
                                         >
-                                          {msg.fileType === "pdf" ? (
+                                          {msg.fileType === "pdf" ||
+                                          msg.fileType === "text_file" ? (
                                             <FileText className="w-6 h-6" />
                                           ) : (
                                             <File className="w-6 h-6" />
@@ -2059,6 +2225,7 @@ export const TransferNodeRenderer: React.FC<{
                                         <a
                                           href={msg.content}
                                           download={msg.fileName}
+                                          onClick={(e) => e.stopPropagation()}
                                           className={`p-2.5 rounded-xl transition-all ${
                                             msg.sender === "me"
                                               ? "hover:bg-white/20"
@@ -2109,6 +2276,37 @@ export const TransferNodeRenderer: React.FC<{
                         <div
                           className={`p-4 border-t ${isDark ? "bg-[#0d1017]/50 border-white/5" : "bg-white border-slate-100"}`}
                         >
+                          <AnimatePresence>
+                            {replyingTo && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="mb-3 px-3 py-2 bg-indigo-500/5 rounded-2xl border border-indigo-500/20 flex gap-3 relative group overflow-hidden"
+                              >
+                                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">
+                                    Replying to{" "}
+                                    {replyingTo.sender === "me"
+                                      ? "yourself"
+                                      : "remote device"}
+                                  </p>
+                                  <p className="text-xs text-slate-500 font-bold truncate">
+                                    {replyingTo.type === "file"
+                                      ? replyingTo.fileName
+                                      : replyingTo.content}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => setReplyingTo(null)}
+                                  className="p-1 rounded-full hover:bg-indigo-500/10 text-slate-400 transition-colors"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                           {transferProgress > 0 && (
                             <div className="mb-4 bg-indigo-500/5 p-3 rounded-2xl border border-indigo-500/10">
                               <div className="flex justify-between items-center mb-2 px-1">
@@ -2165,20 +2363,6 @@ export const TransferNodeRenderer: React.FC<{
                                         content,
                                         file.name,
                                       );
-                                      setMessages((prev) => [
-                                        ...prev,
-                                        {
-                                          id: uuidv4(),
-                                          sender: "me",
-                                          type: "file",
-                                          fileName: file.name,
-                                          fileType: fType,
-                                          fileSize: file.size,
-                                          content: content,
-                                          timestamp: Date.now(),
-                                          status: "sent",
-                                        },
-                                      ]);
                                     };
                                     reader.readAsDataURL(file);
                                   });
@@ -2338,8 +2522,80 @@ export const TransferNodeRenderer: React.FC<{
                                   ) : (
                                     <Eye className="w-4 h-4" />
                                   )}
-                                  {msg.type === "text" ? "Copy Text" : "View"}
+                                  {msg.type === "text"
+                                    ? "Copy Text"
+                                    : msg.fileType === "video"
+                                      ? "Play / Open"
+                                      : "Open"}
                                 </button>
+                                {msg.type === "text" && (
+                                  <button
+                                    onClick={() => {
+                                      setChatInput(
+                                        "> " + msg.content.trim() + "\n\n",
+                                      );
+                                      setShowContextMenu(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                  >
+                                    <CornerDownRight className="w-4 h-4" />
+                                    Reply
+                                  </button>
+                                )}
+                                {msg.fileType === "text_file" && (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch(msg.content);
+                                        const text = await res.text();
+                                        navigator.clipboard.writeText(text);
+                                        setNotification({
+                                          message: "Content copied",
+                                          type: "success",
+                                        });
+                                      } catch (e) {
+                                        setNotification({
+                                          message: "Failed to copy content",
+                                          type: "error",
+                                        });
+                                      }
+                                      setShowContextMenu(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                    Copy Content
+                                  </button>
+                                )}
+                                {msg.fileType === "image" && (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch(msg.content);
+                                        const blob = await res.blob();
+                                        await navigator.clipboard.write([
+                                          new ClipboardItem({
+                                            [blob.type]: blob,
+                                          }),
+                                        ]);
+                                        setNotification({
+                                          message: "Image copied",
+                                          type: "success",
+                                        });
+                                      } catch (e) {
+                                        setNotification({
+                                          message: "Failed to copy image",
+                                          type: "error",
+                                        });
+                                      }
+                                      setShowContextMenu(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                    Copy Image
+                                  </button>
+                                )}
                                 {msg.type === "file" && (
                                   <a
                                     href={msg.content}
@@ -2359,7 +2615,7 @@ export const TransferNodeRenderer: React.FC<{
                                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-red-500/10 text-red-400" : "hover:bg-red-50 text-red-600"}`}
                                 >
                                   <Trash2 className="w-4 h-4" />
-                                  Delete Local
+                                  Delete
                                 </button>
                               </div>
                             );
@@ -2478,6 +2734,53 @@ export const TransferNodeRenderer: React.FC<{
                               className="w-full flex-1 border-none"
                               title="PDF Preview"
                             />
+                          </div>
+                        )}
+                        {selectedMedia.fileType === "text_file" && (
+                          <div className="w-full h-full max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col pt-4">
+                            <div className="px-4 pb-4 border-b border-white/10 flex items-center justify-between">
+                              <div className="flex items-center gap-3 text-white">
+                                <FileText className="w-5 h-5 text-indigo-400" />
+                                <span className="text-sm font-bold truncate">
+                                  {selectedMedia.fileName}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch(
+                                        selectedMedia.content,
+                                      );
+                                      const text = await res.text();
+                                      navigator.clipboard.writeText(text);
+                                      setNotification({
+                                        message: "Content copied",
+                                        type: "success",
+                                      });
+                                    } catch (e) {
+                                      setNotification({
+                                        message: "Failed to copy content",
+                                        type: "error",
+                                      });
+                                    }
+                                  }}
+                                  className="px-4 py-2 bg-white/5 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-white/10 transition-all flex items-center gap-2"
+                                >
+                                  <Copy className="w-3.5 h-3.5" /> Copy
+                                </button>
+                                <a
+                                  href={selectedMedia.content}
+                                  download={selectedMedia.fileName}
+                                  className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
+                                >
+                                  <Download className="w-3.5 h-3.5" /> Download
+                                </a>
+                              </div>
+                            </div>
+                            <div className="flex-1 overflow-auto p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap select-text">
+                              <TextFileViewer url={selectedMedia.content} />
+                            </div>
                           </div>
                         )}
                       </motion.div>
