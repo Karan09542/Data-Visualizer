@@ -1153,13 +1153,13 @@ export const TransferNodeRenderer: React.FC<{
                   <div className="flex gap-3 items-stretch">
                     <div className="flex-1 min-w-0">
                       {offerQR || answerQR ? (
-                        <div className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors ${
+                        <div className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${
                           isDark ? "bg-black/40 border border-white/5" : "bg-slate-50 border border-slate-100"
                         }`}>
-                          <div className={`text-[11px] font-mono break-all line-clamp-1 leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                          <div className={`text-[11px] font-mono truncate leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                             {offerQR || answerQR}
                           </div>
-                          <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5">
+                          <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5 shrink-0">
                             <Activity className="w-2.5 h-2.5 text-slate-500" />
                             <span className="text-[9px] font-medium text-slate-500">Payload: {(offerQR || answerQR).length} bytes</span>
                           </div>
@@ -1205,37 +1205,48 @@ export const TransferNodeRenderer: React.FC<{
                     <div className="relative">
                       <textarea
                         placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
-                        className={`w-full h-24 p-3 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${
+                        className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${
                           isDark ? "bg-black/40 text-white placeholder-slate-600 border border-white/5" : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
                         }`}
                         value={isHosting ? copyPasteAnswer : copyPasteOffer}
                         onChange={(e) => isHosting ? setCopyPasteAnswer(e.target.value) : setCopyPasteOffer(e.target.value)}
                       />
+                      {(isHosting ? copyPasteAnswer : copyPasteOffer) && (
+                        <button
+                          onClick={() => isHosting ? setCopyPasteAnswer("") : setCopyPasteOffer("")}
+                          className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${
+                            isDark ? "text-slate-400 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
+                          }`}
+                          title="Clear input"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex gap-2">
-                       <button
-                         onClick={async () => {
-                           try {
-                             const text = await navigator.clipboard.readText();
-                             if (text && text.trim().length > 50) {
-                               isHosting ? setCopyPasteAnswer(text.trim()) : setCopyPasteOffer(text.trim());
-                               setNotification({ message: "SDP Pasted from Clipboard", type: "success" });
-                               setClipboardDetectedSdp(null);
-                             } else {
-                               setNotification({ message: "No valid SDP payload in clipboard", type: "error" });
-                             }
-                           } catch (err) {
-                             setNotification({ message: "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.", type: "error" });
-                           }
-                         }}
-                         className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${
-                           isDark ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400" : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
-                         }`}
-                       >
-                         <ClipboardPaste className="w-3.5 h-3.5" />
-                         <span className="text-[9px] font-bold uppercase tracking-wider">Paste</span>
-                       </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const text = await navigator.clipboard.readText();
+                            if (text && text.trim().length > 50) {
+                              isHosting ? setCopyPasteAnswer(text.trim()) : setCopyPasteOffer(text.trim());
+                              setNotification({ message: "SDP Pasted from Clipboard", type: "success" });
+                              setClipboardDetectedSdp(null);
+                            } else {
+                              setNotification({ message: "No valid SDP payload in clipboard", type: "error" });
+                            }
+                          } catch (err) {
+                            setNotification({ message: "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.", type: "error" });
+                          }
+                        }}
+                        className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${
+                          isDark ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400" : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
+                        }`}
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" />
+                        <span className="text-[9px] font-bold uppercase tracking-wider">Paste</span>
+                      </button>
 
                       <button
                         onClick={() => handleScan(isHosting ? copyPasteAnswer : copyPasteOffer)}
