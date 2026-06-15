@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import mqtt from "mqtt";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore } from "../store/useStore";
@@ -186,7 +187,9 @@ export const TransferNodeRenderer: React.FC<{
   const [isEditingDeviceName, setIsEditingDeviceName] = useState(false);
   const [btDiscoveredDevices, setBtDiscoveredDevices] = useState<{id: string, name: string}[]>([]);
   const btDeviceId = useMemo(() => uuidv4(), []);
-  const btChannel = useMemo(() => new BroadcastChannel("ble-sdp-exchange"), []);
+  const mqttTopic = useMemo(() => "transfer-node-bt-" + window.location.hostname, []);
+  
+  const [mqttClient, setMqttClient] = useState<mqtt.MqttClient | null>(null);
 
   const offerRef = useRef(offerQR);
   offerRef.current = offerQR;
@@ -195,57 +198,78 @@ export const TransferNodeRenderer: React.FC<{
   const handleScanRef = useRef<any>(null);
 
   useEffect(() => {
-    const handleBtMessage = (e: MessageEvent) => {
-      const data = e.data;
-      if (data.type === "DISCOVER" && btState === "hosting") {
-        btChannel.postMessage({ type: "DEVICE_HERE", id: btDeviceId, name: btDeviceName });
-      } else if (data.type === "DEVICE_HERE" && btState === "searching") {
-        setBtDiscoveredDevices(prev => {
-          if (!prev.find(d => d.id === data.id)) return [...prev, { id: data.id, name: data.name }];
-          return prev;
-        });
-      } else if (data.type === "REQUEST_OFFER" && data.targetId === btDeviceId && btState === "hosting") {
-        if (offerRef.current) {
-          btChannel.postMessage({ type: "OFFER_SDP", targetId: data.sourceId, sdp: offerRef.current, sourceId: btDeviceId });
-          setBtState("exchanging");
-          setNotification({ message: "Sending Offer SDP...", type: "success" });
-        }
-      } else if (data.type === "OFFER_SDP" && data.targetId === btDeviceId) {
-        handleScanRef.current(data.sdp);
-        setBtState("exchanging");
-        setNotification({ message: "Received Offer. Generating Answer...", type: "success" });
-        
-        let attempts = 0;
-        const checkAnswer = setInterval(() => {
-          attempts++;
-          if (answerRef.current) {
-            clearInterval(checkAnswer);
-            btChannel.postMessage({ type: "ANSWER_SDP", targetId: data.sourceId, sdp: answerRef.current });
-            setNotification({ message: "Answer Generated & Sent!", type: "success" });
-          } else if (attempts > 20) {
-            clearInterval(checkAnswer);
+    const client = mqtt.connect("wss://test.mosquitto.org:8081/mqtt");
+    
+    client.on("connect", () => {
+      client.subscribe(mqttTopic);
+      setMqttClient(client);
+    });
+
+    return () => {
+      client.end();
+    };
+  }, [mqttTopic]);
+
+  useEffect(() => {
+    if (!mqttClient) return;
+
+    const handleBtMessage = (topic: string, message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.type === "DISCOVER" && btState === "hosting") {
+          mqttClient.publish(mqttTopic, JSON.stringify({ type: "DEVICE_HERE", id: btDeviceId, name: btDeviceName }));
+        } else if (data.type === "DEVICE_HERE" && btState === "searching" && data.id !== btDeviceId) {
+          setBtDiscoveredDevices(prev => {
+            if (!prev.find(d => d.id === data.id)) return [...prev, { id: data.id, name: data.name }];
+            return prev;
+          });
+        } else if (data.type === "REQUEST_OFFER" && data.targetId === btDeviceId && btState === "hosting") {
+          if (offerRef.current) {
+            mqttClient.publish(mqttTopic, JSON.stringify({ type: "OFFER_SDP", targetId: data.sourceId, sdp: offerRef.current, sourceId: btDeviceId }));
+            setBtState("exchanging");
+            setNotification({ message: "Sending Offer SDP...", type: "success" });
           }
-        }, 500);
-      } else if (data.type === "ANSWER_SDP" && data.targetId === btDeviceId) {
-         handleScanRef.current(data.sdp);
-         setNotification({ message: "Received Answer. Establishing Connection!", type: "success" });
+        } else if (data.type === "OFFER_SDP" && data.targetId === btDeviceId) {
+          handleScanRef.current(data.sdp);
+          setBtState("exchanging");
+          setNotification({ message: "Received Offer. Generating Answer...", type: "success" });
+          
+          let attempts = 0;
+          const checkAnswer = setInterval(() => {
+            attempts++;
+            if (answerRef.current) {
+              clearInterval(checkAnswer);
+              mqttClient.publish(mqttTopic, JSON.stringify({ type: "ANSWER_SDP", targetId: data.sourceId, sdp: answerRef.current }));
+              setNotification({ message: "Answer Generated & Sent!", type: "success" });
+            } else if (attempts > 20) {
+              clearInterval(checkAnswer);
+            }
+          }, 500);
+        } else if (data.type === "ANSWER_SDP" && data.targetId === btDeviceId) {
+           handleScanRef.current(data.sdp);
+           setNotification({ message: "Received Answer. Establishing Connection!", type: "success" });
+        }
+      } catch (err) {
+        console.error("MQTT parse err", err);
       }
     };
     
-    btChannel.addEventListener("message", handleBtMessage);
-    return () => btChannel.removeEventListener("message", handleBtMessage);
-  }, [btState, btDeviceId, btDeviceName, btChannel]);
+    mqttClient.on("message", handleBtMessage);
+    return () => {
+      mqttClient.off("message", handleBtMessage);
+    }
+  }, [btState, btDeviceId, btDeviceName, mqttClient, mqttTopic]);
 
   useEffect(() => {
-    if (btState === "searching") {
+    if (btState === "searching" && mqttClient) {
       setBtDiscoveredDevices([]);
-      btChannel.postMessage({ type: "DISCOVER" });
+      mqttClient.publish(mqttTopic, JSON.stringify({ type: "DISCOVER" }));
       const interval = setInterval(() => {
-        btChannel.postMessage({ type: "DISCOVER" });
-      }, 2000);
+        mqttClient.publish(mqttTopic, JSON.stringify({ type: "DISCOVER" }));
+      }, 3000);
       return () => clearInterval(interval);
     }
-  }, [btState, btChannel]);
+  }, [btState, mqttClient, mqttTopic]);
 
   const saveDeviceName = (name: string) => {
     const newName = name.trim() || "My Device";
@@ -1230,7 +1254,7 @@ export const TransferNodeRenderer: React.FC<{
                               <button
                                 key={device.id}
                                 onClick={() => {
-                                  btChannel.postMessage({ type: "REQUEST_OFFER", targetId: device.id, sourceId: btDeviceId });
+                                  mqttClient?.publish(mqttTopic, JSON.stringify({ type: "REQUEST_OFFER", targetId: device.id, sourceId: btDeviceId }));
                                   setBtState("exchanging");
                                 }}
                                 className={`w-full p-3 rounded-lg flex items-center justify-between border transition-all ${isDark ? "bg-black/40 border-white/10 hover:border-indigo-500/50" : "bg-white border-slate-200 hover:border-indigo-400"}`}
