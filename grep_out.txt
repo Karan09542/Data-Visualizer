@@ -1,0 +1,424 @@
+27-  Menu,
+28-  MoreVertical,
+29-  Bookmark,
+30-  Save,
+31-  Check,
+32-  Eye,
+33-  Heart,
+34-  Sparkles,
+35-} from "lucide-react";
+36-import {
+37-  Mafs,
+38-  Coordinates,
+39-  Plot,
+40-  Transform,
+41-  Point,
+42-  Vector,
+43-  Polygon,
+44-  MovablePoint,
+45-  Text,
+46-  Line,
+47:  LaTeX,
+48-  usePaneContext,
+49-} from "mafs";
+50-import "mafs/core.css";
+51-import "mafs/font.css";
+52-import "katex/dist/katex.min.css";
+53-import katex from "katex";
+54-import * as mathjs from "mathjs";
+55-import Markdown from "react-markdown";
+56-import remarkMath from "remark-math";
+57-import rehypeKatex from "rehype-katex";
+58-import remarkGfm from "remark-gfm";
+59-import { useStore } from "../store/useStore";
+60-import { HexAlphaColorPicker } from "react-colorful";
+61-import { useLiveQuery } from "dexie-react-hooks";
+62-import { db } from "../lib/db";
+63-
+64-const InsertAboveIcon = ({
+65-  size = 14,
+66-  className = "",
+67-}: {
+--
+987-                    : ""),
+988-                { throwOnError: true, displayMode: true },
+989-              ),
+990-            }}
+991-          />
+992-          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/80 dark:bg-slate-900/80 backdrop-blur rounded p-0.5 border border-slate-200 dark:border-slate-700 shadow-sm z-10">
+993-            {resStrOutput && (
+994-              <button
+995-                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-mono text-[9px] font-bold"
+996-                title="Copy Result"
+997-                onClick={(e) => {
+998-                  e.stopPropagation();
+999-                  navigator.clipboard.writeText(resStrOutput);
+1000-                }}
+1001-              >
+1002-                =
+1003-              </button>
+1004-            )}
+1005-            <button
+1006-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-serif text-[10px] font-bold px-1.5"
+1007:              title="Copy LaTeX"
+1008-              onClick={(e) => {
+1009-                e.stopPropagation();
+1010-                navigator.clipboard.writeText(rawLatexOutput);
+1011-              }}
+1012-            >
+1013:              TeX
+1014-            </button>
+1015-            <button
+1016-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400"
+1017-              title="Copy Expression"
+1018-              onClick={(e) => {
+1019-                e.stopPropagation();
+1020-                navigator.clipboard.writeText(value);
+1021-              }}
+1022-            >
+1023-              <Copy size={12} />
+1024-            </button>
+1025-          </div>
+1026-        </>
+1027-      );
+1028-    } catch (e) {
+1029-      // 2. Fallback to Markdown or plain text
+1030-      renderedLatex = (
+1031-        <div className="markdown-body p-2 font-sans w-full text-sm text-slate-800 dark:text-slate-200">
+1032-           <Markdown
+1033-             remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+--
+1402-    // Try to parse as mathjs first to give it the "math like" formatting if it is an equation
+1403-    try {
+1404-      const node = mathjs.parse(value);
+1405-      latexStr = node.toTex();
+1406-    } catch (e) {
+1407-      // It's not a valid mathjs expression, stick to raw value
+1408-    }
+1409-
+1410-    try {
+1411-      renderedLatex = (
+1412-        <span
+1413-          dangerouslySetInnerHTML={{
+1414-            __html: katex.renderToString(latexStr, {
+1415-              throwOnError: true,
+1416-              displayMode: false,
+1417-            }),
+1418-          }}
+1419-        />
+1420-      );
+1421-    } catch (e) {
+1422:      // If KaTeX still fails (e.g. invalid latex like a raw backslash), fallback to plain text
+1423-      renderedLatex = <span className="font-mono">{value}</span>;
+1424-    }
+1425-  }
+1426-
+1427-  return (
+1428-    <div
+1429-      className={`relative w-[180px] rounded border transition-colors cursor-text min-h-[32px] overflow-hidden ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.5)]" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"}`}
+1430-      onClick={() => {
+1431-        if (!isFocused) setIsFocused(true);
+1432-        setTimeout(() => inputRef.current?.focus(), 10);
+1433-      }}
+1434-    >
+1435-      <div
+1436-        className={`relative w-full ${isFocused || !renderedLatex ? "block" : "hidden"}`}
+1437-      >
+1438-        <textarea
+1439-          ref={inputRef}
+1440-          value={value}
+1441-          onChange={(e) => onChange(e.target.value)}
+1442-          onFocus={() => setIsFocused(true)}
+--
+1464-  at,
+1465-  tex,
+1466-  color,
+1467-}: {
+1468-  at: [number, number];
+1469-  tex: string;
+1470-  color: string;
+1471-}) => {
+1472-  if (!tex) return null;
+1473-
+1474-  let finalTex = tex;
+1475-  try {
+1476-    const node = mathjs.parse(tex);
+1477-    finalTex = node.toTex();
+1478-  } catch (e) {
+1479-    // Stick to raw tex
+1480-  }
+1481-
+1482-  try {
+1483-    katex.renderToString(finalTex, { throwOnError: true });
+1484:    return <LaTeX at={at} tex={finalTex} color={color} />;
+1485-  } catch (e) {
+1486-    return (
+1487-      <Text x={at[0]} y={at[1]} color={color} attach="ne">
+1488-        {tex}
+1489-      </Text>
+1490-    );
+1491-  }
+1492-};
+1493-
+1494-const ImplicitPlot: React.FC<{
+1495-  compiledLHS: any;
+1496-  compiledRHS: any;
+1497-  baseScope: any;
+1498-  color: string;
+1499-  weight?: number;
+1500-  opacity?: number;
+1501-  tx?: number;
+1502-  ty?: number;
+1503-  lineStyle?: string;
+1504-}> = ({
+--
+3306-                                        </label>
+3307-                                        <div className="flex items-center gap-1.5 select-none">
+3308-                                          {/* Small Eye button to toggle raw / rendered */}
+3309-                                          <button
+3310-                                            type="button"
+3311-                                            onClick={(e) => {
+3312-                                              e.preventDefault();
+3313-                                              e.stopPropagation();
+3314-                                              setShowPreviewLatex(
+3315-                                                !showPreviewLatex,
+3316-                                              );
+3317-                                            }}
+3318-                                            className={`p-0.5 rounded border flex items-center justify-center h-5 w-5 cursor-pointer transition-colors ${
+3319-                                              showPreviewLatex
+3320-                                                ? "bg-blue-600/10 text-blue-405 border-blue-500/20 hover:bg-blue-600/20"
+3321-                                                : "bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-700/45"
+3322-                                            }`}
+3323-                                            title={
+3324-                                              showPreviewLatex
+3325-                                                ? "Show Raw Text Code"
+3326:                                                : "Show LaTeX Math Layout"
+3327-                                            }
+3328-                                          >
+3329-                                            <Eye
+3330-                                              size={11}
+3331-                                              className="stroke-[2]"
+3332-                                            />
+3333-                                          </button>
+3334-
+3335-                                          {/* Compact Copy action */}
+3336-                                          <button
+3337-                                            type="button"
+3338-                                            onClick={() => {
+3339-                                              navigator.clipboard.writeText(
+3340-                                                f.expr,
+3341-                                              );
+3342-                                              setPreviewCopied(true);
+3343-                                              setTimeout(
+3344-                                                () => setPreviewCopied(false),
+3345-                                                2000,
+3346-                                              );
+--
+3751-                                    />
+3752-                                    <span className="text-slate-600 dark:text-slate-300">
+3753-                                      Show Label
+3754-                                    </span>
+3755-                                  </label>
+3756-                                </div>
+3757-
+3758-                                {f.showLabel && (
+3759-                                  <div className="flex mt-1">
+3760-                                    <LabelInput
+3761-                                      value={f.label || ""}
+3762-                                      onChange={(val) =>
+3763-                                        setFunctions((prev) =>
+3764-                                          prev.map((fn) =>
+3765-                                            fn.id === f.id
+3766-                                              ? { ...fn, label: val }
+3767-                                              : fn,
+3768-                                          ),
+3769-                                        )
+3770-                                      }
+3771:                                      placeholder="Text or LaTeX (e.g. A_1)"
+3772-                                    />
+3773-                                  </div>
+3774-                                )}
+3775-
+3776-                                <div className="flex items-center justify-between mt-1 p-2 border border-blue-500/10 bg-blue-500/5 dark:bg-blue-500/5 rounded">
+3777-                                  <span className="text-slate-600 dark:text-slate-400 text-[10px] font-semibold tracking-wide">
+3778-                                    Change Origin [h, k]
+3779-                                  </span>
+3780-                                  <div className="flex gap-1.5 flex-1 max-w-[100px]">
+3781-                                    <input
+3782-                                      title="h (shift for x-axis)"
+3783-                                      type="number"
+3784-                                      step="1"
+3785-                                      value={f.transformTranslate?.[0] || 0}
+3786-                                      onChange={(e) =>
+3787-                                        setFunctions((prev) =>
+3788-                                          prev.map((fn) =>
+3789-                                            fn.id === f.id
+3790-                                              ? {
+3791-                                                  ...fn,
+--
+4726-                      setDragEnabledFormulaId(null);
+4727-                    };
+4728-
+4729-                    const toggleFavorite = async (formula: any) => {
+4730-                      if (formula.id) {
+4731-                        await db.customFormulas.update(formula.id, {
+4732-                          isFavorite: !formula.isFavorite,
+4733-                        });
+4734-                      }
+4735-                    };
+4736-
+4737-                    const handleSaveExpr = async (id: number) => {
+4738-                      if (editingFormulaExpr.trim()) {
+4739-                        await db.customFormulas.update(id, {
+4740-                          expr: editingFormulaExpr.trim(),
+4741-                        });
+4742-                      }
+4743-                      setEditingFormulaFieldId(null);
+4744-                    };
+4745-
+4746:                    const renderFormulaLaTeX = (expr: string, type: string) => {
+4747-                      try {
+4748-                        const parsed = mathjs.parse(expr);
+4749-                        const texStr = parsed.toTex();
+4750-                        let prefix = "";
+4751-                        if (type === "polar") prefix = "r = ";
+4752-                        else if (type === "parametric") prefix = "[x,y] = ";
+4753-                        else prefix = "y = ";
+4754-
+4755-                        const fullTex = prefix + texStr;
+4756-                        const html = katex.renderToString(fullTex, {
+4757-                          throwOnError: true,
+4758-                          displayMode: false,
+4759-                        });
+4760-                        return (
+4761-                          <div
+4762-                            className="text-blue-600 dark:text-blue-400 font-sans tracking-wide select-all text-xs"
+4763-                            dangerouslySetInnerHTML={{ __html: html }}
+4764-                          />
+4765-                        );
+4766-                      } catch (err) {
+--
+5034-                                                      null,
+5035-                                                    );
+5036-                                                }}
+5037-                                                className="w-full bg-[#070b13] border border-blue-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-450 rounded-lg h-8 px-2.5 outline-none font-mono text-xs text-blue-300 font-bold"
+5038-                                              />
+5039-                                            </div>
+5040-                                          ) : (
+5041-                                            <div
+5042-                                              onClick={() => {
+5043-                                                setEditingFormulaFieldId(
+5044-                                                  formula.id!,
+5045-                                                );
+5046-                                                setEditingFormulaExpr(
+5047-                                                  formula.expr,
+5048-                                                );
+5049-                                              }}
+5050-                                              className="ml-5 flex items-center justify-between bg-white dark:bg-[#070b13]/60 border border-rose-100/60 dark:border-rose-900/20 hover:border-rose-300 dark:hover:border-rose-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
+5051-                                              title="Click to Edit Formula"
+5052-                                            >
+5053-                                              <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
+5054:                                                {renderFormulaLaTeX(
+5055-                                                  formula.expr,
+5056-                                                  formula.type || "function",
+5057-                                                )}
+5058-                                              </div>
+5059-                                              <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 opacity-0 group-hover/math-block:opacity-100 transition-opacity">
+5060-                                                <Edit2
+5061-                                                  size={11}
+5062-                                                  className="text-pink-400"
+5063-                                                />
+5064-                                                <button
+5065-                                                  type="button"
+5066-                                                  onClick={(e) => {
+5067-                                                    e.stopPropagation();
+5068-                                                    navigator.clipboard.writeText(
+5069-                                                      formula.expr,
+5070-                                                    );
+5071-                                                    setCopiedFormulaId(
+5072-                                                      formula.id || null,
+5073-                                                    );
+5074-                                                    setTimeout(
+--
+5232-                                                  await db.customFormulas.delete(
+5233-                                                    formula.id,
+5234-                                                  );
+5235-                                                }
+5236-                                              }}
+5237-                                              className="h-7 w-7 bg-red-500/10 hover:bg-red-500/25 text-red-500 rounded-md border border-red-500/15 flex items-center justify-center transition-all opacity-40 group-hover/formula:opacity-100 hover:scale-105 cursor-pointer shadow-xs"
+5238-                                              title="Delete Formula"
+5239-                                            >
+5240-                                              <Trash2 size={13} />
+5241-                                            </button>
+5242-                                          </div>
+5243-                                        </div>
+5244-
+5245-                                        {/* Formula Description */}
+5246-                                        {formula.description && (
+5247-                                          <p className="text-[10px] text-slate-500 dark:text-slate-450 leading-normal pl-5 pr-2">
+5248-                                            {formula.description}
+5249-                                          </p>
+5250-                                        )}
+5251-
+5252:                                        {/* Click to Edit / Blur to LaTeX Block */}
+5253-                                        {editingFormulaFieldId ===
+5254-                                        formula.id ? (
+5255-                                          <div className="pl-5 pr-1 mt-0.5">
+5256-                                            <input
+5257-                                              type="text"
+5258-                                              autoFocus
+5259-                                              value={editingFormulaExpr}
+5260-                                              onChange={(e) =>
+5261-                                                setEditingFormulaExpr(
+5262-                                                  e.target.value,
+5263-                                                )
+5264-                                              }
+5265-                                              onBlur={() =>
+5266-                                                handleSaveExpr(formula.id!)
+5267-                                              }
+5268-                                              onKeyDown={(e) => {
+5269-                                                if (e.key === "Enter")
+5270-                                                  handleSaveExpr(formula.id!);
+5271-                                                if (e.key === "Escape")
+5272-                                                  setEditingFormulaFieldId(
+5273-                                                    null,
+5274-                                                  );
+5275-                                              }}
+5276-                                              className="w-full bg-[#0D1527] border border-blue-500 hover:border-blue-400 focus:ring-1 focus:ring-blue-450 rounded-lg h-8 px-2.5 outline-none font-mono text-xs text-blue-300 font-bold"
+5277-                                            />
+5278-                                          </div>
+5279-                                        ) : (
+5280-                                          <div
+5281-                                            onClick={() => {
+5282-                                              setEditingFormulaFieldId(
+5283-                                                formula.id!,
+5284-                                              );
+5285-                                              setEditingFormulaExpr(
+5286-                                                formula.expr,
+5287-                                              );
+5288-                                            }}
+5289-                                            className="ml-5 flex items-center justify-between bg-slate-50 dark:bg-[#0D1527]/20 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
+5290-                                            title="Click to Edit Formula"
+5291-                                          >
+5292-                                            <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
+5293:                                              {renderFormulaLaTeX(
+5294-                                                formula.expr,
+5295-                                                formula.type || "function",
+5296-                                              )}
+5297-                                            </div>
+5298-                                            <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 opacity-0 group-hover/math-block:opacity-100 transition-opacity">
+5299-                                              <Edit2
+5300-                                                size={11}
+5301-                                                className="text-blue-400"
+5302-                                              />
+5303-                                              <button
+5304-                                                type="button"
+5305-                                                onClick={(e) => {
+5306-                                                  e.stopPropagation();
+5307-                                                  navigator.clipboard.writeText(
+5308-                                                    formula.expr,
+5309-                                                  );
+5310-                                                  setCopiedFormulaId(
+5311-                                                    formula.id || null,
+5312-                                                  );
+5313-                                                  setTimeout(

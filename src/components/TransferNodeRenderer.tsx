@@ -144,6 +144,17 @@ export const TransferNodeRenderer: React.FC<{
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
 
+  const [broadcastFrames, setBroadcastFrames] = useState<string[]>([]);
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+
+  const [receivedChunks, setReceivedChunks] = useState<{
+    sessionId: string;
+    total: number;
+    chunks: Record<number, string>;
+  } | null>(null);
+
+  const [completeScannedPayload, setCompleteScannedPayload] = useState<string | null>(null);
+
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [copyPasteOffer, setCopyPasteOffer] = useState("");
@@ -235,6 +246,48 @@ export const TransferNodeRenderer: React.FC<{
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [copiedSDP, setCopiedSDP] = useState(false);
+
+  useEffect(() => {
+    const payload = offerQR || answerQR;
+    if (payload) {
+      let chunkLen = 250;
+      if (qrDensity === "L") chunkLen = 100;
+      if (qrDensity === "M") chunkLen = 180;
+      if (qrDensity === "Q") chunkLen = 250;
+      if (qrDensity === "H") chunkLen = 350;
+
+      const totalChunks = Math.ceil(payload.length / chunkLen);
+      const sid = Math.random().toString(36).substring(2, 8);
+      const frames = [];
+      for (let i = 0; i < totalChunks; i++) {
+        const p = payload.slice(i * chunkLen, (i + 1) * chunkLen);
+        frames.push(JSON.stringify({ s: sid, t: totalChunks, i, p }));
+      }
+      setBroadcastFrames(frames);
+      setCurrentFrameIndex(0);
+    } else {
+      setBroadcastFrames([]);
+      setReceivedChunks(null);
+    }
+  }, [offerQR, answerQR, qrDensity]);
+
+  useEffect(() => {
+    if (completeScannedPayload) {
+      processCompleteScannedPayload(completeScannedPayload);
+      setCompleteScannedPayload(null);
+    }
+  }, [completeScannedPayload]);
+
+  useEffect(() => {
+    if (broadcastFrames.length > 1) {
+      const interval = setInterval(() => {
+        setCurrentFrameIndex(prev => (prev + 1) % broadcastFrames.length);
+      }, 150);
+      return () => clearInterval(interval);
+    } else {
+      setCurrentFrameIndex(0);
+    }
+  }, [broadcastFrames]);
 
   useEffect(() => {
     const checkClipboardForSdp = async () => {
@@ -767,8 +820,7 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const handleScan = (code: string) => {
-    if (!code) return;
+  const processCompleteScannedPayload = (code: string) => {
     try {
       const uncompressed = decompressPayload(code);
       const desc = JSON.parse(uncompressed || code);
@@ -778,12 +830,50 @@ export const TransferNodeRenderer: React.FC<{
         processAnswer(desc);
       }
       setScanError(null);
+      setReceivedChunks(null);
     } catch (e) {
       setScanError(
         "Invalid pairing code scanned. Keep scanning or try another code.",
       );
       setTimeout(() => setScanError(null), 3000);
     }
+  };
+
+  const handleScan = (code: string) => {
+    if (!code) return;
+
+    try {
+      if (code.startsWith("{") && code.includes('"s":') && code.includes('"t":')) {
+        const chunk = JSON.parse(code);
+        if (chunk.s && typeof chunk.t === "number" && typeof chunk.i === "number" && chunk.p) {
+          setReceivedChunks((prev) => {
+            if (prev && prev.sessionId === chunk.s && Object.keys(prev.chunks).length === prev.total) {
+                return prev; 
+            }
+            const isNewSession = !prev || prev.sessionId !== chunk.s;
+            const newState = isNewSession ? {
+              sessionId: chunk.s,
+              total: chunk.t,
+              chunks: {} as Record<number, string>
+            } : { ...prev, chunks: { ...prev.chunks } };
+            
+            if (!newState.chunks[chunk.i]) {
+              newState.chunks[chunk.i] = chunk.p;
+            }
+            
+            if (Object.keys(newState.chunks).length === chunk.t) {
+              const fullPayload = Array.from({length: chunk.t}).map((_, idx) => newState.chunks[idx]).join("");
+              setCompleteScannedPayload(fullPayload);
+            }
+            return newState;
+          });
+          return;
+        }
+      }
+    } catch(e) {}
+
+    // Legacy unchunked parsing fallback
+    processCompleteScannedPayload(code);
   };
 
   const processOffer = async (offer: any) => {
@@ -1001,6 +1091,17 @@ export const TransferNodeRenderer: React.FC<{
                       </span>
                     </div>
                   </div>
+                  {receivedChunks && receivedChunks.total > 1 && (
+                    <div className="mt-4 w-full">
+                      <div className="flex justify-between text-[10px] text-emerald-400 font-bold mb-1">
+                        <span>Receiving Chunks...</span>
+                        <span>{Object.keys(receivedChunks.chunks).length} / {receivedChunks.total}</span>
+                      </div>
+                      <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-200" style={{ width: `${(Object.keys(receivedChunks.chunks).length / receivedChunks.total) * 100}%` }} />
+                      </div>
+                    </div>
+                  )}
                   {scanError && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
@@ -1055,10 +1156,10 @@ export const TransferNodeRenderer: React.FC<{
             {connectionState === "pairing" && pairingWorkflow === "manual"
               ? isHosting
                 ? offerQR
-                  ? "Waiting For Answer"
+                  ? broadcastFrames.length > 0 ? "Broadcasting Offer" : "Waiting For Answer"
                   : "Generating Offer"
                 : answerQR
-                  ? "Generated Answer"
+                  ? broadcastFrames.length > 0 ? "Broadcasting Answer" : "Generated Answer"
                   : "Waiting For Offer"
               : connectionState}
           </div>
@@ -1355,19 +1456,28 @@ export const TransferNodeRenderer: React.FC<{
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group">
+                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center min-h-[232px] min-w-[232px]">
+                    {broadcastFrames.length > 0 && (
+                      <div className="absolute top-2 left-2 z-[10]">
+                        <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
+                          {currentFrameIndex + 1} / {broadcastFrames.length}
+                        </div>
+                      </div>
+                    )}
                     <button
                       onClick={() => setShowDiagnostics(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
                     >
                       <Activity className="w-3.5 h-3.5 text-slate-500" />
                     </button>
-                    <QRCodeSVG
-                      value={offerQR || answerQR}
-                      size={200}
-                      level={qrDensity}
-                      marginSize={1}
-                    />
+                    {(broadcastFrames.length > 0 || offerQR || answerQR) && (
+                      <QRCodeSVG
+                        value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
+                        size={200}
+                        level={qrDensity}
+                        marginSize={1}
+                      />
+                    )}
                   </div>
                 )}
 

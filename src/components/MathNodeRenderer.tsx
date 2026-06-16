@@ -740,6 +740,7 @@ const EquationInput = ({
   hoveredVar,
   error,
   onAddEnter,
+  globalTime = 1,
 }: any) => {
   const [isFocused, setIsFocused] = useState(false);
   const [cursorPos, setCursorPos] = useState(0);
@@ -749,6 +750,15 @@ const EquationInput = ({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const appTheme = useStore((state) => state.appTheme);
+  const [copiedType, setCopiedType] = useState<string | null>(null);
+
+  const handleCopy = (type: string, text: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    navigator.clipboard.writeText(text);
+    setCopiedType(type);
+    setTimeout(() => setCopiedType(null), 1500);
+  };
 
   useEffect(() => {
     if (!isFocused) {
@@ -958,8 +968,8 @@ const EquationInput = ({
         // provide typical geometry variables so it doesn't fail parsing function plots
         scope.x = 1;
         scope.y = 1;
-        scope.t = 1;
-        scope.time = 1;
+        scope.t = globalTime;
+        scope.time = globalTime;
         scope.theta = 1;
 
         const result = node.evaluate(scope);
@@ -977,7 +987,7 @@ const EquationInput = ({
       renderedLatex = (
         <>
           <span
-            className="math-rendered-block block w-full px-2 py-1.5"
+            className="math-rendered-block block w-full px-2 py-1.5 text-xs sm:text-sm pointer-events-none"
             dangerouslySetInnerHTML={{
               __html: katex.renderToString(
                 latex +
@@ -988,38 +998,29 @@ const EquationInput = ({
               ),
             }}
           />
-          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/80 dark:bg-slate-900/80 backdrop-blur rounded p-0.5 border border-slate-200 dark:border-slate-700 shadow-sm z-10">
+          <div className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded p-1 border border-slate-200 dark:border-slate-700 shadow-sm z-20 pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
             {resStrOutput && (
               <button
-                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-mono text-[9px] font-bold"
+                className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "result" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} font-mono text-[10px] md:text-[9px] font-bold cursor-pointer w-6 h-6 md:w-5 md:h-5 flex items-center justify-center`}
                 title="Copy Result"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(resStrOutput);
-                }}
+                onClick={(e) => handleCopy("result", resStrOutput, e)}
               >
-                =
+                {copiedType === "result" ? <Check size={12} /> : "="}
               </button>
             )}
             <button
-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-serif text-[10px] font-bold px-1.5"
+              className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "latex" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} font-serif text-[11px] md:text-[10px] font-bold px-2 md:px-1.5 cursor-pointer h-6 md:h-5 flex items-center justify-center`}
               title="Copy LaTeX"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigator.clipboard.writeText(rawLatexOutput);
-              }}
+              onClick={(e) => handleCopy("latex", rawLatexOutput, e)}
             >
-              TeX
+              {copiedType === "latex" ? <Check size={13} /> : "TeX"}
             </button>
             <button
-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400"
+              className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "expr" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} cursor-pointer w-6 h-6 md:w-5 md:h-5 flex items-center justify-center`}
               title="Copy Expression"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigator.clipboard.writeText(value);
-              }}
+              onClick={(e) => handleCopy("expr", value, e)}
             >
-              <Copy size={12} />
+              {copiedType === "expr" ? <Check size={13} /> : <Copy size={13} className="md:w-[12px] md:h-[12px]" />}
             </button>
           </div>
         </>
@@ -1040,9 +1041,9 @@ const EquationInput = ({
   }
 
   return (
-    <div className="relative flex-1 group" ref={containerRef}>
+    <div className="relative flex-1 group/preview" ref={containerRef}>
       <div
-        className={`relative w-full rounded border group-hover:border-slate-350 dark:group-hover:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
+        className={`relative w-full rounded border group-hover/preview:border-slate-350 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
         onClick={() => {
           if (!isFocused) setIsFocused(true);
           setTimeout(() => inputRef.current?.focus(), 10);
@@ -2995,8 +2996,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           isPanelVisible && (
             <div
               ref={sidebarRef}
-              className={`bg-slate-50 dark:bg-slate-800 flex flex-col border-r border-slate-200 dark:border-slate-700 nodrag z-20 absolute inset-y-0 left-0 md:relative transition-transform duration-300 md:translate-x-0 max-w-[85vw] ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
-              style={{ width: sidebarWidth }}
+              className={`bg-slate-50 dark:bg-slate-800 flex flex-col border-r border-slate-200 dark:border-slate-700 nodrag z-20 absolute inset-y-0 left-0 md:relative transition-transform duration-300 md:translate-x-0 w-full sm:w-[85vw] md:w-[var(--sidebar-width)] md:max-w-none ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
+              style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
               onClick={() => setActiveActionMenuId(null)}
             >
               <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 custom-scrollbar">
@@ -3059,7 +3060,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             handleDropFunction(f.id, dragOverFunctionPosition);
                           }
                         }}
-                        className={`flex items-center gap-2 bg-white dark:bg-slate-900/50 p-2 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
+                        className={`flex flex-col md:flex-row md:items-center gap-2 bg-white dark:bg-slate-900/50 p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
                       ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""}
                     `}
                         style={{ borderLeftColor: f.color }}
@@ -3075,38 +3076,39 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               }`}
                             />
                           )}
-                        {/* Grip Handle */}
-                        <div
-                          onMouseDown={() => setCanDragFunctionId(f.id)}
-                          onMouseUp={() => setCanDragFunctionId(null)}
-                          onTouchStart={() => setCanDragFunctionId(f.id)}
-                          onTouchEnd={() => setCanDragFunctionId(null)}
-                          className="cursor-grab active:cursor-grabbing text-slate-450 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          title="Drag to reorder"
-                        >
-                          <GripVertical size={14} />
-                        </div>
-                        <div
-                          className="w-4 h-4 rounded-full flex-shrink-0 cursor-pointer transition-transform hover:scale-110"
-                          style={{
-                            backgroundColor: f.visible
-                              ? f.color
-                              : "transparent",
-                            border: `2px solid ${f.color}`,
-                          }}
-                          onClick={() =>
-                            setFunctions((prev) =>
-                              prev.map((fn) =>
-                                fn.id === f.id
-                                  ? { ...fn, visible: !fn.visible }
-                                  : fn,
-                              ),
-                            )
-                          }
-                        />
-                        <div className="flex flex-col flex-1 min-w-0">
-                          <div className="flex items-center font-mono text-sm w-full">
-                            <select
+                        
+                        {/* Mobile Header Row / Desktop Left Elements */}
+                        <div className="flex items-center gap-2 w-full md:w-auto flex-shrink-0">
+                          {/* Grip Handle */}
+                          <div
+                            onMouseDown={() => setCanDragFunctionId(f.id)}
+                            onMouseUp={() => setCanDragFunctionId(null)}
+                            onTouchStart={() => setCanDragFunctionId(f.id)}
+                            onTouchEnd={() => setCanDragFunctionId(null)}
+                            className="cursor-grab active:cursor-grabbing text-slate-450 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-350 p-0.5 rounded md:opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            title="Drag to reorder"
+                          >
+                            <GripVertical size={14} />
+                          </div>
+                          <div
+                            className="w-4 h-4 rounded-full flex-shrink-0 cursor-pointer transition-transform hover:scale-110"
+                            style={{
+                              backgroundColor: f.visible
+                                ? f.color
+                                : "transparent",
+                              border: `2px solid ${f.color}`,
+                            }}
+                            onClick={() =>
+                              setFunctions((prev) =>
+                                prev.map((fn) =>
+                                  fn.id === f.id
+                                    ? { ...fn, visible: !fn.visible }
+                                    : fn,
+                                ),
+                              )
+                            }
+                          />
+                          <select
                               value={f.type}
                               onChange={(e) =>
                                 setFunctions((prev) =>
@@ -3199,6 +3201,25 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 Poly =
                               </option>
                             </select>
+
+                            <div className="flex-1 md:hidden"></div>
+                            {/* Mobile Toggle Button inside Header Row */}
+                            <div className="md:hidden flex items-center shrink-0 nodrag cursor-default" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  className={`p-1.5 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all ${activeActionMenuId === f.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveActionMenuId(activeActionMenuId === f.id ? null : f.id);
+                                  }}
+                                >
+                                  <MoreVertical size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Equation Input / Desktop Right side */}
+                        <div className="flex flex-col flex-1 min-w-0 w-full md:w-auto overflow-hidden relative">
+                          <div className="flex items-center font-mono text-sm w-full">
                             <EquationInput
                               value={f.expr}
                               onChange={(val: string) =>
@@ -3209,6 +3230,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               setHoveredVar={setHoveredVar}
                               error={f.error}
                               onAddEnter={handleAddFunction}
+                              globalTime={time}
                             />
                           </div>
                           {savingFormulaFnId === f.id &&
@@ -4435,23 +4457,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           )}
                         </div>
                         {/* Action Buttons Block */}
-                        <div className="absolute right-2 top-2 nodrag shrink-0 z-20 flex items-center">
-                          {/* Mobile toggle button */}
-                          <button
-                            className={`md:hidden p-1.5 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all ${activeActionMenuId === f.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveActionMenuId(
-                                activeActionMenuId === f.id ? null : f.id,
-                              );
-                            }}
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-
-                          {/* Button group compact block */}
+                        <div className="absolute right-2 top-2 nodrag shrink-0 z-20 flex flex-col md:flex-row items-end md:items-center">
+                          {/* Desktop Inline Actions */}
                           <div
-                            className={`items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 ${activeActionMenuId === f.id ? "flex absolute right-8 top-0" : "hidden md:opacity-0 md:group-hover:opacity-100 md:flex"} transition-opacity`}
+                            className={`hidden md:opacity-0 md:group-hover:opacity-100 md:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 transition-opacity`}
                           >
                             <button
                               type="button"
@@ -4461,7 +4470,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   prev === f.id ? null : f.id,
                                 );
                               }}
-                              className={`p-1.5 md:p-1 rounded transition-all hover:bg-slate-100 dark:hover:bg-slate-700 flex flex-col justify-center ${
+                              className={`p-1 rounded transition-all hover:bg-slate-100 dark:hover:bg-slate-700 flex flex-col justify-center ${
                                 expandedSettingsFnId === f.id
                                   ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
                                   : "opacity-60 text-slate-500 dark:text-slate-400"
@@ -4474,45 +4483,33 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               />
                             </button>
                             <button
-                              onClick={() => {
-                                setActiveActionMenuId(null);
-                                handleAddFunctionAt(f.id, "above");
-                              }}
-                              className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
+                              onClick={() => handleAddFunctionAt(f.id, "above")}
+                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
                               title="Insert Function Above"
                             >
                               <InsertAboveIcon size={14} />
                             </button>
                             <button
-                              onClick={() => {
-                                setActiveActionMenuId(null);
-                                handleAddFunctionAt(f.id, "below");
-                              }}
-                              className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
+                              onClick={() => handleAddFunctionAt(f.id, "below")}
+                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
                               title="Insert Function Below"
                             >
                               <InsertBelowIcon size={14} />
                             </button>
                             <button
-                              onClick={() => {
-                                setActiveActionMenuId(null);
-                                handleDuplicateFunction(f.id);
-                              }}
-                              className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
+                              onClick={() => handleDuplicateFunction(f.id)}
+                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
                               title="Duplicate Function"
                             >
                               <CopyPlus size={14} strokeWidth={2} />
                             </button>
                             <button
                               onClick={() => {
-                                setActiveActionMenuId(null);
                                 setFormulaName(f.name || "");
                                 setFormulaDesc("");
-                                setSavingFormulaFnId(
-                                  savingFormulaFnId === f.id ? null : f.id,
-                                );
+                                setSavingFormulaFnId(savingFormulaFnId === f.id ? null : f.id);
                               }}
-                              className={`p-1.5 md:p-1 rounded transition-all flex items-center justify-center ${
+                              className={`p-1 rounded transition-all flex items-center justify-center ${
                                 savingFormulaFnId === f.id
                                   ? "opacity-100 bg-amber-500/10 text-amber-500 dark:text-amber-400"
                                   : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 animate-pulse-subtle"
@@ -4521,25 +4518,61 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             >
                               <Bookmark
                                 size={14}
-                                fill={
-                                  savingFormulaFnId === f.id
-                                    ? "currentColor"
-                                    : "none"
-                                }
+                                fill={savingFormulaFnId === f.id ? "currentColor" : "none"}
                               />
                             </button>
-                            <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity hidden md:block"></div>
+                            <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity"></div>
                             <button
-                              onClick={() => {
-                                setActiveActionMenuId(null);
-                                handleRemoveFunction(f.id);
-                              }}
-                              className="p-1.5 md:p-1 hover:bg-red-500/20 hover:text-red-400 text-slate-400 dark:text-slate-500 rounded transition-all"
+                              onClick={() => handleRemoveFunction(f.id)}
+                              className="p-1 hover:bg-red-500/20 hover:text-red-400 text-slate-400 dark:text-slate-500 rounded transition-all"
                               title="Remove"
                             >
                               <Trash2 size={14} />
                             </button>
                           </div>
+                          
+                          {/* Mobile Dropdown Actions Block */}
+                          {activeActionMenuId === f.id && (
+                            <div className="md:hidden mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={() => { 
+                                 setActiveActionMenuId(null); 
+                                 try {
+                                   const node = mathjs.parse(f.expr);
+                                   const scope: any = { x: 1, y: 1, t: time, time: time, theta: 1 };
+                                   variables.forEach(v => scope[v.name] = v.value);
+                                   const res = node.evaluate(scope);
+                                   navigator.clipboard.writeText(mathjs.format(res, {precision: 5}));
+                                 } catch(e) {}
+                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
+                                 <Check size={14} className="text-slate-500"/> Copy Result
+                              </button>
+                              <button onClick={() => { 
+                                 setActiveActionMenuId(null); 
+                                 try {
+                                   const node = mathjs.parse(f.expr);
+                                   navigator.clipboard.writeText(node.toTex({}));
+                                 } catch(e) {}
+                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
+                                 <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 22h20L12 2z"/></svg> Copy LaTeX
+                              </button>
+                              <button onClick={() => { 
+                                 setActiveActionMenuId(null); 
+                                 navigator.clipboard.writeText(f.expr); 
+                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
+                                 <Copy size={14} className="text-slate-500"/> Copy Formula
+                              </button>
+                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1"/>
+                              <button onClick={() => { setActiveActionMenuId(null); handleDuplicateFunction(f.id); }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors">
+                                 <CopyPlus size={14} className="text-slate-500"/> Duplicate
+                              </button>
+                              <button onClick={() => { setActiveActionMenuId(null); setSavingFormulaFnId(f.id); setFormulaName(f.name || ""); setFormulaDesc(""); }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors">
+                                 <Bookmark size={14} className="text-amber-500"/> Save Formula
+                              </button>
+                              <button onClick={() => { setActiveActionMenuId(null); handleRemoveFunction(f.id); }} className="w-full flex items-center gap-2.5 p-2 hover:bg-red-500/10 rounded text-red-500 dark:text-red-400 text-xs transition-colors group">
+                                 <Trash2 size={14} className="group-hover:stroke-red-500"/> Remove
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -4944,7 +4977,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               </span>
 
                                               {/* Tag */}
-                                              <span className="text-[8px] tracking-wider uppercase font-extrabold select-none bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded font-sans leading-none ml-1">
+                                              <span className="text-[8px] tracking-wider uppercase font-extrabold select-none bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-1.5 py-0.5 rounded font-sans leading-none ml-1 flex-shrink-0">
                                                 {formula.type === "polar"
                                                   ? "POLAR"
                                                   : formula.type ===
@@ -5048,7 +5081,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               className="ml-5 flex items-center justify-between bg-white dark:bg-[#070b13]/60 border border-rose-100/60 dark:border-rose-900/20 hover:border-rose-300 dark:hover:border-rose-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
                                               title="Click to Edit Formula"
                                             >
-                                              <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
+                                              <div className="flex-1 overflow-x-auto custom-scrollbar pr-6 pb-1">
                                                 {renderFormulaLaTeX(
                                                   formula.expr,
                                                   formula.type || "function",
@@ -5184,7 +5217,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             </span>
 
                                             {/* Tag */}
-                                            <span className="text-[8px] tracking-wider uppercase font-extrabold select-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-sans leading-none ml-1">
+                                            <span className="text-[8px] tracking-wider uppercase font-extrabold select-none bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-sans leading-none ml-1 flex-shrink-0">
                                               {formula.type === "polar"
                                                 ? "POLAR"
                                                 : formula.type === "parametric"
@@ -5287,7 +5320,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             className="ml-5 flex items-center justify-between bg-slate-50 dark:bg-[#0D1527]/20 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
                                             title="Click to Edit Formula"
                                           >
-                                            <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
+                                            <div className="flex-1 overflow-x-auto custom-scrollbar pr-6 pb-1">
                                               {renderFormulaLaTeX(
                                                 formula.expr,
                                                 formula.type || "function",
