@@ -72,7 +72,10 @@ interface Message {
     type: string;
     fileName?: string;
   };
+  originalBlob?: Blob;
 }
+
+export const blobRegistry = new Map<string, Blob>();
 
 const getFileType = (fileName: string) => {
   const ext = fileName.split(".").pop()?.toLowerCase();
@@ -108,7 +111,9 @@ const dataURItoBlobURL = (dataURI: string) => {
       ia[i] = byteString.charCodeAt(i);
     }
     const blob = new Blob([ab], { type: mimeString });
-    return URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    blobRegistry.set(url, blob);
+    return url;
   } catch (err) {
     return dataURI; // fallback
   }
@@ -285,6 +290,7 @@ export const TransferNodeRenderer: React.FC<{
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [viewedMediaIds, setViewedMediaIds] = useState<Set<string>>(new Set());
   const [showChrome, setShowChrome] = useState(true);
+  const [copyStatus, setCopyStatus] = useState<{ id: string, status: "copying" | "success" } | null>(null);
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;
@@ -295,35 +301,182 @@ export const TransferNodeRenderer: React.FC<{
   }, [selectedMedia, showChrome]);
 
   const handleMediaCopy = async (media: Message) => {
+    setCopyStatus({ id: media.id, status: "copying" });
+    const successDelay = () => {
+      setCopyStatus({ id: media.id, status: "success" });
+      setTimeout(() => setCopyStatus(null), 2000);
+    };
     try {
-      const res = await fetch(media.content);
-      const blob = await res.blob();
+      console.log("[Transfer Node Copy] Copy Requested:", { id: media.id, fileName: media.fileName, fileType: media.fileType });
       
+      let blob = media.originalBlob || blobRegistry.get(media.content);
+      
+      if (!blob && media.type === "file" && media.content.startsWith("blob:")) {
+        console.log("[Transfer Node Copy] Fallback Triggered: Fetching object URL");
+        try {
+          const res = await fetch(media.content);
+          blob = await res.blob();
+          if (blob) {
+            blobRegistry.set(media.content, blob);
+          }
+        } catch (fetchErr) {
+          console.error("[Transfer Node Copy] Fallback Fetch Failed:", fetchErr);
+        }
+      }
+
+      if (!blob) {
+        console.error("[Transfer Node Copy] Clipboard Write Failed: No source blob available");
+        setCopyStatus(null);
+        setNotification({ message: "No source file data available to copy.", type: "error" });
+        return;
+      }
+
+      console.log("[Transfer Node Copy] Blob Type:", blob.type);
+      console.log("[Transfer Node Copy] Blob Size:", blob.size);
+
       if (media.fileType === "text_file") {
         const text = await blob.text();
         await navigator.clipboard.writeText(text);
-        setNotification({ message: "Content copied", type: "success" });
+        console.log("[Transfer Node Copy] Clipboard Write Success: Text copied");
+        setNotification({ message: "Text copied to clipboard", type: "success" });
+        successDelay();
         return;
       }
-      
-      try {
+
+      const writeToClipboard = async (dataBlob: Blob) => {
         await navigator.clipboard.write([
           new ClipboardItem({
-            [blob.type]: blob,
+            [dataBlob.type]: dataBlob,
           })
         ]);
-        setNotification({ message: "Asset copied", type: "success" });
-      } catch (err) {
-        // Fallback for types not supported by ClipboardItem (e.g., pdf, audio on some browsers)
-        console.warn("ClipboardItem unsupported for this type, falling back to download", err);
-        const link = document.createElement("a");
-        link.href = media.content;
-        link.download = media.fileName || "download";
-        link.click();
-        setNotification({ message: "Asset downloaded (Clipboard unsupported)", type: "info" });
+      };
+
+      if (media.fileType === "image") {
+         let supportsNative = false;
+         try {
+           if (typeof ClipboardItem !== "undefined" && ClipboardItem.supports) {
+             supportsNative = ClipboardItem.supports(blob.type);
+           }
+         } catch (e) {
+           supportsNative = false;
+         }
+
+         if (!supportsNative && (blob.type === "image/webp" || blob.type === "image/avif" || blob.type === "image/png" || blob.type === "image/jpeg")) {
+           console.log("[Transfer Node Copy] Fallback Triggered: Converting image format via JSquash...");
+           const convertToPng = async () => {
+              let imageData: ImageData | null = null;
+              const buffer = await blob.arrayBuffer();
+              try {
+                if (blob.type === "image/webp") {
+                    const decodeWebp = (await import("@jsquash/webp/decode")).default;
+                    imageData = await decodeWebp(buffer);
+                } else if (blob.type === "image/avif") {
+                    const decodeAvif = (await import("@jsquash/avif/decode")).default;
+                    imageData = await decodeAvif(buffer);
+                } else if (blob.type === "image/jpeg") {
+                    const decodeJpeg = (await import("@jsquash/jpeg/decode")).default;
+                    imageData = await decodeJpeg(buffer);
+                }
+              } catch (e) {
+                console.warn("[Transfer Node Copy] JSquash direct decode failed, falling back to canvas", e);
+              }
+              
+              if (!imageData) {
+                  return await new Promise<Blob>((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                      const canvas = document.createElement("canvas");
+                      canvas.width = img.width;
+                      canvas.height = img.height;
+                      const ctx = canvas.getContext("2d");
+                      if (!ctx) return reject(new Error("No 2d context"));
+                      ctx.drawImage(img, 0, 0);
+                      canvas.toBlob((b) => {
+                        if (b) resolve(b);
+                        else reject(new Error("Canvas toBlob failed"));
+                      }, "image/png");
+                    };
+                    img.onerror = () => reject(new Error("Image load failed"));
+                    img.src = URL.createObjectURL(blob!);
+                  });
+              } else {
+                  const encodePng = (await import("@jsquash/png/encode")).default;
+                  const pngBuffer = await encodePng(imageData);
+                  return new Blob([pngBuffer], { type: "image/png" });
+              }
+           };
+
+           try {
+             const pngBlob = await convertToPng();
+             await writeToClipboard(pngBlob);
+             console.log("[Transfer Node Copy] Clipboard Write Success: PNG converted copy");
+             setNotification({ message: "Image copied to clipboard", type: "success" });
+             successDelay();
+             return;
+           } catch (convErr) {
+             console.error("[Transfer Node Copy] JSquash conversion failed:", convErr);
+             // Downstream catch handles the rest
+           }
+         }
+
+         try {
+           await writeToClipboard(blob);
+           console.log("[Transfer Node Copy] Clipboard Write Success: Direct image copied");
+           setNotification({ message: "Image copied to clipboard", type: "success" });
+           successDelay();
+         } catch (directErr) {
+           console.log("[Transfer Node Copy] Fallback Triggered: Canvas fallback due to direct write error:", directErr);
+           try {
+             const canvasBlob = await new Promise<Blob>((resolve, reject) => {
+                 const img = new Image();
+                 img.onload = () => {
+                   const canvas = document.createElement("canvas");
+                   canvas.width = img.width;
+                   canvas.height = img.height;
+                   const ctx = canvas.getContext("2d");
+                   if (!ctx) return reject(new Error("No 2d context"));
+                   ctx.drawImage(img, 0, 0);
+                   canvas.toBlob((b) => {
+                     if (b) resolve(b);
+                     else reject(new Error("Canvas toBlob failed"));
+                   }, "image/png");
+                 };
+                 img.onerror = () => reject(new Error("Image load failed"));
+                 img.src = URL.createObjectURL(blob!);
+             });
+             await writeToClipboard(canvasBlob);
+             console.log("[Transfer Node Copy] Clipboard Write Success: Canvas fallback PNG copied");
+             setNotification({ message: "Image copied to clipboard", type: "success" });
+             successDelay();
+           } catch (fallbackErr) {
+             console.error("[Transfer Node Copy] Clipboard Write Failed: Direct copy and canvas both failed", fallbackErr);
+             setCopyStatus(null);
+             setNotification({ message: "Clipboard format not supported by your browser.", type: "error" });
+           }
+         }
+      } else {
+         try {
+           await writeToClipboard(blob);
+           console.log("[Transfer Node Copy] Clipboard Write Success: Direct Blob copied");
+           let typeStr = media.fileType?.toUpperCase() || "Asset";
+           if (media.fileType === "pdf") typeStr = "PDF";
+           else if (media.fileType === "audio") typeStr = "Audio";
+           else if (media.fileType === "video") typeStr = "Video";
+           setNotification({ message: `${typeStr} copied to clipboard`, type: "success" });
+           successDelay();
+         } catch (writeErr) {
+           console.error("[Transfer Node Copy] Clipboard Write Failed:", writeErr);
+           setCopyStatus(null);
+           if (media.fileType === "pdf") {
+              setNotification({ message: "PDF clipboard not supported by this browser. Use Download instead.", type: "error" });
+           } else {
+              setNotification({ message: "Cannot copy this file type in your browser. Use Download instead.", type: "error" });
+           }
+         }
       }
     } catch (e) {
-      console.error(e);
+      console.error("[Transfer Node Copy] Clipboard Write Failed with fatal error:", e);
+      setCopyStatus(null);
       setNotification({ message: "Failed to copy asset", type: "error" });
     }
   };
@@ -632,26 +785,34 @@ export const TransferNodeRenderer: React.FC<{
     payloadStr: string,
     fileName?: string,
     replyTo?: Message["replyTo"],
+    fileBlob?: Blob,
   ) => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
     const msgId = uuidv4();
     const totalChunks = Math.ceil(payloadStr.length / CHUNK_SIZE);
     const startTime = performance.now();
 
+    const objectUrl = type === "file" ? dataURItoBlobURL(payloadStr) : payloadStr;
+    const finalBlob = fileBlob || (type === "file" && objectUrl ? blobRegistry.get(objectUrl) : undefined);
+
     const initialMsg: Message = {
       id: msgId,
       sender: "me",
       type: type as any,
-      content: type === "file" ? dataURItoBlobURL(payloadStr) : payloadStr,
+      content: objectUrl,
       fileName,
       fileType: fileName ? getFileType(fileName) : undefined,
       fileSize: payloadStr.length,
+      originalBlob: finalBlob,
       timestamp: Date.now(),
       status: "sending",
       chunksSent: 0,
       chunksTotal: totalChunks,
       replyTo,
     };
+    if (objectUrl && finalBlob) {
+      blobRegistry.set(objectUrl, finalBlob);
+    }
 
     if (type === "file") {
       setMessages((prev) => [...prev, initialMsg]);
@@ -901,6 +1062,8 @@ export const TransferNodeRenderer: React.FC<{
               const fType = chunkData.fileName
                 ? getFileType(chunkData.fileName)
                 : "file";
+              const objectUrl = dataURItoBlobURL(fullPayload);
+              const originalBlob = blobRegistry.get(objectUrl);
               const newMsg: Message = {
                 id: msg.msgId,
                 sender: "remote",
@@ -908,7 +1071,8 @@ export const TransferNodeRenderer: React.FC<{
                 fileName: chunkData.fileName,
                 fileType: fType,
                 fileSize: fullPayload.length,
-                content: dataURItoBlobURL(fullPayload),
+                content: objectUrl,
+                originalBlob,
                 timestamp: Date.now(),
                 status: "received",
                 replyTo: chunkData.replyTo,
@@ -2743,6 +2907,8 @@ export const TransferNodeRenderer: React.FC<{
                                         "file",
                                         content,
                                         file.name,
+                                        undefined,
+                                        file,
                                       );
                                     };
                                     reader.readAsDataURL(file);
@@ -2890,22 +3056,31 @@ export const TransferNodeRenderer: React.FC<{
                                       navigator.clipboard.writeText(
                                         msg.content,
                                       );
+                                      setCopyStatus({ id: msg.id, status: "success" });
+                                      setTimeout(() => setCopyStatus(null), 2000);
                                       setNotification({
                                         message: "Copied to clipboard",
                                         type: "info",
                                       });
+                                      setTimeout(() => {
+                                        setShowContextMenu(null);
+                                      }, 2000);
                                     } else {
                                       setSelectedMedia(msg);
                                     }
                                   }}
                                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
                                 >
-                                  {msg.type === "text" ? (
+                                  {msg.type === "text" && copyStatus?.id === msg.id && copyStatus?.status === "success" ? (
+                                    <Check className="w-4 h-4 text-emerald-500" />
+                                  ) : msg.type === "text" ? (
                                     <Copy className="w-4 h-4" />
                                   ) : (
                                     <Eye className="w-4 h-4" />
                                   )}
-                                  {msg.type === "text"
+                                  {msg.type === "text" && copyStatus?.id === msg.id && copyStatus?.status === "success"
+                                    ? "Copied"
+                                    : msg.type === "text"
                                     ? "Copy Text"
                                     : msg.fileType === "video"
                                       ? "Play / Open"
@@ -2925,58 +3100,24 @@ export const TransferNodeRenderer: React.FC<{
                                     Reply
                                   </button>
                                 )}
-                                {msg.fileType === "text_file" && (
+                                {msg.type === "file" && (
                                   <button
-                                    onClick={async () => {
-                                      try {
-                                        const res = await fetch(msg.content);
-                                        const text = await res.text();
-                                        navigator.clipboard.writeText(text);
-                                        setNotification({
-                                          message: "Content copied",
-                                          type: "success",
-                                        });
-                                      } catch (e) {
-                                        setNotification({
-                                          message: "Failed to copy content",
-                                          type: "error",
-                                        });
-                                      }
-                                      setShowContextMenu(null);
+                                    onClick={() => {
+                                      handleMediaCopy(msg);
+                                      setTimeout(() => {
+                                        setShowContextMenu(null);
+                                      }, 2000);
                                     }}
                                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
                                   >
-                                    <Copy className="w-4 h-4" />
-                                    Copy Content
-                                  </button>
-                                )}
-                                {msg.fileType === "image" && (
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        const res = await fetch(msg.content);
-                                        const blob = await res.blob();
-                                        await navigator.clipboard.write([
-                                          new ClipboardItem({
-                                            [blob.type]: blob,
-                                          }),
-                                        ]);
-                                        setNotification({
-                                          message: "Image copied",
-                                          type: "success",
-                                        });
-                                      } catch (e) {
-                                        setNotification({
-                                          message: "Failed to copy image",
-                                          type: "error",
-                                        });
-                                      }
-                                      setShowContextMenu(null);
-                                    }}
-                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
-                                  >
-                                    <Copy className="w-4 h-4" />
-                                    Copy Image
+                                    {copyStatus?.id === msg.id && copyStatus.status === "success" ? (
+                                      <Check className="w-4 h-4 text-emerald-500" />
+                                    ) : (
+                                      <Copy className="w-4 h-4" />
+                                    )}
+                                    {copyStatus?.id === msg.id && copyStatus.status === "success"
+                                      ? "Copied" 
+                                      : msg.fileType === "image" ? "Copy Image" : msg.fileType === "text_file" ? "Copy Content" : "Copy Asset"}
                                   </button>
                                 )}
                                 {msg.type === "file" && (
@@ -3066,10 +3207,14 @@ export const TransferNodeRenderer: React.FC<{
                             <div className="flex items-center justify-end gap-2 w-1/3">
                               <button
                                 onClick={() => handleMediaCopy(selectedMedia)}
-                                className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md flex items-center justify-center"
+                                className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === selectedMedia.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
                                 title="Copy"
                               >
-                                <Copy className="w-4 h-4" />
+                                {copyStatus?.id === selectedMedia.id && copyStatus.status === "success" ? (
+                                  <Check className="w-4 h-4" />
+                                ) : (
+                                  <Copy className="w-4 h-4" />
+                                )}
                               </button>
                               <a
                                 href={selectedMedia.content}
