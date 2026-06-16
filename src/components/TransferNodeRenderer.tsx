@@ -146,6 +146,7 @@ export const TransferNodeRenderer: React.FC<{
 
   const [broadcastFrames, setBroadcastFrames] = useState<string[]>([]);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+  const [qrSpeed, setQrSpeed] = useState<"fast" | "balanced" | "reliable">("reliable");
 
   const [receivedChunks, setReceivedChunks] = useState<{
     sessionId: string;
@@ -154,6 +155,8 @@ export const TransferNodeRenderer: React.FC<{
   } | null>(null);
 
   const [completeScannedPayload, setCompleteScannedPayload] = useState<string | null>(null);
+
+  const [scannerGuidance, setScannerGuidance] = useState<string>("Position QR in frame");
 
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -280,14 +283,15 @@ export const TransferNodeRenderer: React.FC<{
 
   useEffect(() => {
     if (broadcastFrames.length > 1) {
+      const ms = qrSpeed === "fast" ? 300 : qrSpeed === "balanced" ? 600 : 1000;
       const interval = setInterval(() => {
         setCurrentFrameIndex(prev => (prev + 1) % broadcastFrames.length);
-      }, 150);
+      }, ms);
       return () => clearInterval(interval);
     } else {
       setCurrentFrameIndex(0);
     }
-  }, [broadcastFrames]);
+  }, [broadcastFrames, qrSpeed]);
 
   useEffect(() => {
     const checkClipboardForSdp = async () => {
@@ -389,6 +393,7 @@ export const TransferNodeRenderer: React.FC<{
             facingMode: "environment",
             width: { ideal: 720 },
             height: { ideal: 720 },
+            advanced: [{ focusMode: "continuous" } as any],
           },
         })
         .then((str) => {
@@ -417,6 +422,7 @@ export const TransferNodeRenderer: React.FC<{
               const sy = (height - roiSize) / 2;
 
               let code = null;
+              let usedRoi = true;
 
               const roiData = ctx.getImageData(sx, sy, roiSize, roiSize);
               code = jsQR(roiData.data, roiData.width, roiData.height, {
@@ -428,15 +434,28 @@ export const TransferNodeRenderer: React.FC<{
                 code = jsQR(fullData.data, fullData.width, fullData.height, {
                   inversionAttempts: "dontInvert",
                 });
+                usedRoi = false;
               }
 
               if (code && code.data) {
+                const refW = usedRoi ? roiData.width : width;
+                const qrW = Math.abs(code.location.bottomRightCorner.x - code.location.bottomLeftCorner.x);
+                if (qrW < refW * 0.3) {
+                  setScannerGuidance("Move closer");
+                } else if (qrW > refW * 0.9) {
+                  setScannerGuidance("Move farther");
+                } else {
+                  setScannerGuidance("Hold steady");
+                }
+
                 scanHistory.push(code.data);
                 if (scanHistory.length > 3) scanHistory.shift();
 
+                const isChunk = code.data.startsWith("{") && code.data.includes('"s":') && code.data.includes('"t":');
                 if (
-                  scanHistory.length === 3 &&
-                  scanHistory.every((c) => c === code!.data)
+                  isChunk ||
+                  (scanHistory.length === 3 &&
+                  scanHistory.every((c) => c === code!.data))
                 ) {
                   setDiagnostics((prev) => ({
                     ...prev,
@@ -446,6 +465,7 @@ export const TransferNodeRenderer: React.FC<{
                   scanHistory = [];
                 }
               } else {
+                setScannerGuidance("Scanning...");
                 scanHistory = [];
               }
             }
@@ -1039,7 +1059,7 @@ export const TransferNodeRenderer: React.FC<{
                   </button>
                   <div className="px-5 py-2.5 rounded-full bg-emerald-500/20 backdrop-blur-xl border border-emerald-500/40 text-emerald-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Active Pair
+                    {scannerGuidance}
                   </div>
                 </div>
 
@@ -1260,6 +1280,30 @@ export const TransferNodeRenderer: React.FC<{
                         ))}
                       </div>
                     </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 block mt-4">
+                        Animation Speed
+                      </span>
+                      <div
+                        className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                      >
+                        {(["fast", "balanced", "reliable"] as const).map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => setQrSpeed(s)}
+                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
+                              qrSpeed === s
+                                ? isDark
+                                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                                  : "bg-white text-indigo-600 shadow-sm"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               </>
@@ -1423,6 +1467,22 @@ export const TransferNodeRenderer: React.FC<{
                       >
                         {diagnostics.genTime.toFixed(1)} ms
                       </div>
+                      {broadcastFrames.length > 0 && (
+                        <>
+                          <div className="text-slate-500">QR Speed Pres:</div>
+                          <div className={isDark ? "text-slate-300" : "text-slate-700"}>
+                            {qrSpeed}
+                          </div>
+                          <div className="text-slate-500">Total Frames:</div>
+                          <div className={isDark ? "text-slate-300" : "text-slate-700"}>
+                            {broadcastFrames.length}
+                          </div>
+                          <div className="text-slate-500">Current Frame:</div>
+                          <div className={isDark ? "text-emerald-400" : "text-emerald-600"}>
+                            {currentFrameIndex + 1}
+                          </div>
+                        </>
+                      )}
                       {diagnostics.scanTime > 0 && (
                         <>
                           <div className="text-slate-500">Scan Time:</div>
@@ -1456,29 +1516,30 @@ export const TransferNodeRenderer: React.FC<{
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center min-h-[232px] min-w-[232px]">
-                    {broadcastFrames.length > 0 && (
-                      <div className="absolute top-2 left-2 z-[10]">
-                        <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
-                          {currentFrameIndex + 1} / {broadcastFrames.length}
+                    <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center min-h-[300px] min-w-[300px] w-full max-w-[340px]">
+                      {broadcastFrames.length > 0 && (
+                        <div className="absolute top-2 left-2 z-[10]">
+                          <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
+                            {currentFrameIndex + 1} / {broadcastFrames.length}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => setShowDiagnostics(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
-                    >
-                      <Activity className="w-3.5 h-3.5 text-slate-500" />
-                    </button>
-                    {(broadcastFrames.length > 0 || offerQR || answerQR) && (
-                      <QRCodeSVG
-                        value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
-                        size={200}
-                        level={qrDensity}
-                        marginSize={1}
-                      />
-                    )}
-                  </div>
+                      )}
+                      <button
+                        onClick={() => setShowDiagnostics(true)}
+                        className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                      >
+                        <Activity className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+                      {(broadcastFrames.length > 0 || offerQR || answerQR) && (
+                        <QRCodeSVG
+                          value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
+                          size={260}
+                          level={qrDensity}
+                          marginSize={2}
+                          className="w-full h-auto max-w-[280px]"
+                        />
+                      )}
+                    </div>
                 )}
 
                 <div className="text-center space-y-1">
