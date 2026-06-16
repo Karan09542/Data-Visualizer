@@ -1372,10 +1372,17 @@ export const TransferNodeRenderer: React.FC<{
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[10000] bg-black flex flex-col items-center justify-center overflow-hidden"
+              className="fixed inset-0 z-[10000] bg-black flex flex-col items-center justify-center overflow-hidden nodrag nowheel"
               onKeyDown={(e) => e.stopPropagation()}
               onKeyUp={(e) => e.stopPropagation()}
               onWheel={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
             >
               <video
                 ref={videoRefCallback}
@@ -1678,7 +1685,13 @@ export const TransferNodeRenderer: React.FC<{
         </div>
       </div>
 
-      <div className="flex-1 px-5 pb-5 flex flex-col">
+      <div 
+        className="flex-1 px-5 pb-5 flex flex-col nodrag nowheel"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+      >
         {connectionState === "waiting" && !scanMode && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -2487,7 +2500,13 @@ export const TransferNodeRenderer: React.FC<{
                   </div>
                 </div>
 
-                <div className="flex-1 relative overflow-hidden bg-transparent flex flex-col">
+                <div 
+                  className="flex-1 relative overflow-hidden bg-transparent flex flex-col nodrag nowheel"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onWheel={(e) => e.stopPropagation()}
+                >
                   {showScrollDown && (
                     <button
                       onClick={() => {
@@ -3154,17 +3173,32 @@ export const TransferNodeRenderer: React.FC<{
                   <AnimatePresence>
                     {selectedMedia && (
                       <div
-                        className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/98 backdrop-blur-3xl"
+                        className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/98 backdrop-blur-3xl nodrag nowheel"
                         onKeyDown={(e) => e.stopPropagation()}
                         onKeyUp={(e) => e.stopPropagation()}
                         onWheel={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseUp={(e) => e.stopPropagation()}
                         onTouchStart={(e) => {
+                          e.stopPropagation();
                           handlePointerMoveChrome();
                           handleMediaTouchStart(e);
                         }}
-                        onTouchEnd={handleMediaTouchEnd}
-                        onPointerMove={handlePointerMoveChrome}
-                        onClick={handlePointerMoveChrome}
+                        onTouchMove={(e) => e.stopPropagation()}
+                        onTouchEnd={(e) => {
+                          e.stopPropagation();
+                          handleMediaTouchEnd(e);
+                        }}
+                        onPointerMove={(e) => {
+                          e.stopPropagation();
+                          handlePointerMoveChrome();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePointerMoveChrome();
+                        }}
                       >
                       <AnimatePresence>
                         {showChrome && (
@@ -3332,7 +3366,16 @@ export const TransferNodeRenderer: React.FC<{
             return isFullscreen
               ? createPortal(
                   <div
-                    className={`fixed inset-0 z-[10000] backdrop-blur-sm p-0 sm:p-2 flex items-center justify-center ${isDark ? "bg-black/90" : "bg-slate-900/50"}`}
+                    className={`fixed inset-0 z-[10000] backdrop-blur-sm p-0 sm:p-2 flex items-center justify-center nodrag nowheel ${isDark ? "bg-black/90" : "bg-slate-900/50"}`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseUp={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onTouchMove={(e) => e.stopPropagation()}
+                    onTouchEnd={(e) => e.stopPropagation()}
+                    onWheel={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <div
                       className={`w-full h-full sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col ${isDark ? "bg-[#0a0c10] border-white/5" : "bg-white border-slate-200"}`}
