@@ -17,10 +17,10 @@ export function NotificationToast() {
   if (!notification) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] animate-in slide-in-from-bottom-5 fade-in duration-300">
-      <div className={`flex items-start gap-3 p-4 rounded-lg shadow-xl border max-w-sm w-full
+    <div className="fixed bottom-4 left-4 right-4 md:bottom-6 md:right-6 md:left-auto z-[9999] flex justify-center md:justify-end pointer-events-none animate-in slide-in-from-bottom-5 fade-in duration-300">
+      <div className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-2xl border w-full max-w-sm
         ${notification.type === 'error' ? 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-900 text-slate-800 dark:text-slate-200' : ''}
-        ${notification.type === 'success' ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-900 text-slate-800 dark:text-slate-200' : ''}
+        ${notification.type === 'success' ? 'bg-white dark:bg-[#0a0f1d] border-emerald-500/20 dark:border-emerald-500/30 text-slate-800 dark:text-slate-200 shadow-emerald-500/5' : ''}
         ${notification.type === 'info' ? 'bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-900 text-slate-800 dark:text-slate-200' : ''}
       `}>
         <div className="flex-shrink-0 mt-0.5">
@@ -33,7 +33,7 @@ export function NotificationToast() {
         </div>
         <button 
           onClick={() => setNotification(null)}
-          className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors pointer-events-auto"
         >
           <X className="w-4 h-4" />
         </button>
