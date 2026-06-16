@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore } from "../store/useStore";
+import { PdfViewer } from "./PdfViewer";
 import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
 import LZString from "lz-string";
@@ -44,6 +45,7 @@ import {
   LogIn,
   Scan,
   CornerDownRight,
+  LogOut,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -188,6 +190,7 @@ export const TransferNodeRenderer: React.FC<{
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollPosRef = useRef<number>(0);
   const lastMessageRef = useRef<HTMLDivElement>(null);
 
   const [notificationPermission, setNotificationPermission] =
@@ -232,6 +235,27 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+
+  useEffect(() => {
+    if (selectedMedia) {
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setSelectedMedia(null);
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = "";
+        window.removeEventListener("keydown", handleKeyDown);
+      };
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [selectedMedia]);
   const [showContextMenu, setShowContextMenu] = useState<{
     id: string;
     x: number;
@@ -333,33 +357,44 @@ export const TransferNodeRenderer: React.FC<{
     return () => window.removeEventListener("focus", checkClipboardForSdp);
   }, [connectionState, offerQR, answerQR, copyPasteOffer, copyPasteAnswer]);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!scrollRef.current) return;
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-      const atBottom = scrollHeight - scrollTop - clientHeight < 100;
-      setIsAtBottom(atBottom);
-      if (atBottom) {
-        setUnreadCount(0);
-        setShowScrollDown(false);
-      }
-    };
-
-    const container = scrollRef.current;
-    if (container) {
-      container.addEventListener("scroll", handleScroll);
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    chatScrollPosRef.current = scrollTop;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setIsAtBottom(atBottom);
+    if (atBottom) {
+      setUnreadCount(0);
+      setShowScrollDown(false);
     }
-    return () => container?.removeEventListener("scroll", handleScroll);
-  }, []);
+  };
 
   useEffect(() => {
-    if (isAtBottom && scrollRef.current) {
+    if (viewMode === "chat" && scrollRef.current) {
+      if (isAtBottom) {
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: "auto",
+        });
+      } else {
+        scrollRef.current.scrollTo({
+          top: chatScrollPosRef.current,
+          behavior: "auto",
+        });
+      }
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (isAtBottom && scrollRef.current && viewMode === "chat") {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
+    } else if (!isAtBottom) {
+      // Just received new message, not at bottom
+      setShowScrollDown(true);
     }
-  }, [messages, isAtBottom]);
+  }, [messages]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1195,6 +1230,32 @@ export const TransferNodeRenderer: React.FC<{
                 ? "Ready To Pair"
                 : connectionState}
           </div>
+
+          {connectionState !== "waiting" && (
+            <button
+              onClick={() => {
+                if (pcRef.current) pcRef.current.close();
+                setConnectionState("waiting");
+                setMessages([]);
+                setOfferQR("");
+                setAnswerQR("");
+                setScanMode(null);
+                setReceivedChunks(null);
+                setCompleteScannedPayload(null);
+                setIsHosting(false);
+                setTransferProgress(0);
+              }}
+              className={`p-1.5 rounded-lg transition-colors ${
+                isDark
+                  ? "hover:bg-red-500/10 text-slate-400 hover:text-red-400"
+                  : "hover:bg-red-50 text-slate-500 hover:text-red-500"
+              }`}
+              title="Disconnect & Exit"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
+
           <button
             onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
             className={`p-1.5 rounded-lg transition-colors ${
@@ -2162,6 +2223,7 @@ export const TransferNodeRenderer: React.FC<{
                       >
                         <div
                           ref={scrollRef}
+                          onScroll={handleScroll}
                           onWheelCapture={(e) => e.stopPropagation()}
                           className={`flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
                           style={{
@@ -2294,28 +2356,27 @@ export const TransferNodeRenderer: React.FC<{
                                       <div className="relative rounded-2xl overflow-hidden bg-black group/vid w-full min-w-[200px] sm:min-w-[280px]">
                                         <video
                                           src={msg.content}
-                                          className="w-full h-auto max-h-[300px] block object-contain opacity-90 mx-auto"
+                                          controls
+                                          preload="metadata"
+                                          playsInline
+                                          className="w-full h-auto max-h-[400px] block object-contain mx-auto"
                                           onLoadedMetadata={(e) => {
                                             const video = e.target as HTMLVideoElement;
                                             if (
                                               video.videoHeight >
                                               video.videoWidth * 1.5
                                             ) {
-                                              video.style.maxHeight = "400px";
+                                              video.style.maxHeight = "500px";
                                             }
                                           }}
                                         />
                                         <button
                                           onClick={() => setSelectedMedia(msg)}
-                                          className="absolute inset-0 flex items-center justify-center text-white"
+                                          className="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity z-10"
+                                          title="Expand Video"
                                         >
-                                          <div className="p-4 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
-                                            <Play className="w-8 h-8 fill-current" />
-                                          </div>
+                                          <Maximize className="w-4 h-4" />
                                         </button>
-                                        <div className="absolute bottom-3 right-3 px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] font-bold text-white">
-                                          VIDEO
-                                        </div>
                                       </div>
                                     )}
 
@@ -2819,53 +2880,55 @@ export const TransferNodeRenderer: React.FC<{
                   </AnimatePresence>
                 </div>
 
-                <AnimatePresence>
-                  {selectedMedia && (
-                    <div
-                      className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/95 backdrop-blur-3xl p-4 sm:p-20"
-                      onKeyDown={(e) => e.stopPropagation()}
-                      onKeyUp={(e) => e.stopPropagation()}
-                      onWheel={(e) => e.stopPropagation()}
-                    >
+                {createPortal(
+                  <AnimatePresence>
+                    {selectedMedia && (
+                      <div
+                        className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/98 backdrop-blur-3xl"
+                        onKeyDown={(e) => e.stopPropagation()}
+                        onKeyUp={(e) => e.stopPropagation()}
+                        onWheel={(e) => e.stopPropagation()}
+                      >
                       <motion.button
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         onClick={() => setSelectedMedia(null)}
-                        className="absolute top-6 right-6 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white z-10 transition-all border border-white/10"
+                        className="absolute top-6 right-6 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md"
                       >
                         <X className="w-6 h-6" />
                       </motion.button>
 
-                      <div className="absolute top-6 left-6 text-white max-w-[300px]">
-                        <p className="text-sm font-black mb-1 truncate leading-none">
+                      <div className="absolute top-6 left-6 text-white max-w-[calc(100%-100px)] z-[12010] p-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl">
+                        <p className="text-sm sm:text-base font-black mb-1.5 truncate leading-tight">
                           {selectedMedia.fileName}
                         </p>
-                        <div className="flex items-center gap-3 opacity-60 text-[10px] font-bold uppercase tracking-widest">
+                        <div className="flex items-center gap-3 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
                           <span>
                             {formatFileSize(selectedMedia.fileSize || 0)}
                           </span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                          <span>
+                          <span className="w-1 h-1 rounded-full bg-white/50 shrink-0" />
+                          <span className="truncate">
                             {new Date(selectedMedia.timestamp).toLocaleString()}
                           </span>
                         </div>
                       </div>
 
-                      <div className="absolute bottom-6 inset-x-0 flex justify-center gap-4">
+                      <div className="absolute bottom-6 inset-x-0 flex justify-center gap-4 z-[12010]">
                         <a
                           href={selectedMedia.content}
                           download={selectedMedia.fileName}
-                          className="px-8 py-4 rounded-full bg-indigo-600 text-white text-xs font-black uppercase tracking-widest shadow-2xl shadow-indigo-500/40 flex items-center gap-3 hover:bg-indigo-500 transition-all active:scale-95"
+                          className="px-8 py-4 rounded-full bg-indigo-600 text-white text-xs font-black uppercase tracking-widest shadow-2xl shadow-indigo-500/40 flex items-center gap-3 hover:bg-indigo-500 transition-all active:scale-95 border border-indigo-400/30 backdrop-blur-md"
                         >
-                          <Download className="w-5 h-5" /> Download Asset
+                          <Download className="w-5 h-5 shrink-0" /> Download Asset
                         </a>
                       </div>
 
                       <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
+                        initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 1.1 }}
-                        className="w-full h-full flex items-center justify-center"
+                        exit={{ opacity: 0, scale: 1.05 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]"
                       >
                         {selectedMedia.fileType === "image" && (
                           <div className="w-full h-full relative cursor-move touch-none flex items-center justify-center">
@@ -2881,7 +2944,7 @@ export const TransferNodeRenderer: React.FC<{
                               <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
                                 <img
                                   src={selectedMedia.content}
-                                  className="max-w-full max-h-full object-contain pointer-events-auto"
+                                  className="max-w-full max-h-full object-contain pointer-events-auto rounded-xl shadow-2xl"
                                   draggable={false}
                                 />
                               </TransformComponent>
@@ -2889,12 +2952,15 @@ export const TransferNodeRenderer: React.FC<{
                           </div>
                         )}
                         {selectedMedia.fileType === "video" && (
-                          <video
-                            src={selectedMedia.content}
-                            controls
-                            autoPlay
-                            className="max-w-full max-h-full shadow-2xl"
-                          />
+                          <div className="w-full h-full relative flex items-center justify-center">
+                            <video
+                              src={selectedMedia.content}
+                              controls
+                              autoPlay
+                              playsInline
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
                         )}
                         {selectedMedia.fileType === "audio" && (
                           <div className="flex flex-col items-center gap-8 p-10 bg-white/5 rounded-[40px] border border-white/10 backdrop-blur-3xl">
@@ -2915,28 +2981,8 @@ export const TransferNodeRenderer: React.FC<{
                           </div>
                         )}
                         {selectedMedia.fileType === "pdf" && (
-                          <div className="w-full h-full max-w-5xl bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col">
-                            <div className="p-4 border-b bg-slate-50 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <FileText className="w-5 h-5 text-indigo-600" />
-                                <span className="text-sm font-bold text-slate-800 truncate">
-                                  {selectedMedia.fileName}
-                                </span>
-                              </div>
-                              <a
-                                href={selectedMedia.content}
-                                download={selectedMedia.fileName}
-                                className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
-                              >
-                                <Download className="w-3.5 h-3.5" /> Download
-                                PDF
-                              </a>
-                            </div>
-                            <iframe
-                              src={`${selectedMedia.content}#toolbar=0`}
-                              className="w-full flex-1 border-none"
-                              title="PDF Preview"
-                            />
+                          <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
+                            <PdfViewer url={selectedMedia.content} />
                           </div>
                         )}
                         {selectedMedia.fileType === "text_file" && (
@@ -2989,7 +3035,9 @@ export const TransferNodeRenderer: React.FC<{
                       </motion.div>
                     </div>
                   )}
-                </AnimatePresence>
+                  </AnimatePresence>,
+                  document.body
+                )}
               </div>
             );
 
