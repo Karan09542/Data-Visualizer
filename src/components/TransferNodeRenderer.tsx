@@ -843,12 +843,19 @@ export const TransferNodeRenderer: React.FC<{
     try {
       const uncompressed = decompressPayload(code);
       const desc = JSON.parse(uncompressed || code);
-      if (desc.type === "offer" && (!isHosting || scanMode === "offer")) {
+      if (desc.type === "offer") {
+        setIsHosting(false);
+        setOfferQR("");
         processOffer(desc);
-      } else if (desc.type === "answer" && (isHosting || scanMode === "answer")) {
+      } else if (desc.type === "answer") {
+        if (!isHosting && !offerQR) {
+          setScanError("Scanned Answer but no Offer was generated. Invalid state.");
+          setTimeout(() => setScanError(null), 3000);
+          return;
+        }
         processAnswer(desc);
       } else {
-        setScanError(`Expected ${isHosting ? "answer" : "offer"}, got ${desc.type}.`);
+        setScanError(`Invalid SDP Type: ${desc.type || "unknown"}`);
         setTimeout(() => setScanError(null), 3000);
         return;
       }
@@ -1176,15 +1183,17 @@ export const TransferNodeRenderer: React.FC<{
                       : "bg-slate-100 text-slate-500"
             }`}
           >
-            {connectionState === "pairing" && pairingWorkflow === "manual"
+            {connectionState === "pairing"
               ? isHosting
                 ? offerQR
-                  ? broadcastFrames.length > 0 ? "Broadcasting Offer" : "Waiting For Answer"
+                  ? "Waiting For Answer"
                   : "Generating Offer"
                 : answerQR
-                  ? broadcastFrames.length > 0 ? "Broadcasting Answer" : "Generated Answer"
-                  : "Waiting For Offer"
-              : connectionState}
+                  ? "Waiting For Connection"
+                  : "Generating Answer"
+              : connectionState === "waiting"
+                ? "Ready To Pair"
+                : connectionState}
           </div>
           <button
             onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
@@ -1547,10 +1556,10 @@ export const TransferNodeRenderer: React.FC<{
 
                 <div className="text-center space-y-1">
                   <p className="text-sm font-bold text-white">
-                    Device Pairing Required
+                    {isHosting ? "Offer Generated" : "Answer Generated"}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Scan this code on the other device to link
+                    {isHosting ? "Scan this code on the joining device" : "Scan this code back on the host device"}
                   </p>
                   {notificationPermission === "default" && (
                     <button
@@ -1570,8 +1579,7 @@ export const TransferNodeRenderer: React.FC<{
                         : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
                     }`}
                   >
-                    <Scan className="w-3.5 h-3.5" /> Scan{" "}
-                    {isHosting ? "Answer" : "Offer"}
+                    <Scan className="w-3.5 h-3.5" /> Open Scanner
                   </button>
                   <button
                     onClick={() => {
