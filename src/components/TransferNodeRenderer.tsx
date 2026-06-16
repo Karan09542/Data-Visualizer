@@ -978,7 +978,14 @@ export const TransferNodeRenderer: React.FC<{
 
     const config: RTCConfiguration =
       pairingMode === "universal"
-        ? { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
+        ? {
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" },
+              { urls: "stun:stun2.l.google.com:19302" },
+              { urls: "stun:stun.services.mozilla.com" }
+            ]
+          }
         : { iceServers: [] };
 
     const pc = new RTCPeerConnection(config);

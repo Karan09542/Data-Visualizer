@@ -174,11 +174,11 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
               />
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-stretch sm:items-center">
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="bg-slate-50 dark:bg-[#161b22] border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-sm outline-none focus:border-blue-500 text-slate-800 dark:text-slate-200"
+                className="w-full sm:w-auto bg-slate-50 dark:bg-[#161b22] border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-sm outline-none focus:border-blue-500 text-slate-800 dark:text-slate-200"
               >
                 <option value="modified">Recently Modified</option>
                 <option value="created">Created Date</option>
@@ -187,7 +187,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
             </div>
           </div>
 
-          <div className="flex gap-2 isolate pt-2 border-t border-slate-100 dark:border-slate-800/50 mt-1">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 isolate pt-2 border-t border-slate-100 dark:border-slate-800/50 mt-1">
             <input 
               type="text" 
               value={docName}
@@ -198,7 +198,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
             />
             <button 
               onClick={handleCreateNew}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shrink-0 shadow-sm"
+              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shrink-0 shadow-sm"
             >
               <Plus size={16} /> Create New
             </button>

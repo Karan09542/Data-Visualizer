@@ -56,15 +56,9 @@ export default function EditorPanel() {
   const [fetchResult, setFetchResult] = useState<SmartFetchResult | null>(null);
   const [appendData, setAppendData] = useState(false);
 
-  // Clear Confirmation
-  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
-
   useEffect(() => {
-    if (isConfirmingClear) {
-      const timer = setTimeout(() => setIsConfirmingClear(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isConfirmingClear]);
+    // Other effects
+  }, []);
 
   // Merge modal states
   const [pendingMergeResult, setPendingMergeResult] =
@@ -378,26 +372,18 @@ export default function EditorPanel() {
           <button
             id="editor-clear-button"
             onClick={() => {
-              if (!isConfirmingClear) {
-                setIsConfirmingClear(true);
-              } else {
+              if (window.confirm("Are you sure you want to clear the editor contents?")) {
                 clearCode();
-                setIsConfirmingClear(false);
                 // Force monaco to update immediately if ref is available
                 if (editorRef.current) {
                   editorRef.current.setValue("");
                 }
               }
             }}
-            onMouseLeave={() => setIsConfirmingClear(false)}
-            className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer px-1.5 py-0.5 rounded ${
-              isConfirmingClear 
-                ? "text-red-600 bg-red-100 dark:bg-red-950/40 border border-red-300 dark:border-red-900/40"
-                : "text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
-            }`}
-            title={isConfirmingClear ? "Click again to confirm" : "Clear direct editor contents"}
+            className="text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all cursor-pointer px-1.5 py-0.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+            title="Clear direct editor contents"
           >
-            {isConfirmingClear ? "Confirm Clear?" : "Clear"}
+            Clear
           </button>
           <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-800" />
           {error && (activeTab === "raw" || activeTab === "gui" || activeTab === "explorer") && (
@@ -472,7 +458,11 @@ export default function EditorPanel() {
           </div>
         )}
 
-        {activeTab === "explorer" && <FileExplorerPanel />}
+        {activeTab === "explorer" && (
+          <div className="absolute inset-0">
+            <FileExplorerPanel />
+          </div>
+        )}
 
         {activeTab === "gui" && <GuiEditorPanel />}
 

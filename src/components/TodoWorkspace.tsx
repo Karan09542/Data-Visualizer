@@ -732,7 +732,9 @@ export function TodoWorkspace({ path }: { path: string }) {
       ...todoData,
       tasks: [...(todoData.tasks || []), newTask],
     });
-    setSelectedTaskId(newTask.id);
+    if (window.innerWidth >= 768) {
+      setSelectedTaskId(newTask.id);
+    }
     setTimeout(() => {
       const el = document.getElementById(`input-${newTask.id}`);
       if (el) (el as HTMLInputElement).focus();
@@ -770,7 +772,9 @@ export function TodoWorkspace({ path }: { path: string }) {
 
     const { list } = walk(todoData.tasks || []);
     saveTodoData({ ...todoData, tasks: list });
-    setSelectedTaskId(newId);
+    if (window.innerWidth >= 768) {
+      setSelectedTaskId(newId);
+    }
     setTimeout(() => {
       const el = document.getElementById(`input-${newId}`);
       if (el) {
@@ -806,7 +810,9 @@ export function TodoWorkspace({ path }: { path: string }) {
     // Auto expand the parent item so they see the added nested subtask
     setCollapsedTaskIds((prev) => prev.filter((x) => x !== parentId));
     saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
-    setSelectedTaskId(newId);
+    if (window.innerWidth >= 768) {
+      setSelectedTaskId(newId);
+    }
     setTimeout(() => {
       const el = document.getElementById(`input-${newId}`);
       if (el) {
@@ -1731,6 +1737,8 @@ function TodoWorkspaceItem({
   const [isEditingNotesInline, setIsEditingNotesInline] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const isClickingTitleRef = useRef(false);
 
   // Drag and Drop support
   const [isDraggable, setIsDraggable] = useState(false);
@@ -1924,20 +1932,72 @@ function TodoWorkspaceItem({
 
         {/* Core title editor */}
         <div className="flex-1 flex flex-col min-w-0 gap-1">
-          <input
-            id={`input-${task.id}`}
-            type="text"
-            className={cn(
-              "w-full bg-transparent border-none outline-none text-[13px] font-semibold truncate transition-all focus:ring-0 p-0 focus:border-none",
-              isCompleted
-                ? "line-through text-slate-400 dark:text-slate-600"
-                : "text-slate-800 dark:text-slate-100",
-            )}
-            value={task.text}
-            placeholder="New Task... (Press Enter)"
-            onChange={(e) => onUpdate(task.id, { text: e.target.value })}
-            onFocus={() => onSelectTask(task.id)}
-          />
+          {isEditingTitle ? (
+            <textarea
+              id={`input-${task.id}`}
+              className={cn(
+                "w-full bg-slate-150/40 dark:bg-[#161b22]/50 border border-slate-200/50 dark:border-[#21262d] rounded-md outline-none text-[13px] font-semibold px-2 py-1 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/60 min-h-[38px] resize-none overflow-hidden transition-all",
+                isCompleted
+                  ? "line-through text-slate-400 dark:text-slate-600"
+                  : "text-slate-800 dark:text-slate-100",
+              )}
+              value={task.text}
+              placeholder="New Task... (Press Enter)"
+              onChange={(e) => onUpdate(task.id, { text: e.target.value })}
+              onBlur={() => {
+                setIsEditingTitle(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  setIsEditingTitle(false);
+                }
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+              ref={(el) => {
+                if (el) {
+                  el.focus();
+                  const len = el.value.length;
+                  el.setSelectionRange(len, len);
+                }
+              }}
+            />
+          ) : (
+            <input
+              id={`input-${task.id}`}
+              type="text"
+              className={cn(
+                "w-full bg-transparent border-none outline-none text-[13px] font-semibold truncate transition-all focus:ring-0 p-0 focus:border-none cursor-text",
+                isCompleted
+                  ? "line-through text-slate-400 dark:text-slate-600"
+                  : "text-slate-800 dark:text-slate-100",
+              )}
+              value={task.text}
+              placeholder="New Task... (Press Enter)"
+              onChange={(e) => onUpdate(task.id, { text: e.target.value })}
+              onMouseDown={(e) => {
+                isClickingTitleRef.current = true;
+                e.stopPropagation();
+              }}
+              onFocus={(e) => {
+                if (isClickingTitleRef.current) {
+                  isClickingTitleRef.current = false;
+                  setIsEditingTitle(true);
+                } else if (!task.text) {
+                  setIsEditingTitle(true);
+                } else {
+                  onSelectTask(task.id);
+                }
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsEditingTitle(true);
+              }}
+            />
+          )}
 
           {task.imageHashes && task.imageHashes.length > 0 && (
              <TaskImagePreview imageHashes={task.imageHashes} compact={true} />
