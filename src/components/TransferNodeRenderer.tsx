@@ -97,14 +97,43 @@ const formatFileSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-const dataURItoBlobURL = (dataURI: string) => {
+const getMimeType = (fileName: string, parsedMime?: string) => {
+  if (parsedMime && parsedMime !== "application/octet-stream" && parsedMime !== "") {
+    return parsedMime;
+  }
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "png": return "image/png";
+    case "jpg":
+    case "jpeg": return "image/jpeg";
+    case "gif": return "image/gif";
+    case "webp": return "image/webp";
+    case "svg": return "image/svg+xml";
+    case "mp4": return "video/mp4";
+    case "webm": return "video/webm";
+    case "ogg": return "video/ogg";
+    case "mov": return "video/mp4"; // map .mov to video/mp4 as browsers decode video/mp4 with standard H.264 profiles much better
+    case "mp3": return "audio/mp3";
+    case "wav": return "audio/wav";
+    case "m4a": return "audio/mp4";
+    case "flac": return "audio/flac";
+    case "pdf": return "application/pdf";
+    case "txt": return "text/plain";
+    case "md": return "text/markdown";
+    case "json": return "application/json";
+    case "csv": return "text/csv";
+    default: return parsedMime || "application/octet-stream";
+  }
+};
+
+const dataURItoBlobURL = (dataURI: string, fileName?: string) => {
   try {
     const splitIndex = dataURI.indexOf(",");
     if (splitIndex === -1) return dataURI; // might be already an object url or plain text string
     const byteString = atob(dataURI.slice(splitIndex + 1));
-    const mimeString = dataURI.slice(0, splitIndex).split(":")[1].split(";")[0];
+    const parsedMIME = dataURI.slice(0, splitIndex).split(":")[1].split(";")[0];
+    const mimeString = fileName ? getMimeType(fileName, parsedMIME) : parsedMIME;
     const ab = new ArrayBuffer(byteString.length);
-    const Math_min = Math.min;
     // Process in chunks to avoid max call stack size, or just simple loop
     const ia = new Uint8Array(ab);
     for (let i = 0; i < byteString.length; i++) {
@@ -157,22 +186,45 @@ const AudioPlayer = ({ media, isSelected }: { media: Message, isSelected: boolea
   );
 };
 
-const VideoPlayer = ({ media, isSelected }: { media: Message, isSelected: boolean }) => {
+const VideoPlayer = ({ media, isSelected }: { media: Message; isSelected: boolean }) => {
   const ref = useRef<HTMLVideoElement>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+
   useEffect(() => {
-    if (isSelected) ref.current?.play().catch(() => {});
-    else ref.current?.pause();
+    if (isSelected) {
+      ref.current?.play().catch(() => {});
+    } else {
+      ref.current?.pause();
+      if (ref.current) {
+        ref.current.currentTime = 0;
+      }
+    }
   }, [isSelected]);
 
+  const originalBlob = blobRegistry.get(media.content);
+  const mimeType = originalBlob?.type || "video/mp4";
+
   return (
-    <div className="w-full h-full relative flex items-center justify-center">
+    <div className="w-full h-full relative flex flex-col items-center justify-center p-4">
+      {errorDetails && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/20 text-red-300 border border-red-500/30 px-3 py-1.5 text-xs font-bold rounded-full z-20 backdrop-blur-md">
+          {errorDetails}
+        </div>
+      )}
       <video
+        key={media.content}
         ref={ref}
-        src={media.content}
         controls
         playsInline
-        className="w-full h-full object-contain"
-      />
+        className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl pointer-events-auto"
+        src={media.content}
+        onError={() => {
+          setErrorDetails("Codec unsupported in browser. Try Downloading.");
+        }}
+      >
+        <source src={media.content} type={mimeType} />
+        Your browser does not support the video tag.
+      </video>
     </div>
   );
 };
@@ -792,7 +844,7 @@ export const TransferNodeRenderer: React.FC<{
     const totalChunks = Math.ceil(payloadStr.length / CHUNK_SIZE);
     const startTime = performance.now();
 
-    const objectUrl = type === "file" ? dataURItoBlobURL(payloadStr) : payloadStr;
+    const objectUrl = type === "file" ? dataURItoBlobURL(payloadStr, fileName) : payloadStr;
     const finalBlob = fileBlob || (type === "file" && objectUrl ? blobRegistry.get(objectUrl) : undefined);
 
     const initialMsg: Message = {
@@ -1062,7 +1114,7 @@ export const TransferNodeRenderer: React.FC<{
               const fType = chunkData.fileName
                 ? getFileType(chunkData.fileName)
                 : "file";
-              const objectUrl = dataURItoBlobURL(fullPayload);
+              const objectUrl = dataURItoBlobURL(fullPayload, chunkData.fileName);
               const originalBlob = blobRegistry.get(objectUrl);
               const newMsg: Message = {
                 id: msg.msgId,
@@ -2667,6 +2719,7 @@ export const TransferNodeRenderer: React.FC<{
                                     {msg.fileType === "video" && (
                                       <div className="relative rounded-2xl overflow-hidden bg-black group/vid w-full min-w-[200px] sm:min-w-[280px]">
                                         <video
+                                          key={msg.content}
                                           src={msg.content}
                                           controls
                                           preload="metadata"
