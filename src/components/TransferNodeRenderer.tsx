@@ -284,6 +284,53 @@ export const TransferNodeRenderer: React.FC<{
 
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [viewedMediaIds, setViewedMediaIds] = useState<Set<string>>(new Set());
+  const [showChrome, setShowChrome] = useState(true);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    if (selectedMedia && showChrome) {
+      timeout = setTimeout(() => setShowChrome(false), 3000);
+    }
+    return () => clearTimeout(timeout);
+  }, [selectedMedia, showChrome]);
+
+  const handleMediaCopy = async (media: Message) => {
+    try {
+      const res = await fetch(media.content);
+      const blob = await res.blob();
+      
+      if (media.fileType === "text_file") {
+        const text = await blob.text();
+        await navigator.clipboard.writeText(text);
+        setNotification({ message: "Content copied", type: "success" });
+        return;
+      }
+      
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [blob.type]: blob,
+          })
+        ]);
+        setNotification({ message: "Asset copied", type: "success" });
+      } catch (err) {
+        // Fallback for types not supported by ClipboardItem (e.g., pdf, audio on some browsers)
+        console.warn("ClipboardItem unsupported for this type, falling back to download", err);
+        const link = document.createElement("a");
+        link.href = media.content;
+        link.download = media.fileName || "download";
+        link.click();
+        setNotification({ message: "Asset downloaded (Clipboard unsupported)", type: "info" });
+      }
+    } catch (e) {
+      console.error(e);
+      setNotification({ message: "Failed to copy asset", type: "error" });
+    }
+  };
+
+  const handlePointerMoveChrome = () => {
+    setShowChrome(true);
+  };
 
   useEffect(() => {
     if (selectedMedia) {
@@ -2970,73 +3017,106 @@ export const TransferNodeRenderer: React.FC<{
                         onKeyDown={(e) => e.stopPropagation()}
                         onKeyUp={(e) => e.stopPropagation()}
                         onWheel={(e) => e.stopPropagation()}
-                        onTouchStart={handleMediaTouchStart}
+                        onTouchStart={(e) => {
+                          handlePointerMoveChrome();
+                          handleMediaTouchStart(e);
+                        }}
                         onTouchEnd={handleMediaTouchEnd}
+                        onPointerMove={handlePointerMoveChrome}
+                        onClick={handlePointerMoveChrome}
                       >
-                      <motion.button
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        onClick={() => setSelectedMedia(null)}
-                        className="absolute top-6 right-6 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:flex"
-                      >
-                        <X className="w-6 h-6" />
-                      </motion.button>
-                      <motion.button
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        onClick={() => setSelectedMedia(null)}
-                        className="absolute top-6 left-6 p-4 rounded-full bg-black/40 hover:bg-black/60 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md sm:hidden flex items-center gap-2"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                        <span className="text-xs font-bold uppercase tracking-widest relative -top-0.5 pr-2">Back</span>
-                      </motion.button>
+                      <AnimatePresence>
+                        {showChrome && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute top-0 inset-x-0 z-[12010] flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
+                          >
+                            <div className="flex items-center gap-3 w-1/3">
+                              <button
+                                onClick={() => setSelectedMedia(null)}
+                                className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md"
+                              >
+                                <ChevronLeft className="w-5 h-5 sm:hidden" />
+                                <X className="w-5 h-5 hidden sm:block" />
+                              </button>
+                            </div>
+                            
+                            <div className="flex flex-col items-center justify-center text-white max-w-[calc(100%-100px)] w-1/3 text-center">
+                              <p className="text-sm sm:text-base font-black mb-0.5 truncate w-full px-4">
+                                {selectedMedia.fileName}
+                              </p>
+                              <div className="flex items-center gap-2 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
+                                <span className="hidden sm:inline">
+                                  {formatFileSize(selectedMedia.fileSize || 0)}
+                                </span>
+                                <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                                <span className="truncate hidden sm:inline">
+                                  {new Date(selectedMedia.timestamp).toLocaleString()}
+                                </span>
+                                <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                                <span>
+                                  {selectedMediaIdx + 1} / {mediaMsgs.length}
+                                </span>
+                              </div>
+                            </div>
 
-                      <div className="absolute top-24 sm:top-6 left-6 text-white max-w-[calc(100%-100px)] z-[12010] p-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl">
-                        <p className="text-sm sm:text-base font-black mb-1.5 truncate leading-tight">
-                          {selectedMedia.fileName}
-                        </p>
-                        <div className="flex items-center gap-3 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
-                          <span>
-                            {formatFileSize(selectedMedia.fileSize || 0)}
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-white/50 shrink-0" />
-                          <span className="truncate">
-                            {new Date(selectedMedia.timestamp).toLocaleString()}
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-white/50 shrink-0" />
-                          <span>
-                            {selectedMediaIdx + 1} / {mediaMsgs.length}
-                          </span>
-                        </div>
-                      </div>
+                            <div className="flex items-center justify-end gap-2 w-1/3">
+                              <button
+                                onClick={() => handleMediaCopy(selectedMedia)}
+                                className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md flex items-center justify-center"
+                                title="Copy"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                              <a
+                                href={selectedMedia.content}
+                                download={selectedMedia.fileName || "download"}
+                                className="p-3 bg-indigo-600 rounded-full hover:bg-indigo-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
+                                title="Download"
+                              >
+                                <Download className="w-4 h-4" />
+                              </a>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
-                      {hasPrevMedia && (
-                        <button
-                          onClick={() => setSelectedMedia(mediaMsgs[selectedMediaIdx - 1])}
-                          className="absolute left-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block"
-                        >
-                          <ChevronLeft className="w-8 h-8" />
-                        </button>
-                      )}
+                      <AnimatePresence>
+                        {showChrome && hasPrevMedia && (
+                          <motion.button
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -10 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMedia(mediaMsgs[selectedMediaIdx - 1]);
+                            }}
+                            className="absolute left-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block pointer-events-auto"
+                          >
+                            <ChevronLeft className="w-8 h-8" />
+                          </motion.button>
+                        )}
+                      </AnimatePresence>
 
-                      {hasNextMedia && (
-                        <button
-                          onClick={() => setSelectedMedia(mediaMsgs[selectedMediaIdx + 1])}
-                          className="absolute right-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block"
-                        >
-                          <ChevronRight className="w-8 h-8" />
-                        </button>
-                      )}
-
-                      <div className="absolute bottom-6 inset-x-0 flex justify-center gap-4 z-[12010]">
-                        <a
-                          href={selectedMedia.content}
-                          download={selectedMedia.fileName}
-                          className="px-8 py-4 rounded-full bg-indigo-600 text-white text-xs font-black uppercase tracking-widest shadow-2xl shadow-indigo-500/40 flex items-center gap-3 hover:bg-indigo-500 transition-all active:scale-95 border border-indigo-400/30 backdrop-blur-md"
-                        >
-                          <Download className="w-5 h-5 shrink-0" /> Download Asset
-                        </a>
-                      </div>
+                      <AnimatePresence>
+                        {showChrome && hasNextMedia && (
+                          <motion.button
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMedia(mediaMsgs[selectedMediaIdx + 1]);
+                            }}
+                            className="absolute right-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block pointer-events-auto"
+                          >
+                            <ChevronRight className="w-8 h-8" />
+                          </motion.button>
+                        )}
+                      </AnimatePresence>
 
                       <div className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]">
                         {mediaMsgs.map((media) => {
@@ -3086,46 +3166,8 @@ export const TransferNodeRenderer: React.FC<{
                                 </div>
                               )}
                               {media.fileType === "text_file" && (
-                                <div className="w-full h-full max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col pt-4">
-                                  <div className="px-4 pb-4 border-b border-white/10 flex items-center justify-between">
-                                    <div className="flex items-center gap-3 text-white">
-                                      <FileText className="w-5 h-5 text-indigo-400" />
-                                      <span className="text-sm font-bold truncate">
-                                        {media.fileName}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={async () => {
-                                          try {
-                                            const res = await fetch(media.content);
-                                            const text = await res.text();
-                                            navigator.clipboard.writeText(text);
-                                            setNotification({
-                                              message: "Content copied",
-                                              type: "success",
-                                            });
-                                          } catch (e) {
-                                            setNotification({
-                                              message: "Failed to copy content",
-                                              type: "error",
-                                            });
-                                          }
-                                        }}
-                                        className="px-4 py-2 bg-white/5 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-white/10 transition-all flex items-center gap-2"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" /> Copy
-                                      </button>
-                                      <a
-                                        href={media.content}
-                                        download={media.fileName}
-                                        className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
-                                      >
-                                        <Download className="w-3.5 h-3.5" /> Download
-                                      </a>
-                                    </div>
-                                  </div>
-                                  <div className="flex-1 overflow-auto p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap select-text">
+                                <div className="w-[90%] h-[90%] max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-[12005]">
+                                  <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
                                     <TextFileViewer url={media.content} />
                                   </div>
                                 </div>
