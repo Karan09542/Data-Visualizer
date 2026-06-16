@@ -573,10 +573,8 @@ export const TransferNodeRenderer: React.FC<{
     const filtered = lines.filter((line) => {
       if (line.startsWith("a=candidate:")) {
         candidateCount++;
-        if (mode === "local") {
-          if (!line.includes("typ host")) return false;
-          if (line.includes("tcptype")) return false;
-        }
+        // We no longer aggressively filter candidates because SDP size is manageable via animated QR chunks.
+        // We want maximum reliability.
       }
       if (line.startsWith("a=extmap:")) return false;
       if (line.startsWith("a=rtcp-fb:")) return false;
@@ -630,12 +628,13 @@ export const TransferNodeRenderer: React.FC<{
     const pc = new RTCPeerConnection(config);
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === "connected") {
-        setConnectionState("connected");
-      } else if (
-        pc.iceConnectionState === "failed" ||
-        pc.iceConnectionState === "disconnected"
+      console.log("ICE State:", pc.iceConnectionState);
+      if (
+        pc.iceConnectionState === "connected" ||
+        pc.iceConnectionState === "completed"
       ) {
+        setConnectionState("connected");
+      } else if (pc.iceConnectionState === "failed") {
         setConnectionState("failed");
       }
     };
@@ -802,7 +801,7 @@ export const TransferNodeRenderer: React.FC<{
 
     await new Promise<void>((resolve) => {
       if (pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 1000);
+      const timeout = setTimeout(resolve, 3000);
       pc.onicecandidate = (e) => {
         if (!e.candidate) {
           clearTimeout(timeout);
@@ -844,10 +843,14 @@ export const TransferNodeRenderer: React.FC<{
     try {
       const uncompressed = decompressPayload(code);
       const desc = JSON.parse(uncompressed || code);
-      if (desc.type === "offer") {
+      if (desc.type === "offer" && (!isHosting || scanMode === "offer")) {
         processOffer(desc);
-      } else if (desc.type === "answer") {
+      } else if (desc.type === "answer" && (isHosting || scanMode === "answer")) {
         processAnswer(desc);
+      } else {
+        setScanError(`Expected ${isHosting ? "answer" : "offer"}, got ${desc.type}.`);
+        setTimeout(() => setScanError(null), 3000);
+        return;
       }
       setScanError(null);
       setReceivedChunks(null);
@@ -905,7 +908,7 @@ export const TransferNodeRenderer: React.FC<{
 
     await new Promise<void>((resolve) => {
       if (pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 1000);
+      const timeout = setTimeout(resolve, 3000);
       pc.onicecandidate = (e) => {
         if (!e.candidate) {
           clearTimeout(timeout);
