@@ -27,6 +27,7 @@ import {
   Smartphone,
   Terminal,
   History,
+  ChevronLeft,
   ChevronRight,
   Activity,
   Maximize,
@@ -122,6 +123,53 @@ const TextFileViewer: React.FC<{ url: string }> = ({ url }) => {
       .catch((err) => setContent("Error loading file: " + err.message));
   }, [url]);
   return <>{content}</>;
+};
+
+const AudioPlayer = ({ media, isSelected }: { media: Message, isSelected: boolean }) => {
+  const ref = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    if (isSelected) ref.current?.play().catch(() => {});
+    else ref.current?.pause();
+  }, [isSelected]);
+  
+  return (
+    <div className="flex flex-col items-center gap-8 p-10 bg-white/5 rounded-[40px] border border-white/10 backdrop-blur-3xl">
+      <div className="w-40 h-40 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
+        <motion.div
+          animate={{ scale: isSelected ? [1, 1.1, 1] : 1 }}
+          transition={{ duration: 2, repeat: Infinity }}
+        >
+          <Volume2 className="w-16 h-16 text-indigo-400" />
+        </motion.div>
+      </div>
+      <audio
+        ref={ref}
+        src={media.content}
+        controls
+        className="w-80 h-12 accent-indigo-500 rounded-full"
+      />
+    </div>
+  );
+};
+
+const VideoPlayer = ({ media, isSelected }: { media: Message, isSelected: boolean }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (isSelected) ref.current?.play().catch(() => {});
+    else ref.current?.pause();
+  }, [isSelected]);
+
+  return (
+    <div className="w-full h-full relative flex items-center justify-center">
+      <video
+        ref={ref}
+        src={media.content}
+        controls
+        playsInline
+        className="w-full h-full object-contain"
+      />
+    </div>
+  );
 };
 
 export const TransferNodeRenderer: React.FC<{
@@ -235,13 +283,25 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+  const [viewedMediaIds, setViewedMediaIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (selectedMedia) {
       document.body.style.overflow = "hidden";
+      setViewedMediaIds((prev) => new Set(prev).add(selectedMedia.id));
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
           setSelectedMedia(null);
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          const mediaMsgs = messages.filter(m => m.type === "file");
+          const idx = mediaMsgs.findIndex(m => m.id === selectedMedia.id);
+          if (idx !== -1) {
+            if (e.key === "ArrowLeft" && idx > 0) {
+              setSelectedMedia(mediaMsgs[idx - 1]);
+            } else if (e.key === "ArrowRight" && idx < mediaMsgs.length - 1) {
+              setSelectedMedia(mediaMsgs[idx + 1]);
+            }
+          }
         }
       };
       window.addEventListener("keydown", handleKeyDown);
@@ -251,11 +311,12 @@ export const TransferNodeRenderer: React.FC<{
       };
     } else {
       document.body.style.overflow = "";
+      setViewedMediaIds(new Set());
     }
     return () => {
       document.body.style.overflow = "";
     };
-  }, [selectedMedia]);
+  }, [selectedMedia, messages]);
   const [showContextMenu, setShowContextMenu] = useState<{
     id: string;
     x: number;
@@ -1063,6 +1124,27 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const isDark = appTheme === "dark";
+
+  const mediaMsgs = messages.filter((m) => m.type === "file");
+  const selectedMediaIdx = selectedMedia ? mediaMsgs.findIndex((m) => m.id === selectedMedia.id) : -1;
+  const hasPrevMedia = selectedMediaIdx > 0;
+  const hasNextMedia = selectedMediaIdx !== -1 && selectedMediaIdx < mediaMsgs.length - 1;
+
+  const touchStartXRef = useRef<number>(0);
+  const touchEndXRef = useRef<number>(0);
+
+  const handleMediaTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.changedTouches[0].screenX;
+  };
+
+  const handleMediaTouchEnd = (e: React.TouchEvent) => {
+    touchEndXRef.current = e.changedTouches[0].screenX;
+    if (touchEndXRef.current < touchStartXRef.current - 50 && hasNextMedia) {
+      setSelectedMedia(mediaMsgs[selectedMediaIdx + 1]);
+    } else if (touchEndXRef.current > touchStartXRef.current + 50 && hasPrevMedia) {
+      setSelectedMedia(mediaMsgs[selectedMediaIdx - 1]);
+    }
+  };
 
   return (
     <div
@@ -2888,17 +2970,28 @@ export const TransferNodeRenderer: React.FC<{
                         onKeyDown={(e) => e.stopPropagation()}
                         onKeyUp={(e) => e.stopPropagation()}
                         onWheel={(e) => e.stopPropagation()}
+                        onTouchStart={handleMediaTouchStart}
+                        onTouchEnd={handleMediaTouchEnd}
                       >
                       <motion.button
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         onClick={() => setSelectedMedia(null)}
-                        className="absolute top-6 right-6 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md"
+                        className="absolute top-6 right-6 p-4 rounded-full bg-white/10 hover:bg-white/20 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:flex"
                       >
                         <X className="w-6 h-6" />
                       </motion.button>
+                      <motion.button
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        onClick={() => setSelectedMedia(null)}
+                        className="absolute top-6 left-6 p-4 rounded-full bg-black/40 hover:bg-black/60 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md sm:hidden flex items-center gap-2"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                        <span className="text-xs font-bold uppercase tracking-widest relative -top-0.5 pr-2">Back</span>
+                      </motion.button>
 
-                      <div className="absolute top-6 left-6 text-white max-w-[calc(100%-100px)] z-[12010] p-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl">
+                      <div className="absolute top-24 sm:top-6 left-6 text-white max-w-[calc(100%-100px)] z-[12010] p-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl">
                         <p className="text-sm sm:text-base font-black mb-1.5 truncate leading-tight">
                           {selectedMedia.fileName}
                         </p>
@@ -2910,8 +3003,30 @@ export const TransferNodeRenderer: React.FC<{
                           <span className="truncate">
                             {new Date(selectedMedia.timestamp).toLocaleString()}
                           </span>
+                          <span className="w-1 h-1 rounded-full bg-white/50 shrink-0" />
+                          <span>
+                            {selectedMediaIdx + 1} / {mediaMsgs.length}
+                          </span>
                         </div>
                       </div>
+
+                      {hasPrevMedia && (
+                        <button
+                          onClick={() => setSelectedMedia(mediaMsgs[selectedMediaIdx - 1])}
+                          className="absolute left-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block"
+                        >
+                          <ChevronLeft className="w-8 h-8" />
+                        </button>
+                      )}
+
+                      {hasNextMedia && (
+                        <button
+                          onClick={() => setSelectedMedia(mediaMsgs[selectedMediaIdx + 1])}
+                          className="absolute right-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block"
+                        >
+                          <ChevronRight className="w-8 h-8" />
+                        </button>
+                      )}
 
                       <div className="absolute bottom-6 inset-x-0 flex justify-center gap-4 z-[12010]">
                         <a
@@ -2923,116 +3038,102 @@ export const TransferNodeRenderer: React.FC<{
                         </a>
                       </div>
 
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 1.05 }}
-                        transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]"
-                      >
-                        {selectedMedia.fileType === "image" && (
-                          <div className="w-full h-full relative cursor-move touch-none flex items-center justify-center">
-                            <TransformWrapper
-                              initialScale={1}
-                              minScale={0.5}
-                              maxScale={10}
-                              centerOnInit={true}
-                              wheel={{ step: 0.1 }}
-                              doubleClick={{ disabled: false, step: 2 }}
-                              pinch={{ step: 5 }}
+                      <div className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]">
+                        {mediaMsgs.map((media) => {
+                          if (!viewedMediaIds.has(media.id)) return null;
+                          const isSelected = media.id === selectedMedia.id;
+
+                          return (
+                            <motion.div
+                              key={media.id}
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: isSelected ? 1 : 0, scale: isSelected ? 1 : 0.95, pointerEvents: isSelected ? "auto" : "none" }}
+                              exit={{ opacity: 0, scale: 1.05 }}
+                              transition={{ duration: 0.2, ease: "easeOut" }}
+                              className="w-full h-full absolute inset-0 flex items-center justify-center p-0 sm:p-0"
+                              style={{ display: isSelected ? "flex" : "none" }}
                             >
-                              <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                                <img
-                                  src={selectedMedia.content}
-                                  className="max-w-full max-h-full object-contain pointer-events-auto rounded-xl shadow-2xl"
-                                  draggable={false}
-                                />
-                              </TransformComponent>
-                            </TransformWrapper>
-                          </div>
-                        )}
-                        {selectedMedia.fileType === "video" && (
-                          <div className="w-full h-full relative flex items-center justify-center">
-                            <video
-                              src={selectedMedia.content}
-                              controls
-                              autoPlay
-                              playsInline
-                              className="w-full h-full object-contain"
-                            />
-                          </div>
-                        )}
-                        {selectedMedia.fileType === "audio" && (
-                          <div className="flex flex-col items-center gap-8 p-10 bg-white/5 rounded-[40px] border border-white/10 backdrop-blur-3xl">
-                            <div className="w-40 h-40 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
-                              <motion.div
-                                animate={{ scale: [1, 1.1, 1] }}
-                                transition={{ duration: 2, repeat: Infinity }}
-                              >
-                                <Volume2 className="w-16 h-16 text-indigo-400" />
-                              </motion.div>
-                            </div>
-                            <audio
-                              src={selectedMedia.content}
-                              controls
-                              autoPlay
-                              className="w-80 h-12 accent-indigo-500 rounded-full"
-                            />
-                          </div>
-                        )}
-                        {selectedMedia.fileType === "pdf" && (
-                          <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
-                            <PdfViewer url={selectedMedia.content} />
-                          </div>
-                        )}
-                        {selectedMedia.fileType === "text_file" && (
-                          <div className="w-full h-full max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col pt-4">
-                            <div className="px-4 pb-4 border-b border-white/10 flex items-center justify-between">
-                              <div className="flex items-center gap-3 text-white">
-                                <FileText className="w-5 h-5 text-indigo-400" />
-                                <span className="text-sm font-bold truncate">
-                                  {selectedMedia.fileName}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      const res = await fetch(
-                                        selectedMedia.content,
-                                      );
-                                      const text = await res.text();
-                                      navigator.clipboard.writeText(text);
-                                      setNotification({
-                                        message: "Content copied",
-                                        type: "success",
-                                      });
-                                    } catch (e) {
-                                      setNotification({
-                                        message: "Failed to copy content",
-                                        type: "error",
-                                      });
-                                    }
-                                  }}
-                                  className="px-4 py-2 bg-white/5 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-white/10 transition-all flex items-center gap-2"
-                                >
-                                  <Copy className="w-3.5 h-3.5" /> Copy
-                                </button>
-                                <a
-                                  href={selectedMedia.content}
-                                  download={selectedMedia.fileName}
-                                  className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
-                                >
-                                  <Download className="w-3.5 h-3.5" /> Download
-                                </a>
-                              </div>
-                            </div>
-                            <div className="flex-1 overflow-auto p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap select-text">
-                              <TextFileViewer url={selectedMedia.content} />
-                            </div>
-                          </div>
-                        )}
-                      </motion.div>
+                              {media.fileType === "image" && (
+                                <div className="w-full h-full relative cursor-move touch-none flex items-center justify-center">
+                                  <TransformWrapper
+                                    initialScale={1}
+                                    minScale={0.5}
+                                    maxScale={10}
+                                    centerOnInit={true}
+                                    wheel={{ step: 0.1 }}
+                                    doubleClick={{ disabled: false, step: 2 }}
+                                    pinch={{ step: 5 }}
+                                  >
+                                    <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
+                                      <img
+                                        src={media.content}
+                                        className="max-w-full max-h-full object-contain pointer-events-auto rounded-xl shadow-2xl"
+                                        draggable={false}
+                                      />
+                                    </TransformComponent>
+                                  </TransformWrapper>
+                                </div>
+                              )}
+                              {media.fileType === "video" && (
+                                <VideoPlayer media={media} isSelected={isSelected} />
+                              )}
+                              {media.fileType === "audio" && (
+                                <AudioPlayer media={media} isSelected={isSelected} />
+                              )}
+                              {media.fileType === "pdf" && (
+                                <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
+                                  <PdfViewer url={media.content} />
+                                </div>
+                              )}
+                              {media.fileType === "text_file" && (
+                                <div className="w-full h-full max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col pt-4">
+                                  <div className="px-4 pb-4 border-b border-white/10 flex items-center justify-between">
+                                    <div className="flex items-center gap-3 text-white">
+                                      <FileText className="w-5 h-5 text-indigo-400" />
+                                      <span className="text-sm font-bold truncate">
+                                        {media.fileName}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch(media.content);
+                                            const text = await res.text();
+                                            navigator.clipboard.writeText(text);
+                                            setNotification({
+                                              message: "Content copied",
+                                              type: "success",
+                                            });
+                                          } catch (e) {
+                                            setNotification({
+                                              message: "Failed to copy content",
+                                              type: "error",
+                                            });
+                                          }
+                                        }}
+                                        className="px-4 py-2 bg-white/5 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-white/10 transition-all flex items-center gap-2"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" /> Copy
+                                      </button>
+                                      <a
+                                        href={media.content}
+                                        download={media.fileName}
+                                        className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
+                                      >
+                                        <Download className="w-3.5 h-3.5" /> Download
+                                      </a>
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 overflow-auto p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap select-text">
+                                    <TextFileViewer url={media.content} />
+                                  </div>
+                                </div>
+                              )}
+                            </motion.div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                   </AnimatePresence>,
