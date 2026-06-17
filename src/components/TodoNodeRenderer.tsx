@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { TreeNode } from "../utils/transformer";
 import { useStore } from "../store/useStore";
 import {
@@ -15,7 +16,15 @@ import {
   Sparkles,
   RefreshCw,
   Copy,
-  Check
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  CornerDownRight,
+  CornerLeftUp,
+  PlusCircle,
+  GripVertical
 } from "lucide-react";
 import { setValueAtPath } from "../utils/pathUtils";
 import { TaskImagePreview } from "./TaskImagePreview";
@@ -38,6 +47,15 @@ export interface TodoNodeData {
   tasks: TodoTask[];
 }
 
+const checkHasIncompleteChildren = (tasks?: TodoTask[]): boolean => {
+  if (!tasks || tasks.length === 0) return false;
+  return tasks.some((t) => {
+    const isComp = t.completed || t.status === "Completed";
+    if (!isComp) return true;
+    return checkHasIncompleteChildren(t.tasks);
+  });
+};
+
 interface TodoNodeProps {
   nodeId: string;
   data: TreeNode;
@@ -57,6 +75,8 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
+  const [activeMenuTaskId, setActiveMenuTaskId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const serializedValue = typeof data?.value === "object" && data?.value !== null
@@ -77,20 +97,60 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
   // Handle click outside to close options menu
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsMenuOpen(false);
       }
     }
-    if (isMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+    document.addEventListener("mousedown", handleClickOutside, true);
+    document.addEventListener("touchstart", handleClickOutside, true);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside, true);
+      document.removeEventListener("touchstart", handleClickOutside, true);
     };
-  }, [isMenuOpen]);
+  }, []);
 
-  const saveTodoData = async (newData: TodoNodeData) => {
+  const syncTaskCompletionState = (tList: TodoTask[]): TodoTask[] => {
+    return tList.map((t) => {
+      let updatedTasks = t.tasks;
+      if (t.tasks && t.tasks.length > 0) {
+        updatedTasks = syncTaskCompletionState(t.tasks);
+      }
+
+      const hasChildren = updatedTasks && updatedTasks.length > 0;
+      const hasIncomplete =
+        hasChildren &&
+        updatedTasks.some(
+          (sub) => !sub.completed && sub.status !== "Completed",
+        );
+
+      let completed = t.completed;
+      let status = t.status;
+      if (hasChildren) {
+        if (hasIncomplete) {
+          completed = false;
+          if (status === "Completed") {
+            status = "Todo";
+          }
+        } else {
+          completed = true;
+          status = "Completed";
+        }
+      }
+
+      return {
+        ...t,
+        tasks: updatedTasks,
+        completed,
+        status,
+      };
+    });
+  };
+
+  const saveTodoData = async (newData: TodoNodeData, forceSync = false) => {
+    if (newData.tasks && (!nodeIsFlat || forceSync)) {
+      newData.tasks = syncTaskCompletionState(newData.tasks);
+    }
     setTodoData(newData);
     const updated = setValueAtPath(parsedData, data.path, newData);
     let newCode = "";
@@ -127,6 +187,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
   const toggleTaskComplete = (taskId: string) => {
     const setCompletedRecursive = (task: TodoTask, completed: boolean): TodoTask => {
+      if (nodeIsFlat) return task; // In flat mode, do not affect children
       return {
         ...task,
         completed,
@@ -143,7 +204,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             ...t,
             completed: nextVal,
             status: nextVal ? "Completed" : "Todo",
-            tasks: t.tasks ? t.tasks.map(sub => setCompletedRecursive(sub, nextVal)) : []
+            tasks: t.tasks && !nodeIsFlat ? t.tasks.map(sub => setCompletedRecursive(sub, nextVal)) : t.tasks
           };
         }
         if (t.tasks && t.tasks.length > 0) {
@@ -157,25 +218,8 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     };
 
     const firstPass = toggleAndPropagate(todoData.tasks || []);
-
-    const adjustParents = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map(t => {
-        if (t.tasks && t.tasks.length > 0) {
-          const processedChildren = adjustParents(t.tasks);
-          const allChildrenCompleted = processedChildren.every(sub => sub.completed);
-          return {
-            ...t,
-            completed: allChildrenCompleted,
-            status: allChildrenCompleted ? "Completed" : "Todo",
-            tasks: processedChildren
-          };
-        }
-        return t;
-      });
-    };
-
-    const nextTasks = adjustParents(firstPass);
-    saveTodoData({ ...todoData, tasks: nextTasks });
+    // `saveTodoData` automatically calls syncTaskCompletionState which handles bubbling status UP
+    saveTodoData({ ...todoData, tasks: firstPass });
   };
 
   const startEditingTask = (taskId: string, currentText: string) => {
@@ -311,12 +355,176 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     setIsMenuOpen(false);
   };
 
+  const indentTask = (id: string) => {
+    let success = false;
+    const walk = (tList: TodoTask[]): TodoTask[] => {
+      if (success) return tList;
+      const index = tList.findIndex((t) => t.id === id);
+      if (index > 0) {
+        const targetTask = tList[index];
+        const prevSibling = tList[index - 1];
+        const updatedList = tList.filter((t) => t.id !== id);
+        prevSibling.tasks = [...(prevSibling.tasks || []), targetTask];
+        success = true;
+        setCollapsedTaskIds((prev) => prev.filter((x) => x !== prevSibling.id));
+        return updatedList;
+      }
+      return tList.map((t) => {
+        if (t.tasks && t.tasks.length > 0) {
+          return { ...t, tasks: walk(t.tasks) };
+        }
+        return t;
+      });
+    };
+
+    const updatedTasks = walk(todoData.tasks || []);
+    if (success) {
+      saveTodoData({ ...todoData, tasks: updatedTasks });
+      setTimeout(() => startEditingTask(id, editingText), 50);
+    }
+  };
+
+  const outdentTask = (id: string) => {
+    let taskToMove: TodoTask | null = null;
+    const removeAndExtract = (tList: TodoTask[], parentId: string | null = null): { list: TodoTask[]; parentOfTarget: string | null } => {
+      let foundParentId: string | null = null;
+      const filtered = tList.filter((t) => {
+        if (t.id === id) {
+          taskToMove = t;
+          foundParentId = parentId;
+          return false;
+        }
+        return true;
+      });
+
+      const mapped = filtered.map((t) => {
+        if (t.tasks && t.tasks.length > 0) {
+          const res = removeAndExtract(t.tasks, t.id);
+          if (res.parentOfTarget) foundParentId = res.parentOfTarget;
+          return { ...t, tasks: res.list };
+        }
+        return t;
+      });
+
+      return { list: mapped, parentOfTarget: foundParentId };
+    };
+
+    const { list: cleanList, parentOfTarget } = removeAndExtract(todoData.tasks || []);
+    if (!taskToMove || !parentOfTarget) return;
+
+    const insertAfterParent = (tList: TodoTask[]): TodoTask[] => {
+      const newList: TodoTask[] = [];
+      for (const t of tList) {
+        newList.push(t);
+        if (t.id === parentOfTarget && taskToMove) {
+          newList.push(taskToMove);
+        } else if (t.tasks && t.tasks.length > 0) {
+          t.tasks = insertAfterParent(t.tasks);
+        }
+      }
+      return newList;
+    };
+
+    const updatedTasks = insertAfterParent(cleanList);
+    saveTodoData({ ...todoData, tasks: updatedTasks });
+    setTimeout(() => startEditingTask(id, editingText), 50);
+  };
+
+  const moveTaskInTree = (id: string, direction: "up" | "down") => {
+    let success = false;
+    const walk = (tList: TodoTask[]): TodoTask[] => {
+      if (success) return tList;
+      const index = tList.findIndex((t) => t.id === id);
+      if (index !== -1) {
+        const newList = [...tList];
+        if (direction === "up" && index > 0) {
+          const temp = newList[index];
+          newList[index] = newList[index - 1];
+          newList[index - 1] = temp;
+          success = true;
+          return newList;
+        } else if (direction === "down" && index < newList.length - 1) {
+          const temp = newList[index];
+          newList[index] = newList[index + 1];
+          newList[index + 1] = temp;
+          success = true;
+          return newList;
+        }
+      }
+      return tList.map((t) => {
+        if (t.tasks && t.tasks.length > 0) {
+          return { ...t, tasks: walk(t.tasks) };
+        }
+        return t;
+      });
+    };
+
+    const updated = walk(todoData.tasks || []);
+    if (success) {
+      saveTodoData({ ...todoData, tasks: updated });
+    }
+  };
+
+  const addNestedSubtask = (parentId: string) => {
+    const newId = Math.random().toString(36).substring(2, 9);
+    const newTask: TodoTask = {
+      id: newId,
+      text: "",
+      completed: false,
+      status: "Todo",
+      priority: "Normal",
+    };
+
+    const walk = (tList: TodoTask[]): TodoTask[] => {
+      return tList.map((t) => {
+        if (t.id === parentId) {
+          return { ...t, tasks: [...(t.tasks || []), newTask] };
+        }
+        if (t.tasks) return { ...t, tasks: walk(t.tasks) };
+        return t;
+      });
+    };
+
+    setCollapsedTaskIds((prev) => prev.filter((x) => x !== parentId));
+    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
+    setEditingTaskId(newId);
+    setEditingText("");
+    setNodeIsFlat(false);
+  };
+
+  const toggleCollapseTask = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setCollapsedTaskIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const collapseAllSubtasks = () => {
+    const ids: string[] = [];
+    const walk = (tList: TodoTask[]) => {
+      for (const t of tList) {
+        if (t.tasks && t.tasks.length > 0) {
+          ids.push(t.id);
+          walk(t.tasks);
+        }
+      }
+    };
+    walk(todoData.tasks || []);
+    setCollapsedTaskIds(ids);
+    setIsMenuOpen(false);
+  };
+
+  const expandAllSubtasks = () => {
+    setCollapsedTaskIds([]);
+    setIsMenuOpen(false);
+  };
+
   // Helper to flatten tasks with depth mapping
   const flattenTasks = (tasks: TodoTask[], depth = 0): { task: TodoTask, depth: number }[] => {
     let result: { task: TodoTask, depth: number }[] = [];
     for (const t of tasks || []) {
       result.push({ task: t, depth });
-      if (t.tasks && t.tasks.length > 0) {
+      if (t.tasks && t.tasks.length > 0 && (nodeIsFlat ? true : !collapsedTaskIds.includes(t.id))) {
         result = result.concat(flattenTasks(t.tasks, depth + 1));
       }
     }
@@ -437,7 +645,12 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           {/* Compact Switcher between Tree vs Flat List */}
           <div className="flex bg-[#131924] p-0.5 rounded-lg border border-slate-800/80">
             <button
-              onClick={() => setNodeIsFlat(false)}
+              onClick={() => {
+                setNodeIsFlat(false);
+                if (todoData.tasks) {
+                  saveTodoData({ ...todoData }, true);
+                }
+              }}
               className={`p-1 rounded-md transition-all ${!nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
               title="Tree structure"
             >
@@ -475,10 +688,24 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             >
               <button
                 onClick={addSampleTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
               >
                 <Sparkles size={12} className="text-amber-400" />
                 <span>Load Sample Tasks</span>
+              </button>
+              <button
+                onClick={expandAllSubtasks}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+              >
+                <FolderTree size={12} className="text-blue-400" />
+                <span>Expand All</span>
+              </button>
+              <button
+                onClick={collapseAllSubtasks}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+              >
+                <Layers size={12} className="text-slate-400" />
+                <span>Collapse All</span>
               </button>
               <button
                 onClick={clearCompletedTasks}
@@ -530,6 +757,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
         ) : (
           tasksToRender.map(({ task, depth }, idx) => {
             const isDone = task.completed || task.status === "Completed";
+            const hasIncompleteChildren = !nodeIsFlat && checkHasIncompleteChildren(task.tasks);
             const meta = priorityMeta(task);
             
             return (
@@ -540,13 +768,21 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
               >
                 {/* Check/Circle Bullet toggles state */}
                 <button
-                  onClick={() => toggleTaskComplete(task.id)}
-                  className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full transition-colors ${
-                    isDone 
-                      ? 'text-emerald-500 hover:text-emerald-400' 
-                      : 'text-slate-600 hover:text-blue-400 border border-slate-700 hover:border-blue-400/55'
+                  onClick={() => {
+                    if (!isDone && hasIncompleteChildren) {
+                      setNotification({ message: 'Complete subtasks first', type: 'info' });
+                      return;
+                    }
+                    toggleTaskComplete(task.id);
+                  }}
+                  className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full transition-colors outline-none ${
+                    !isDone && hasIncompleteChildren 
+                      ? 'cursor-not-allowed opacity-50 text-slate-600 border border-slate-700'
+                      : isDone 
+                        ? 'text-emerald-500 hover:text-emerald-400' 
+                        : 'text-slate-600 hover:text-blue-400 border border-slate-700 hover:border-blue-400/55'
                   }`}
-                  title={isDone ? "Mark Pending" : "Mark Completed"}
+                  title={!isDone && hasIncompleteChildren ? "Complete subtasks first" : isDone ? "Mark Pending" : "Mark Completed"}
                 >
                   {isDone ? (
                     <CheckCircle2 size={16} className="fill-emerald-500/10" />
@@ -555,50 +791,78 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                   )}
                 </button>
 
-                {/* Optional nested connector line for subtasks in Tree View */}
-                {!nodeIsFlat && depth > 0 && (
-                  <div className="w-1.5" />
-                )}
+                {/* Subtask Hierarchy Controls */}
+                {!nodeIsFlat && task.tasks && task.tasks.length > 0 ? (
+                  <button
+                    onClick={(e) => toggleCollapseTask(task.id, e)}
+                    className="shrink-0 flex items-center justify-center w-3 h-3 ml-[-8px] mr-0.5 text-slate-500 hover:text-slate-300"
+                  >
+                    <ChevronRight size={14} className={`transition-transform ${!collapsedTaskIds.includes(task.id) ? "rotate-90" : ""}`} />
+                  </button>
+                ) : !nodeIsFlat && depth > 0 ? (
+                  <div className="w-2 ml-[-8px] mr-0.5 border-l border-slate-700/50 h-5" />
+                ) : null}
 
-                  <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                    {/* Title */}
-                    {editingTaskId === task.id ? (
-                      <input
-                        type="text"
-                        value={editingText}
-                        onChange={(e) => setEditingText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                  {/* Title */}
+                  {editingTaskId === task.id ? (
+                    <textarea
+                      value={editingText}
+                      onChange={(e) => {
+                        setEditingText(e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          saveEditedTaskName(task.id, editingText);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setEditingTaskId(null);
+                        } else if (e.key === "Tab") {
+                          e.preventDefault();
+                          if (e.shiftKey) {
                             saveEditedTaskName(task.id, editingText);
-                          } else if (e.key === "Escape") {
-                            setEditingTaskId(null);
+                            outdentTask(task.id);
+                          } else {
+                            saveEditedTaskName(task.id, editingText);
+                            indentTask(task.id);
                           }
-                        }}
-                        onBlur={() => saveEditedTaskName(task.id, editingText)}
-                        autoFocus
-                        className="bg-[#111625] text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal"
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span 
-                        className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${
-                          isDone 
-                            ? 'text-slate-500 line-through' 
-                            : 'text-slate-100 hover:text-white transition-colors'
-                        }`}
-                        onDoubleClick={() => startEditingTask(task.id, task.text)}
-                        title="Double-click to rename"
-                      >
-                        {task.text}
-                      </span>
-                    )}
+                        }
+                      }}
+                      onBlur={() => saveEditedTaskName(task.id, editingText)}
+                      autoFocus
+                      rows={1}
+                      className="bg-[#111625] text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal resize-none overflow-hidden"
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{ minHeight: "24px", height: "auto" }}
+                      onFocus={(e) => {
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
+                        e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+                      }}
+                    />
+                  ) : (
+                    <span 
+                      className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${
+                        isDone 
+                          ? 'text-slate-500 line-through' 
+                          : 'text-slate-100 hover:text-white transition-colors'
+                      }`}
+                      onClick={() => startEditingTask(task.id, task.text)}
+                      title="Click to edit"
+                    >
+                      {task.text}
+                    </span>
+                  )}
 
-                    {/* Image Preview */}
-                    {task.imageHashes && task.imageHashes.length > 0 && (
-                      <TaskImagePreview imageHashes={task.imageHashes} compact={true} />
-                    )}
-                  </div>
+                  {/* Image Preview */}
+                  {task.imageHashes && task.imageHashes.length > 0 && (
+                    <TaskImagePreview imageHashes={task.imageHashes} compact={true} />
+                  )}
+                </div>
 
                 {/* Clickable Priority/Done Pill Badge (cycles priority on click!) */}
                 <button 
@@ -610,29 +874,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                 </button>
 
                 {/* Action Controls Container */}
-                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0">
-                  {/* Copy Task Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigator.clipboard.writeText(task.text);
-                      setCopiedTaskId(task.id);
-                      setTimeout(() => {
-                        setCopiedTaskId(prev => prev === task.id ? null : prev);
-                      }, 2000);
-                      setNotification({ type: 'success', message: 'Task text copied' });
-                    }}
-                    className={`p-1 rounded cursor-pointer transition-colors ${
-                      copiedTaskId === task.id
-                        ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
-                        : "text-slate-400 hover:text-blue-400 hover:bg-slate-800/40"
-                    }`}
-                    title={copiedTaskId === task.id ? "Copied!" : "Copy Task"}
-                  >
-                    {copiedTaskId === task.id ? <Check size={13} /> : <Copy size={13} />}
-                  </button>
-
+                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0 task-menu-container relative">
                   {/* Edit/Rename button */}
                   <button
                     type="button"
@@ -658,18 +900,16 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                     )}
                   </button>
 
-                  {/* Delete Task Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteTask(task.id);
-                    }}
-                    className="p-1 text-slate-400 hover:text-rose-500 hover:bg-[#ffe4e6]/5 rounded cursor-pointer transition-colors"
-                    title="Delete Task"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  <TaskMenuPortal
+                    task={task}
+                    activeMenuTaskId={activeMenuTaskId}
+                    setActiveMenuTaskId={setActiveMenuTaskId}
+                    addNestedSubtask={addNestedSubtask}
+                    indentTask={indentTask}
+                    outdentTask={outdentTask}
+                    moveTaskInTree={moveTaskInTree}
+                    deleteTask={deleteTask}
+                  />
                 </div>
 
                 {/* Right Margin Status Dot */}
@@ -712,3 +952,138 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     </div>
   );
 }
+
+const TaskMenuPortal = ({
+  task,
+  activeMenuTaskId,
+  setActiveMenuTaskId,
+  addNestedSubtask,
+  indentTask,
+  outdentTask,
+  moveTaskInTree,
+  deleteTask,
+}: any) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({});
+  const isOpen = activeMenuTaskId === task.id;
+
+  useLayoutEffect(() => {
+    if (isOpen && buttonRef.current && menuRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuRect = menuRef.current.getBoundingClientRect();
+      
+      let top = rect.bottom + 4;
+      let left = rect.right - menuRect.width;
+
+      if (top + menuRect.height > window.innerHeight) {
+        top = rect.top - menuRect.height - 4;
+      }
+      if (left < 0) {
+        left = 0;
+      }
+      
+      setStyle({
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        zIndex: 99999,
+      });
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (
+          menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          buttonRef.current && !buttonRef.current.contains(e.target as Node)
+        ) {
+          setActiveMenuTaskId(null);
+        }
+      };
+      
+      const timeoutId = setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside, true);
+        document.addEventListener('touchstart', handleClickOutside, true);
+      }, 0);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        document.removeEventListener('mousedown', handleClickOutside, true);
+        document.removeEventListener('touchstart', handleClickOutside, true);
+      };
+    }
+  }, [isOpen, setActiveMenuTaskId]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onMouseDown={(e) => {
+          // Changed to onMouseDown to ensure it captures events quickly before click outside
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setActiveMenuTaskId(isOpen ? null : task.id);
+        }}
+        className={`p-1 rounded cursor-pointer transition-colors ${
+          isOpen ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+        }`}
+      >
+        <MoreVertical size={13} />
+      </button>
+
+      {isOpen && createPortal(
+        <div ref={menuRef} style={style} className="w-44 bg-[#0e1322] border border-slate-800 rounded-xl shadow-xl py-1 flex flex-col pointer-events-auto">
+          <button
+            onClick={(e) => { e.stopPropagation(); addNestedSubtask(task.id); setActiveMenuTaskId(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+          >
+            <PlusCircle size={12} className="text-blue-400" />
+            <span>Add Subtask</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); indentTask(task.id); setActiveMenuTaskId(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+          >
+            <CornerDownRight size={12} className="text-slate-400" />
+            <span>Convert to Subtask</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); outdentTask(task.id); setActiveMenuTaskId(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+          >
+            <CornerLeftUp size={12} className="text-slate-400" />
+            <span>Promote to Parent</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); moveTaskInTree(task.id, 'up'); setActiveMenuTaskId(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+          >
+            <ArrowUp size={12} className="text-slate-400" />
+            <span>Move Up</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); moveTaskInTree(task.id, 'down'); setActiveMenuTaskId(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+          >
+            <ArrowDown size={12} className="text-slate-400" />
+            <span>Move Down</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setActiveMenuTaskId(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors"
+          >
+            <Trash2 size={12} className="text-rose-500" />
+            <span>Delete Task</span>
+          </button>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+

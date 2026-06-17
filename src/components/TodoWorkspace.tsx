@@ -39,8 +39,7 @@ import {
 import { TodoNodeData, TodoTask } from "./TodoNodeRenderer";
 import { format } from "date-fns";
 import { parseISO } from "date-fns";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import { SmartDatePicker } from "./SmartDatePicker";
 import { TodoSearchBar } from "./TodoSearchBar";
 
 import { cn } from "@/lib/utils";
@@ -254,7 +253,8 @@ function CustomDropdown({
         ref.current &&
         !ref.current.contains(target) &&
         !target.closest(".react-calendar") &&
-        !target.closest(".react-date-picker")
+        !target.closest(".react-date-picker") &&
+        !target.closest(".smart-datepicker-content")
       ) {
         setIsOpen(false);
       }
@@ -1922,7 +1922,7 @@ function TodoWorkspaceItem({
               "opacity-40 cursor-not-allowed hover:text-slate-300 dark:hover:text-slate-600",
           )}
           title={
-            hasIncompleteChildren
+            hasIncompleteChildren && !isCompleted
               ? "Complete subtasks first"
               : "Toggle completed"
           }
@@ -2187,23 +2187,20 @@ function TodoWorkspaceItem({
                           Custom
                         </span>
                         <div className="relative group w-[110px]">
-                          <DatePicker
+                          <SmartDatePicker
                             selected={task.dueDate ? parseISO(task.dueDate) : null}
                             onChange={(date: Date | null) => {
                               const dateString = date ? format(date, "yyyy-MM-dd") : undefined;
                               onUpdate(task.id, { dueDate: dateString });
                               close();
                             }}
-                            customInput={
-                              <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
+                          >
+                            <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
                                 <span className={cn(!task.dueDate && "text-slate-400 group-hover:text-slate-500")}>
                                   {task.dueDate ? format(parseISO(task.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
                                 </span>
-                              </CustomDateInput>
-                            }
-                            withPortal
-                            portalId="todo-datepicker-portal"
-                          />
+                            </CustomDateInput>
+                          </SmartDatePicker>
                         </div>
                       </div>
                     </>
@@ -2621,7 +2618,7 @@ function TodoTaskDetails({
                 "opacity-40 cursor-not-allowed",
             )}
             title={
-              hasIncompleteChildren
+              hasIncompleteChildren && !isCompleted
                 ? "Complete subtasks first"
                 : "Toggle Complete Active Task"
             }
@@ -2879,23 +2876,20 @@ function TodoTaskDetails({
                       Custom
                     </span>
                     <div className="relative group w-[110px]">
-                      <DatePicker
+                      <SmartDatePicker
                         selected={foundTask.dueDate ? parseISO(foundTask.dueDate) : null}
                         onChange={(date: Date | null) => {
                           const dateString = date ? format(date, "yyyy-MM-dd") : undefined;
                           onUpdate(foundTask!.id, { dueDate: dateString });
                           close();
                         }}
-                        customInput={
-                          <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
+                      >
+                        <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
                             <span className={cn(!foundTask.dueDate && "text-slate-400 group-hover:text-slate-500")}>
                               {foundTask.dueDate ? format(parseISO(foundTask.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
                             </span>
-                          </CustomDateInput>
-                        }
-                        withPortal
-                        portalId="todo-datepicker-portal"
-                      />
+                        </CustomDateInput>
+                      </SmartDatePicker>
                     </div>
                   </div>
                 </>

@@ -22,7 +22,9 @@ import {
   FolderOpen,
   FileText,
   CheckSquare,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sun,
+  Moon
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
@@ -134,6 +136,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     setWorkspaceTabs,
     activePrompts,
     setActivePrompt,
+    setAppTheme,
     uploadedMediaMetadata,
   } = useStore();
   const [copied, setCopied] = useState(false);
@@ -1005,7 +1008,7 @@ declare const console: {
   const minimapBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: any) => {
       if (
         minimapMenuRef.current &&
         !minimapMenuRef.current.contains(e.target as Node) &&
@@ -1017,10 +1020,12 @@ declare const console: {
       }
     };
     if (isMinimapMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside, { capture: true });
+      document.addEventListener("touchstart", handleClickOutside, { capture: true });
     }
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside, { capture: true });
+      document.removeEventListener("touchstart", handleClickOutside, { capture: true });
     };
   }, [isMinimapMenuOpen]);
 
@@ -1253,6 +1258,21 @@ declare const console: {
                     >
                       <span>Show Whitespace</span>
                       {settings.renderCharacters && <Check size={12} className="text-blue-500" />}
+                    </button>
+
+                    <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
+                    <div className="px-3 py-1.5 font-bold text-[10px] uppercase text-slate-500 select-none">
+                      Appearance
+                    </div>
+
+                    <button
+                      onClick={() => setAppTheme(appTheme === "dark" ? "light" : "dark")}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {appTheme === "dark" ? <Sun size={12} /> : <Moon size={12} />}
+                        <span>{appTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
+                      </div>
                     </button>
 
                     {/* Editor Themes Nested Options */}

@@ -316,6 +316,7 @@ function NodeRenderer({
   const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
   const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
+  const isSpecialNode = isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode;
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]
@@ -876,7 +877,7 @@ function NodeRenderer({
 
   let fWidth = customSize
     ? customSize.width
-    : isApiNode ? 340 : isTodoNode ? 385 : isTransferNode ? 384 : isMathNode ? (isExpanded ? 600 : 320) : isSearchNode ? 340
+    : isApiNode ? 340 : isTodoNode ? 385 : isTransferNode ? 384 : isMathNode ? (isExpanded ? 520 : 320) : isSearchNode ? 340
       : (isJsNode || isTsNode || isPyNode)
         ? 440
         : (isJsCode || isTsCode || isPyCode)
@@ -916,10 +917,10 @@ function NodeRenderer({
 
   const isDefaultShape = nodeShape === "default";
 
-  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : (isJsNode || isTsNode || isPyNode) ? "max-w-[240px]" : isTodoNode ? "max-w-[350px]" : isTransferNode ? "max-w-[384px]" : isMathNode ? "max-w-[600px]" : isSearchNode ? "max-w-[340px]" : "max-w-[260px]"}`;
+  let shapeClasses = `rounded-md px-3 py-1.5 min-w-[120px] ${isApiNode ? "max-w-[340px]" : isSpecialNode ? "max-w-[440px]" : "max-w-[260px]"}`;
   let shapeStyle: React.CSSProperties = {};
 
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode) {
+  if (isSpecialNode) {
     shapeClasses = `p-0 !bg-transparent !border-transparent !shadow-none overflow-visible`;
   }
 
@@ -1164,14 +1165,14 @@ function NodeRenderer({
     }
   }
 
-  if (!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode)) {
+  if (!isSpecialNode) {
     fWidth *= nodeSize;
     fHeight *= nodeSize;
   }
 
   let foWidth = fWidth + 100;
   let foHeight = fHeight + 100;
-  if (isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode) {
+  if (isSpecialNode) {
     foWidth += 200;
     foHeight += 200;
   }
@@ -1280,7 +1281,7 @@ function NodeRenderer({
             style={{
               ...shapeStyle,
               transform:
-                isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode ? undefined : `scale(${nodeSize})`,
+                isSpecialNode ? undefined : `scale(${nodeSize})`,
               transformOrigin: "center",
               touchAction: "none",
             }}
@@ -1621,9 +1622,9 @@ function NodeRenderer({
               </div>
             )}
             <div
-              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode ? "p-0" : ""}`}
+              className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isSpecialNode ? "p-0" : ""}`}
             >
-              {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode) && (
+              {!isSpecialNode && (
                 <div className="flex-shrink-0 mr-2 flex items-center">
                   {hasChildren && (
                     <div
@@ -1645,7 +1646,7 @@ function NodeRenderer({
               )}
 
               <div
-                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
+                className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isSpecialNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
                 style={{
                   ...(isCustom ? { color: nodeTextColor } : {}),
                   ...(nodeTheme === "peepal" ||
@@ -1655,7 +1656,7 @@ function NodeRenderer({
                     : {}),
                 }}
               >
-                {!(isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode) && (
+                {!isSpecialNode && (
                   <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                     <span
                       className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
@@ -1856,13 +1857,13 @@ function NodeRenderer({
               </div>
 
               <div
-                className="ml-1 flex-shrink-0 flex items-center justify-center p-1 md:hidden rounded-full hover:bg-black/10 touch-manipulation z-10"
+                className={`${isSpecialNode ? "absolute -top-4 -left-4 bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-white/20 w-10 h-10 ring-4 ring-black/5" : "ml-1 flex-shrink-0 p-1"} flex items-center justify-center md:hidden rounded-full hover:scale-110 active:scale-95 transition-all touch-manipulation z-[100]`}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (onContextMenu) onContextMenu(e, data);
                 }}
               >
-                <MoreVertical size={14} className={mutedText} />
+                <MoreVertical size={isSpecialNode ? 20 : 14} className={isSpecialNode ? "text-indigo-500 dark:text-indigo-400" : mutedText} />
               </div>
             </div>
 

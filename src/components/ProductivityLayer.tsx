@@ -26,17 +26,17 @@ import {
   ArrowLeft,
   CornerDownLeft,
   Edit2,
-  ExternalLink
+  ExternalLink,
+  Plus
 } from "lucide-react";
-import TextareaAutosize from "react-textarea-autosize";
 import Markdown from "react-markdown";
-import DatePicker from "react-datepicker";
+import { SmartDatePicker } from "./SmartDatePicker";
 import { format, parseISO } from "date-fns";
-import "react-datepicker/dist/react-datepicker.css";
 import { useStore } from "../store/useStore";
 import { getValueAtPath, setValueAtPath } from "../utils/pathUtils";
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, PREDEFINED_TAGS, getTagColorClass } from "./TodoWorkspace";
 import { JavaScriptIcon, TypeScriptIcon, PythonIcon, JsonIcon, MarkdownIcon, TextIcon } from "./FileIcons";
+import { TaskImagePreview } from "./TaskImagePreview";
 import { cn } from "@/lib/utils";
 
 // --- Types ---
@@ -58,6 +58,7 @@ export interface FlatTodoItem {
   tags?: string[];
   notes?: string;
   tasks?: any[];
+  imageHashes?: string[];
   nodePath: string; // The .todo node path
   nodeName: string; // Friendly file name of the .todo node
   parentTaskId?: string;
@@ -100,6 +101,8 @@ export function getAllFiles(data: any, path: string = "root"): FlatFileItem[] {
       items.push({ id: currentPath, name: keyLower.endsWith(".transfer") ? key : key.replace(/_transfer_node$/i, ".transfer"), type: "transfer_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_math_node") || keyLower.endsWith(".math")) {
       items.push({ id: currentPath, name: keyLower.endsWith(".math") ? key : key.replace(/_math_node$/i, ".math"), type: "math_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
+    } else if (keyLower.endsWith("_search_node") || keyLower.endsWith(".search")) {
+      items.push({ id: currentPath, name: keyLower.endsWith(".search") ? key : key.replace(/_search_node$/i, ".search"), type: "search_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_json")) {
       items.push({ id: currentPath, name: key.replace(/_json$/i, ".json"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_yaml")) {
@@ -174,11 +177,12 @@ export function scanAllTodos(data: any, path: string = "root"): FlatTodoItem[] {
 
 // --- Helper: write back todo update to specific node ---
 export async function saveTodoChangesToWorkspace(
-  parsedData: any,
+  _ignoredParsedData: any, // kept for signature compatibility from previous usage
   nodePath: string,
   taskId: string,
   updates: any | null // null means delete
 ) {
+  const { parsedData, setCode, codeFormat } = useStore.getState();
   const updatedData = JSON.parse(JSON.stringify(parsedData));
   const val = getValueAtPath(updatedData, nodePath);
   if (!val) return parsedData;
@@ -195,6 +199,23 @@ export async function saveTodoChangesToWorkspace(
   }
 
   if (nodeObj && Array.isArray(nodeObj.tasks)) {
+    const syncTaskCompletionState = (tList: any[]): any[] => {
+      return tList.map((t) => {
+        let updatedTasks = t.tasks;
+        if (t.tasks && t.tasks.length > 0) {
+          updatedTasks = syncTaskCompletionState(t.tasks);
+        }
+        const hasChildren = updatedTasks && updatedTasks.length > 0;
+        const hasIncomplete = hasChildren && updatedTasks.some((child: any) => !child.completed && child.status !== "Completed");
+        return {
+          ...t,
+          tasks: updatedTasks,
+          completed: hasChildren ? !hasIncomplete : t.completed,
+          status: hasChildren ? (hasIncomplete ? "Todo" : "Completed") : t.status,
+        };
+      });
+    };
+
     if (updates === null) {
       // Delete task
       const walk = (tList: any[]): any[] => {
@@ -207,7 +228,7 @@ export async function saveTodoChangesToWorkspace(
             return t;
           });
       };
-      nodeObj.tasks = walk(nodeObj.tasks);
+      nodeObj.tasks = syncTaskCompletionState(walk(nodeObj.tasks));
     } else {
       // Update task
       const walk = (tList: any[]): any[] => {
@@ -232,14 +253,13 @@ export async function saveTodoChangesToWorkspace(
           return t;
         });
       };
-      nodeObj.tasks = walk(nodeObj.tasks);
+      nodeObj.tasks = syncTaskCompletionState(walk(nodeObj.tasks));
     }
   }
 
   const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
   setValueAtPath(updatedData, nodePath, finalVal);
 
-  const { setCode, codeFormat } = useStore.getState();
   let newCode = "";
   if (codeFormat === "yaml") {
     try {
@@ -256,11 +276,12 @@ export async function saveTodoChangesToWorkspace(
 }
 
 export async function addNewTodoToWorkspace(
-  parsedData: any,
+  _ignoredParsedData: any, // kept for signature compatibility
   nodePath: string,
   newTaskText: string,
   parentTaskId?: string
 ) {
+  const { parsedData, setCode, codeFormat } = useStore.getState();
   const updatedData = JSON.parse(JSON.stringify(parsedData));
   const val = getValueAtPath(updatedData, nodePath);
   if (!val) return parsedData;
@@ -310,7 +331,6 @@ export async function addNewTodoToWorkspace(
   const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
   setValueAtPath(updatedData, nodePath, finalVal);
 
-  const { setCode, codeFormat } = useStore.getState();
   let newCode = "";
   if (codeFormat === "yaml") {
     try {
@@ -366,6 +386,8 @@ function renderOverlayFileIcon(type: string, name: string) {
     return <Globe className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />;
   } else if (type === "math_node" || name.endsWith(".math")) {
     return <Sparkles className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400 shrink-0" />;
+  } else if (type === "search_node" || name.endsWith(".search")) {
+    return <Search className="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0" />;
   } else if (type === "folder") {
     return <Folder className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />;
   } else {
@@ -589,6 +611,15 @@ function LabelInput({ tags, onAdd }: { tags: string[], onAdd: (tag: string) => v
     </div>
   );
 }
+
+const checkHasIncompleteChildren = (tasks?: any[]): boolean => {
+  if (!tasks || tasks.length === 0) return false;
+  return tasks.some((t: any) => {
+    const isComp = t.completed || t.status === "Completed";
+    if (!isComp) return true;
+    return checkHasIncompleteChildren(t.tasks);
+  });
+};
 
 const CustomDateInput = forwardRef<HTMLDivElement, any>(({ value, onClick, className, children }, ref) => (
   <div onClick={onClick} ref={ref} className={className}>
@@ -866,6 +897,16 @@ export default function ProductivityLayer() {
 
   const handleToggleTodoStatus = async (task: FlatTodoItem) => {
     const isCompleted = task.completed || task.status === "Completed";
+    const hasIncompleteChildren = checkHasIncompleteChildren(task.tasks);
+
+    if (!isCompleted && hasIncompleteChildren) {
+      useStore.getState().setNotification?.({
+        message: "Complete subtasks first",
+        type: "info",
+      });
+      return;
+    }
+
     const nextStatus = isCompleted ? "Todo" : "Completed";
     await handleUpdateTodoField(task.id, task.nodePath, "status", nextStatus);
   };
@@ -1210,159 +1251,214 @@ export default function ProductivityLayer() {
 
                       return (
                         <React.Fragment key={`${todo.nodePath}-${todo.id}-${idx}`}>
-                          <div
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.02 }}
                             className={cn(
-                              "is-selected-todo flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors relative select-none mx-2 my-0.5 rounded-md",
+                              "is-selected-todo flex items-center justify-between px-4 py-3 cursor-pointer transition-all relative select-none mx-2.5 my-1 rounded-xl border group",
                               isSelected
-                                ? "bg-blue-600 text-white border-transparent shadow-sm"
-                                : "hover:bg-slate-100 dark:hover:bg-slate-800/80"
+                                ? "bg-blue-600/15 border-blue-500/30 dark:bg-blue-600/20 dark:border-blue-500/40 shadow-[0_0_15px_-5px_rgba(59,130,246,0.3)]"
+                                : "bg-white dark:bg-[#0d1117]/50 border-slate-200/60 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             )}
-                            style={todoViewMode === "tree" && !todoSearch.trim() ? { paddingLeft: `${Math.max(1, (todo.depth || 0) * 1.5 + 1)}rem` } : {}}
+                            style={todoViewMode === "tree" && !todoSearch.trim() ? { marginLeft: `${Math.max(0.6, (todo.depth || 0) * 1.5 + 0.6)}rem` } : {}}
                             onClick={() => {
                               setActiveTodo(todo);
                             }}
                           >
-                            <div className="flex items-center gap-3 min-w-0 pr-4">
+                            {isSelected && (
+                              <div className="absolute left-0 top-3 bottom-3 w-1 bg-blue-500 rounded-r-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                            )}
+                            
+                            <div className="flex items-center gap-4 min-w-0 pr-4">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleToggleTodoStatus(todo);
                                 }}
-                                className={cn("transition shrink-0", isSelected ? "text-white/80 hover:text-white" : "text-slate-400 hover:text-blue-500")}
+                                className={cn(
+                                  "transition-all duration-300 shrink-0", 
+                                  (!isCompleted && checkHasIncompleteChildren(todo.tasks))
+                                    ? "opacity-30 cursor-not-allowed"
+                                    : "hover:scale-110 active:scale-95"
+                                )}
+                                title={!isCompleted && checkHasIncompleteChildren(todo.tasks) ? "Complete subtasks first" : isCompleted ? "Mark Pending" : "Mark Completed"}
                               >
                                 {isCompleted ? (
-                                  <CheckCircle2 size={15} className={cn(isSelected ? "text-white" : "text-emerald-500")} />
+                                  <CheckCircle2 size={18} className="text-emerald-500 drop-shadow-sm" />
                                 ) : (
-                                  <Circle size={15} className={cn(isSelected ? "text-white/60" : "text-slate-450 dark:text-slate-500")} />
+                                  <Circle size={18} className={cn(isSelected ? "text-blue-500" : "text-slate-300 dark:text-slate-600")} />
                                 )}
                               </button>
+                              
                               <div className="flex flex-col min-w-0">
                                 <span className={cn(
-                                  "text-xs font-medium truncate tracking-tight",
-                                  isSelected ? "text-white" : "text-slate-800 dark:text-slate-200",
-                                  isCompleted && (isSelected ? "line-through text-white/60 font-normal" : "line-through text-slate-400 dark:text-slate-550 font-normal")
+                                  "text-[13px] font-semibold truncate tracking-tight transition-all",
+                                  isSelected ? "text-slate-900 dark:text-white" : "text-slate-700 dark:text-slate-300",
+                                  isCompleted && "line-through opacity-40 font-normal"
                                 )}>
-                                  {todo.text || <em className={cn("font-mono text-[10px]", isSelected ? "text-white/60" : "text-slate-450 dark:text-slate-600")}>unlabeled task</em>}
+                                  {todo.text || <em className="font-mono text-[10px] opacity-50">unlabeled task</em>}
                                 </span>
-                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  <span className={cn("font-mono text-[9px] px-1 py-0.5 rounded flex items-center leading-none", isSelected ? "bg-white/20 text-white/90" : "text-slate-450 dark:text-slate-500 bg-slate-100 dark:bg-slate-900")}>
+                                
+                                <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
+                                  <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500 uppercase tracking-tight">
+                                    <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
                                     {todo.nodeName}
-                                  </span>
+                                  </div>
+                                  
                                   {todo.priority && todo.priority !== "Normal" && (
-                                    <span className={cn("text-[8px] uppercase tracking-wide font-bold px-1 rounded leading-none pt-0.5 pb-px", isSelected ? "bg-white/20 text-white" : priorityBg)}>
+                                    <span className={cn(
+                                      "text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md leading-none",
+                                      priorityBg
+                                    )}>
                                       {todo.priority}
                                     </span>
                                   )}
+                                  
                                   {todo.dueDate && (
-                                    <span className={cn("text-[8px] px-1 rounded font-mono shrink-0 flex items-center gap-0.5", isSelected ? "bg-white/20 text-white" : "text-rose-500 bg-rose-500/10")}>
-                                      <CalendarIcon size={8} />
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-md font-mono shrink-0 flex items-center gap-1 bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                                      <CalendarIcon size={10} />
                                       {todo.dueDate}
                                     </span>
                                   )}
                                 </div>
+                                
+                                {todo.imageHashes && todo.imageHashes.length > 0 && (
+                                  <div className="mt-2.5 rounded-lg overflow-hidden border border-slate-200/50 dark:border-slate-800/50 shadow-sm">
+                                    <TaskImagePreview imageHashes={todo.imageHashes} compact={true} />
+                                  </div>
+                                )}
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (inlineSubParentId === todo.id) {
-                                    setInlineSubParentId(null);
-                                  } else {
-                                    setInlineSubParentId(todo.id);
-                                    setInlineSubText("");
-                                  }
-                                }}
-                                title="Add child/subtask"
-                                className={cn(
-                                  "text-[9px] uppercase font-bold px-1.5 py-0.5 rounded font-mono select-none flex items-center gap-0.5 transition-colors cursor-pointer",
-                                  isSelected 
-                                    ? "bg-white/20 text-white hover:bg-white/30" 
-                                    : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100"
-                                )}
-                              >
-                                + subtask
-                              </button>
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  await handleDeleteTodo(todo);
-                                }}
-                                title="Delete task"
-                                className={cn(
-                                  "p-1 rounded font-mono transition-colors cursor-pointer flex items-center justify-center shrink-0",
-                                  isSelected
-                                    ? "text-white/80 hover:text-rose-250 hover:bg-white/15"
-                                    : "text-slate-450 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20"
-                                )}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                              {(todo.tags || []).map((tag, tagIdx) => (
-                                <span key={`${tag}-${tagIdx}`} className={cn("text-[8px] font-bold uppercase tracking-wider border px-1 py-0.5 rounded font-mono select-none", isSelected ? "bg-white/20 text-white border-transparent" : "text-slate-400 bg-slate-100 dark:bg-slate-900 border-slate-250 dark:border-slate-800/80")}>
+                            <div className="flex items-center gap-2 flex-wrap shrink-0">
+                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 mr-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (inlineSubParentId === todo.id) {
+                                      setInlineSubParentId(null);
+                                    } else {
+                                      setInlineSubParentId(todo.id);
+                                      setInlineSubText("");
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all active:scale-90"
+                                  title="Add Subtask"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await handleDeleteTodo(todo);
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-90"
+                                  title="Delete Task"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+
+                              {(todo.tags || []).slice(0, 2).map((tag, tagIdx) => (
+                                <span key={`${tag}-${tagIdx}`} className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-800/50 select-none font-mono">
                                   {tag}
                                 </span>
                               ))}
+                              
                               {isSelected && (
-                                <span className="text-[9px] text-white/70 uppercase font-mono pl-1 shrink-0 select-none">
-                                  ⏎ view
-                                </span>
+                                <div className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-md bg-blue-500 text-white shadow-sm ring-1 ring-blue-400 animate-in fade-in zoom-in duration-200">
+                                  <span className="text-[9px] font-bold uppercase tracking-tighter font-mono">view</span>
+                                  <ExternalLink size={10} />
+                                </div>
                               )}
                             </div>
-                          </div>
+                          </motion.div>
 
-                          {inlineSubParentId === todo.id && (
-                            <div 
-                              className="px-4 py-2 bg-slate-50 dark:bg-[#111622] border-t border-b border-slate-100 dark:border-slate-800/80 flex items-center gap-2 select-none"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <span className="text-[10px] font-bold text-emerald-500 font-mono tracking-wide shrink-0">
-                                SUBTASK OF "{todo.text.slice(0, 15)}...":
-                              </span>
-                              <input
-                                autoFocus
-                                type="text"
-                                value={inlineSubText}
-                                onChange={(e) => setInlineSubText(e.target.value)}
-                                onKeyDown={async (e) => {
-                                  if (e.key === "Enter") {
-                                    if (inlineSubText.trim()) {
-                                      await addNewTodoToWorkspace(
-                                        parsedData,
-                                        todo.nodePath,
-                                        inlineSubText,
-                                        todo.id
-                                      );
-                                      setInlineSubText("");
-                                      setInlineSubParentId(null);
-                                    }
-                                  } else if (e.key === "Escape") {
-                                    setInlineSubParentId(null);
-                                  }
-                                }}
-                                placeholder="Type subtask name and press Enter..."
-                                className="flex-1 bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-md p-1.5 text-xs text-slate-850 dark:text-slate-200 placeholder-slate-400 outline-none"
-                              />
-                              <button
-                                onClick={async () => {
-                                  if (inlineSubText.trim()) {
-                                    await addNewTodoToWorkspace(
-                                      parsedData,
-                                      todo.nodePath,
-                                      inlineSubText,
-                                      todo.id
-                                    );
-                                    setInlineSubText("");
-                                    setInlineSubParentId(null);
-                                  }
-                                }}
-                                className="text-[10px] uppercase font-bold tracking-wider px-2 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
+                          <AnimatePresence>
+                            {inlineSubParentId === todo.id && (
+                              <motion.div 
+                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                animate={{ opacity: 1, height: 'auto', marginTop: 4 }}
+                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                className="overflow-hidden"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                Add
-                              </button>
-                            </div>
-                          )}
+                                <div className="px-3 sm:px-8 pb-4">
+                                  <div className="bg-slate-50/50 dark:bg-slate-900/20 border border-slate-200/80 dark:border-slate-800/60 rounded-2xl p-4 shadow-inner">
+                                    <div className="border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden bg-white dark:bg-[#0d1117] flex flex-col shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)] focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/50 transition-all">
+                                      <textarea
+                                        autoFocus
+                                        rows={1}
+                                        value={inlineSubText}
+                                        onChange={(e) => setInlineSubText(e.target.value)}
+                                        onInput={(e) => {
+                                          const target = e.target as HTMLTextAreaElement;
+                                          target.style.height = 'auto';
+                                          target.style.height = `${target.scrollHeight}px`;
+                                        }}
+                                        onKeyDown={async (e) => {
+                                          if (e.key === "Enter" && !e.shiftKey) {
+                                            e.preventDefault();
+                                            if (inlineSubText.trim()) {
+                                              await addNewTodoToWorkspace(
+                                                parsedData,
+                                                todo.nodePath,
+                                                inlineSubText,
+                                                todo.id
+                                              );
+                                              setInlineSubText("");
+                                              setInlineSubParentId(null);
+                                            }
+                                          } else if (e.key === "Escape") {
+                                            setInlineSubParentId(null);
+                                            setInlineSubText("");
+                                          }
+                                        }}
+                                        placeholder="What needs to be done?"
+                                        className="w-full bg-transparent p-4 text-[13px] text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 outline-none resize-none min-h-[50px] transition-height duration-200 font-medium"
+                                      />
+                                      <div className="flex justify-between items-center px-3 py-2 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800/50">
+                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono pl-1">
+                                          <span className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Esc</span>
+                                          <span>to cancel</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            onClick={() => {
+                                              setInlineSubParentId(null);
+                                              setInlineSubText("");
+                                            }}
+                                            className="px-4 py-1.5 rounded-lg text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all uppercase tracking-wider"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            onClick={async () => {
+                                              if (inlineSubText.trim()) {
+                                                await addNewTodoToWorkspace(
+                                                  parsedData,
+                                                  todo.nodePath,
+                                                  inlineSubText,
+                                                  todo.id
+                                                );
+                                                setInlineSubText("");
+                                                setInlineSubParentId(null);
+                                              }
+                                            }}
+                                            className="flex items-center gap-2 px-5 py-2 rounded-lg text-[11px] font-extrabold bg-blue-600 hover:bg-blue-500 active:scale-95 text-white transition-all shadow-md shadow-blue-500/20 uppercase tracking-widest ring-1 ring-blue-400/50"
+                                          >
+                                            <Check size={14} strokeWidth={3} />
+                                            Add Subtask
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </React.Fragment>
                       );
                     })
@@ -1391,31 +1487,34 @@ export default function ProductivityLayer() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[11500] w-screen h-screen flex items-center justify-center bg-black/65 dark:bg-black/85 backdrop-blur-[4px] p-4 text-slate-800 dark:text-slate-200"
+              className="fixed inset-0 z-[11500] w-screen h-screen flex items-center justify-center bg-slate-950/60 dark:bg-black/90 backdrop-blur-md p-4 text-slate-800 dark:text-slate-200"
               onClick={() => setActiveTodo(null)}
             >
               <motion.div
-                initial={{ scale: 0.95, y: 15 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.95, y: 15 }}
-                className="w-full max-w-[620px] bg-white dark:bg-[#0c1017] rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden max-h-[85vh]"
+                initial={{ scale: 0.9, opacity: 0, y: 30 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 30 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="w-full max-w-[680px] bg-white/95 dark:bg-[#0d1117]/95 backdrop-blur-2xl rounded-3xl border border-slate-200/50 dark:border-slate-800/50 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden max-h-[90vh]"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header controls layout */}
-                <div className="px-3 sm:px-4 py-3 bg-slate-50 dark:bg-[#0e141f] border-b border-slate-100 dark:border-slate-850 flex items-center justify-between shrink-0 select-none overflow-hidden">
-                  <div className="flex items-center text-[10px] sm:text-xs font-semibold text-slate-500 tracking-wide font-mono min-w-0 pr-2">
+                <div className="px-5 py-4 bg-slate-50/50 dark:bg-[#0f141d]/50 border-b border-slate-100 dark:border-slate-800/50 flex items-center justify-between shrink-0 select-none">
+                  <div className="flex items-center text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest font-mono uppercase truncate mr-4">
                     <button
                       onClick={() => setActiveTodo(null)}
-                      className="p-1 sm:p-1.5 mr-1.5 sm:mr-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-450 dark:text-slate-505 transition cursor-pointer shrink-0"
+                      className="p-2 mr-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:text-blue-500 shadow-sm transition-all"
                     >
-                      <ArrowLeft size={13} />
+                      <ArrowLeft size={14} strokeWidth={2.5} />
                     </button>
-                    <ClipboardList size={14} className="text-blue-500 mr-1.5 shrink-0 hidden sm:block" />
-                    <span className="truncate min-w-0">{activeTodo.nodeName}</span>
-                    <span className="text-slate-300 dark:text-slate-700 mx-1 sm:mx-1.5 shrink-0">/</span>
-                    <span className="text-slate-400 shrink-0 whitespace-nowrap hidden sm:inline">TASK DETAIL</span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <ClipboardList size={14} className="text-blue-500" />
+                      <span className="truncate">{activeTodo.nodeName}</span>
+                      <span className="opacity-30">/</span>
+                      <span className="text-slate-500 dark:text-slate-400">Detail</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
                         openWorkspaceTab(activeTodo.nodePath, true);
@@ -1423,167 +1522,215 @@ export default function ProductivityLayer() {
                         setIsTodoOpen(false);
                         setActiveTodo(null);
                       }}
-                      title="Open file in workspace"
-                      className="p-1 sm:p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-450 dark:text-slate-500 transition cursor-pointer shrink-0"
+                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:text-blue-500 shadow-sm transition-all"
+                      title="Open in Workspace"
                     >
-                      <ExternalLink size={13} />
+                      <ExternalLink size={14} strokeWidth={2.5} />
                     </button>
                     <button
                       onClick={() => handleToggleTodoStatus(activeTodo)}
                       className={cn(
-                        "text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-lg border font-semibold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer shrink-0",
+                        "px-4 py-2 rounded-xl border-2 font-bold text-[11px] uppercase tracking-widest flex items-center gap-2 transition-all shadow-sm active:scale-95",
                         activeTodo.completed || activeTodo.status === "Completed"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-250 dark:bg-emerald-900/10 dark:text-emerald-400 dark:border-emerald-800"
-                          : "bg-blue-50 text-blue-700 border-blue-250 dark:bg-blue-900/10 dark:text-blue-400 dark:border-blue-800"
+                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/15"
+                          : "bg-blue-600 text-white border-transparent hover:bg-blue-500 shadow-blue-500/20"
                       )}
                     >
                       {activeTodo.completed || activeTodo.status === "Completed" ? (
                         <>
-                          <CheckCircle2 size={13} className="shrink-0" />
-                          <span className="hidden sm:inline">Completed</span>
+                          <CheckCircle2 size={14} strokeWidth={3} />
+                          <span>Done</span>
                         </>
                       ) : (
                         <>
-                          <Circle size={13} className="shrink-0" />
-                          <span className="hidden sm:inline">Mark Complete</span>
+                          <Circle size={14} strokeWidth={3} />
+                          <span>Mark Complete</span>
                         </>
                       )}
                     </button>
                     <button
                       onClick={() => handleDeleteTodo(activeTodo)}
-                      className="p-1 sm:p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-rose-500/10 hover:border-rose-500/20 hover:text-rose-500 text-slate-450 dark:text-slate-500 transition cursor-pointer shrink-0"
+                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-rose-500/10 hover:border-rose-500 hover:text-rose-500 shadow-sm transition-all"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} strokeWidth={2.5} />
                     </button>
                   </div>
                 </div>
 
                 {/* Body Content Editor */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 sm:space-y-5 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8 custom-scrollbar">
                   {/* Title editor */}
-                  <div className="space-y-1">
-                    <label className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider select-none px-1">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none px-1">
                       Task Title
                     </label>
-                    <TextareaAutosize
-                      minRows={1}
-                      maxRows={5}
+                    <textarea
+                      rows={1}
+                      autoFocus
                       value={activeTodo.text || ""}
                       onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "text", e.target.value)}
-                      placeholder="Give this task a name..."
-                      className="w-full text-xl sm:text-2xl font-extrabold bg-transparent border-none outline-none text-slate-900 dark:text-white py-1 focus:ring-0 resize-none placeholder-slate-300 dark:placeholder-slate-700 leading-tight px-1 shadow-none transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/30 focus:bg-slate-50/50 dark:focus:bg-slate-800/30 rounded-sm"
+                      onInput={(e) => {
+                        const target = e.target as HTMLTextAreaElement;
+                        target.style.height = 'auto';
+                        target.style.height = `${target.scrollHeight}px`;
+                      }}
+                      placeholder="Task Headline..."
+                      className="w-full text-2xl sm:text-3xl font-black bg-transparent border-none outline-none text-slate-900 dark:text-white py-1 focus:ring-0 resize-none placeholder-slate-200 dark:placeholder-slate-800 leading-[1.1] transition-all px-1"
                     />
                   </div>
 
                   {/* Attributes Box Grid */}
-                  <div className="flex flex-col gap-2.5 sm:gap-3 border-y border-slate-100 dark:border-slate-850 py-3 sm:py-4 px-2">
-                    {/* Priority Selector */}
-                    <div className="flex items-center min-h-[28px]">
-                      <span className="w-24 sm:w-28 shrink-0 text-[10px] sm:text-[11px] text-slate-450 dark:text-slate-500 font-semibold select-none flex items-center gap-1.5 uppercase tracking-wider">
-                        <AlertCircle size={11} className="hidden sm:block" /> Priority
-                      </span>
-                      <InlineDropdown
-                        value={activeTodo.priority || "Normal"}
-                        onChange={(val: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "priority", val)}
-                        options={PRIORITY_OPTIONS}
-                        defaultLabel="Normal"
-                        variant="priority"
-                      />
-                    </div>
-
-                    {/* Status selector */}
-                    <div className="flex items-center min-h-[28px]">
-                      <span className="w-24 sm:w-28 shrink-0 text-[10px] sm:text-[11px] text-slate-450 dark:text-slate-500 font-semibold select-none flex items-center gap-1.5 uppercase tracking-wider">
-                        <Layers size={11} className="hidden sm:block" /> Status
-                      </span>
-                      <InlineDropdown
-                        value={activeTodo.status || "Todo"}
-                        onChange={(val: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "status", val)}
-                        options={STATUS_OPTIONS}
-                        defaultLabel="Todo"
-                      />
-                    </div>
-
-                    {/* Target Date picker input */}
-                    <div className="flex items-center min-h-[28px]">
-                      <span className="w-24 sm:w-28 shrink-0 text-[10px] sm:text-[11px] text-slate-450 dark:text-slate-500 font-semibold select-none flex items-center gap-1.5 uppercase tracking-wider">
-                        <CalendarIcon size={11} className="hidden sm:block" /> Target Date
-                      </span>
-                      <div className="relative group w-[110px]">
-                        <DatePicker
-                          selected={activeTodo.dueDate ? parseISO(activeTodo.dueDate) : null}
-                          onChange={(date: Date | null) => {
-                            const dateString = date ? format(date, "yyyy-MM-dd") : null;
-                            handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "dueDate", dateString);
-                          }}
-                          customInput={
-                            <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
-                              <span className={cn(!activeTodo.dueDate && "text-slate-400 group-hover:text-slate-500")}>
-                                {activeTodo.dueDate ? format(parseISO(activeTodo.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
-                              </span>
-                            </CustomDateInput>
-                          }
-                          withPortal
-                          portalId="datepicker-portal"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/50 dark:bg-slate-900/30 p-5 rounded-2xl border border-slate-100 dark:border-slate-800/50">
+                    <div className="space-y-3">
+                      {/* Priority */}
+                      <div className="flex items-center justify-between group">
+                        <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          <AlertCircle size={13} className="text-blue-500" />
+                          <span>Priority</span>
+                        </div>
+                        <InlineDropdown
+                          value={activeTodo.priority || "Normal"}
+                          onChange={(val: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "priority", val)}
+                          options={PRIORITY_OPTIONS}
+                          defaultLabel="Normal"
+                          variant="priority"
                         />
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex items-center justify-between group">
+                        <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          <Layers size={13} className="text-indigo-500" />
+                          <span>Status</span>
+                        </div>
+                        <InlineDropdown
+                          value={activeTodo.status || "Todo"}
+                          onChange={(val: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "status", val)}
+                          options={STATUS_OPTIONS}
+                          defaultLabel="Todo"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 pt-3 sm:pt-0 sm:border-l border-slate-200 dark:border-slate-800 sm:pl-4">
+                      {/* Target Date */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          <CalendarIcon size={13} className="text-rose-500" />
+                          <span>Deadline</span>
+                        </div>
+                        <div className="relative group">
+                          <SmartDatePicker
+                            selected={activeTodo.dueDate ? parseISO(activeTodo.dueDate) : null}
+                            onChange={(date: Date | null) => {
+                              const dateString = date ? format(date, "yyyy-MM-dd") : null;
+                              handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "dueDate", dateString);
+                            }}
+                          >
+                            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:border-blue-500/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all">
+                              {activeTodo.dueDate ? format(parseISO(activeTodo.dueDate), "MMM dd, yyyy") : "dd / mm / yyyy"}
+                            </button>
+                          </SmartDatePicker>
+                        </div>
+                      </div>
+
+                      {/* Last Modified (Placeholder for context) */}
+                      <div className="flex items-center justify-between opacity-50">
+                        <div className="flex items-center gap-2.5 text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                          <Sparkles size={13} />
+                          <span>Auto-save</span>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold text-slate-400">ACTIVE</span>
                       </div>
                     </div>
                   </div>
 
+                  {/* Attached Media Section */}
+                  {activeTodo.imageHashes && activeTodo.imageHashes.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
+                        <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.2em] select-none flex items-center gap-2 shrink-0">
+                          <Hash size={12} strokeWidth={3} className="text-emerald-500" />
+                          Attached Media
+                        </label>
+                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
+                      </div>
+                      <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 overflow-hidden">
+                        <TaskImagePreview imageHashes={activeTodo.imageHashes} compact={false} />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Notes / Description */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider select-none flex items-center gap-1 px-1">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none flex items-center gap-2">
                         Notes & Description
                       </label>
                       <button
                         onClick={() => setIsEditingNotes(!isEditingNotes)}
-                        className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-blue-500 hover:border-blue-500/50 transition flex items-center gap-1"
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm",
+                          isEditingNotes 
+                            ? "bg-blue-600 text-white border-transparent" 
+                            : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:text-blue-500"
+                        )}
                       >
                         {isEditingNotes ? (
-                          <><Eye size={10} /> Preview</>
+                          <><Eye size={12} strokeWidth={3} /> Save View</>
                         ) : (
-                          <><Edit2 size={10} /> Edit</>
+                          <><Edit2 size={12} strokeWidth={3} /> Write Mode</>
                         )}
                       </button>
                     </div>
-                    {isEditingNotes ? (
-                      <textarea
-                        rows={4}
-                        value={activeTodo.notes || ""}
-                        onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "notes", e.target.value)}
-                        placeholder="Add markdown or plan details here..."
-                        className="w-full text-[13px] font-sans bg-slate-50/50 dark:bg-slate-900/30 border border-slate-150 dark:border-slate-800/80 rounded-xl p-3 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-400 dark:placeholder-slate-600 outline-none leading-relaxed custom-scrollbar"
-                      />
-                    ) : (
-                      <div 
-                        className={cn(
-                          "w-full text-xs sm:text-[13px] bg-slate-50/50 dark:bg-slate-900/30 border border-slate-150 dark:border-slate-800/80 rounded-xl p-3 sm:p-4 min-h-[5rem]",
-                          !activeTodo.notes ? "flex items-center justify-center text-slate-400 dark:text-slate-500 italic" : "cursor-text"
-                        )}
-                        onClick={() => setIsEditingNotes(true)}
-                      >
-                        {activeTodo.notes ? (
-                          <div className="prose dark:prose-invert prose-sm max-w-none prose-p:my-1.5 prose-headings:my-2 !prose-headings:font-bold prose-h1:text-lg prose-h2:text-base prose-h3:text-sm prose-h4:text-xs prose-h1:border-b-0 prose-h2:border-b-0 prose-a:text-blue-500 prose-ul:my-1 prose-li:my-0.5">
-                            <Markdown>{activeTodo.notes}</Markdown>
-                          </div>
-                        ) : (
-                          "Click to add notes or description..."
-                        )}
-                      </div>
-                    )}
+                    
+                    <div className="relative group">
+                      {isEditingNotes ? (
+                        <textarea
+                          rows={6}
+                          value={activeTodo.notes || ""}
+                          onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "notes", e.target.value)}
+                          placeholder="Strategize, plan, and document..."
+                          className="w-full text-sm font-medium bg-white dark:bg-[#090c12] border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder-slate-300 dark:placeholder-slate-700 outline-none leading-relaxed transition-all shadow-sm"
+                        />
+                      ) : (
+                        <div 
+                          className={cn(
+                           "w-full text-[14px] bg-slate-50/30 dark:bg-slate-900/10 border border-slate-100 dark:border-slate-850 rounded-2xl p-6 min-h-[140px] leading-relaxed transition-all",
+                            !activeTodo.notes ? "flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 italic gap-2 hover:bg-slate-50 dark:hover:bg-slate-900/20 cursor-pointer border-dashed" : "cursor-text hover:border-slate-300 dark:hover:border-slate-700 shadow-sm"
+                          )}
+                          onClick={() => setIsEditingNotes(true)}
+                        >
+                          {activeTodo.notes ? (
+                            <div className="prose dark:prose-invert prose-slate max-w-none prose-p:my-2 prose-headings:font-black prose-a:text-blue-500 prose-img:rounded-xl">
+                              <Markdown>{activeTodo.notes}</Markdown>
+                            </div>
+                          ) : (
+                            <>
+                              <Edit2 size={24} className="opacity-20 mb-1" />
+                              <span className="text-[13px] font-bold tracking-tight">Click to compose notes...</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Labels Section */}
-                  <div className="space-y-2">
-                    <label className="text-xs sm:text-sm uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider select-none flex items-center gap-1">
-                      <Hash size={14} /> Labels
+                  <div className="space-y-4 pt-2">
+                    <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none flex items-center gap-2 px-1">
+                      <Hash size={12} strokeWidth={3} className="text-blue-500" />
+                      Dynamic Labels
                     </label>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap px-1">
                       {(activeTodo.tags || []).map((tag: string, tagIdx: number) => (
                         <span
                           key={`${tag}-${tagIdx}`}
-                          className={cn("group text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border flex items-center gap-1 select-none", getTagColorClass(tag))}
+                          className={cn(
+                            "group text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border flex items-center gap-2 select-none shadow-sm transition-all", 
+                            getTagColorClass(tag)
+                          )}
                         >
                           {tag}
                           <button
@@ -1591,9 +1738,9 @@ export default function ProductivityLayer() {
                               const nextTags = (activeTodo.tags || []).filter((t: string) => t !== tag);
                               handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "tags", nextTags);
                             }}
-                            className="opacity-50 hover:opacity-100 hover:text-rose-500 transition-opacity ml-0.5 cursor-pointer"
+                            className="opacity-40 hover:opacity-100 hover:text-rose-500 transition-all p-0.5 rounded-full hover:bg-white/40"
                           >
-                            <X size={9} />
+                            <X size={10} strokeWidth={4} />
                           </button>
                         </span>
                       ))}
@@ -1605,14 +1752,14 @@ export default function ProductivityLayer() {
                   </div>
                 </div>
 
-                {/* Detail popup informative footer */}
-                <div className="p-2.5 border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-[#090d14] flex items-center justify-between font-mono text-[9px] text-slate-400 select-none shrink-0 uppercase pl-4 pr-4">
-                  <div className="flex items-center gap-1 text-[8.5px] text-blue-500">
-                    <Sparkles size={10} className="animate-spin duration-3000" />
-                    <span>Real-time persistence enabled</span>
+                {/* Footer status bar */}
+                <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-[#090d14] flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] animate-pulse" />
+                    Live Cloud Sync Active
                   </div>
-                  <div>
-                    <span>Press outside or X to return</span>
+                  <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest opacity-60">
+                    Esc to Close
                   </div>
                 </div>
               </motion.div>

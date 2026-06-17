@@ -2942,7 +2942,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                 setIsPanelVisible((prev) => !prev);
               }
             }}
-            className={`p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center ${!isFullscreen ? "md:hidden" : ""}`}
+            className={`p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center`}
             title="Toggle Function Input Panel"
           >
             <Menu size={16} />
