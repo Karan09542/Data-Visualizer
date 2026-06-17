@@ -17,6 +17,23 @@ interface SearchWorkspaceProps {
 
 type ActiveTab = "All" | "Images" | "Articles" | "People" | "Places" | "Categories" | "Timeline";
 
+const languages = [
+  { code: "en", name: "English" },
+  { code: "es", name: "Español" },
+  { code: "fr", name: "Français" },
+  { code: "de", name: "Deutsch" },
+  { code: "ja", name: "日本語" },
+  { code: "hi", name: "हिन्दी (Hindi)" },
+  { code: "sa", name: "संस्कृतम् (Sanskrit)" },
+  { code: "ta", name: "தமிழ் (Tamil)" },
+  { code: "te", name: "తెలుగు (Telugu)" },
+  { code: "mr", name: "मराठी (Marathi)" },
+  { code: "gu", name: "ગુજરાતી (Gujarati)" },
+  { code: "ar", name: "العربية (Arabic)" },
+  { code: "zh", name: "中文 (Chinese)" },
+  { code: "ru", name: "Русский (Russian)" }
+];
+
 export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   const { updateNodeValue } = useStore();
   const [query, setQuery] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
@@ -28,6 +45,19 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   
   const [activeSidebarItem, setActiveSidebarItem] = useState(() => sessionStorage.getItem(`${path}_sidebar`) || "All Results");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const langDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close language dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (langDropdownRef.current && !langDropdownRef.current.contains(event.target as Node)) {
+        setIsLangOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // States
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -46,9 +76,12 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   const [hasMore, setHasMore] = useState(true);
   const limit = 20;
 
+  const [lastSearchedQuery, setLastSearchedQuery] = useState(() => sessionStorage.getItem(`${path}_last_searched_query`) || "");
+
   // Persistence Hook
   useEffect(() => {
     sessionStorage.setItem(`${path}_query`, query);
+    sessionStorage.setItem(`${path}_last_searched_query`, lastSearchedQuery);
     sessionStorage.setItem(`${path}_tab`, activeTab);
     sessionStorage.setItem(`${path}_sidebar`, activeSidebarItem);
     sessionStorage.setItem(`${path}_results`, JSON.stringify(results));
@@ -58,7 +91,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     sessionStorage.setItem(`${path}_offset`, offset.toString());
     sessionStorage.setItem(`${path}_totalHits`, totalHits.toString());
     localStorage.setItem('wiki_lang', language);
-  }, [path, query, activeTab, activeSidebarItem, results, imageResults, knowledgePanel, activeArticle, offset, totalHits, language]);
+  }, [path, query, lastSearchedQuery, activeTab, activeSidebarItem, results, imageResults, knowledgePanel, activeArticle, offset, totalHits, language]);
 
   // Persistence
   const searchHistory = useLiveQuery(() => db.searchHistory.orderBy('timestamp').reverse().limit(10).toArray()) || [];
@@ -97,12 +130,37 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     return () => clearTimeout(timer);
   }, [inputValue, isFocused]);
 
+  // Auto-search on mount if query provided and either no results or different query
+  useEffect(() => {
+    if (query && (results.length === 0 || query !== lastSearchedQuery) && !isSearching) {
+      executeSearch(query);
+    }
+  }, []);
+
+  // Listen for query update events from the SearchNodeRenderer
+  useEffect(() => {
+    const handleQueryUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ path: string; query: string }>;
+      if (customEvent.detail && customEvent.detail.path === path) {
+        setQuery(customEvent.detail.query);
+        setInputValue(customEvent.detail.query);
+        executeSearch(customEvent.detail.query);
+      }
+    };
+
+    window.addEventListener("search_node_query_updated", handleQueryUpdate as EventListener);
+    return () => {
+      window.removeEventListener("search_node_query_updated", handleQueryUpdate as EventListener);
+    };
+  }, [path]);
+
   const executeSearch = async (overrideQuery?: string, newOffset: number = 0, langOverride?: string) => {
     const q = overrideQuery || inputValue;
     if (!q.trim()) return;
     
     setQuery(q);
     setInputValue(q);
+    setLastSearchedQuery(q);
     setIsFocused(false);
     setIsSearching(true);
     setOffset(newOffset);
@@ -221,14 +279,6 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
 
       setActiveArticle(articleData);
       updateNodeValue(path, { type: "article", title, article: articleData });
-      
-      db.savedArticles.put({
-         id: title,
-         title: title,
-         summary: articleData.extract || "",
-         thumbnail: articleData.thumbnail?.source || "",
-         timestamp: Date.now()
-      });
     } catch(err) {
       console.error(err);
     } finally {
@@ -442,31 +492,60 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
         {/* Mobile Menu & Right Actions */}
         <div className="flex items-center gap-4">
           <div className="hidden lg:flex items-center gap-4">
-            <div className="relative flex items-center bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm text-sm font-medium">
-              <Globe size={16} className="text-slate-500 mr-2" />
-              <select 
-                value={language}
-                onChange={(e) => { setLanguage(e.target.value); if(query) executeSearch(query, 0, e.target.value); }}
-                className="bg-transparent border-none outline-none appearance-none cursor-pointer pr-4 text-slate-800 dark:text-slate-200 w-24"
+            <div ref={langDropdownRef} className="relative z-50">
+              <button 
+                onClick={() => setIsLangOpen(!isLangOpen)}
+                className="flex items-center bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-850 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl px-3 py-1.5 shadow-sm text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#1b2536] transition-all cursor-pointer"
+                aria-haspopup="listbox"
+                aria-expanded={isLangOpen}
               >
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-                <option value="ja">日本語</option>
-                <option value="hi">हिन्दी (Hindi)</option>
-                <option value="sa">संस्कृतम् (Sanskrit)</option>
-                <option value="ta">தமிழ் (Tamil)</option>
-                <option value="te">తెలుగు (Telugu)</option>
-                <option value="mr">मराठी (Marathi)</option>
-                <option value="gu">ગુજરાતી (Gujarati)</option>
-                <option value="ar">العربية (Arabic)</option>
-                <option value="zh">中文 (Chinese)</option>
-                <option value="ru">Русский (Russian)</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                 <ChevronDown size={14} className="text-slate-400" />
-              </div>
+                <Globe size={16} className="text-slate-500 mr-2 shrink-0 animate-pulse" />
+                <span className="truncate w-24 text-left select-none">
+                  {languages.find(l => l.code === language)?.name || "English"}
+                </span>
+                <ChevronDown size={14} className={`text-slate-400 ml-2 transition-transform duration-200 shrink-0 ${isLangOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              <AnimatePresence>
+                {isLangOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 mt-2 w-56 max-h-80 overflow-y-auto rounded-xl bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800 shadow-2xl py-1.5 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800"
+                    role="listbox"
+                  >
+                    {languages.map((lang) => {
+                      const isSelected = language === lang.code;
+                      return (
+                        <button
+                          key={lang.code}
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => {
+                            setLanguage(lang.code);
+                            setIsLangOpen(false);
+                            if (query) {
+                              executeSearch(query, 0, lang.code);
+                            }
+                          }}
+                          className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center justify-between cursor-pointer
+                            ${isSelected 
+                              ? "bg-blue-600/10 text-blue-600 dark:text-blue-400 font-semibold" 
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#1A2333] hover:text-slate-900 dark:hover:text-white"
+                            }`}
+                        >
+                          <span className="truncate font-sans">{lang.name}</span>
+                          {isSelected && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-450 shrink-0 ml-2" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             
             <button 

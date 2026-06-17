@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair, Image as ImageIcon, Layers, Search, BookOpen } from 'lucide-react';
+import { X, Network, Globe, Play, Edit, HelpCircle, Code, Plus, CheckCircle2, FileJson, Terminal, ListTodo, Calculator, Settings, Bookmark, Crosshair, Image as ImageIcon, Layers, Search, BookOpen, Share2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface NodeHelpModalProps {
@@ -11,7 +11,7 @@ interface NodeHelpModalProps {
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   const { code, setCode, appTheme } = useStore();
-  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image' | 'search'>('api');
+  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image' | 'search' | 'transfer'>('api');
 
   const handleInsertExample = async () => {
     try {
@@ -27,6 +27,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
         greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
         waveform_math_node: "f(x) = a * sin(b * x + c)",
         "demo_asset.image": "https://images.unsplash.com/photo-1542393545-10f5cde2c810?q=80&w=600&auto=format&fit=crop",
+        "sync_assets.transfer": "",
         "project_tasks.todo": JSON.stringify({
           title: "Project Tasks",
           tasks: [
@@ -59,6 +60,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
           greeting_py_node: 'text = "World"\nprint(f"Hello {text}!")\nprint("namaste")',
           waveform_math_node: "f(x) = a * sin(b * x + c)",
           "demo_asset.image": "https://images.unsplash.com/photo-1542393545-10f5cde2c810?q=80&w=600&auto=format&fit=crop",
+          "specs_transfer_node": "",
           "project_tasks.todo": JSON.stringify({
             title: "Project Tasks",
             tasks: [
@@ -174,6 +176,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     { id: 'math', label: 'Math Nodes', icon: Calculator, color: 'rose' },
                     { id: 'todo', label: 'Todo Nodes', icon: ListTodo, color: 'purple' },
                     { id: 'image', label: 'Image Nodes', icon: ImageIcon, color: 'cyan' },
+                    { id: 'transfer', label: 'Transfer Nodes', icon: Share2, color: 'indigo' },
                   ] as const).map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -189,6 +192,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                               : tab.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold shadow-xs'
                               : tab.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
                               : tab.color === 'rose' ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-450 font-bold shadow-xs'
+                              : tab.color === 'cyan' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 font-bold shadow-xs'
                               : 'bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400 font-bold shadow-xs'
                             : 'bg-slate-50/50 dark:bg-slate-900/10 border-slate-100 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
                         }`}
@@ -647,6 +651,58 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   "alt": "An example image",
   "filters": ["grayscale"],
   "annotations": []
+}`}
+                     </pre>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'transfer' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className={`p-4 rounded-xl border flex gap-3 ${
+                    appTheme === 'dark' ? 'bg-indigo-950/20 border-indigo-900/40 text-indigo-200' : 'bg-indigo-50/50 border-indigo-100 text-indigo-800'
+                  }`}>
+                    <Share2 className="shrink-0 mt-0.5 text-indigo-500" size={18} />
+                    <div>
+                      <span className="font-semibold block mb-0.5">What are Transfer Nodes?</span>
+                      Keys or files ending with either <code className="font-mono bg-indigo-500/10 dark:bg-indigo-500/20 px-1 py-0.5 rounded text-xs font-bold">.transfer</code> or <code className="font-mono bg-indigo-500/10 dark:bg-indigo-500/20 px-1 py-0.5 rounded text-xs font-bold">_transfer_node</code> render elegant, full-featured peer-to-peer (P2P) file transfer hubs directly inside your network graph!
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Share2 className="text-indigo-500" size={16} />
+                        <span>Direct P2P WebRTC Tech</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                        Leverage real-time browser-to-browser data channels to send or sync custom binaries, project files, and system resources securely with zero server-side storage overhead.
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-center gap-2 mb-2 font-semibold">
+                        <Bookmark className="text-indigo-500" size={16} />
+                        <span>Live Diagnostics Panel</span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                        Keep full sight over operations with detailed metrics like live file transfer speeds, real-time diagnostic reports, connection handshakes, and elegant precise progress indicators.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-[#0d1117] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
+                       <Code size={16} className="text-indigo-500" /> Defining a Transfer Node
+                     </span>
+                     <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
+                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-indigo-300' : 'bg-indigo-50/30 border-indigo-100 text-indigo-700'
+                     }`}>
+{`{
+  "project_resources": {
+    "specs_transfer_node": "",
+    "backup_database.transfer": ""
+  }
 }`}
                      </pre>
                   </div>

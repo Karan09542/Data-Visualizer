@@ -52,6 +52,17 @@ export const transformToTree = (
     return node;
   }
 
+  let isSearchNode = false;
+  if (typeof name === 'string' && (name.endsWith('_search_node') || name.endsWith('.search'))) {
+    isSearchNode = true;
+  }
+
+  if (isSearchNode) {
+    node.value = data;
+    node.children = undefined;
+    return node;
+  }
+
   if (type === 'object' && data !== null) {
     node.children = Object.entries(data).map(([key, val]) => 
       transformToTree(val, key, `${path}.${key}`, apiNodeResponses, jsNodeResponses, jsNodeVisibility)
