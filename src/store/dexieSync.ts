@@ -1,10 +1,14 @@
 import { db } from '../lib/db';
 import { useStore } from './useStore';
+import { cleanupOrphanedSearchData } from '../lib/cleanup';
 
 let isInitializing = true;
 
 export const initDexieSync = async () => {
   try {
+    // Run cleanup for search node orphaned data
+    cleanupOrphanedSearchData().catch(e => console.error(e));
+
     const allPositions = await db.nodePositions.toArray();
     const overrides: Record<string, {x: number, y: number} | null> = {};
     for (const pos of allPositions) {

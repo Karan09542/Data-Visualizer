@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree } from "../utils/transformer";
 import { deleteUnusedAssets } from "../utils/assetManager";
+import { sanitizeWorkspaceData } from "../utils/workspaceSanitizer";
 import SearchWorker from "../utils/searchWorker?worker";
 
 
@@ -1136,6 +1137,9 @@ export const useStore = create<StoreState>()(
         } else {
           // It's the root itself being edited? (Unlikely with this transformer)
         }
+
+        // Enforce Search Node data validation before serialization
+        sanitizeWorkspaceData(newData);
 
         // Detect format
         const isYaml = codeFormat === "yaml";

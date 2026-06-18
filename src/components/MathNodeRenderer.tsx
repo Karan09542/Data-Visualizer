@@ -58,7 +58,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import { useStore } from "../store/useStore";
 import { HexAlphaColorPicker } from "react-colorful";
-import { useLiveQuery } from "dexie-react-hooks";
+import { liveQuery } from "dexie";
 import { db } from "../lib/db";
 
 const InsertAboveIcon = ({
@@ -930,36 +930,63 @@ const EquationInput = ({
   let renderedLatex = null;
   if (!isFocused && !error && value.trim()) {
     try {
-      // 1. Try to parse as pure mathjs
-      const node = mathjs.parse(value);
-      const latex = node.toTex({
-        handler: (n: any) => {
-          if (n.isSymbolNode) {
-            const isVar =
-              variables.some((v: any) => v.name === n.name) ||
-              ["x", "y", "t", "time", "theta"].includes(n.name);
-            if (isVar) {
-              const color =
-                n.name === "x"
-                  ? "#10b981"
-                  : ["t", "time"].includes(n.name)
-                    ? "#8b5cf6"
-                    : n.name === "y"
-                      ? "#3b82f6"
-                      : n.name === "theta"
-                        ? "#f59e0b"
-                        : getVarColor(n.name);
-              const display = n.name === "theta" ? "\\theta" : n.name;
-              return `\\textcolor{${color}}{${display}}`;
+      const getLatexForExpr = (exprString: string) => {
+        const n = mathjs.parse(exprString);
+        return n.toTex({
+          handler: (n: any) => {
+            if (n.isSymbolNode) {
+              const isVar =
+                variables.some((v: any) => v.name === n.name) ||
+                ["x", "y", "t", "time", "theta"].includes(n.name);
+              if (isVar) {
+                const color =
+                  n.name === "x"
+                    ? "#10b981"
+                    : ["t", "time"].includes(n.name)
+                      ? "#8b5cf6"
+                      : n.name === "y"
+                        ? "#3b82f6"
+                        : n.name === "theta"
+                          ? "#f59e0b"
+                          : getVarColor(n.name);
+                const display = n.name === "theta" ? "\\theta" : n.name;
+                return `\\textcolor{${color}}{${display}}`;
+              }
             }
-          }
-          return undefined;
-        },
-      });
+            return undefined;
+          },
+        });
+      };
 
+      let latex = "";
+      let rawLatexOutput = "";
       let evalResultLatex = "";
       let resStrOutput = "";
-      let rawLatexOutput = latex;
+      let node: any = null;
+
+      try {
+        node = mathjs.parse(value);
+        latex = getLatexForExpr(value);
+      } catch (parseError: any) {
+        const eqIndex = value.indexOf("=");
+        if (eqIndex !== -1 && !value.includes("==") && !value.includes(">=") && !value.includes("<=") && !value.includes("!=")) {
+          const lhs = value.slice(0, eqIndex);
+          const rhs = value.slice(eqIndex + 1);
+          if (lhs.trim() && rhs.trim()) {
+            const lhsLatex = getLatexForExpr(lhs);
+            const rhsLatex = getLatexForExpr(rhs);
+            latex = `${lhsLatex} = ${rhsLatex}`;
+            node = null; // Do not evaluate implicit equations in the UI
+          } else {
+            throw parseError;
+          }
+        } else {
+          throw parseError;
+        }
+      }
+
+      rawLatexOutput = latex;
+
       try {
         const scope: any = {};
         variables.forEach((v: any) => {
@@ -972,12 +999,14 @@ const EquationInput = ({
         scope.time = globalTime;
         scope.theta = 1;
 
-        const result = node.evaluate(scope);
-        if (result !== undefined && typeof result !== "function") {
-          const resStr = mathjs.format(result, { precision: 5 });
-          resStrOutput = resStr;
-          if (resStr !== value.trim()) {
-            evalResultLatex = " = " + resStr;
+        if (node) {
+          const result = node.evaluate(scope);
+          if (result !== undefined && typeof result !== "function") {
+            const resStr = mathjs.format(result, { precision: 5 });
+            resStrOutput = resStr;
+            if (resStr !== value.trim()) {
+              evalResultLatex = " = " + resStr;
+            }
           }
         }
       } catch (evalErr) {
@@ -994,7 +1023,7 @@ const EquationInput = ({
                   (evalResultLatex
                     ? ` \\mathbf{${evalResultLatex.replace(/ /g, "\\ ")}}`
                     : ""),
-                { throwOnError: true, displayMode: true },
+                { throwOnError: true, displayMode: true, strict: "ignore", trust: true },
               ),
             }}
           />
@@ -1071,7 +1100,7 @@ const EquationInput = ({
             onFocus={() => setIsFocused(true)}
             onBlur={() => setTimeout(() => setIsFocused(false), 200)}
             onKeyDown={handleKeyDown}
-            className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent"
+            className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
             placeholder={isFocused ? "e.g. a * sin(b*x + c)" : ""}
             spellCheck={false}
             autoComplete="off"
@@ -1414,6 +1443,8 @@ const LabelInput = ({
             __html: katex.renderToString(latexStr, {
               throwOnError: true,
               displayMode: false,
+              strict: "ignore",
+              trust: true,
             }),
           }}
         />
@@ -1480,7 +1511,7 @@ const SafeLabel = ({
   }
 
   try {
-    katex.renderToString(finalTex, { throwOnError: true });
+    katex.renderToString(finalTex, { throwOnError: true, strict: "ignore", trust: true });
     return <LaTeX at={at} tex={finalTex} color={color} />;
   } catch (e) {
     return (
@@ -1964,7 +1995,23 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [formulaDesc, setFormulaDesc] = useState("");
   const [previewCopied, setPreviewCopied] = useState(false);
   const [showPreviewLatex, setShowPreviewLatex] = useState(true);
-  const savedFormulas = useLiveQuery(() => db.customFormulas.toArray()) || [];
+  const [savedFormulas, setSavedFormulas] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const subscription = liveQuery(() => db.customFormulas.toArray()).subscribe({
+      next: (result) => {
+        if (!active) return;
+        setTimeout(() => {
+          if (active) setSavedFormulas(result);
+        }, 0);
+      }
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [draggedGroup, setDraggedGroup] = useState<
     "favorite" | "regular" | null
@@ -3404,6 +3451,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       {
                                                         throwOnError: true,
                                                         displayMode: false,
+                                                        strict: "ignore",
+                                                        trust: true,
                                                       },
                                                     );
                                                   return (
@@ -4784,7 +4833,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         else prefix = "y = ";
 
                         const fullTex = prefix + texStr;
-                        const html = katex.renderToString(fullTex, {
+                        const html = katex.renderToString(fullTex, { strict: "ignore", trust: true,
                           throwOnError: true,
                           displayMode: false,
                         });
@@ -6449,7 +6498,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                           /^([^=]+=\s*)/,
                                                         );
                                                       if (match) {
-                                                        newExpr = `${match[1]} [${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                        newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
                                                       }
                                                       handleUpdateExpr(
                                                         f.id,

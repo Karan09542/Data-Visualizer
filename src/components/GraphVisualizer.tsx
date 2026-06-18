@@ -509,23 +509,20 @@ export default function GraphVisualizer() {
         return;
       }
 
-      // Safe pointer-events-auto check, excluding the empty graph background itself (.graph-g)
-      const closestPointerEventsAuto = target.closest(".pointer-events-auto");
-      if (closestPointerEventsAuto) {
-        if (closestPointerEventsAuto.classList.contains("graph-g")) {
-          // Empty graph background! Let selection clear proceed
-        } else {
-          // This must be an actual node card or item, so we do not clear selection
-          return;
-        }
-      }
-
-      // If clicked inside our wrapper (empty canvas space)
+      // Check if clicked inside our wrapper (empty canvas space)
       if (wrapperRef.current && wrapperRef.current.contains(target)) {
-        setSelectedNodeId(null);
+        // If clicking on or inside a node, do not clear selection
+        const clickedInsideNode =
+          target.closest(".nodes-layer") ||
+          target.closest('[class*="node" i]');
+
+        if (!clickedInsideNode) {
+          setSelectedNodeId(null);
+        }
       }
     };
 
+    // Use standard bubbling phase so we don't interfere with React 19's context or capture phases of other components (e.g. Monaco editor)
     document.addEventListener("pointerdown", handleCanvasClick);
 
     return () => {

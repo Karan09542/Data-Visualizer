@@ -382,9 +382,8 @@ importlib.invalidate_caches()
 
         pyodide.globals.set("input_data", input || {});
 
-        let codeWithPatch = code;
         if (code.includes("matplotlib") || code.includes("plt")) {
-            codeWithPatch = `
+            const matplotlibPatch = `
 try:
     import sys
     import matplotlib
@@ -397,19 +396,16 @@ try:
             try:
                 fig = plt.gcf()
                 if fig and getattr(fig, 'axes', None):
-                    # PNG Custom (High-res 300 DPI for premium quality)
                     buf_png = io.BytesIO()
                     fig.savefig(buf_png, format='png', bbox_inches='tight', dpi=300)
                     buf_png.seek(0)
                     png_b64 = "data:image/png;base64," + base64.b64encode(buf_png.read()).decode('utf-8')
 
-                    # SVG Vector (Clean vector rendering, supports infinite zoom)
                     buf_svg = io.BytesIO()
                     fig.savefig(buf_svg, format='svg', bbox_inches='tight')
                     buf_svg.seek(0)
                     svg_b64 = "data:image/svg+xml;base64," + base64.b64encode(buf_svg.read()).decode('utf-8')
 
-                    # JPEG Custom
                     jpeg_b64 = None
                     try:
                         buf_jpeg = io.BytesIO()
@@ -419,7 +415,6 @@ try:
                     except Exception:
                         pass
 
-                    # PDF Custom
                     pdf_b64 = None
                     try:
                         buf_pdf = io.BytesIO()
@@ -445,17 +440,22 @@ try:
         plt.show = _custom_show
 except Exception:
     pass
-
-` + code;
+`;
+            try {
+                await pyodide.runPythonAsync(matplotlibPatch);
+            } catch (err) {}
         }
 
         if (e.data.entryPath) {
             let p = e.data.entryPath.replace(/^\//, '').replace(/\.py$/, '').split('/');
             let packageName = p.length > 1 ? p.slice(0, p.length - 1).join('.') : '';
-            codeWithPatch = `__package__ = "${packageName}"\n__file__ = "${e.data.entryPath}"\n` + codeWithPatch;
+            try {
+                pyodide.globals.set("__package__", packageName);
+                pyodide.globals.set("__file__", e.data.entryPath);
+            } catch (err) {}
         }
 
-        const result = await pyodide.runPythonAsync(codeWithPatch);
+        const result = await pyodide.runPythonAsync(code);
 
         let finalResult = result;
         if (result && typeof result.toJs === "function") {

@@ -22,6 +22,7 @@ export function buildVirtualFS(parsedData: any) {
            if (baseName.endsWith('_ts_node')) baseName = baseName.replace(/_ts_node$/, '');
            else if (baseName.endsWith('_js_node')) baseName = baseName.replace(/_js_node$/, '');
            else if (baseName.endsWith('_py_node')) baseName = baseName.replace(/_py_node$/, '');
+           else if (baseName.endsWith('_json_node')) baseName = baseName.replace(/_json_node$/, '');
            
            if (!baseName.endsWith(ext)) baseName += ext;
            
@@ -56,6 +57,7 @@ export function getVirtualPath(objectPath: string, parsedData: any): string {
            if (baseName.endsWith('_ts_node')) baseName = baseName.replace(/_ts_node$/, '.ts');
            else if (baseName.endsWith('_js_node')) baseName = baseName.replace(/_js_node$/, '.js');
            else if (baseName.endsWith('_py_node')) baseName = baseName.replace(/_py_node$/, '.py');
+           else if (baseName.endsWith('_json_node')) baseName = baseName.replace(/_json_node$/, '.json');
            currentPath += `/${baseName}`;
        } else {
            currentPath += `/${part}`;

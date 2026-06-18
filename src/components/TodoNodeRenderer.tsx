@@ -595,7 +595,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
   return (
     <div 
-      className="w-[360px] sm:w-[380px] select-none pointer-events-auto cursor-default overflow-hidden bg-[#0a0f1d]/95 backdrop-blur-md border border-[#1e293b] rounded-[20px] shadow-2xl transition-all nodrag"
+      className="w-[360px] sm:w-[380px] select-none pointer-events-auto cursor-default overflow-hidden bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border border-slate-200 dark:border-[#1e293b] rounded-[20px] shadow-2xl transition-all nodrag"
       onClick={(e) => {
         e.stopPropagation();
       }}
@@ -608,7 +608,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     >
       {/* Header Panel */}
       <div 
-        className="flex items-center justify-between px-4 py-3.5 border-b border-[#1b2230] bg-[#111625]/60 shrink-0 drag-handle cursor-move"
+        className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-[#1b2230] bg-slate-50/60 dark:bg-[#111625]/60 shrink-0 drag-handle cursor-move"
         onClick={(e) => {
           e.stopPropagation();
           const selectedId = useStore.getState().selectedNodeId;
@@ -619,7 +619,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       >
         <div className="flex items-center gap-3 max-w-[65%]">
           {/* List Indicator with Blue glow */}
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-[#1e40af]/20 border border-[#3b82f6]/30 shadow-[0_0_12px_rgba(59,130,246,0.25)] text-blue-400 shrink-0">
+          <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 dark:bg-[#1e40af]/20 border border-blue-200 dark:border-[#3b82f6]/30 shadow-[0_0_12px_rgba(59,130,246,0.25)] text-blue-400 shrink-0">
             <ListTodo size={17} />
           </div>
           <div className="flex flex-col min-w-0">
@@ -628,7 +628,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             </span>
             <input
               type="text"
-              className="font-bold text-[15px] leading-tight text-slate-100 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-blue-500/30 rounded px-1 -ml-1 transition-all"
+              className="font-bold text-[15px] leading-tight text-slate-800 dark:text-slate-100 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-blue-500/30 rounded px-1 -ml-1 transition-all"
               value={todoData.title || "Tasks"}
               onChange={(e) => saveTodoData({ ...todoData, title: e.target.value })}
               onClick={(e) => e.stopPropagation()}
@@ -643,7 +643,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
         {/* Dynamic Controls Option (Tree, Flat, Detail, More) */}
         <div className="flex items-center gap-1.5 shrink-0 relative">
           {/* Compact Switcher between Tree vs Flat List */}
-          <div className="flex bg-[#131924] p-0.5 rounded-lg border border-slate-800/80">
+          <div className="flex bg-slate-100 dark:bg-[#131924] p-0.5 rounded-lg border border-slate-200 dark:border-slate-800/80">
             <button
               onClick={() => {
                 setNodeIsFlat(false);
@@ -651,14 +651,14 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                   saveTodoData({ ...todoData }, true);
                 }
               }}
-              className={`p-1 rounded-md transition-all ${!nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
+              className={`p-1 rounded-md transition-all ${!nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-600 dark:text-slate-300"}`}
               title="Tree structure"
             >
               <FolderTree size={13} />
             </button>
             <button
               onClick={() => setNodeIsFlat(true)}
-              className={`p-1 rounded-md transition-all ${nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
+              className={`p-1 rounded-md transition-all ${nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-600 dark:text-slate-300"}`}
               title="Flat list"
             >
               <Layers size={13} />
@@ -667,7 +667,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
           <button
             onClick={openWorkspace}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#161B26]/60 hover:bg-[#1E2533] text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-[#161B26]/60 hover:bg-slate-200 dark:hover:bg-[#1E2533] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
             title="Open Fullscreen Workspace"
           >
             <Maximize2 size={13} />
@@ -675,7 +675,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#161B26]/60 hover:bg-[#1E2533] text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-[#161B26]/60 hover:bg-slate-200 dark:hover:bg-[#1E2533] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
             title="Options Menu"
           >
             <MoreVertical size={13} />
@@ -684,46 +684,46 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           {isMenuOpen && (
             <div 
               ref={dropdownRef}
-              className="absolute right-0 top-10 w-44 bg-[#0e1322] border border-slate-800 rounded-xl shadow-xl py-1 z-50 overflow-hidden"
+              className="absolute right-0 top-10 w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 overflow-hidden"
             >
               <button
                 onClick={addSampleTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
               >
                 <Sparkles size={12} className="text-amber-400" />
                 <span>Load Sample Tasks</span>
               </button>
               <button
                 onClick={expandAllSubtasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
               >
                 <FolderTree size={12} className="text-blue-400" />
                 <span>Expand All</span>
               </button>
               <button
                 onClick={collapseAllSubtasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
               >
-                <Layers size={12} className="text-slate-400" />
+                <Layers size={12} className="text-slate-500 dark:text-slate-400" />
                 <span>Collapse All</span>
               </button>
               <button
                 onClick={clearCompletedTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
               >
                 <Trash2 size={12} className="text-emerald-400" />
                 <span>Clear Completed</span>
               </button>
               <button
                 onClick={resetAllTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
               >
                 <RefreshCw size={12} className="text-blue-400" />
                 <span>Reset All Tasks</span>
               </button>
               <button
                 onClick={clearAllTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors border-t border-slate-800/60"
+                className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors border-t border-slate-200 dark:border-slate-800/60"
               >
                 <Trash2 size={12} className="text-rose-500" />
                 <span>Clear All Tasks</span>
@@ -734,12 +734,12 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       </div>
 
       {/* Progress Indicators matching mock precisely */}
-      <div className="px-4 py-3 bg-[#111625]/20 shrink-0">
+      <div className="px-4 py-3 bg-slate-50/20 dark:bg-[#111625]/20 shrink-0">
         <div className="flex justify-between items-center mb-1.5">
-          <span className="text-xs font-semibold text-slate-100">{progress}% Complete</span>
-          <span className="text-xs text-slate-400 font-normal">{completed} done • {remaining} remaining</span>
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{progress}% Complete</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">{completed} done • {remaining} remaining</span>
         </div>
-        <div className="w-full h-1.5 bg-[#1b2230] rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-slate-200 dark:bg-[#1b2230] rounded-full overflow-hidden">
           <div 
             className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.5)]" 
             style={{ width: `${progress}%` }}
@@ -748,7 +748,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       </div>
 
       {/* Tasks Queue List Area */}
-      <div className="overflow-y-auto max-h-[260px] custom-scrollbar divide-y divide-[#1b2230] border-t border-[#1b2230]">
+      <div className="overflow-y-auto max-h-[260px] custom-scrollbar divide-y divide-slate-200 dark:divide-[#1b2230] border-t border-slate-200 dark:border-[#1b2230]">
         {tasksToRender.length === 0 ? (
           <div className="py-8 px-4 flex-1 flex flex-col items-center justify-center text-slate-500 text-xs italic">
             <span className="mb-1">No tasks in this node yet.</span>
@@ -795,12 +795,12 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                 {!nodeIsFlat && task.tasks && task.tasks.length > 0 ? (
                   <button
                     onClick={(e) => toggleCollapseTask(task.id, e)}
-                    className="shrink-0 flex items-center justify-center w-3 h-3 ml-[-8px] mr-0.5 text-slate-500 hover:text-slate-300"
+                    className="shrink-0 flex items-center justify-center w-3 h-3 ml-[-8px] mr-0.5 text-slate-500 hover:text-slate-600 dark:text-slate-300"
                   >
                     <ChevronRight size={14} className={`transition-transform ${!collapsedTaskIds.includes(task.id) ? "rotate-90" : ""}`} />
                   </button>
                 ) : !nodeIsFlat && depth > 0 ? (
-                  <div className="w-2 ml-[-8px] mr-0.5 border-l border-slate-700/50 h-5" />
+                  <div className="w-2 ml-[-8px] mr-0.5 border-l border-slate-300 dark:border-slate-700/50 h-5" />
                 ) : null}
 
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -834,7 +834,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                       onBlur={() => saveEditedTaskName(task.id, editingText)}
                       autoFocus
                       rows={1}
-                      className="bg-[#111625] text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal resize-none overflow-hidden"
+                      className="bg-white dark:bg-[#111625] text-slate-800 dark:text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal resize-none overflow-hidden"
                       onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => e.stopPropagation()}
                       style={{ minHeight: "24px", height: "auto" }}
@@ -849,7 +849,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                       className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${
                         isDone 
                           ? 'text-slate-500 line-through' 
-                          : 'text-slate-100 hover:text-white transition-colors'
+                          : 'text-slate-800 dark:text-slate-100 hover:text-slate-900 dark:hover:text-white transition-colors'
                       }`}
                       onClick={() => startEditingTask(task.id, task.text)}
                       title="Click to edit"
@@ -889,7 +889,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                     className={`p-1 rounded cursor-pointer transition-colors ${
                       editingTaskId === task.id
                         ? "text-emerald-400 hover:bg-emerald-950/20"
-                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
                     }`}
                     title={editingTaskId === task.id ? "Save name" : "Edit Name"}
                   >
@@ -925,7 +925,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       {/* Footer input to Add Task directly inside Node */}
       <form 
         onSubmit={handleAddNewTask}
-        className="px-4 py-2 border-t border-[#1b2230] bg-[#111625]/40 flex items-center gap-2 hover:bg-[#111625]/70 transition-colors"
+        className="px-4 py-2 border-t border-slate-200 dark:border-[#1b2230] bg-slate-50/40 dark:bg-[#111625]/40 flex items-center gap-2 hover:bg-slate-100/70 dark:hover:bg-[#111625]/70 transition-colors"
       >
         <button
           type="button"
@@ -940,11 +940,11 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           placeholder="Add new task..."
           value={newTaskText}
           onChange={(e) => setNewTaskText(e.target.value)}
-          className="bg-transparent border-none outline-none text-xs text-slate-100 placeholder-slate-500 w-full focus:ring-0"
+          className="bg-transparent border-none outline-none text-xs text-slate-800 dark:text-slate-100 placeholder-slate-500 w-full focus:ring-0"
         />
         <button
           type="submit"
-          className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-800 bg-slate-800/80 text-slate-400 hover:text-blue-400 transition-colors shrink-0"
+          className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shrink-0"
         >
           Enter
         </button>
@@ -1030,47 +1030,47 @@ const TaskMenuPortal = ({
           setActiveMenuTaskId(isOpen ? null : task.id);
         }}
         className={`p-1 rounded cursor-pointer transition-colors ${
-          isOpen ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+          isOpen ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
         }`}
       >
         <MoreVertical size={13} />
       </button>
 
       {isOpen && createPortal(
-        <div ref={menuRef} style={style} className="w-44 bg-[#0e1322] border border-slate-800 rounded-xl shadow-xl py-1 flex flex-col pointer-events-auto">
+        <div ref={menuRef} style={style} className="w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 flex flex-col pointer-events-auto">
           <button
             onClick={(e) => { e.stopPropagation(); addNestedSubtask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
           >
             <PlusCircle size={12} className="text-blue-400" />
             <span>Add Subtask</span>
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); indentTask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
           >
-            <CornerDownRight size={12} className="text-slate-400" />
+            <CornerDownRight size={12} className="text-slate-500 dark:text-slate-400" />
             <span>Convert to Subtask</span>
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); outdentTask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
           >
-            <CornerLeftUp size={12} className="text-slate-400" />
+            <CornerLeftUp size={12} className="text-slate-500 dark:text-slate-400" />
             <span>Promote to Parent</span>
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); moveTaskInTree(task.id, 'up'); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
           >
-            <ArrowUp size={12} className="text-slate-400" />
+            <ArrowUp size={12} className="text-slate-500 dark:text-slate-400" />
             <span>Move Up</span>
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); moveTaskInTree(task.id, 'down'); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 transition-colors border-b border-slate-800/60"
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
           >
-            <ArrowDown size={12} className="text-slate-400" />
+            <ArrowDown size={12} className="text-slate-500 dark:text-slate-400" />
             <span>Move Down</span>
           </button>
           <button

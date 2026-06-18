@@ -95,6 +95,41 @@ export interface SavedSearchArticle {
   timestamp: number;
 }
 
+// New storage-key based tables
+export interface NodeSearchHistory {
+  id?: number;
+  storageKey: string;
+  query: string;
+  timestamp: number;
+  isPinned?: boolean;
+}
+
+export interface NodeSearchBookmark {
+  id?: number;
+  storageKey: string;
+  title: string;
+  summary: string;
+  thumbnail?: string;
+  timestamp: number;
+  collectionId?: string; // Maps to global collections later
+  articleHtml?: string; // offline reading content
+  aiNotes?: string; // research notes 
+}
+
+export interface NodeSearchCollection {
+  id?: number;
+  storageKey: string;
+  name: string;
+  timestamp: number;
+}
+
+export interface NodeSearchSettings {
+  storageKey: string;
+  language?: string;
+  theme?: string;
+  // any other preferences
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -106,6 +141,10 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   history: EntityTable<HistoryRecord, 'id'>;
   searchHistory: EntityTable<SearchHistoryRecord, 'id'>;
   savedArticles: EntityTable<SavedSearchArticle, 'id'>;
+  nodeSearchHistory: EntityTable<NodeSearchHistory, 'id'>;
+  nodeSearchBookmarks: EntityTable<NodeSearchBookmark, 'id'>;
+  nodeSearchCollections: EntityTable<NodeSearchCollection, 'id'>;
+  nodeSearchSettings: EntityTable<NodeSearchSettings, 'storageKey'>;
 };
 
 db.version(8).stores({
@@ -122,6 +161,13 @@ db.version(8).stores({
 db.version(9).stores({
   searchHistory: '++id, query, timestamp, isPinned',
   savedArticles: 'id, title, timestamp'
+});
+
+db.version(10).stores({
+  nodeSearchHistory: '++id, storageKey, query, timestamp, isPinned',
+  nodeSearchBookmarks: '++id, storageKey, collectionId, title, timestamp',
+  nodeSearchCollections: '++id, storageKey, name, timestamp',
+  nodeSearchSettings: 'storageKey'
 });
 
 export { db };

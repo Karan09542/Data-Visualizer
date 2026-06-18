@@ -1,3 +1,4 @@
+import * as snapdom from "@zumer/snapdom";
 import {
   useStore,
   LayoutMode,
@@ -5,6 +6,8 @@ import {
   EdgeStyle,
   NodeShape,
 } from "../store/useStore";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Link } from "react-router-dom";
 import {
   Download,
   Minimize,
@@ -30,9 +33,10 @@ import {
   Database,
   Save,
   Check,
+  FileImage,
+  FileType,
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { db } from "../lib/db";
@@ -133,8 +137,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     // Warm up SnapDOM cache without blocking the main thread
     if (typeof window !== "undefined") {
       const warmUp = () => {
-        import("@zumer/snapdom")
-          .then(({ preCache }) => {
+        Promise.resolve(snapdom).then(({ preCache }) => {
             preCache(document, { embedFonts: true }).catch((e) =>
               console.warn("SnapDOM precache failed:", e),
             );
@@ -491,7 +494,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           requestAnimationFrame(() => setTimeout(resolve, 50)),
         );
 
-        const { snapdom } = await import("@zumer/snapdom");
+        // statically imported snapdom
 
         const options = {
           exclude: [
@@ -522,7 +525,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           filename: `schema-visualizer-hd${isTransparent ? "-transparent" : ""}`,
         };
 
-        await snapdom.download(sourceEl, options);
+        await (snapdom.snapdom as any).download(sourceEl, options);
 
         setExportStatus("Finalizing export...");
         await new Promise((resolve) =>
@@ -605,7 +608,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         requestAnimationFrame(() => setTimeout(resolve, 50)),
       );
 
-      const { snapdom } = await import("@zumer/snapdom");
+      // statically imported snapdom
 
       // Temporarily remove transition to prevent animation during snapshot
       sourceEl.style.transition = "none";
@@ -704,7 +707,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         filename: `json-graph-hd${isTransparent ? "-transparent" : ""}`,
       };
 
-      await snapdom.download(sourceEl, options);
+      await (snapdom.snapdom as any).download(sourceEl, options);
 
       setExportStatus("Finalizing export...");
       await new Promise((resolve) =>
@@ -813,123 +816,80 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
         <div className="hidden lg:flex items-center justify-between flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <div className="flex items-center gap-2 xl:gap-5 lg:gap-3">
-            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors">
-                Mode
-              </label>
-              <select
-                value={visualizerMode}
-                onChange={(e) => setVisualizerMode(e.target.value as any)}
-                className="bg-transparent font-semibold shadow-sm border border-slate-200 dark:border-slate-800/60 cursor-pointer rounded px-1.5 py-0.5 outline-none text-slate-800 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:ring-1 focus:ring-blue-500/30 text-xs"
-              >
-                <option value="graph">Graph</option>
-                <option value="schema">Schema</option>
-              </select>
-            </div>
+            <CustomSelect
+              label="Mode"
+              value={visualizerMode}
+              onChange={(val) => setVisualizerMode(val as any)}
+              options={[
+                { label: "Graph", value: "graph", icon: <Network size={12} /> },
+                { label: "Schema", value: "schema", icon: <Database size={12} /> },
+              ]}
+              className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
+            />
+
+            <CustomSelect
+              label="Format"
+              value={codeFormat}
+              onChange={(val) => convertFormat(val as any)}
+              options={[
+                { label: "JSON", value: "json", icon: <FileType size={12} /> },
+                { label: "YAML", value: "yaml", icon: <FileType size={12} /> },
+              ]}
+              className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
+            />
+
+            <CustomSelect
+              label="Layout"
+              value={layoutMode}
+              onChange={(val) => {
+                setLayoutMode(val as LayoutMode);
+                useStore.getState().clearDragOverrides();
+              }}
+              options={layoutModes}
+              className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
+            />
+            <button
+              onClick={() => {
+                useStore.getState().triggerAutoOrganize();
+                useStore.getState().clearDragOverrides();
+              }}
+              className="ml-0 hover:bg-blue-100 bg-blue-50/50 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 p-1 rounded-md transition-colors shadow-sm border border-blue-200 dark:border-blue-800/60 tooltip-trigger relative group/btn mr-3"
+              title="Auto Organize Layout"
+            >
+              <Network size={14} />
+            </button>
+
+            <CustomSelect
+              label="Theme"
+              value={nodeTheme}
+              onChange={(val) => setNodeTheme(val as NodeTheme)}
+              options={nodeThemes}
+              className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
+            />
 
             <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors">
-                Format
-              </label>
-              <select
-                value={codeFormat}
-                onChange={(e) => convertFormat(e.target.value as any)}
-                className="bg-transparent font-semibold shadow-sm border border-slate-200 dark:border-slate-800/60 cursor-pointer rounded px-1.5 py-0.5 outline-none text-slate-800 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:ring-1 focus:ring-blue-500/30 text-xs"
-              >
-                <option value="json">JSON</option>
-                <option value="yaml">YAML</option>
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors">
-                Layout
-              </label>
-              <select
-                value={layoutMode}
-                onChange={(e) => {
-                  setLayoutMode(e.target.value as LayoutMode);
-                  useStore.getState().clearDragOverrides();
-                }}
-                className="bg-transparent font-semibold shadow-sm border border-slate-200 dark:border-slate-800/60 cursor-pointer rounded px-1.5 py-0.5 outline-none text-slate-800 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:ring-1 focus:ring-blue-500/30 text-xs"
-              >
-                {layoutModes.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+              <CustomSelect
+                label="Edge"
+                value={edgeStyle}
+                onChange={(val) => setEdgeStyle(val as EdgeStyle)}
+                options={edgeStyles}
+              />
               <button
-                onClick={() => {
-                  useStore.getState().triggerAutoOrganize();
-                  useStore.getState().clearDragOverrides();
-                }}
-                className="ml-2 hover:bg-blue-100 bg-blue-50/50 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 p-1 rounded-md transition-colors shadow-sm border border-blue-200 dark:border-blue-800/60 tooltip-trigger relative group/btn"
-                title="Auto Organize Layout"
+                onClick={handleEdgeWidthButtonClick}
+                className={`p-1 rounded border border-slate-200 dark:border-slate-800/60 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 ${showEdgeWidthPopover ? "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100" : ""}`}
+                title="Adjust edge/link line width"
               >
-                <Network size={14} />
+                <SlidersHorizontal size={13} />
               </button>
             </div>
 
-            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors">
-                Theme
-              </label>
-              <select
-                value={nodeTheme}
-                onChange={(e) => setNodeTheme(e.target.value as NodeTheme)}
-                className="bg-transparent font-semibold shadow-sm border border-slate-200 dark:border-slate-800/60 cursor-pointer rounded px-1.5 py-0.5 outline-none text-slate-800 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:ring-1 focus:ring-blue-500/30 text-xs"
-              >
-                {nodeThemes.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors">
-                Edge
-              </label>
-              <div className="flex items-center gap-1.5">
-                <select
-                  value={edgeStyle}
-                  onChange={(e) => setEdgeStyle(e.target.value as EdgeStyle)}
-                  className="bg-transparent font-semibold shadow-sm border border-slate-200 dark:border-slate-800/60 cursor-pointer rounded px-1.5 py-0.5 outline-none text-slate-800 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:ring-1 focus:ring-blue-500/30 text-xs"
-                >
-                  {edgeStyles.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleEdgeWidthButtonClick}
-                  className={`p-1 rounded border border-slate-200 dark:border-slate-800/60 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 ${showEdgeWidthPopover ? "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100" : ""}`}
-                  title="Adjust edge/link line width"
-                >
-                  <SlidersHorizontal size={13} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors">
-                Shape
-              </label>
-              <select
-                value={nodeShape}
-                onChange={(e) => setNodeShape(e.target.value as NodeShape)}
-                className="bg-transparent font-semibold shadow-sm border border-slate-200 dark:border-slate-800/60 cursor-pointer rounded px-1.5 py-0.5 outline-none text-slate-800 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 focus:ring-1 focus:ring-blue-500/30 text-xs"
-              >
-                {nodeShapes.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CustomSelect
+              label="Shape"
+              value={nodeShape}
+              onChange={(val) => setNodeShape(val as NodeShape)}
+              options={nodeShapes}
+              className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
+            />
           </div>
 
           <div className="flex items-center gap-1 xl:gap-4 lg:gap-2">
@@ -1113,66 +1073,23 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </button>
               </div>
               <div className="flex items-center gap-1 pl-1">
-                <div className="relative inline-flex group hover:-translate-y-px transition-transform">
-                  <div className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors pointer-events-none border border-slate-300 dark:border-slate-700">
-                    <Download size={14} />
-                    <span className="text-xs font-semibold">
-                      {isExporting ? "..." : "Export"}
-                    </span>
-                    <ChevronDown size={14} className="opacity-50" />
-                  </div>
-                  <select
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        exportHDImage(e.target.value as any);
-                        e.target.value = "";
-                      }
-                    }}
-                    value=""
-                    disabled={isExporting}
-                  >
-                    <option value="" disabled className="hidden">
-                      {isExporting ? "Exporting..." : "Select Format"}
-                    </option>
-                    <option
-                      value="png"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      PNG (HD)
-                    </option>
-                    <option
-                      value="png-transparent"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      PNG (Transparent)
-                    </option>
-                    <option
-                      value="jpeg"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      JPEG (HD)
-                    </option>
-                    <option
-                      value="svg"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      Vector SVG
-                    </option>
-                    <option
-                      value="svg-transparent"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      Vector SVG (Transparent)
-                    </option>
-                    <option
-                      value="webp"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      WebP
-                    </option>
-                  </select>
-                </div>
+                <CustomSelect
+                  value=""
+                  onChange={(val) => {
+                    if (val) exportHDImage(val);
+                  }}
+                  disabled={isExporting}
+                  placeholder="Export"
+                  icon={<Download size={14} />}
+                  options={[
+                    { label: "PNG (HD)", value: "png", icon: <FileImage size={12} /> },
+                    { label: "PNG (Transparent)", value: "png-transparent", icon: <FileImage size={12} className="opacity-50" /> },
+                    { label: "JPEG (HD)", value: "jpeg", icon: <FileImage size={12} /> },
+                    { label: "SVG Vector", value: "svg", icon: <FileType size={12} /> },
+                    { label: "SVG (Transparent)", value: "svg-transparent", icon: <FileType size={12} className="opacity-50" /> },
+                    { label: "WebP", value: "webp", icon: <FileImage size={12} /> },
+                  ]}
+                />
               </div>
             </div>
           </div>
@@ -1196,37 +1113,31 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           />
           <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-[495] shadow-xl overflow-y-auto max-h-[80vh] custom-scrollbar">
             <div className="p-4 grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Mode
-                </label>
-                <select
-                  value={visualizerMode}
-                  onChange={(e) => setVisualizerMode(e.target.value as any)}
-                  className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
-                >
-                  <option value="graph">Graph</option>
-                  <option value="schema">Schema</option>
-                </select>
-              </div>
+              <CustomSelect
+                label="Mode"
+                value={visualizerMode}
+                onChange={(val) => setVisualizerMode(val as any)}
+                options={[
+                  { label: "Graph", value: "graph" },
+                  { label: "Schema", value: "schema" },
+                ]}
+                className="flex flex-col items-start gap-2 col-span-1"
+              />
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Format
-                </label>
-                <select
-                  value={codeFormat}
-                  onChange={(e) => convertFormat(e.target.value as any)}
-                  className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
-                >
-                  <option value="json">JSON</option>
-                  <option value="yaml">YAML</option>
-                </select>
-              </div>
+              <CustomSelect
+                label="Format"
+                value={codeFormat}
+                onChange={(val) => convertFormat(val as any)}
+                options={[
+                  { label: "JSON", value: "json" },
+                  { label: "YAML", value: "yaml" },
+                ]}
+                className="flex flex-col items-start gap-2 col-span-1"
+              />
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 col-span-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
                     Layout
                   </label>
                   <button
@@ -1240,55 +1151,31 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     <Network size={12} /> Organize
                   </button>
                 </div>
-                <select
+                <CustomSelect
                   value={layoutMode}
-                  onChange={(e) => {
-                    setLayoutMode(e.target.value as LayoutMode);
+                  onChange={(val) => {
+                    setLayoutMode(val as LayoutMode);
                     useStore.getState().clearDragOverrides();
                   }}
-                  className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
-                >
-                  {layoutModes.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                  options={layoutModes}
+                />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Theme
-                </label>
-                <select
-                  value={nodeTheme}
-                  onChange={(e) => setNodeTheme(e.target.value as NodeTheme)}
-                  className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
-                >
-                  {nodeThemes.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                label="Theme"
+                value={nodeTheme}
+                onChange={(val) => setNodeTheme(val as NodeTheme)}
+                options={nodeThemes}
+                className="flex flex-col items-start gap-2 col-span-1"
+              />
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Edge Style
-                </label>
-                <select
-                  value={edgeStyle}
-                  onChange={(e) => setEdgeStyle(e.target.value as EdgeStyle)}
-                  className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
-                >
-                  {edgeStyles.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                label="Edge Style"
+                value={edgeStyle}
+                onChange={(val) => setEdgeStyle(val as EdgeStyle)}
+                options={edgeStyles}
+                className="flex flex-col items-start gap-2 col-span-1"
+              />
 
               <div className="flex flex-col gap-2 p-3 bg-slate-100 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800/60 col-span-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -1322,22 +1209,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Node Shape
-                </label>
-                <select
-                  value={nodeShape}
-                  onChange={(e) => setNodeShape(e.target.value as NodeShape)}
-                  className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-3 py-2 outline-none focus:border-blue-500 text-slate-800 dark:text-slate-300 text-sm"
-                >
-                  {nodeShapes.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                label="Node Shape"
+                value={nodeShape}
+                onChange={(val) => setNodeShape(val as NodeShape)}
+                options={nodeShapes}
+                className="flex flex-col items-start gap-2 col-span-1"
+              />
 
               <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-3">
                 <button
@@ -1501,70 +1379,27 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
                   Download & Export
                 </label>
-                <div className="relative flex group">
-                  <div className="flex w-full items-center justify-between p-2.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors pointer-events-none border border-transparent">
-                    <div className="flex items-center gap-2">
-                      <Download size={16} />
-                      <span className="text-sm font-medium">
-                        {isExporting ? "Exporting..." : "Export Image"}
-                      </span>
-                    </div>
-                    <ChevronDown size={16} className="opacity-50" />
-                  </div>
-                  <select
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        exportHDImage(e.target.value as any);
-                        e.target.value = "";
-                      }
-                    }}
-                    value=""
-                    disabled={isExporting}
-                  >
-                    <option value="" disabled className="hidden">
-                      {isExporting
-                        ? "Exporting..."
-                        : "Select Format to Download"}
-                    </option>
-                    <option
-                      value="png"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      PNG (HD)
-                    </option>
-                    <option
-                      value="png-transparent"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      PNG (Transparent)
-                    </option>
-                    <option
-                      value="jpeg"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      JPEG (HD)
-                    </option>
-                    <option
-                      value="svg"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      Vector SVG
-                    </option>
-                    <option
-                      value="svg-transparent"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      Vector SVG (Transparent)
-                    </option>
-                    <option
-                      value="webp"
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      WebP
-                    </option>
-                  </select>
-                </div>
+                <CustomSelect
+                  value=""
+                  onChange={(val) => {
+                    if (val) {
+                      exportHDImage(val);
+                      setIsMobileMenuOpen(false);
+                    }
+                  }}
+                  disabled={isExporting}
+                  placeholder="Export Image"
+                  icon={<Download size={14} />}
+                  options={[
+                    { label: "PNG Image", value: "png", icon: <FileImage size={12} /> },
+                    { label: "PNG Transparent", value: "png-transparent", icon: <FileImage size={12} className="opacity-50" /> },
+                    { label: "JPEG Image", value: "jpeg", icon: <FileImage size={12} /> },
+                    { label: "SVG Vector", value: "svg", icon: <FileType size={12} /> },
+                    { label: "SVG Transparent", value: "svg-transparent", icon: <FileType size={12} className="opacity-50" /> },
+                    { label: "WebP Image", value: "webp", icon: <FileImage size={12} /> },
+                  ]}
+                  className="w-full"
+                />
               </div>
 
               <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-2 text-center text-sm font-medium">

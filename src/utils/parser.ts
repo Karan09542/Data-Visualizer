@@ -1,4 +1,5 @@
 import yaml from 'js-yaml';
+import { sanitizeWorkspaceData } from './workspaceSanitizer';
 
 export function mapNaturalKeys(obj: any): any {
   if (obj === null || typeof obj !== "object") {
@@ -41,18 +42,22 @@ export function mapNaturalKeys(obj: any): any {
   return result;
 }
 
-export const parseInput = (input: string): { data: any | null, error: string | null } => {
+export const parseInput = (input: string): { data: any | null, error: string | null, wasSanitized?: boolean } => {
   if (!input.trim()) return { data: null, error: null };
   try {
     const parsed = JSON.parse(input);
-    return { data: mapNaturalKeys(parsed), error: null };
+    const mapped = mapNaturalKeys(parsed);
+    const wasSanitized = sanitizeWorkspaceData(mapped);
+    return { data: mapped, error: null, wasSanitized };
   } catch (e1: any) {
     try {
       const data = yaml.load(input);
       if (typeof data !== 'object') {
           return { data: null, error: 'Input must evaluate to an object or array' };
       }
-      return { data: mapNaturalKeys(data), error: null };
+      const mapped = mapNaturalKeys(data);
+      const wasSanitized = sanitizeWorkspaceData(mapped);
+      return { data: mapped, error: null, wasSanitized };
     } catch (e2: any) {
       return { data: null, error: e2.message || 'Invalid JSON or YAML' };
     }

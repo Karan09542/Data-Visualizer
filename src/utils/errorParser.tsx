@@ -17,7 +17,8 @@ export function renderClickableErrorText(
   // 2. Line 1
   // 3. [Ln 2]
   // 4. at js:2:1 or at config:10:5
-  const regex = /(Line\s+(\d+),\s+Col\s+(\d+))|(Line\s+(\d+))|(\[Ln\s+(\d+)\])|((?:[a-zA-Z0-9_\-]+):(\d+):(\d+))/gi;
+  // 5. line 4 or line 4, (Python traceback format like: File "<exec>", line 4, in <module>)
+  const regex = /(Line\s+(\d+),\s+Col\s+(\d+))|(Line\s+(\d+))|(\[Ln\s+(\d+)\])|((?:[a-zA-Z0-9_\-]+):(\d+):(\d+))|([Ll]ine\s+(\d+))/gi;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match;
@@ -49,6 +50,9 @@ export function renderClickableErrorText(
       // js:2:1
       line = parseInt(match[9], 10);
       col = parseInt(match[10], 10);
+    } else if (match[12]) {
+      // line 4
+      line = parseInt(match[12], 10);
     }
 
     if (line !== null && !isNaN(line)) {

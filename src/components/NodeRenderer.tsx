@@ -4,7 +4,7 @@ import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore, NodeTheme } from "../store/useStore";
 import { db } from "../lib/db";
-import { useLiveQuery } from "dexie-react-hooks";
+import { liveQuery } from "dexie";
 import {
   ChevronRight,
   ChevronDown,
@@ -275,14 +275,33 @@ function NodeRenderer({
       ? data.value
       : null;
 
-  const assetDetails = useLiveQuery(async () => {
-    if (!actualAssetId) return null;
-    let id = actualAssetId;
-    if (id.startsWith("thumb_")) {
-      const original = await db.assets.where("thumbnailId").equals(id).first();
-      if (original) return original;
+  const [assetDetails, setAssetDetails] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    if (!actualAssetId) {
+      setAssetDetails(null);
+      return;
     }
-    return await db.assets.get(id);
+    
+    let active = true;
+    const subscription = liveQuery(async () => {
+      let id = actualAssetId;
+      if (id.startsWith("thumb_")) {
+        const original = await db.assets.where("thumbnailId").equals(id).first();
+        if (original) return original;
+      }
+      return await db.assets.get(id);
+    }).subscribe({
+      next: (result) => {
+        if (!active) return;
+        setTimeout(() => { if (active) setAssetDetails(result); }, 0);
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, [actualAssetId]);
 
   const isApiNode =
@@ -316,7 +335,7 @@ function NodeRenderer({
   const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
   const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
-  const isSpecialNode = isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode;
+  const isSpecialNode = isApiNode || isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode;
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]
@@ -393,9 +412,13 @@ function NodeRenderer({
   const getThemeClasses = (theme: NodeTheme) => {
     switch (theme) {
       case "vscode":
-        return "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md";
+        return appTheme === "dark" 
+          ? "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md"
+          : "bg-white border-slate-300 text-slate-800 shadow-sm";
       case "github":
-        return "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm";
+        return appTheme === "dark"
+          ? "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm"
+          : "bg-white border-slate-200 text-slate-800 shadow-sm";
       case "glassmorphism":
         return "bg-white/10 border-white/20 text-white backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]";
       case "cyberpunk":
@@ -755,13 +778,11 @@ function NodeRenderer({
     }
   };
 
-  const baseClasses = getThemeClasses(nodeTheme);
+  const baseClasses = isSpecialNode ? "" : getThemeClasses(nodeTheme);
 
   // Custom tweaks per theme
   const isDarkBase =
     [
-      "vscode",
-      "github",
       "cyberpunk",
       "terminal",
       "material",
@@ -791,6 +812,8 @@ function NodeRenderer({
       "chess",
       "octopus",
     ].includes(nodeTheme) ||
+    (nodeTheme === "vscode" && appTheme === "dark") ||
+    (nodeTheme === "github" && appTheme === "dark") ||
     (nodeTheme === "nature2" && data.id === "root") ||
     (nodeTheme === "hydrogen" && appTheme === "dark") ||
     (nodeTheme === "seed" && data.id === "root");
@@ -798,6 +821,8 @@ function NodeRenderer({
     ["minimal", "pastel", "math", "cloud", "zen", "architect", "ludo"].includes(
       nodeTheme,
     ) ||
+    (nodeTheme === "vscode" && appTheme !== "dark") ||
+    (nodeTheme === "github" && appTheme !== "dark") ||
     (nodeTheme === "nature2" && data.id !== "root") ||
     (nodeTheme === "hydrogen" && appTheme !== "dark") ||
     (nodeTheme === "seed" && data.id !== "root");
@@ -925,7 +950,7 @@ function NodeRenderer({
   }
 
   // Apply Theme-Specific Shapes ONLY if shape is at 'default'
-  if (isDefaultShape) {
+  if (isDefaultShape && !isSpecialNode) {
     switch (nodeTheme) {
       case "nature":
         shapeClasses =
@@ -1118,7 +1143,7 @@ function NodeRenderer({
     }
   }
 
-  if (!isDefaultShape) {
+  if (!isDefaultShape && !isSpecialNode) {
     switch (nodeShape) {
       case "circle":
         fWidth = isMedia ? 320 : 200;
@@ -1192,7 +1217,7 @@ function NodeRenderer({
       }}
     >
       <div className="w-full h-full flex items-center justify-center">
-        {nodeTheme === "seed" && data.id === "root" && (
+        {nodeTheme === "seed" && data.id === "root" && !isSpecialNode && (
           <div
             className="absolute left-1/2 -translate-x-1/2 top-4 w-[240px] h-[350px] pointer-events-none"
             style={{ zIndex: -10 }}
@@ -1277,7 +1302,7 @@ function NodeRenderer({
           className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${isMatch || isSelected ? "scale-105" : ""} ${dropShadowClass}`}
         >
           <div
-            className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} border cursor-pointer hover:brightness-125 transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
+            className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} ${!isSpecialNode ? "border" : ""} cursor-pointer ${!isSpecialNode ? "hover:brightness-125" : ""} transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
             style={{
               ...shapeStyle,
               transform:
@@ -1311,7 +1336,7 @@ function NodeRenderer({
               if (hasChildren) toggleNodeCollapse(data.id);
             }}
           >
-            {nodeTheme === "nature" && (
+            {nodeTheme === "nature" && !isSpecialNode && (
               <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-20">
                 <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white -translate-x-1/2" />
                 <div className="absolute top-[30%] left-[55%] w-[40%] h-0.5 bg-white -rotate-[30deg]" />
@@ -1320,7 +1345,7 @@ function NodeRenderer({
                 <div className="absolute top-[60%] right-[52%] w-[45%] h-0.5 bg-white rotate-[20deg]" />
               </div>
             )}
-            {nodeTheme === "banyan" && (
+            {nodeTheme === "banyan" && !isSpecialNode && (
               <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <svg
                   viewBox="0 0 100 100"
@@ -1598,7 +1623,7 @@ function NodeRenderer({
                 <div className="absolute top-0 right-0 w-[90%] h-[130%] bg-gradient-to-bl from-white/20 via-transparent to-transparent -rotate-[15deg] translate-x-1/4 -translate-y-1/2" />
               </div>
             )}
-            {nodeTheme === "ludo" && (
+            {nodeTheme === "ludo" && !isSpecialNode && (
               <>
                 <div
                   className={`absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
@@ -1614,7 +1639,7 @@ function NodeRenderer({
                 />
               </>
             )}
-            {nodeTheme === "octopus" && (
+            {nodeTheme === "octopus" && !isSpecialNode && (
               <div className="absolute right-3 top-1/2 flex flex-col gap-1.5 -translate-y-1/2 opacity-70">
                 <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
                 <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
@@ -1648,10 +1673,10 @@ function NodeRenderer({
               <div
                 className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isSpecialNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
                 style={{
-                  ...(isCustom ? { color: nodeTextColor } : {}),
-                  ...(nodeTheme === "peepal" ||
+                  ...((isCustom && !isSpecialNode) ? { color: nodeTextColor } : {}),
+                  ...((!isSpecialNode && (nodeTheme === "peepal" ||
                   nodeTheme === "banyan" ||
-                  nodeTheme === "nature"
+                  nodeTheme === "nature"))
                     ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                     : {}),
                 }}
@@ -1666,7 +1691,7 @@ function NodeRenderer({
                     </span>
                     {data.type !== "object" && data.type !== "array" && (
                       <span
-                        className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${nodeTheme === "hydrogen" ? "bg-transparent" : "bg-black/10"} tracking-widest ${mutedText}`}
+                        className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${nodeTheme === "hydrogen" ? "bg-transparent" : isDarkBase ? "bg-white/10" : "bg-black/10"} tracking-widest ${mutedText}`}
                         style={{
                           ...(isCustom
                             ? { color: nodeTextColor, opacity: 0.7 }
@@ -1873,7 +1898,7 @@ function NodeRenderer({
                 className="flex flex-col w-full mt-2 relative group/media-container"
               >
                 <div
-                  className={`w-full rounded bg-black/20 overflow-hidden border border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
+                  className={`w-full rounded bg-slate-100 dark:bg-black/20 overflow-hidden border border-slate-200 dark:border-white/5 ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
                   style={{ pointerEvents: isDraggingLocally ? "none" : "auto" }}
                 >
                   {mediaType === "image" && (
@@ -1944,26 +1969,26 @@ function NodeRenderer({
                 </div>
 
                 {assetDetails && (
-                  <div className="mt-1.5 px-1.5 py-1 bg-black/40 rounded border border-white/5 text-[9px] font-mono text-slate-400 space-y-0.5 select-none leading-normal font-sans">
+                  <div className="mt-1.5 px-1.5 py-1 bg-slate-50 dark:bg-black/40 rounded border border-slate-200 dark:border-white/5 text-[9px] font-mono text-slate-500 dark:text-slate-400 space-y-0.5 select-none leading-normal font-sans">
                     <div className="flex justify-between gap-2 overflow-hidden">
-                      <span className="text-slate-500 font-sans shrink-0">Name:</span>
-                      <span className="text-white font-medium truncate shrink" title={assetDetails.filename}>{assetDetails.filename || 'Unnamed'}</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-sans shrink-0">Name:</span>
+                      <span className="text-slate-800 dark:text-white font-medium truncate shrink" title={assetDetails.filename}>{assetDetails.filename || 'Unnamed'}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500 font-sans">Size:</span>
-                      <span className="text-slate-300 font-medium">{(assetDetails.size / 1024).toFixed(1)} KB</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-sans">Size:</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">{(assetDetails.size / 1024).toFixed(1)} KB</span>
                     </div>
                     {typeof assetDetails.width === 'number' && typeof assetDetails.height === 'number' && assetDetails.width > 0 && assetDetails.height > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-slate-500 font-sans">Dims:</span>
-                        <span className="text-slate-300 font-medium">{assetDetails.width} × {assetDetails.height} px</span>
+                        <span className="text-slate-400 dark:text-slate-500 font-sans">Dims:</span>
+                        <span className="text-slate-700 dark:text-slate-300 font-medium">{assetDetails.width} × {assetDetails.height} px</span>
                       </div>
                     )}
                   </div>
                 )}
 
                 <button
-                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 bg-black/60 hover:bg-indigo-600 backdrop-blur-md text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-white/10 z-20 whitespace-nowrap`}
+                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 bg-white/90 dark:bg-black/60 hover:bg-indigo-600 dark:hover:bg-indigo-600 backdrop-blur-md text-slate-800 hover:text-white dark:text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-slate-200 dark:border-white/10 z-20 whitespace-nowrap`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setActivePreviewMedia({

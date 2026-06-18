@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Search, X, Clock, MapPin, ExternalLink, Image as ImageIcon, 
   BookOpen, ChevronLeft, LayoutGrid, List, Maximize, Bookmark, ChevronRight,
-  History, Users, Layers, Activity, SlidersHorizontal, Moon, Sun, Info, Globe, Menu
+  History, Users, Layers, Activity, SlidersHorizontal, Moon, Sun, Info, Globe, Menu, ChevronDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useStore } from "../store/useStore";
 import { db } from "../lib/db";
-import { useLiveQuery } from "dexie-react-hooks";
+import { liveQuery } from "dexie";
+import { getValueAtPath } from "../utils/pathUtils";
+import get from "lodash.get";
 
 import { ArticleReader } from "./ArticleReader";
 
@@ -35,7 +37,7 @@ const languages = [
 ];
 
 export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
-  const { updateNodeValue } = useStore();
+  const { updateNodeValue, code } = useStore();
   const [query, setQuery] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
   const [inputValue, setInputValue] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => (sessionStorage.getItem(`${path}_tab`) as ActiveTab) || "All");
@@ -93,9 +95,62 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     localStorage.setItem('wiki_lang', language);
   }, [path, query, lastSearchedQuery, activeTab, activeSidebarItem, results, imageResults, knowledgePanel, activeArticle, offset, totalHits, language]);
 
+  const storageKey = useMemo(() => {
+    try {
+      const parsed = JSON.parse(code);
+      let nodeValue = getValueAtPath(parsed, path);
+      
+      if (typeof nodeValue === 'string' && nodeValue.startsWith('{')) {
+        try { nodeValue = JSON.parse(nodeValue); } catch {}
+      }
+      
+      if (typeof nodeValue === 'object' && nodeValue?.storageKey) {
+        return nodeValue.storageKey;
+      }
+    } catch {}
+    return null;
+  }, [code, path]);
+
   // Persistence
-  const searchHistory = useLiveQuery(() => db.searchHistory.orderBy('timestamp').reverse().limit(10).toArray()) || [];
-  const savedArticles = useLiveQuery(() => db.savedArticles.orderBy('timestamp').reverse().toArray()) || [];
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [savedArticles, setSavedArticles] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    
+    let active = true;
+    const historySub = liveQuery(() =>
+      db.nodeSearchHistory
+        .where('storageKey')
+        .equals(storageKey)
+        .toArray()
+        .then(arr => arr.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10))
+    ).subscribe({
+      next: (result) => {
+        if (!active) return;
+        setTimeout(() => { if (active) setSearchHistory(result || []); }, 0);
+      }
+    });
+
+    const savedSub = liveQuery(() =>
+      db.nodeSearchBookmarks
+        .where('storageKey')
+        .equals(storageKey)
+        .toArray()
+        .then(arr => arr.sort((a, b) => b.timestamp - a.timestamp))
+    ).subscribe({
+      next: (result) => {
+        if (!active) return;
+        setTimeout(() => { if (active) setSavedArticles(result || []); }, 0);
+      }
+    });
+
+    return () => {
+      active = false;
+      historySub.unsubscribe();
+      savedSub.unsubscribe();
+    };
+  }, [storageKey]);
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') !== 'light';
@@ -154,9 +209,38 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     };
   }, [path]);
 
-  const executeSearch = async (overrideQuery?: string, newOffset: number = 0, langOverride?: string) => {
-    const q = overrideQuery || inputValue;
-    if (!q.trim()) return;
+  const executeSearch = async (overrideQuery?: string, newOffset: number = 0, langOverride?: string, tabOverride?: ActiveTab) => {
+    const q = overrideQuery !== undefined ? overrideQuery : inputValue;
+    const currentTab = tabOverride || activeTab;
+    // Sidebar item might be stale if tabOverride was just set
+    const currentSidebar = tabOverride === "Images" ? "Images" : (tabOverride === "Articles" ? "Articles" : (tabOverride === "All" ? "All Results" : activeSidebarItem));
+    
+    if (!q.trim()) {
+      setQuery("");
+      setInputValue("");
+      setResults([]);
+      setImageResults([]);
+      setKnowledgePanel(null);
+      setHasMore(false);
+      setActiveArticle(null);
+      setTotalHits(0);
+      setOffset(0);
+      setSearchTime(0);
+      setSuggestions([]);
+      setLastSearchedQuery("");
+      setIsSearching(false);
+      
+      sessionStorage.removeItem(`${path}_query`);
+      sessionStorage.removeItem(`${path}_last_searched_query`);
+      sessionStorage.removeItem(`${path}_results`);
+      sessionStorage.removeItem(`${path}_imageResults`);
+      sessionStorage.removeItem(`${path}_kp`);
+      sessionStorage.removeItem(`${path}_article`);
+      sessionStorage.removeItem(`${path}_offset`);
+      sessionStorage.removeItem(`${path}_totalHits`);
+      
+      return;
+    }
     
     setQuery(q);
     setInputValue(q);
@@ -164,6 +248,14 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     setIsFocused(false);
     setIsSearching(true);
     setOffset(newOffset);
+    
+    // If searching from Sidebar types like Saved/History, move back to All Results
+    if (activeSidebarItem === 'Saved' || activeSidebarItem === 'History') {
+       if (!tabOverride) {
+         setActiveSidebarItem('All Results');
+         setActiveTab('All');
+       }
+    }
     
     const startTime = performance.now();
 
@@ -176,15 +268,18 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     }
 
     try {
-      const existing = await db.searchHistory.where('query').equals(q).first();
-      if (!existing || !existing.isPinned) {
-         if (existing) await db.searchHistory.delete(existing.id!);
-         await db.searchHistory.add({ query: q, timestamp: Date.now() });
+      if (storageKey) {
+        const historyArr = await db.nodeSearchHistory.where('storageKey').equals(storageKey).toArray();
+        const existing = historyArr.find(h => h.query === q);
+        if (!existing || !existing.isPinned) {
+           if (existing) await db.nodeSearchHistory.delete(existing.id!);
+           await db.nodeSearchHistory.add({ storageKey, query: q, timestamp: Date.now() });
+        }
       }
     } catch(err) {}
 
     try {
-      if (activeSidebarItem === "Images" || activeTab === "Images") {
+      if (currentSidebar === "Images" || currentTab === "Images") {
         // Image search
         const res = await fetch(`https://${langOverride || language}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrnamespace=6&prop=imageinfo&iiprop=url|extmetadata|size|dimensions&format=json&origin=*&gsrlimit=${limit}&gsroffset=${newOffset}`);
         const data = await res.json();
@@ -194,8 +289,8 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
       } else {
         // Article search
         let modifiedQuery = q;
-        if (activeTab === "People") modifiedQuery += " person";
-        if (activeTab === "Places") modifiedQuery += " location";
+        if (currentTab === "People") modifiedQuery += " person";
+        if (currentTab === "Places") modifiedQuery += " location";
 
         const res = await fetch(`https://${langOverride || language}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(modifiedQuery)}&utf8=&format=json&origin=*&srlimit=${limit}&sroffset=${newOffset}&srprop=snippet|titlesnippet|size|wordcount|timestamp`);
         const data = await res.json();
@@ -278,7 +373,6 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
       };
 
       setActiveArticle(articleData);
-      updateNodeValue(path, { type: "article", title, article: articleData });
     } catch(err) {
       console.error(err);
     } finally {
@@ -287,16 +381,21 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   };
 
   const toggleSaveArticle = async (result: any) => {
+     if (!storageKey) return;
      try {
-       const existing = await db.savedArticles.get(result.title);
+       // Find if it exists locally to toggle it
+       const articles = await db.nodeSearchBookmarks.where('storageKey').equals(storageKey).toArray();
+       const existing = articles.find(a => a.title === result.title);
+       
        if (existing) {
-         await db.savedArticles.delete(result.title);
+         await db.nodeSearchBookmarks.delete(existing.id!);
        } else {
-         await db.savedArticles.put({
-           id: result.title,
+         await db.nodeSearchBookmarks.add({
+           storageKey,
+           collectionId: "default",
            title: result.title,
-           summary: result.snippet ? result.snippet.replace(/<\/?[^>]+(>|$)/g, "") : "",
-           thumbnail: result.thumbnail,
+           summary: (result.snippet || result.description || result.extract || "").replace(/<\/?[^>]+(>|$)/g, ""),
+           thumbnail: result.thumbnail?.source || (typeof result.thumbnail === 'string' ? result.thumbnail : null),
            timestamp: Date.now()
          });
        }
@@ -310,18 +409,28 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     if (tab === "Images") setActiveSidebarItem("Images");
     else if (tab === "Articles") setActiveSidebarItem("Articles");
     else setActiveSidebarItem("All Results");
+    setHasMore(true);
 
-    if (query) executeSearch(query, 0);
+    if (query) executeSearch(query, 0, undefined, tab);
   };
 
   const handleSidebarClick = (item: string) => {
     setActiveSidebarItem(item);
-    if (item === "Images") setActiveTab("Images");
-    else if (item === "Articles") setActiveTab("Articles");
-    else if (item === "All Results") setActiveTab("All");
+    let tab: ActiveTab = activeTab;
+    if (item === "Images") tab = "Images";
+    else if (item === "Articles") tab = "Articles";
+    else if (item === "All Results") tab = "All";
+    
+    if (item === "Images" || item === "Articles" || item === "All Results") {
+      setActiveTab(tab);
+    }
+    
     setIsMobileMenuOpen(false);
+    setHasMore(true);
 
-    if (query && item !== "Saved" && item !== "History") executeSearch(query, 0);
+    if (query && item !== "Saved" && item !== "History") {
+      executeSearch(query, 0, undefined, tab);
+    }
   };
 
   // Components 
@@ -442,7 +551,10 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
               className="w-full bg-transparent border-none outline-none py-3.5 text-slate-900 dark:text-slate-100 text-[15px] placeholder:text-slate-500 font-medium"
             />
             {inputValue && (
-              <button onClick={() => { setInputValue(""); setQuery(""); }} className="p-2 mr-1 text-slate-500 hover:text-slate-700 dark:text-slate-300">
+              <button 
+                onClick={() => executeSearch("")} 
+                className="p-2 mr-1 text-slate-500 hover:text-slate-700 dark:text-slate-300"
+              >
                 <X size={18} />
               </button>
             )}
@@ -550,9 +662,9 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
             
             <button 
               onClick={() => { setActiveSidebarItem("Saved"); setActiveTab("All"); }}
-              className="text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors flex items-center gap-2 text-sm font-medium"
+              className={`transition-colors flex items-center gap-2 text-sm font-medium ${activeSidebarItem === "Saved" ? "text-blue-500" : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
             >
-              <Bookmark size={18} /> Saved
+              <Bookmark size={18} fill={activeSidebarItem === "Saved" ? "currentColor" : "none"} /> Saved
             </button>
           </div>
 
@@ -658,7 +770,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
                   </div>
                  <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 shrink-0">
                    <button onClick={(e) => { e.stopPropagation(); toggleSaveArticle(r); }} className="hover:text-blue-400 transition-colors">
-                     <Bookmark size={18} fill={savedArticles.find(a => a.id === r.title) ? "currentColor" : "none"} className={savedArticles.find(a => a.id === r.title) ? "text-blue-400" : ""} />
+                     <Bookmark size={18} fill={savedArticles.find(a => a.title === r.title) ? "currentColor" : "none"} className={savedArticles.find(a => a.title === r.title) ? "text-blue-400" : ""} />
                    </button>
                    <button 
                      onClick={(e) => { 
@@ -698,8 +810,8 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
              <div className="w-full h-[280px] relative group border-b border-slate-200 dark:border-slate-800">
                <img src={knowledgePanel.thumbnail.source} className="w-full h-full object-cover" />
                <div className="absolute inset-0 bg-gradient-to-t from-white dark:from-[#151D2C] via-white/40 dark:via-[#151D2C]/40 to-transparent"></div>
-               <button className="absolute top-4 right-4 w-10 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-black/60 transition">
-                  <Bookmark size={18} />
+               <button onClick={() => toggleSaveArticle(knowledgePanel)} className={`absolute top-4 right-4 w-10 h-10 ${savedArticles.find(a => a.title === knowledgePanel.title) ? 'bg-blue-500/80 hover:bg-blue-600' : 'bg-black/40 hover:bg-black/60'} backdrop-blur-md rounded-full flex items-center justify-center text-white transition`}>
+                  <Bookmark size={18} fill={savedArticles.find(a => a.title === knowledgePanel.title) ? "currentColor" : "none"} />
                </button>
                <div className="absolute bottom-6 left-6 right-6">
                  <h2 className="text-4xl font-extrabold text-white mb-1 shadow-black drop-shadow-xl">{knowledgePanel.title}</h2>
@@ -796,9 +908,9 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
                </button>
                <button 
                  onClick={() => toggleSaveArticle(knowledgePanel)}
-                 className="p-3.5 border border-slate-300 dark:border-slate-700 hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl transition-colors"
+                 className={`p-3.5 border border-slate-300 dark:border-slate-700 transition-colors rounded-xl ${savedArticles.find(a => a.title === knowledgePanel.title) ? 'text-blue-500 bg-blue-500/10' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
                >
-                 <Bookmark size={20} />
+                 <Bookmark size={20} fill={savedArticles.find(a => a.title === knowledgePanel.title) ? "currentColor" : "none"} />
                </button>
              </div>
            </div>
@@ -973,9 +1085,4 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   );
 }
 
-// ChevronDown Icon Component
-const ChevronDown = ({ size = 24, className = "" }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="m6 9 6 6 6-6"/>
-  </svg>
-);
+

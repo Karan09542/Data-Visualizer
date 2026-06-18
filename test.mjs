@@ -1,0 +1,1 @@
+import config from "./test.json" with { type: "json" }; console.log("default import:", config); import * as conf from "./test.json" with { type: "json" }; console.log("namespace import:", conf);

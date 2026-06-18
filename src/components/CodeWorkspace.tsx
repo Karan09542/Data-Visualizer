@@ -1,7 +1,13 @@
-import katex from 'katex';
+import katex from "katex";
 import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Play,
@@ -24,7 +30,7 @@ import {
   CheckSquare,
   Image as ImageIcon,
   Sun,
-  Moon
+  Moon,
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
@@ -37,7 +43,11 @@ import { TodoWorkspace } from "./TodoWorkspace";
 import ImageWorkspace from "./ImageWorkspace";
 import { SearchNodeWorkspace } from "./SearchNodeWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
-import { generateTypeScriptSchema, executeTsNode, abortTsNode } from "../utils/tsExecutor";
+import {
+  generateTypeScriptSchema,
+  executeTsNode,
+  abortTsNode,
+} from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
 import { getMediaType } from "./NodeRenderer";
@@ -68,7 +78,11 @@ function CopyButton({ text }: { text: string }) {
       className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer shrink-0"
       title={copied ? "Copied" : "Copy error text"}
     >
-      {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+      {copied ? (
+        <Check size={11} className="text-emerald-500" />
+      ) : (
+        <Copy size={11} />
+      )}
     </button>
   );
 }
@@ -144,15 +158,18 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   // Active open file in the workspace
   const currentFilePath = activeExplorerFile || path;
-  
+
   const isEditingOtherFile = useMemo(() => {
     return !!(activeExplorerFile && activeExplorerFile !== path);
   }, [activeExplorerFile, path]);
 
   // Read code content dynamically for the active open file
   const code = useMemo(() => {
-    const val = jsNodeCodeOverrides[currentFilePath] ?? getValueAtPath(parsedData, currentFilePath) ?? "";
-    if (typeof val === 'string') return val;
+    const val =
+      jsNodeCodeOverrides[currentFilePath] ??
+      getValueAtPath(parsedData, currentFilePath) ??
+      "";
+    if (typeof val === "string") return val;
     try {
       return JSON.stringify(val, null, 2);
     } catch {
@@ -162,7 +179,9 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   const otherFileValue = useMemo(() => {
     if (!isEditingOtherFile) return undefined;
-    const val = jsNodeCodeOverrides[currentFilePath] ?? getValueAtPath(parsedData, currentFilePath);
+    const val =
+      jsNodeCodeOverrides[currentFilePath] ??
+      getValueAtPath(parsedData, currentFilePath);
     if (typeof val === "string") return val;
     if (val === undefined || val === null) return "";
     try {
@@ -174,46 +193,105 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   // Determine file type and language dynamically
   const fileExt = useMemo(() => {
-    return currentFilePath.split('.').pop()?.replace(/\[[0-9]+\]$/, '').toLowerCase() || "";
+    return (
+      currentFilePath
+        .split(".")
+        .pop()
+        ?.replace(/\[[0-9]+\]$/, "")
+        .toLowerCase() || ""
+    );
   }, [currentFilePath]);
 
-  const isTs = useMemo(() => fileExt.endsWith('_ts_node') || fileExt === 'ts', [fileExt]);
-  const isJs = useMemo(() => fileExt.endsWith('_js_node') || fileExt === 'js', [fileExt]);
-  const isPy = useMemo(() => fileExt.endsWith('_py_node') || fileExt === 'py', [fileExt]);
-  const isApi = useMemo(() => fileExt.endsWith('_api_node') || fileExt === 'api', [fileExt]);
-  const isTodo = useMemo(() => fileExt.endsWith('_todo_node') || fileExt === 'todo', [fileExt]);
-  const isSearch = useMemo(() => fileExt.endsWith('_search_node') || fileExt === 'search', [fileExt]);
+  const isTs = useMemo(
+    () => fileExt.endsWith("_ts_node") || fileExt === "ts",
+    [fileExt],
+  );
+  const isJs = useMemo(
+    () => fileExt.endsWith("_js_node") || fileExt === "js",
+    [fileExt],
+  );
+  const isPy = useMemo(
+    () => fileExt.endsWith("_py_node") || fileExt === "py",
+    [fileExt],
+  );
+  const isApi = useMemo(
+    () => fileExt.endsWith("_api_node") || fileExt === "api",
+    [fileExt],
+  );
+  const isTodo = useMemo(
+    () => fileExt.endsWith("_todo_node") || fileExt === "todo",
+    [fileExt],
+  );
+  const isSearch = useMemo(
+    () => fileExt.endsWith("_search_node") || fileExt === "search",
+    [fileExt],
+  );
   const isImg = useMemo(() => {
     const ext = fileExt.toLowerCase();
-    if (ext.endsWith('_image_node') || ext === 'img' || ext === 'image' || ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'gif' || ext === 'webp') {
+    if (
+      ext.endsWith("_image_node") ||
+      ext === "img" ||
+      ext === "image" ||
+      ext === "png" ||
+      ext === "jpg" ||
+      ext === "jpeg" ||
+      ext === "gif" ||
+      ext === "webp"
+    ) {
       return true;
     }
-    
-    const nodeVal = typeof code === 'string' ? code : "";
+
+    const nodeVal = typeof code === "string" ? code : "";
     const rawVal = getValueAtPath(parsedData, currentFilePath);
-    const rawObj = typeof rawVal === 'object' && rawVal !== null ? rawVal as any : null;
+    const rawObj =
+      typeof rawVal === "object" && rawVal !== null ? (rawVal as any) : null;
     const assetIdToCheck = rawObj?.url || rawObj?.filename || nodeVal;
 
-    let assetMimeType = '';
-    if (assetIdToCheck && typeof assetIdToCheck === 'string') {
+    let assetMimeType = "";
+    if (assetIdToCheck && typeof assetIdToCheck === "string") {
       const assetMeta = uploadedMediaMetadata[assetIdToCheck];
       if (assetMeta && assetMeta.mimeType) {
         assetMimeType = assetMeta.mimeType.toLowerCase();
       }
     }
 
-    if (assetMimeType.startsWith('image/') || getMediaType(nodeVal) === 'image') {
+    if (
+      assetMimeType.startsWith("image/") ||
+      getMediaType(nodeVal) === "image"
+    ) {
       return true;
     }
 
     return false;
   }, [fileExt, code, parsedData, currentFilePath, uploadedMediaMetadata]);
-  const isJson = useMemo(() => fileExt.endsWith('_json') || fileExt === 'json', [fileExt]);
-  const isYaml = useMemo(() => fileExt.endsWith('_yaml') || fileExt === 'yaml' || fileExt.endsWith('_yml') || fileExt === 'yml', [fileExt]);
-  const isCsv = useMemo(() => fileExt.endsWith('_csv') || fileExt === 'csv', [fileExt]);
-  const isXml = useMemo(() => fileExt.endsWith('_xml') || fileExt === 'xml', [fileExt]);
-  const isMd = useMemo(() => fileExt.endsWith('_md') || fileExt === 'md', [fileExt]);
-  const isTxt = useMemo(() => fileExt.endsWith('_txt') || fileExt === 'txt', [fileExt]);
+  const isJson = useMemo(
+    () => fileExt.endsWith("_json") || fileExt === "json",
+    [fileExt],
+  );
+  const isYaml = useMemo(
+    () =>
+      fileExt.endsWith("_yaml") ||
+      fileExt === "yaml" ||
+      fileExt.endsWith("_yml") ||
+      fileExt === "yml",
+    [fileExt],
+  );
+  const isCsv = useMemo(
+    () => fileExt.endsWith("_csv") || fileExt === "csv",
+    [fileExt],
+  );
+  const isXml = useMemo(
+    () => fileExt.endsWith("_xml") || fileExt === "xml",
+    [fileExt],
+  );
+  const isMd = useMemo(
+    () => fileExt.endsWith("_md") || fileExt === "md",
+    [fileExt],
+  );
+  const isTxt = useMemo(
+    () => fileExt.endsWith("_txt") || fileExt === "txt",
+    [fileExt],
+  );
 
   const editorLanguage = useMemo(() => {
     if (isPy) return "python";
@@ -227,57 +305,86 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   }, [isPy, isTs, isJs, isJson, isYaml, isXml, isMd, isTodo]);
 
   const getTabIcon = (filePath: string, isActive: boolean) => {
-    if (typeof filePath !== 'string') return <FileText size={13} className="text-slate-400 dark:text-slate-500 shrink-0" />;
-    
+    if (typeof filePath !== "string")
+      return (
+        <FileText
+          size={13}
+          className="text-slate-400 dark:text-slate-500 shrink-0"
+        />
+      );
+
     const lowerPath = filePath.toLowerCase();
-    const isPy = lowerPath.endsWith('_py_node') || lowerPath.endsWith('.py');
-    const isTs = lowerPath.endsWith('_ts_node') || lowerPath.endsWith('.ts');
-    const isJs = lowerPath.endsWith('_js_node') || lowerPath.endsWith('.js');
-    const isJson = lowerPath.endsWith('_json') || lowerPath.endsWith('.json');
-    const isTodo = lowerPath.endsWith('_todo_node') || lowerPath.endsWith('.todo');
-    const isMd = lowerPath.endsWith('_md') || lowerPath.endsWith('.md');
-    
+    const isPy = lowerPath.endsWith("_py_node") || lowerPath.endsWith(".py");
+    const isTs = lowerPath.endsWith("_ts_node") || lowerPath.endsWith(".ts");
+    const isJs = lowerPath.endsWith("_js_node") || lowerPath.endsWith(".js");
+    const isJson = lowerPath.endsWith("_json") || lowerPath.endsWith(".json");
+    const isTodo =
+      lowerPath.endsWith("_todo_node") || lowerPath.endsWith(".todo");
+    const isMd = lowerPath.endsWith("_md") || lowerPath.endsWith(".md");
+
     let isImgIcon = false;
     if (lowerPath.match(/_image_node$|\.(img|image|png|jpe?g|gif|webp)$/i)) {
       isImgIcon = true;
     } else {
       const rawVal = getValueAtPath(parsedData, filePath);
-      const nodeVal = typeof rawVal === 'string' ? rawVal : (typeof jsNodeCodeOverrides[filePath] === 'string' ? jsNodeCodeOverrides[filePath] : "");
-      const rawObj = typeof rawVal === 'object' && rawVal !== null ? rawVal as any : null;
+      const nodeVal =
+        typeof rawVal === "string"
+          ? rawVal
+          : typeof jsNodeCodeOverrides[filePath] === "string"
+            ? jsNodeCodeOverrides[filePath]
+            : "";
+      const rawObj =
+        typeof rawVal === "object" && rawVal !== null ? (rawVal as any) : null;
       const assetIdToCheck = rawObj?.url || rawObj?.filename || nodeVal;
 
-      let assetMimeType = '';
-      if (assetIdToCheck && typeof assetIdToCheck === 'string') {
+      let assetMimeType = "";
+      if (assetIdToCheck && typeof assetIdToCheck === "string") {
         const assetMeta = uploadedMediaMetadata[assetIdToCheck];
         if (assetMeta && assetMeta.mimeType) {
           assetMimeType = assetMeta.mimeType.toLowerCase();
         }
       }
 
-      if (assetMimeType.startsWith('image/') || getMediaType(nodeVal) === 'image') {
+      if (
+        assetMimeType.startsWith("image/") ||
+        getMediaType(nodeVal) === "image"
+      ) {
         isImgIcon = true;
       }
     }
-    
+
     if (isPy) return <PythonIcon />;
     if (isTs) return <TypeScriptIcon />;
     if (isJs) return <JavaScriptIcon />;
     if (isJson) return <JsonIcon />;
-    if (isTodo) return <CheckSquare size={13} className="text-blue-500 shrink-0" />;
-    if (isImgIcon) return <ImageIcon size={13} className="text-purple-500 shrink-0" />;
+    if (isTodo)
+      return <CheckSquare size={13} className="text-blue-500 shrink-0" />;
+    if (isImgIcon)
+      return <ImageIcon size={13} className="text-purple-500 shrink-0" />;
     if (isMd) return <MarkdownIcon />;
 
-    return <FileText size={13} className={isActive ? "text-yellow-500 shrink-0" : "text-slate-400 dark:text-slate-500 shrink-0"} />;
+    return (
+      <FileText
+        size={13}
+        className={
+          isActive
+            ? "text-yellow-500 shrink-0"
+            : "text-slate-400 dark:text-slate-500 shrink-0"
+        }
+      />
+    );
   };
 
   const getCleanName = (filePath: string) => {
-    if (typeof filePath !== 'string') return "";
-    const rawName = filePath.split('.').pop() || "";
+    if (typeof filePath !== "string") return "";
+    const rawName = filePath.split(".").pop() || "";
     if (rawName.endsWith("_ts_node")) return rawName.replace("_ts_node", ".ts");
     if (rawName.endsWith("_js_node")) return rawName.replace("_js_node", ".js");
     if (rawName.endsWith("_py_node")) return rawName.replace("_py_node", ".py");
-    if (rawName.endsWith("_api_node")) return rawName.replace("_api_node", ".api");
-    if (rawName.endsWith("_todo_node")) return rawName.replace("_todo_node", ".todo");
+    if (rawName.endsWith("_api_node"))
+      return rawName.replace("_api_node", ".api");
+    if (rawName.endsWith("_todo_node"))
+      return rawName.replace("_todo_node", ".todo");
     if (rawName.endsWith("_json")) return rawName.replace("_json", ".json");
     if (rawName.endsWith("_yaml")) return rawName.replace("_yaml", ".yaml");
     if (rawName.endsWith("_yml")) return rawName.replace("_yml", ".yml");
@@ -289,7 +396,10 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   };
 
   const mainCleanName = useMemo(() => getCleanName(path), [path]);
-  const activeCleanName = useMemo(() => getCleanName(currentFilePath), [currentFilePath]);
+  const activeCleanName = useMemo(
+    () => getCleanName(currentFilePath),
+    [currentFilePath],
+  );
 
   // Run button visibility check: Show ONLY for .js, .ts, .py files
   const isExecutable = useMemo(() => {
@@ -309,12 +419,18 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     return pData;
   };
 
-  const inputData = useMemo(() => getJsNodeInputData(parsedData, currentFilePath), [parsedData, currentFilePath]);
+  const inputData = useMemo(
+    () => getJsNodeInputData(parsedData, currentFilePath),
+    [parsedData, currentFilePath],
+  );
 
   // Read status and inputs/outputs dynamically
-  const isLoading = jsNodeLoading[currentFilePath] || apiNodeLoading[currentFilePath] || false;
-  const lastError = jsNodeErrors[currentFilePath] || apiNodeErrors[currentFilePath] || null;
-  const resultData = jsNodeResponses[currentFilePath] || apiNodeResponses[currentFilePath];
+  const isLoading =
+    jsNodeLoading[currentFilePath] || apiNodeLoading[currentFilePath] || false;
+  const lastError =
+    jsNodeErrors[currentFilePath] || apiNodeErrors[currentFilePath] || null;
+  const resultData =
+    jsNodeResponses[currentFilePath] || apiNodeResponses[currentFilePath];
   const hasData = resultData !== undefined;
   const executionTime = null;
 
@@ -332,7 +448,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
       setJsNodeCodeOverride(currentFilePath, value);
-      const tab = workspaceTabs.find(t => t.path === currentFilePath);
+      const tab = workspaceTabs.find((t) => t.path === currentFilePath);
       if (tab && !tab.isDirty) {
         markWorkspaceTabDirty(currentFilePath, true);
       }
@@ -368,7 +484,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
           url,
           method: "GET",
           proxyUsed: false,
-        }
+        },
       });
     } finally {
       setApiNodeLoading(targetPath, false);
@@ -412,25 +528,27 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     // 1. Post to the Service Worker Synchronous I/O Bridge
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({
-        type: 'STDIN_SUBMIT',
+        type: "STDIN_SUBMIT",
         sessionId: currentPrompt.sessionId,
-        value: valueToSend
+        value: valueToSend,
       });
     }
 
     // 2. Append standard terminal log of the input
     let logText = String(valueToSend);
-    if (currentPrompt.type === 'confirm') {
+    if (currentPrompt.type === "confirm") {
       logText = valueToSend ? "Yes" : "No";
-    } else if (currentPrompt.type === 'alert') {
+    } else if (currentPrompt.type === "alert") {
       logText = "[Dismissed Alert]";
     }
 
-    await appendLogs(currentFilePath, [{
-      type: 'log',
-      args: [logText],
-      time: new Date().toISOString()
-    }]);
+    await appendLogs(currentFilePath, [
+      {
+        type: "log",
+        args: [logText],
+        time: new Date().toISOString(),
+      },
+    ]);
 
     setTerminalInput("");
     // 3. Clear prompt state to dismiss expectations
@@ -439,17 +557,23 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   const handleTerminalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Check if there is an active running prompt awaiting input for the current file
     const currentPrompt = activePrompts[currentFilePath];
     if (currentPrompt) {
       let finalValue: any = terminalInput;
-      if (currentPrompt.type === 'confirm') {
+      if (currentPrompt.type === "confirm") {
         const normalized = terminalInput.trim().toLowerCase();
         // If empty or y/yes/true/ok/1, it means affirmative. Otherwise negative.
-        const isYes = normalized === "" || normalized === "y" || normalized === "yes" || normalized === "true" || normalized === "1" || normalized === "ok";
+        const isYes =
+          normalized === "" ||
+          normalized === "y" ||
+          normalized === "yes" ||
+          normalized === "true" ||
+          normalized === "1" ||
+          normalized === "ok";
         finalValue = isYes;
-      } else if (currentPrompt.type === 'alert') {
+      } else if (currentPrompt.type === "alert") {
         finalValue = null;
       }
 
@@ -462,11 +586,13 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
     setTerminalInput("");
 
-    await appendLogs(currentFilePath, [{
-      type: "log",
-      args: [`$ ${command}`],
-      time: new Date().toISOString()
-    }]);
+    await appendLogs(currentFilePath, [
+      {
+        type: "log",
+        args: [`$ ${command}`],
+        time: new Date().toISOString(),
+      },
+    ]);
 
     const parts = command.split(/\s+/);
     const cmd = parts[0];
@@ -476,90 +602,117 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
       if (action === "install") {
         const pkgs = parts.slice(2);
         if (pkgs.length === 0) {
-          await appendLogs(currentFilePath, [{
-            type: "error",
-            args: ["ERROR: You must specify at least one package to install."],
-            time: new Date().toISOString()
-          }]);
+          await appendLogs(currentFilePath, [
+            {
+              type: "error",
+              args: [
+                "ERROR: You must specify at least one package to install.",
+              ],
+              time: new Date().toISOString(),
+            },
+          ]);
           return;
         }
 
         for (const pkg of pkgs) {
           const cleanPkg = pkg.trim();
           if (cleanPkg) {
-            await usePyPackageStore.getState().installPackage(cleanPkg, currentFilePath);
+            await usePyPackageStore
+              .getState()
+              .installPackage(cleanPkg, currentFilePath);
           }
         }
       } else if (action === "uninstall" || action === "remove") {
         const pkgs = parts.slice(2);
         if (pkgs.length === 0) {
-          await appendLogs(currentFilePath, [{
-            type: "error",
-            args: ["ERROR: You must specify a package to uninstall."],
-            time: new Date().toISOString()
-          }]);
+          await appendLogs(currentFilePath, [
+            {
+              type: "error",
+              args: ["ERROR: You must specify a package to uninstall."],
+              time: new Date().toISOString(),
+            },
+          ]);
           return;
         }
 
         for (const pkg of pkgs) {
           const cleanPkg = pkg.trim();
           if (cleanPkg) {
-            await usePyPackageStore.getState().uninstallPackage(cleanPkg, currentFilePath);
+            await usePyPackageStore
+              .getState()
+              .uninstallPackage(cleanPkg, currentFilePath);
           }
         }
       } else if (action === "list") {
         const pkgs = usePyPackageStore.getState().installedPackages;
         if (pkgs.length === 0) {
-          await appendLogs(currentFilePath, [{
-            type: "log",
-            args: ["No packages installed in this workspace."],
-            time: new Date().toISOString()
-          }]);
+          await appendLogs(currentFilePath, [
+            {
+              type: "log",
+              args: ["No packages installed in this workspace."],
+              time: new Date().toISOString(),
+            },
+          ]);
           return;
         }
 
         let output = "Package        Version\n";
         output += "-------------- -------\n";
-        pkgs.forEach(p => {
+        pkgs.forEach((p) => {
           output += `${p.name.padEnd(14)} ${p.version}\n`;
         });
 
-        await appendLogs(currentFilePath, [{
-          type: "log",
-          args: [output],
-          time: new Date().toISOString()
-        }]);
+        await appendLogs(currentFilePath, [
+          {
+            type: "log",
+            args: [output],
+            time: new Date().toISOString(),
+          },
+        ]);
       } else {
-        await appendLogs(currentFilePath, [{
-          type: "error",
-          args: [`ERROR: Unknown pip command "pip ${action}". Try: pip install, pip uninstall, pip list`],
-          time: new Date().toISOString()
-        }]);
+        await appendLogs(currentFilePath, [
+          {
+            type: "error",
+            args: [
+              `ERROR: Unknown pip command "pip ${action}". Try: pip install, pip uninstall, pip list`,
+            ],
+            time: new Date().toISOString(),
+          },
+        ]);
       }
     } else if (cmd === "python") {
-      const activeCodeValue = jsNodeCodeOverrides[currentFilePath] || getValueAtPath(parsedData, currentFilePath) || "";
+      const activeCodeValue =
+        jsNodeCodeOverrides[currentFilePath] ||
+        getValueAtPath(parsedData, currentFilePath) ||
+        "";
       onExecute(activeCodeValue);
     } else if (cmd === "clear") {
       clearLogs();
     } else if (cmd === "help") {
-      await appendLogs(currentFilePath, [{
-        type: "log",
-        args: [
-          "Interactive Python Console Shell Commands:\n" +
-          "  pip install <pkgs>   - Install libraries from Pyodide prebuilds or PyPI\n" +
-          "  pip uninstall <pkg>  - Delete a package from the persisted workspace\n" +
-          "  pip list             - Display installed dependencies\n" +
-          "  python               - Run the active Python workbook file\n" +
-          "  clear                - Erase all terminal text"
-        ],
-        time: new Date().toISOString()
-      }]);
+      await appendLogs(currentFilePath, [
+        {
+          type: "log",
+          args: [
+            "Interactive Python Console Shell Commands:\n" +
+              "  pip install <pkgs>   - Install libraries from Pyodide prebuilds or PyPI\n" +
+              "  pip uninstall <pkg>  - Delete a package from the persisted workspace\n" +
+              "  pip list             - Display installed dependencies\n" +
+              "  python               - Run the active Python workbook file\n" +
+              "  clear                - Erase all terminal text",
+          ],
+          time: new Date().toISOString(),
+        },
+      ]);
     } else {
-      await appendLogs(currentFilePath, [{
-        type: "error",
-        args: [`Command error: "${cmd}" is not recognized. Type "help" for a list of valid commands.`],
-        time: new Date().toISOString()
-      }]);
+      await appendLogs(currentFilePath, [
+        {
+          type: "error",
+          args: [
+            `Command error: "${cmd}" is not recognized. Type "help" for a list of valid commands.`,
+          ],
+          time: new Date().toISOString(),
+        },
+      ]);
     }
   };
 
@@ -575,10 +728,13 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   // TypeScript schema auto-generation for Monaco typescript compiler
   useEffect(() => {
-    if (monaco && (editorLanguage === "typescript" || editorLanguage === "javascript")) {
+    if (
+      monaco &&
+      (editorLanguage === "typescript" || editorLanguage === "javascript")
+    ) {
       const { types, entry } = generateTypeScriptSchema(inputData, "Input");
       const libUri = "ts:globals/schema.d.ts";
-      
+
       const libSource = `
 /**
  * Auto-generated Types from surrounding Pipeline State
@@ -602,10 +758,9 @@ declare const console: {
           (monaco.languages as any).typescript &&
           (monaco.languages as any).typescript.typescriptDefaults
         ) {
-          disposable = (monaco.languages as any).typescript.typescriptDefaults.addExtraLib(
-            libSource,
-            libUri
-          );
+          disposable = (
+            monaco.languages as any
+          ).typescript.typescriptDefaults.addExtraLib(libSource, libUri);
         }
       } catch (err) {
         console.warn("Failed to mount type definitions to Monaco service", err);
@@ -631,23 +786,29 @@ declare const console: {
           if ((window as any).__monacoCompilerConfigured) return;
           (window as any).__monacoCompilerConfigured = true;
 
-          const tsDefaults = (monaco.languages as any).typescript.typescriptDefaults;
-          const jsDefaults = (monaco.languages as any).typescript.javascriptDefaults;
+          const tsDefaults = (monaco.languages as any).typescript
+            .typescriptDefaults;
+          const jsDefaults = (monaco.languages as any).typescript
+            .javascriptDefaults;
 
           [tsDefaults, jsDefaults].forEach((defaults) => {
             if (!defaults) return;
             const currentOptions = defaults.getCompilerOptions();
             defaults.setCompilerOptions({
               ...currentOptions,
-              target: (monaco.languages as any).typescript.ScriptTarget?.Latest ?? 99,
-              module: (monaco.languages as any).typescript.ModuleKind?.ESNext ?? 99,
-              moduleResolution: (monaco.languages as any).typescript.ModuleResolutionKind?.NodeJs ?? 2,
+              target:
+                (monaco.languages as any).typescript.ScriptTarget?.Latest ?? 99,
+              module:
+                (monaco.languages as any).typescript.ModuleKind?.ESNext ?? 99,
+              moduleResolution:
+                (monaco.languages as any).typescript.ModuleResolutionKind
+                  ?.NodeJs ?? 2,
               allowNonTsExtensions: false,
               isolatedModules: true,
               moduleDetection: 3,
             });
             defaults.setDiagnosticsOptions({
-              diagnosticCodesToIgnore: [2451, 2300]
+              diagnosticCodesToIgnore: [2451, 2300],
             });
           });
         }
@@ -657,7 +818,8 @@ declare const console: {
     }
   }, [monaco]);
 
-  const { logCount, getLog, clearLogs, startOffset } = useExecutionLogs(currentFilePath);
+  const { logCount, getLog, clearLogs, startOffset } =
+    useExecutionLogs(currentFilePath);
 
   const formatConsoleArg = (arg: any): string => {
     if (typeof arg === "string") return arg;
@@ -690,7 +852,11 @@ declare const console: {
         return null;
       }
       return (
-        <span key={index} style={currentStyle} className="whitespace-pre-wrap break-all">
+        <span
+          key={index}
+          style={currentStyle}
+          className="whitespace-pre-wrap break-all"
+        >
           {part}
         </span>
       );
@@ -699,62 +865,92 @@ declare const console: {
 
   const renderArgElement = (arg: any, index: number) => {
     if (typeof arg === "string") {
-      if (arg.startsWith("__MATPLOTLIB_IMAGE__:") || arg.startsWith("__MATPLOTLIB_IMAGE_JSON__:")) {
-        return (
-          <MatplotlibPlotViewer key={index} imageData={arg} />
-        );
+      if (
+        arg.startsWith("__MATPLOTLIB_IMAGE__:") ||
+        arg.startsWith("__MATPLOTLIB_IMAGE_JSON__:")
+      ) {
+        return <MatplotlibPlotViewer key={index} imageData={arg} />;
       }
-      
+
       // Auto-detect LaTeX patterns
-      const isLatex = /^[\s\n]*\\(mathrm|frac|sqrt|begin|sum|int|mathbf|left|right|alpha|beta|gamma|Delta|pi|mu|sigma|theta|omega|rho|lambda)/.test(arg) || 
-                      /^[\s\n]*\$\$.*\$\$[\s\n]*$/s.test(arg) || 
-                      /^[\s\n]*\\\[.*\\\][\s\n]*$/s.test(arg);
-                      
+      const isLatex =
+        /^[\s\n]*\\(mathrm|frac|sqrt|begin|sum|int|mathbf|left|right|alpha|beta|gamma|Delta|pi|mu|sigma|theta|omega|rho|lambda)/.test(
+          arg,
+        ) ||
+        /^[\s\n]*\$\$.*\$\$[\s\n]*$/s.test(arg) ||
+        /^[\s\n]*\\\[.*\\\][\s\n]*$/s.test(arg);
+
       if (isLatex) {
         try {
-           let tex = arg.trim();
-           if (tex.startsWith('$$') && tex.endsWith('$$')) {
-              tex = tex.slice(2, -2);
-           } else if (tex.startsWith('\\[') && tex.endsWith('\\]')) {
-              tex = tex.slice(2, -2);
-           }
-           return (
-              <div key={index} className="w-full overflow-x-auto py-2 katex-display-wrapper">
-                <div dangerouslySetInnerHTML={{ __html: katex.renderToString(tex, { displayMode: true, throwOnError: false }) }} />
-              </div>
-           );
+          let tex = arg.trim();
+          if (tex.startsWith("$$") && tex.endsWith("$$")) {
+            tex = tex.slice(2, -2);
+          } else if (tex.startsWith("\\[") && tex.endsWith("\\]")) {
+            tex = tex.slice(2, -2);
+          }
+          return (
+            <div
+              key={index}
+              className="w-full overflow-x-auto py-2 katex-display-wrapper"
+            >
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: katex.renderToString(tex, {
+                    displayMode: true,
+                    throwOnError: false,
+                  }),
+                }}
+              />
+            </div>
+          );
         } catch (e) {
-           // Fallback to text if error
+          // Fallback to text if error
         }
       }
 
       const colorized = renderColorizedOutput(arg);
-      return <span key={index} className="whitespace-pre-wrap break-all">{colorized}</span>;
+      return (
+        <span key={index} className="whitespace-pre-wrap break-all">
+          {colorized}
+        </span>
+      );
     }
     if (typeof arg === "undefined") {
       return (
-        <span key={index} className="text-slate-400 dark:text-slate-500 italic whitespace-pre-wrap break-all">
+        <span
+          key={index}
+          className="text-slate-400 dark:text-slate-500 italic whitespace-pre-wrap break-all"
+        >
           undefined
         </span>
       );
     }
     if (arg === null) {
       return (
-        <span key={index} className="text-cyan-500 dark:text-cyan-400 font-bold whitespace-pre-wrap break-all">
+        <span
+          key={index}
+          className="text-cyan-500 dark:text-cyan-400 font-bold whitespace-pre-wrap break-all"
+        >
           null
         </span>
       );
     }
     if (typeof arg === "number") {
       return (
-        <span key={index} className="text-amber-600 dark:text-amber-400 whitespace-pre-wrap break-all">
+        <span
+          key={index}
+          className="text-amber-600 dark:text-amber-400 whitespace-pre-wrap break-all"
+        >
           {arg}
         </span>
       );
     }
     if (typeof arg === "boolean") {
       return (
-        <span key={index} className="text-purple-500 dark:text-purple-400 whitespace-pre-wrap break-all">
+        <span
+          key={index}
+          className="text-purple-500 dark:text-purple-400 whitespace-pre-wrap break-all"
+        >
           {String(arg)}
         </span>
       );
@@ -762,12 +958,19 @@ declare const console: {
     if (typeof arg === "object") {
       const displayed = safeStringify(arg, 2);
       return (
-        <span key={index} className="text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all font-mono">
+        <span
+          key={index}
+          className="text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all font-mono"
+        >
           {displayed}
         </span>
       );
     }
-    return <span key={index} className="whitespace-pre-wrap break-all">{String(arg)}</span>;
+    return (
+      <span key={index} className="whitespace-pre-wrap break-all">
+        {String(arg)}
+      </span>
+    );
   };
 
   // Settings
@@ -804,7 +1007,9 @@ declare const console: {
   const [terminalInput, setTerminalInput] = useState("");
   const [copiedConsole, setCopiedConsole] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"bottom" | "right">("bottom");
-  const [terminalState, setTerminalState] = useState<"normal" | "maximized" | "hidden">("normal");
+  const [terminalState, setTerminalState] = useState<
+    "normal" | "maximized" | "hidden"
+  >("normal");
   const [wordWrap, setWordWrap] = useState<"on" | "off">("on");
 
   const terminalInputRef = useRef<HTMLInputElement>(null);
@@ -841,18 +1046,22 @@ declare const console: {
       // Toggle Terminal: Alt + `, Ctrl + `, Cmd + `
       if ((e.altKey || e.ctrlKey || e.metaKey) && e.key === "`") {
         e.preventDefault();
-        setTerminalState(prev => prev === "hidden" ? "normal" : "hidden");
+        setTerminalState((prev) => (prev === "hidden" ? "normal" : "hidden"));
       }
       // Toggle Word Wrap: Alt + Z
       if (e.altKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        setWordWrap(prev => prev === "on" ? "off" : "on");
+        setWordWrap((prev) => (prev === "on" ? "off" : "on"));
       }
       // Save all modified tabs: Ctrl+Shift+S / Cmd+Shift+S
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "s"
+      ) {
         e.preventDefault();
         const state = useStore.getState();
-        state.workspaceTabs.forEach(tab => {
+        state.workspaceTabs.forEach((tab) => {
           if (tab.isDirty) {
             const unsavedVal = state.jsNodeCodeOverrides[tab.path];
             if (unsavedVal !== undefined) {
@@ -869,17 +1078,30 @@ declare const console: {
 
   // Keep focus settings
   useEffect(() => {
-    if (jsNodeFocusLine !== null && jsNodeFocusLine.path === path && editorRef.current) {
-      try {
-        editorRef.current.revealLineInCenter(jsNodeFocusLine.line);
-        editorRef.current.setPosition({ lineNumber: jsNodeFocusLine.line, column: jsNodeFocusLine.column || 1 });
-        editorRef.current.focus();
-      } catch (err) {
-        // ignore errors gracefully
+    if (jsNodeFocusLine !== null) {
+      if (jsNodeFocusLine.path === currentFilePath && editorRef.current) {
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            try {
+              if (editorRef.current) {
+                editorRef.current.revealLineInCenter(jsNodeFocusLine.line);
+                editorRef.current.setPosition({
+                  lineNumber: jsNodeFocusLine.line,
+                  column: jsNodeFocusLine.column || 1,
+                });
+                editorRef.current.focus();
+              }
+            } catch (err) {
+              // ignore errors gracefully
+            }
+          }, 50);
+        });
+        setJsNodeFocusLine(null);
+      } else if (jsNodeFocusLine.path !== currentFilePath) {
+        openWorkspaceTab(jsNodeFocusLine.path, false);
       }
-      setJsNodeFocusLine(null);
     }
-  }, [jsNodeFocusLine, path, setJsNodeFocusLine]);
+  }, [jsNodeFocusLine, currentFilePath, setJsNodeFocusLine, openWorkspaceTab]);
 
   // Code editor options properties
   const codeEditorOptions = useMemo(() => {
@@ -894,9 +1116,18 @@ declare const console: {
       wordWrap: wordWrap,
       folding: true,
       lineDecorationsWidth: 10,
-      renderWhitespace: settings.renderCharacters ? ("all" as const) : ("none" as const),
+      renderWhitespace: settings.renderCharacters
+        ? ("all" as const)
+        : ("none" as const),
       scrollbar: {
-        verticalSliderSize: settings.verticalSize === "fit" ? 8 : settings.verticalSize === "large" ? 14 : settings.verticalSize === "small" ? 4 : 8,
+        verticalSliderSize:
+          settings.verticalSize === "fit"
+            ? 8
+            : settings.verticalSize === "large"
+              ? 14
+              : settings.verticalSize === "small"
+                ? 4
+                : 8,
         verticalHasArrows: false,
         horizontalHasArrows: false,
         horizontal: "auto" as const,
@@ -907,7 +1138,12 @@ declare const console: {
         verticalScrollbarSize: 8,
         horizontalScrollbarSize: 8,
       },
-      theme: settings.editorTheme === "default" ? (appTheme === "dark" ? "customDark" : "customLight") : settings.editorTheme,
+      theme:
+        settings.editorTheme === "default"
+          ? appTheme === "dark"
+            ? "customDark"
+            : "customLight"
+          : settings.editorTheme,
     };
   }, [settings, appTheme, wordWrap]);
 
@@ -917,7 +1153,8 @@ declare const console: {
 
   const handleMouseDown = useCallback(() => {
     isResizing.current = true;
-    document.body.style.cursor = layoutMode === "bottom" ? "row-resize" : "col-resize";
+    document.body.style.cursor =
+      layoutMode === "bottom" ? "row-resize" : "col-resize";
     document.body.style.userSelect = "none";
   }, [layoutMode]);
 
@@ -1003,7 +1240,9 @@ declare const console: {
   };
 
   const [isMinimapMenuOpen, setIsMinimapMenuOpen] = useState(false);
-  const [activeSubmenu, setActiveSubmenu] = useState<"size" | "slider" | "side" | "theme" | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<
+    "size" | "slider" | "side" | "theme" | null
+  >(null);
   const minimapMenuRef = useRef<HTMLDivElement>(null);
   const minimapBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -1020,12 +1259,20 @@ declare const console: {
       }
     };
     if (isMinimapMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside, { capture: true });
-      document.addEventListener("touchstart", handleClickOutside, { capture: true });
+      document.addEventListener("mousedown", handleClickOutside, {
+        capture: true,
+      });
+      document.addEventListener("touchstart", handleClickOutside, {
+        capture: true,
+      });
     }
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside, { capture: true });
-      document.removeEventListener("touchstart", handleClickOutside, { capture: true });
+      document.removeEventListener("mousedown", handleClickOutside, {
+        capture: true,
+      });
+      document.removeEventListener("touchstart", handleClickOutside, {
+        capture: true,
+      });
     };
   }, [isMinimapMenuOpen]);
 
@@ -1108,8 +1355,13 @@ declare const console: {
                 <span>{mainCleanName}</span>
                 {isEditingOtherFile && (
                   <>
-                    <ChevronRight size={14} className="text-slate-400 shrink-0" />
-                    <span className="text-blue-500 font-medium truncate">{activeCleanName}</span>
+                    <ChevronRight
+                      size={14}
+                      className="text-slate-400 shrink-0"
+                    />
+                    <span className="text-blue-500 font-medium truncate">
+                      {activeCleanName}
+                    </span>
                   </>
                 )}
               </div>
@@ -1122,16 +1374,29 @@ declare const console: {
           <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
             {/* Sidebar Toggle Button */}
             <button
-              onClick={() => saveSettings({ ...settings, isSidebarOpen: settings.isSidebarOpen === false ? true : false })}
+              onClick={() =>
+                saveSettings({
+                  ...settings,
+                  isSidebarOpen:
+                    settings.isSidebarOpen === false ? true : false,
+                })
+              }
               className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
               title="Toggle Sidebar"
             >
-              <PanelLeft size={15} className={settings.isSidebarOpen === false ? "opacity-60" : ""} />
+              <PanelLeft
+                size={15}
+                className={settings.isSidebarOpen === false ? "opacity-60" : ""}
+              />
             </button>
 
             {/* Terminal Toggle Button */}
             <button
-              onClick={() => setTerminalState(terminalState === "hidden" ? "normal" : "hidden")}
+              onClick={() =>
+                setTerminalState(
+                  terminalState === "hidden" ? "normal" : "hidden",
+                )
+              }
               className={`p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors ${terminalState !== "hidden" ? "bg-slate-200/50 dark:bg-slate-800/80 text-blue-500 dark:text-blue-400" : ""}`}
               title="Toggle Terminal Panel"
             >
@@ -1145,7 +1410,11 @@ declare const console: {
               <div className="flex items-center rounded-md bg-slate-200/60 dark:bg-slate-800/80 p-0.5 border border-slate-300 dark:border-slate-700">
                 <button
                   disabled={isLoading}
-                  onClick={() => onExecute(editorRef.current ? editorRef.current.getValue() : code)}
+                  onClick={() =>
+                    onExecute(
+                      editorRef.current ? editorRef.current.getValue() : code,
+                    )
+                  }
                   className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded cursor-pointer transition-colors whitespace-nowrap ${
                     isLoading
                       ? "bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
@@ -1154,12 +1423,19 @@ declare const console: {
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 size={13} className="animate-spin text-white shrink-0" />
+                      <Loader2
+                        size={13}
+                        className="animate-spin text-white shrink-0"
+                      />
                       <span>Running...</span>
                     </>
                   ) : (
                     <>
-                      <Play size={13} fill="currentColor" className="shrink-0" />
+                      <Play
+                        size={13}
+                        fill="currentColor"
+                        className="shrink-0"
+                      />
                       <span>{isApi ? "Fetch" : "Run"}</span>
                     </>
                   )}
@@ -1176,7 +1452,10 @@ declare const console: {
                     }`}
                     title="Stop Execution"
                   >
-                    <Square size={13} fill={isLoading ? "currentColor" : "none"} />
+                    <Square
+                      size={13}
+                      fill={isLoading ? "currentColor" : "none"}
+                    />
                   </button>
                 )}
               </div>
@@ -1200,7 +1479,9 @@ declare const console: {
                 onClick={() => {
                   if (editorRef.current) {
                     try {
-                      editorRef.current.getAction("editor.action.formatDocument").run();
+                      editorRef.current
+                        .getAction("editor.action.formatDocument")
+                        .run();
                     } catch (err) {
                       console.warn("Monaco document formatting error:", err);
                     }
@@ -1214,14 +1495,20 @@ declare const console: {
 
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(editorRef.current ? editorRef.current.getValue() : code);
+                  navigator.clipboard.writeText(
+                    editorRef.current ? editorRef.current.getValue() : code,
+                  );
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
                 className="p-1.5 flex items-center justify-center min-w-[28px] rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
                 title="Copy Contents"
               >
-                {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                {copied ? (
+                  <Check size={14} className="text-emerald-500" />
+                ) : (
+                  <Copy size={14} />
+                )}
               </button>
 
               {/* Advanced Minimap/Editor Config */}
@@ -1245,19 +1532,33 @@ declare const console: {
                     </div>
 
                     <button
-                      onClick={() => saveSettings({ ...settings, enabled: !settings.enabled })}
+                      onClick={() =>
+                        saveSettings({
+                          ...settings,
+                          enabled: !settings.enabled,
+                        })
+                      }
                       className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
                     >
                       <span>Show Minimap</span>
-                      {settings.enabled && <Check size={12} className="text-blue-500" />}
+                      {settings.enabled && (
+                        <Check size={12} className="text-blue-500" />
+                      )}
                     </button>
 
                     <button
-                      onClick={() => saveSettings({ ...settings, renderCharacters: !settings.renderCharacters })}
+                      onClick={() =>
+                        saveSettings({
+                          ...settings,
+                          renderCharacters: !settings.renderCharacters,
+                        })
+                      }
                       className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
                     >
                       <span>Show Whitespace</span>
-                      {settings.renderCharacters && <Check size={12} className="text-blue-500" />}
+                      {settings.renderCharacters && (
+                        <Check size={12} className="text-blue-500" />
+                      )}
                     </button>
 
                     <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
@@ -1266,35 +1567,65 @@ declare const console: {
                     </div>
 
                     <button
-                      onClick={() => setAppTheme(appTheme === "dark" ? "light" : "dark")}
+                      onClick={() =>
+                        setAppTheme(appTheme === "dark" ? "light" : "dark")
+                      }
                       className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        {appTheme === "dark" ? <Sun size={12} /> : <Moon size={12} />}
-                        <span>{appTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
+                        {appTheme === "dark" ? (
+                          <Sun size={12} />
+                        ) : (
+                          <Moon size={12} />
+                        )}
+                        <span>
+                          {appTheme === "dark"
+                            ? "Switch to Light Mode"
+                            : "Switch to Dark Mode"}
+                        </span>
                       </div>
                     </button>
 
                     {/* Editor Themes Nested Options */}
                     <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
                     <button
-                      onClick={() => setActiveSubmenu(activeSubmenu === "theme" ? null : "theme")}
+                      onClick={() =>
+                        setActiveSubmenu(
+                          activeSubmenu === "theme" ? null : "theme",
+                        )
+                      }
                       className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors font-medium text-blue-600 dark:text-blue-400"
                     >
                       <span>Select Theme</span>
-                      <ChevronRight size={13} className={`transform transition-transform ${activeSubmenu === "theme" ? "rotate-90" : ""}`} />
+                      <ChevronRight
+                        size={13}
+                        className={`transform transition-transform ${activeSubmenu === "theme" ? "rotate-90" : ""}`}
+                      />
                     </button>
 
                     {activeSubmenu === "theme" && (
                       <div className="bg-slate-50 dark:bg-[#0d1117] border-y border-slate-200 dark:border-slate-800/80 max-h-40 overflow-auto scrollbar-thin">
-                        {(["default", "one-dark-pro", "dracula", "night-owl", "github-dark", "synthwave-84"] as const).map((t) => (
+                        {(
+                          [
+                            "default",
+                            "one-dark-pro",
+                            "dracula",
+                            "night-owl",
+                            "github-dark",
+                            "synthwave-84",
+                          ] as const
+                        ).map((t) => (
                           <button
                             key={t}
-                            onClick={() => saveSettings({ ...settings, editorTheme: t })}
+                            onClick={() =>
+                              saveSettings({ ...settings, editorTheme: t })
+                            }
                             className="w-full text-left px-4 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 flex justify-between items-center transition-colors font-mono text-[10px]"
                           >
                             <span>{t}</span>
-                            {settings.editorTheme === t && <Check size={10} className="text-blue-500" />}
+                            {settings.editorTheme === t && (
+                              <Check size={10} className="text-blue-500" />
+                            )}
                           </button>
                         ))}
                       </div>
@@ -1316,77 +1647,83 @@ declare const console: {
 
         {/* Workspace Panels Main body */}
         <div className="flex-1 flex overflow-hidden min-h-0 bg-slate-100 dark:bg-[#0c0f16] relative">
-          
           {/* Mobile Sidebar Backdrop */}
           {settings.isSidebarOpen !== false && (
-            <div 
-              className="absolute inset-0 bg-black/50 z-30 md:hidden" 
-              onClick={() => saveSettings({ ...settings, isSidebarOpen: false })} 
+            <div
+              className="absolute inset-0 bg-black/50 z-30 md:hidden"
+              onClick={() =>
+                saveSettings({ ...settings, isSidebarOpen: false })
+              }
             />
           )}
 
           {/* Side Drawer Panel */}
           {settings.isSidebarOpen !== false && (
-          <div 
-            style={{ width: `${settings.sidebarWidth || 260}px` }}
-            className="absolute md:relative top-0 bottom-0 left-0 max-w-[85vw] md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
-          >
-            {/* Elegant Header Sidebar Tabs to switch between Files Explorer and Python Packages Panel */}
-            {isPy ? (
-              <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 p-2 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
-                <button 
-                  onClick={() => setSidebarTab("files")}
-                  className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "files" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
-                >
-                  Explorer
-                </button>
-                <button 
-                  onClick={() => setSidebarTab("packages")}
-                  className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "packages" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
-                >
-                  Packages
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-4 py-3.5 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
-                <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">Explorer</span>
-              </div>
-            )}
-
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {sidebarTab === "files" ? (
-                <FileExplorerPanel />
+            <div
+              style={{ width: `${settings.sidebarWidth || 260}px` }}
+              className="absolute md:relative top-0 bottom-0 left-0 max-w-[85vw] md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
+            >
+              {/* Elegant Header Sidebar Tabs to switch between Files Explorer and Python Packages Panel */}
+              {isPy ? (
+                <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 p-2 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
+                  <button
+                    onClick={() => setSidebarTab("files")}
+                    className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "files" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                  >
+                    Explorer
+                  </button>
+                  <button
+                    onClick={() => setSidebarTab("packages")}
+                    className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "packages" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                  >
+                    Packages
+                  </button>
+                </div>
               ) : (
-                <PyPackagesPanel />
+                <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-4 py-3.5 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
+                  <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">
+                    Explorer
+                  </span>
+                </div>
               )}
+
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {sidebarTab === "files" ? (
+                  <FileExplorerPanel />
+                ) : (
+                  <PyPackagesPanel />
+                )}
+              </div>
+
+              {/* Draggable Resizer */}
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startWidth = settings.sidebarWidth || 260;
+
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const delta = moveEvent.clientX - startX;
+                    const newWidth = Math.max(
+                      160,
+                      Math.min(600, startWidth + delta),
+                    );
+                    saveSettings({ ...settings, sidebarWidth: newWidth });
+                  };
+
+                  const handleMouseUp = () => {
+                    document.removeEventListener("mousemove", handleMouseMove);
+                    document.removeEventListener("mouseup", handleMouseUp);
+                    document.body.style.cursor = "";
+                  };
+
+                  document.body.style.cursor = "col-resize";
+                  document.addEventListener("mousemove", handleMouseMove);
+                  document.addEventListener("mouseup", handleMouseUp);
+                }}
+                className="absolute top-0 right-0 bottom-0 w-1 bg-transparent hover:bg-blue-500 cursor-col-resize z-50 transition-colors"
+              />
             </div>
-            
-            {/* Draggable Resizer */}
-            <div 
-              onMouseDown={(e) => {
-                e.preventDefault();
-                const startX = e.clientX;
-                const startWidth = settings.sidebarWidth || 260;
-                
-                const handleMouseMove = (moveEvent: MouseEvent) => {
-                  const delta = moveEvent.clientX - startX;
-                  const newWidth = Math.max(160, Math.min(600, startWidth + delta));
-                  saveSettings({...settings, sidebarWidth: newWidth});
-                };
-                
-                const handleMouseUp = () => {
-                  document.removeEventListener("mousemove", handleMouseMove);
-                  document.removeEventListener("mouseup", handleMouseUp);
-                  document.body.style.cursor = "";
-                };
-                
-                document.body.style.cursor = "col-resize";
-                document.addEventListener("mousemove", handleMouseMove);
-                document.addEventListener("mouseup", handleMouseUp);
-              }}
-              className="absolute top-0 right-0 bottom-0 w-1 bg-transparent hover:bg-blue-500 cursor-col-resize z-50 transition-colors"
-            />
-          </div>
           )}
 
           {/* Code Editor and Output Split Panels Area */}
@@ -1399,53 +1736,87 @@ declare const console: {
               {/* Tabs list (Editor header) */}
               <div className="flex items-center border-b border-slate-200 dark:border-slate-800 bg-[#f8fafc]/80 dark:bg-[#0c0f16]/40 overflow-x-auto select-none shrink-0 scrollbar-none">
                 {workspaceTabs.length === 0 && (
-                  <div className="px-4 py-2 text-xs font-mono text-slate-400 dark:text-slate-500 italic">No files open</div>
+                  <div className="px-4 py-2 text-xs font-mono text-slate-400 dark:text-slate-500 italic">
+                    No files open
+                  </div>
                 )}
                 {workspaceTabs.map((tab, idx) => {
                   const isActive = currentFilePath === tab.path;
                   const cleanName = getCleanName(tab.path);
-                  
+
                   return (
                     <button
                       key={tab.path}
                       draggable
                       onDragStart={(e) => {
                         (window as any).__isInternalDrag = true;
-                        e.dataTransfer.setData('text/plain', idx.toString());
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.currentTarget.classList.add('opacity-50');
+                        e.dataTransfer.setData("text/plain", idx.toString());
+                        e.dataTransfer.effectAllowed = "move";
+                        e.currentTarget.classList.add("opacity-50");
                       }}
                       onDragEnd={(e) => {
                         (window as any).__isInternalDrag = false;
-                        e.currentTarget.classList.remove('opacity-50');
+                        e.currentTarget.classList.remove("opacity-50");
                       }}
                       onDragOver={(e) => {
                         e.preventDefault();
                         const rect = e.currentTarget.getBoundingClientRect();
                         const isLeft = e.clientX < rect.left + rect.width / 2;
                         if (isLeft) {
-                          e.currentTarget.classList.add('border-l-[3px]', 'border-l-blue-500', 'pl-[13px]');
-                          e.currentTarget.classList.remove('border-r-[3px]', 'border-r-blue-500', 'pr-[13px]');
+                          e.currentTarget.classList.add(
+                            "border-l-[3px]",
+                            "border-l-blue-500",
+                            "pl-[13px]",
+                          );
+                          e.currentTarget.classList.remove(
+                            "border-r-[3px]",
+                            "border-r-blue-500",
+                            "pr-[13px]",
+                          );
                           // maintain normal px-4 padding minus 3px border
                         } else {
-                          e.currentTarget.classList.add('border-r-[3px]', 'border-r-blue-500', 'pr-[13px]');
-                          e.currentTarget.classList.remove('border-l-[3px]', 'border-l-blue-500', 'pl-[13px]');
+                          e.currentTarget.classList.add(
+                            "border-r-[3px]",
+                            "border-r-blue-500",
+                            "pr-[13px]",
+                          );
+                          e.currentTarget.classList.remove(
+                            "border-l-[3px]",
+                            "border-l-blue-500",
+                            "pl-[13px]",
+                          );
                         }
                       }}
                       onDragLeave={(e) => {
-                        e.currentTarget.classList.remove('border-l-[3px]', 'border-l-blue-500', 'pl-[13px]', 'border-r-[3px]', 'border-r-blue-500', 'pr-[13px]');
+                        e.currentTarget.classList.remove(
+                          "border-l-[3px]",
+                          "border-l-blue-500",
+                          "pl-[13px]",
+                          "border-r-[3px]",
+                          "border-r-blue-500",
+                          "pr-[13px]",
+                        );
                       }}
                       onDrop={(e) => {
                         e.preventDefault();
                         const rect = e.currentTarget.getBoundingClientRect();
                         const isLeft = e.clientX < rect.left + rect.width / 2;
-                        e.currentTarget.classList.remove('border-l-[3px]', 'border-l-blue-500', 'pl-[13px]', 'border-r-[3px]', 'border-r-blue-500', 'pr-[13px]');
-                        
-                        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+                        e.currentTarget.classList.remove(
+                          "border-l-[3px]",
+                          "border-l-blue-500",
+                          "pl-[13px]",
+                          "border-r-[3px]",
+                          "border-r-blue-500",
+                          "pr-[13px]",
+                        );
+
+                        const fromIdx = parseInt(
+                          e.dataTransfer.getData("text/plain"),
+                        );
                         if (isNaN(fromIdx)) return;
                         let toIdx = isLeft ? idx : idx + 1;
                         if (fromIdx < toIdx) toIdx--; // adjust for removing from original position
-                        
+
                         if (fromIdx !== toIdx) {
                           const newTabs = [...workspaceTabs];
                           const [moved] = newTabs.splice(fromIdx, 1);
@@ -1468,8 +1839,12 @@ declare const console: {
                       }`}
                     >
                       {getTabIcon(tab.path, isActive)}
-                      <span className={`truncate max-w-[120px] ${tab.isPreview ? "italic" : ""}`}>{cleanName}</span>
-                      
+                      <span
+                        className={`truncate max-w-[120px] ${tab.isPreview ? "italic" : ""}`}
+                      >
+                        {cleanName}
+                      </span>
+
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1480,7 +1855,12 @@ declare const console: {
                         {tab.isDirty ? (
                           <div className="w-2 h-2 rounded-full bg-blue-500 group-hover:hidden" />
                         ) : null}
-                        <X size={12} className={tab.isDirty ? "hidden group-hover:block" : ""} />
+                        <X
+                          size={12}
+                          className={
+                            tab.isDirty ? "hidden group-hover:block" : ""
+                          }
+                        />
                       </span>
                     </button>
                   );
@@ -1491,7 +1871,9 @@ declare const console: {
               <div className="flex-1 relative flex flex-col min-h-0">
                 {isGoToLineOpen && (
                   <div className="absolute top-2 right-4 z-50 bg-slate-50 dark:bg-[#161b22] border border-slate-300 dark:border-slate-700 shadow-xl rounded-md p-1.5 flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-100">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 font-mono pl-1 shrink-0">Go to:</span>
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 font-mono pl-1 shrink-0">
+                      Go to:
+                    </span>
                     <input
                       type="text"
                       placeholder="line:col (e.g. 10:5)"
@@ -1526,148 +1908,249 @@ declare const console: {
                   </div>
                 )}
                 {isSearch ? (
-                  <SearchNodeWorkspace key={currentFilePath} path={currentFilePath} />
+                  <SearchNodeWorkspace
+                    key={currentFilePath}
+                    path={currentFilePath}
+                  />
                 ) : isTodo ? (
                   <TodoWorkspace key={currentFilePath} path={currentFilePath} />
                 ) : isImg ? (
-                  <ImageWorkspace key={currentFilePath} path={currentFilePath} />
+                  <ImageWorkspace
+                    key={currentFilePath}
+                    path={currentFilePath}
+                  />
                 ) : (
-                <SafeEditor
-                  path={currentFilePath}
-                  height="100%"
-                  defaultLanguage="javascript"
-                  language={editorLanguage}
-                  theme={
-                    codeEditorOptions.theme ||
-                    (appTheme === "dark" ? "customDark" : "customLight")
-                  }
-                  value={isEditingOtherFile && typeof otherFileValue === "string" ? otherFileValue : code}
-                  onChange={handleEditorChange}
-                  options={codeEditorOptions}
-                  beforeMount={handleEditorWillMount}
-                  onMount={(editor, m) => {
-                    editorRef.current = editor;
-                    try {
-                      editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyG, () => {
-                        latestRefs.current.setIsGoToLineOpen(true);
-                        latestRefs.current.setGoToLineValue("");
-                      });
-                    } catch (err) {
-                      console.warn("Could not register Ctrl+G command in Monaco", err);
+                  <SafeEditor
+                    path={currentFilePath}
+                    height="100%"
+                    defaultLanguage="javascript"
+                    language={editorLanguage}
+                    theme={
+                      codeEditorOptions.theme ||
+                      (appTheme === "dark" ? "customDark" : "customLight")
                     }
-                    editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
-                      if (latestRefs.current.isExecutable) {
-                        latestRefs.current.onExecute(editor.getValue());
-                        if (latestRefs.current.terminalState === "hidden") {
-                          latestRefs.current.setTerminalState("normal");
-                        }
+                    value={
+                      isEditingOtherFile && typeof otherFileValue === "string"
+                        ? otherFileValue
+                        : code
+                    }
+                    onChange={handleEditorChange}
+                    options={codeEditorOptions}
+                    beforeMount={handleEditorWillMount}
+                    onMount={(editor, m) => {
+                      editorRef.current = editor;
+                      try {
+                        editor.addCommand(
+                          m.KeyMod.CtrlCmd | m.KeyCode.KeyG,
+                          () => {
+                            latestRefs.current.setIsGoToLineOpen(true);
+                            latestRefs.current.setGoToLineValue("");
+                          },
+                        );
+                      } catch (err) {
+                        console.warn(
+                          "Could not register Ctrl+G command in Monaco",
+                          err,
+                        );
                       }
-                    });
-                    editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyS, () => {
-                      const val = editor.getValue();
-                      latestRefs.current.updateNodeValue(latestRefs.current.currentFilePath, val);
-                      latestRefs.current.markWorkspaceTabDirty(latestRefs.current.currentFilePath, false);
-                      // Visual confirmation can be added here if needed
-                    });
-
-                    // Ctrl+Click to open imported file
-                    editor.onMouseDown((e) => {
-                      if (e.event.ctrlKey || e.event.metaKey) {
-                        const position = e.target.position;
-                        if (!position) return;
-                        const model = editor.getModel();
-                        if (!model) return;
-                        const lineContent = model.getLineContent(position.lineNumber);
-                        
-                        let packageName = "";
-                        const importMatch = lineContent.match(/from\s+['"]?([a-zA-Z0-9_.\/-]+)['"]?\s+import/);
-                        const importMatch2 = lineContent.match(/import\s+['"]?([a-zA-Z0-9_.\/-]+)['"]?/);
-                        if (importMatch && lineContent.includes("from")) {
-                          packageName = importMatch[1];
-                        } else if (importMatch2 && lineContent.includes("import")) {
-                          packageName = importMatch2[1];
-                        }
-                        
-                        if (packageName) {
-                          const state = useStore.getState();
-                          if (!state.parsedData) return;
-                          
-                          const currentVirtualPath = getVirtualPath(latestRefs.current.currentFilePath, state.parsedData);
-                          const currentDir = currentVirtualPath.substring(0, currentVirtualPath.lastIndexOf('/')) || '/';
-                          
-                          let resolvedPackage = packageName;
-                          if (packageName.startsWith('.')) {
-                             const dotGroups = packageName.match(/^(\.+)(.*)/);
-                             if (dotGroups) {
-                               const dots = dotGroups[1].length;
-                               const rest = dotGroups[2];
-                               const parts = currentDir.split('/').filter(Boolean);
-                               const back = dots - 1; // . = same, .. = up 1, ... = up 2
-                               const resolvedParts = parts.slice(0, parts.length - back);
-                               if (rest) {
-                                 resolvedPackage = [...resolvedParts, ...rest.split('.')].join('/');
-                               } else {
-                                 resolvedPackage = resolvedParts.join('/');
-                               }
-                             }
-                          } else {
-                             resolvedPackage = packageName.split('.').join('/');
-                          }
-                          
-                          if (!resolvedPackage.startsWith('/')) {
-                             resolvedPackage = '/' + resolvedPackage;
-                          }
-                          
-                          const possibleVFSPaths = [
-                             `${resolvedPackage}.py`,
-                             `${resolvedPackage}/__init__.py`,
-                             `${resolvedPackage}.ts`,
-                             `${resolvedPackage}.js`
-                          ];
-
-                          let foundFsPath = "";
-                          let foundObjectPath = "";
-                          
-                          function traverseFind(obj: any, parentFsPath: string, parentObjPath: string) {
-                            if (typeof obj !== 'object' || obj === null) return;
-                            for (const [key, val] of Object.entries(obj)) {
-                              const currObjPath = parentObjPath ? `${parentObjPath}.${key}` : `root.${key}`;
-                              if (typeof val === 'string') {
-                                let ext = '';
-                                if (key.endsWith('.ts') || key.endsWith('_ts_node')) ext = '.ts';
-                                else if (key.endsWith('.js') || key.endsWith('_js_node')) ext = '.js';
-                                else if (key.endsWith('.py') || key.endsWith('_py_node')) ext = '.py';
-                                else if (key.endsWith('.json') || key.endsWith('_json_node')) ext = '.json';
-                                
-                                if (ext) {
-                                   let baseName = key;
-                                   if (baseName.endsWith('_ts_node')) baseName = baseName.replace(/_ts_node$/, '');
-                                   else if (baseName.endsWith('_js_node')) baseName = baseName.replace(/_js_node$/, '');
-                                   else if (baseName.endsWith('_py_node')) baseName = baseName.replace(/_py_node$/, '');
-                                   if (!baseName.endsWith(ext)) baseName += ext;
-                                   
-                                   const fsPath = parentFsPath ? `${parentFsPath}/${baseName}` : `/${baseName}`;
-                                   if (possibleVFSPaths.includes(fsPath)) {
-                                      foundFsPath = fsPath;
-                                      foundObjectPath = currObjPath;
-                                   }
-                                }
-                              } else if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-                                const nextPath = parentFsPath ? `${parentFsPath}/${key}` : `/${key}`;
-                                traverseFind(val, nextPath, currObjPath);
-                              }
+                      editor.addCommand(
+                        m.KeyMod.CtrlCmd | m.KeyCode.Enter,
+                        () => {
+                          if (latestRefs.current.isExecutable) {
+                            latestRefs.current.onExecute(editor.getValue());
+                            if (latestRefs.current.terminalState === "hidden") {
+                              latestRefs.current.setTerminalState("normal");
                             }
                           }
-                          
-                          traverseFind(state.parsedData, '', '');
-                          if (foundObjectPath) {
-                            latestRefs.current.openWorkspaceTab(foundObjectPath, false);
+                        },
+                      );
+                      editor.addCommand(
+                        m.KeyMod.CtrlCmd | m.KeyCode.KeyS,
+                        () => {
+                          const val = editor.getValue();
+                          latestRefs.current.updateNodeValue(
+                            latestRefs.current.currentFilePath,
+                            val,
+                          );
+                          latestRefs.current.markWorkspaceTabDirty(
+                            latestRefs.current.currentFilePath,
+                            false,
+                          );
+                          // Visual confirmation can be added here if needed
+                        },
+                      );
+
+                      // Ctrl+Click to open imported file
+                      editor.onMouseDown((e) => {
+                        if (e.event.ctrlKey || e.event.metaKey) {
+                          const position = e.target.position;
+                          if (!position) return;
+                          const model = editor.getModel();
+                          if (!model) return;
+                          const lineContent = model.getLineContent(
+                            position.lineNumber,
+                          );
+
+                          let packageName = "";
+                          const importMatch = lineContent.match(
+                            /from\s+['"]?([a-zA-Z0-9_.\/-]+)['"]?\s+import/,
+                          );
+                          const importMatch2 = lineContent.match(
+                            /import\s+['"]?([a-zA-Z0-9_.\/-]+)['"]?/,
+                          );
+                          if (importMatch && lineContent.includes("from")) {
+                            packageName = importMatch[1];
+                          } else if (
+                            importMatch2 &&
+                            lineContent.includes("import")
+                          ) {
+                            packageName = importMatch2[1];
+                          }
+
+                          if (packageName) {
+                            const state = useStore.getState();
+                            if (!state.parsedData) return;
+
+                            const currentVirtualPath = getVirtualPath(
+                              latestRefs.current.currentFilePath,
+                              state.parsedData,
+                            );
+                            const currentDir =
+                              currentVirtualPath.substring(
+                                0,
+                                currentVirtualPath.lastIndexOf("/"),
+                              ) || "/";
+
+                            let resolvedPackage = packageName;
+                            if (packageName.startsWith(".")) {
+                              const dotGroups = packageName.match(/^(\.+)(.*)/);
+                              if (dotGroups) {
+                                const dots = dotGroups[1].length;
+                                const rest = dotGroups[2];
+                                const parts = currentDir
+                                  .split("/")
+                                  .filter(Boolean);
+                                const back = dots - 1; // . = same, .. = up 1, ... = up 2
+                                const resolvedParts = parts.slice(
+                                  0,
+                                  parts.length - back,
+                                );
+                                if (rest) {
+                                  resolvedPackage = [
+                                    ...resolvedParts,
+                                    ...rest.split("."),
+                                  ].join("/");
+                                } else {
+                                  resolvedPackage = resolvedParts.join("/");
+                                }
+                              }
+                            } else {
+                              resolvedPackage = packageName
+                                .split(".")
+                                .join("/");
+                            }
+
+                            if (!resolvedPackage.startsWith("/")) {
+                              resolvedPackage = "/" + resolvedPackage;
+                            }
+
+                            const possibleVFSPaths = [
+                              `${resolvedPackage}.py`,
+                              `${resolvedPackage}/__init__.py`,
+                              `${resolvedPackage}.ts`,
+                              `${resolvedPackage}.js`,
+                            ];
+
+                            let foundFsPath = "";
+                            let foundObjectPath = "";
+
+                            function traverseFind(
+                              obj: any,
+                              parentFsPath: string,
+                              parentObjPath: string,
+                            ) {
+                              if (typeof obj !== "object" || obj === null)
+                                return;
+                              for (const [key, val] of Object.entries(obj)) {
+                                const currObjPath = parentObjPath
+                                  ? `${parentObjPath}.${key}`
+                                  : `root.${key}`;
+                                if (typeof val === "string") {
+                                  let ext = "";
+                                  if (
+                                    key.endsWith(".ts") ||
+                                    key.endsWith("_ts_node")
+                                  )
+                                    ext = ".ts";
+                                  else if (
+                                    key.endsWith(".js") ||
+                                    key.endsWith("_js_node")
+                                  )
+                                    ext = ".js";
+                                  else if (
+                                    key.endsWith(".py") ||
+                                    key.endsWith("_py_node")
+                                  )
+                                    ext = ".py";
+                                  else if (
+                                    key.endsWith(".json") ||
+                                    key.endsWith("_json_node")
+                                  )
+                                    ext = ".json";
+
+                                  if (ext) {
+                                    let baseName = key;
+                                    if (baseName.endsWith("_ts_node"))
+                                      baseName = baseName.replace(
+                                        /_ts_node$/,
+                                        "",
+                                      );
+                                    else if (baseName.endsWith("_js_node"))
+                                      baseName = baseName.replace(
+                                        /_js_node$/,
+                                        "",
+                                      );
+                                    else if (baseName.endsWith("_py_node"))
+                                      baseName = baseName.replace(
+                                        /_py_node$/,
+                                        "",
+                                      );
+                                    if (!baseName.endsWith(ext))
+                                      baseName += ext;
+
+                                    const fsPath = parentFsPath
+                                      ? `${parentFsPath}/${baseName}`
+                                      : `/${baseName}`;
+                                    if (possibleVFSPaths.includes(fsPath)) {
+                                      foundFsPath = fsPath;
+                                      foundObjectPath = currObjPath;
+                                    }
+                                  }
+                                } else if (
+                                  typeof val === "object" &&
+                                  val !== null &&
+                                  !Array.isArray(val)
+                                ) {
+                                  const nextPath = parentFsPath
+                                    ? `${parentFsPath}/${key}`
+                                    : `/${key}`;
+                                  traverseFind(val, nextPath, currObjPath);
+                                }
+                              }
+                            }
+
+                            traverseFind(state.parsedData, "", "");
+                            if (foundObjectPath) {
+                              latestRefs.current.openWorkspaceTab(
+                                foundObjectPath,
+                                false,
+                              );
+                            }
                           }
                         }
-                      }
-                    });
-                  }}
-                />
+                      });
+                    }}
+                  />
                 )}
               </div>
             </div>
@@ -1736,10 +2219,20 @@ declare const console: {
                           for (let i = 0; i < logCount; i++) {
                             const lg = getLog(i);
                             if (lg && lg.args) {
-                              logsToCopy.push(lg.args.map((a: any) => typeof a === "object" ? safeStringify(a) : String(a)).join(" "));
+                              logsToCopy.push(
+                                lg.args
+                                  .map((a: any) =>
+                                    typeof a === "object"
+                                      ? safeStringify(a)
+                                      : String(a),
+                                  )
+                                  .join(" "),
+                              );
                             }
                           }
-                          await navigator.clipboard.writeText(logsToCopy.join("\n"));
+                          await navigator.clipboard.writeText(
+                            logsToCopy.join("\n"),
+                          );
                           setCopiedConsole(true);
                           setTimeout(() => setCopiedConsole(false), 2000);
                         } catch (err) {
@@ -1756,8 +2249,14 @@ declare const console: {
                       title="Copy all console logs"
                       disabled={logCount === 0}
                     >
-                      {copiedConsole ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
-                      <span className="hidden sm:inline">{copiedConsole ? "Copied" : "Copy Output"}</span>
+                      {copiedConsole ? (
+                        <Check size={13} className="text-emerald-500" />
+                      ) : (
+                        <Copy size={13} />
+                      )}
+                      <span className="hidden sm:inline">
+                        {copiedConsole ? "Copied" : "Copy Output"}
+                      </span>
                     </button>
                   )}
 
@@ -1773,7 +2272,7 @@ declare const console: {
                         }
                       }}
                       className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${
-                        (logCount > 0 || lastError)
+                        logCount > 0 || lastError
                           ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
                           : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
                       }`}
@@ -1806,16 +2305,38 @@ declare const console: {
 
                   <div className="flex gap-0.5 items-center">
                     <button
-                      onClick={() => setLayoutMode(layoutMode === "bottom" ? "right" : "bottom")}
+                      onClick={() =>
+                        setLayoutMode(
+                          layoutMode === "bottom" ? "right" : "bottom",
+                        )
+                      }
                       className="p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors hidden sm:block outline-none"
-                      title={layoutMode === "bottom" ? "Layout to Right Side" : "Layout to Bottom"}
+                      title={
+                        layoutMode === "bottom"
+                          ? "Layout to Right Side"
+                          : "Layout to Bottom"
+                      }
                     >
-                      {layoutMode === "bottom" ? <PanelRight size={13} /> : <PanelBottom size={13} />}
+                      {layoutMode === "bottom" ? (
+                        <PanelRight size={13} />
+                      ) : (
+                        <PanelBottom size={13} />
+                      )}
                     </button>
                     <button
-                      onClick={() => setTerminalState(terminalState === "maximized" ? "normal" : "maximized")}
+                      onClick={() =>
+                        setTerminalState(
+                          terminalState === "maximized"
+                            ? "normal"
+                            : "maximized",
+                        )
+                      }
                       className={`p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors outline-none ${terminalState === "maximized" ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200" : ""}`}
-                      title={terminalState === "maximized" ? "Restore Pane Size" : "Maximize Console View"}
+                      title={
+                        terminalState === "maximized"
+                          ? "Restore Pane Size"
+                          : "Maximize Console View"
+                      }
                     >
                       <Maximize size={13} />
                     </button>
@@ -1838,13 +2359,15 @@ declare const console: {
                       <div className="p-4 bg-red-50 dark:bg-red-500/10 border-l-4 border-red-500 text-red-700 dark:text-red-400 text-sm font-mono whitespace-pre-wrap rounded-r flex justify-between items-start gap-2 group/err">
                         <span className="flex-1 min-w-0">
                           {typeof lastError === "object" && lastError !== null
-                            ? (lastError as any).userMessage || (lastError as any).message
+                            ? (lastError as any).userMessage ||
+                              (lastError as any).message
                             : String(lastError)}
                         </span>
                         <CopyButton
                           text={
                             typeof lastError === "object" && lastError !== null
-                              ? (lastError as any).userMessage || (lastError as any).message
+                              ? (lastError as any).userMessage ||
+                                (lastError as any).message
                               : String(lastError)
                           }
                         />
@@ -1884,12 +2407,22 @@ declare const console: {
                           followOutput="auto"
                           itemContent={(index) => {
                             if (index === logCount && lastError) {
-                              const errorStr = typeof lastError === "object" && lastError !== null ? (lastError as any).message : String(lastError);
+                              const errorStr =
+                                typeof lastError === "object" &&
+                                lastError !== null
+                                  ? (lastError as any).message
+                                  : String(lastError);
                               return (
                                 <div className="px-4 py-3 border-b border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex justify-between items-start gap-4 w-full group/err">
                                   <div className="flex-1 min-w-0 font-bold whitespace-pre-wrap flex items-start gap-2">
                                     <span className="shrink-0 mt-0.5">✖</span>
-                                    <span>{renderClickableErrorText(errorStr, currentFilePath, setJsNodeFocusLine)}</span>
+                                    <span>
+                                      {renderClickableErrorText(
+                                        errorStr,
+                                        currentFilePath,
+                                        setJsNodeFocusLine,
+                                      )}
+                                    </span>
                                   </div>
                                   <CopyButton text={errorStr} />
                                 </div>
@@ -1897,7 +2430,11 @@ declare const console: {
                             }
                             const log = getLog(index);
                             if (!log) {
-                              return <div className="px-4 py-0 text-slate-400 text-xs italic">Loading...</div>;
+                              return (
+                                <div className="px-4 py-0 text-slate-400 text-xs italic">
+                                  Loading...
+                                </div>
+                              );
                             }
                             return (
                               <div
@@ -1906,13 +2443,21 @@ declare const console: {
                                 <div className="flex-1 min-w-0 font-mono">
                                   <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
                                     {log.args.map((arg: any, argIdx: number) =>
-                                      renderArgElement(arg, argIdx)
+                                      renderArgElement(arg, argIdx),
                                     )}
                                   </div>
                                 </div>
                                 {log.type === "error" && (
                                   <div className="opacity-0 group-hover/log:opacity-100 focus-within:opacity-100 transition-opacity self-start shrink-0">
-                                    <CopyButton text={log.args.map((arg: any) => typeof arg === "string" ? arg : JSON.stringify(arg)).join(" ")} />
+                                    <CopyButton
+                                      text={log.args
+                                        .map((arg: any) =>
+                                          typeof arg === "string"
+                                            ? arg
+                                            : JSON.stringify(arg),
+                                        )
+                                        .join(" ")}
+                                    />
                                   </div>
                                 )}
                               </div>
@@ -1935,10 +2480,16 @@ declare const console: {
                     >
                       {currentPrompt ? (
                         <span className="text-amber-500 font-bold select-none shrink-0 flex items-center gap-1.5 animate-pulse">
-                          {currentPrompt.type === 'confirm' ? 'Confirm (y/n) ›' : currentPrompt.type === 'alert' ? 'Alert ›' : 'Input ›'}
+                          {currentPrompt.type === "confirm"
+                            ? "Confirm (y/n) ›"
+                            : currentPrompt.type === "alert"
+                              ? "Alert ›"
+                              : "Input ›"}
                         </span>
                       ) : (
-                        <span className="text-emerald-500 font-bold select-none shrink-0">$</span>
+                        <span className="text-emerald-500 font-bold select-none shrink-0">
+                          $
+                        </span>
                       )}
 
                       <input
@@ -1948,18 +2499,23 @@ declare const console: {
                         onChange={(e) => setTerminalInput(e.target.value)}
                         placeholder={
                           currentPrompt
-                            ? currentPrompt.type === 'confirm'
+                            ? currentPrompt.type === "confirm"
                               ? "Type 'y' or 'n' (or click controls) and press Enter..."
-                              : currentPrompt.type === 'alert'
+                              : currentPrompt.type === "alert"
                                 ? "Press Enter (or click OK) to acknowledge..."
-                                : "Type response and press Enter... " + (currentPrompt.promptText && currentPrompt.promptText !== "Python input requested" ? `(${currentPrompt.promptText})` : "")
+                                : "Type response and press Enter... " +
+                                  (currentPrompt.promptText &&
+                                  currentPrompt.promptText !==
+                                    "Python input requested"
+                                    ? `(${currentPrompt.promptText})`
+                                    : "")
                             : "pip install <package>, pip list, clear, help, python..."
                         }
                         className="flex-1 bg-transparent border-0 outline-none p-0 focus:outline-none focus:ring-0 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 leading-normal text-xs font-mono"
                         autoComplete="off"
                       />
 
-                      {currentPrompt && currentPrompt.type === 'confirm' && (
+                      {currentPrompt && currentPrompt.type === "confirm" && (
                         <div className="flex gap-1.5 shrink-0 select-none items-center">
                           <button
                             type="button"
@@ -1978,7 +2534,7 @@ declare const console: {
                         </div>
                       )}
 
-                      {currentPrompt && currentPrompt.type === 'alert' && (
+                      {currentPrompt && currentPrompt.type === "alert" && (
                         <button
                           type="button"
                           onClick={() => submitActivePrompt(null)}
@@ -1992,17 +2548,22 @@ declare const console: {
                         <button
                           type="button"
                           onClick={async () => {
-                            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                            if (
+                              navigator.serviceWorker &&
+                              navigator.serviceWorker.controller
+                            ) {
                               navigator.serviceWorker.controller.postMessage({
-                                type: 'STDIN_CANCEL',
-                                sessionId: currentPrompt.sessionId
+                                type: "STDIN_CANCEL",
+                                sessionId: currentPrompt.sessionId,
                               });
                             }
-                            await appendLogs(currentFilePath, [{
-                              type: 'warn',
-                              args: ['[Cancelled]'],
-                              time: new Date().toISOString()
-                            }]);
+                            await appendLogs(currentFilePath, [
+                              {
+                                type: "warn",
+                                args: ["[Cancelled]"],
+                                time: new Date().toISOString(),
+                              },
+                            ]);
                             setActivePrompt(currentFilePath, null);
                           }}
                           className="p-1 px-2.5 hover:bg-red-500/10 hover:text-red-600 text-slate-400 dark:hover:text-red-400 cursor-pointer shrink-0 border border-dashed border-slate-350 dark:border-slate-800 hover:border-red-500/40 rounded text-[10px] font-bold uppercase tracking-wider font-sans select-none"
@@ -2020,6 +2581,6 @@ declare const console: {
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

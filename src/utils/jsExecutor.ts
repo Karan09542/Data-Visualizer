@@ -1,108 +1,133 @@
-import { useStore } from '../store/useStore';
-import lodashGet from 'lodash.get';
-import { transform } from 'sucrase';
-import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionStore';
-import { buildVirtualFS, getVirtualPath } from './vfs';
+import { useStore } from "../store/useStore";
+import lodashGet from "lodash.get";
+import { transform } from "sucrase";
+import {
+  appendLogs,
+  resetNodeSession,
+  abortExecutionQueue,
+} from "./executionStore";
+import { buildVirtualFS, getVirtualPath } from "./vfs";
 
 export const activeWorkers: Record<string, Worker> = {};
 export const activeRejectors: Record<string, (reason?: any) => void> = {};
 
-export const abortJsNode = (path: string) => { abortExecutionQueue(path);
-    if (activeWorkers[path]) {
-        activeWorkers[path].terminate();
-        delete activeWorkers[path];
-    }
-    if (activeRejectors[path]) {
-        activeRejectors[path](new Error("Execution aborted by user"));
-        delete activeRejectors[path];
-    }
+export const abortJsNode = (path: string) => {
+  abortExecutionQueue(path);
+  if (activeWorkers[path]) {
+    activeWorkers[path].terminate();
+    delete activeWorkers[path];
+  }
+  if (activeRejectors[path]) {
+    activeRejectors[path](new Error("Execution aborted by user"));
+    delete activeRejectors[path];
+  }
 };
 
 export const executeJsNode = async (path: string, codeToRun: string) => {
-    // Safely abort any previous execution first to prevent concurrent overlapping state and solve execution sequence conflicts.
-    abortJsNode(path);
+  // Safely abort any previous execution first to prevent concurrent overlapping state and solve execution sequence conflicts.
+  abortJsNode(path);
 
-    const startTime = performance.now();
-    const store = useStore.getState();
-    const { parsedData, setJsNodeLoading, setJsNodeError, setJsNodeResponse, setJsNodeLogs } = store;
+  const startTime = performance.now();
+  const store = useStore.getState();
+  const {
+    parsedData,
+    setJsNodeLoading,
+    setJsNodeError,
+    setJsNodeResponse,
+    setJsNodeLogs,
+  } = store;
 
-    // Extract input data (parent object without this js_node)
-    let inputData = null;
-    const parts = path.split('.');
-    if (parts.length > 1) {
-      parts.pop(); // remove last key
-      const parentPath = parts.join('.');
-      
-      let parentObj = null;
-      try {
-        if (parentPath === 'root' || parentPath === '') {
+  // Extract input data (parent object without this js_node)
+  let inputData = null;
+  const parts = path.split(".");
+  if (parts.length > 1) {
+    parts.pop(); // remove last key
+    const parentPath = parts.join(".");
+
+    let parentObj = null;
+    try {
+      if (parentPath === "root" || parentPath === "") {
+        parentObj = parsedData;
+      } else {
+        const lodashPath = parentPath.startsWith("root.")
+          ? parentPath.substring(5)
+          : parentPath.startsWith("root[")
+            ? parentPath.substring(4)
+            : parentPath;
+        if (!lodashPath) {
           parentObj = parsedData;
         } else {
-           const lodashPath = parentPath.startsWith('root.') ? parentPath.substring(5) : parentPath.startsWith('root[') ? parentPath.substring(4) : parentPath;
-           if (!lodashPath) {
-             parentObj = parsedData;
-           } else {
-             parentObj = lodashGet(parsedData, lodashPath);
-           }
+          parentObj = lodashGet(parsedData, lodashPath);
         }
-      } catch(e) {
-         console.warn("Could not extract input data", e);
       }
-      
-      if (typeof parentObj === 'object' && parentObj !== null) {
-          const clonedObj = Array.isArray(parentObj) ? [...parentObj] : { ...parentObj };
-          const thisKey = path.split('.').pop()?.replace(/\[[0-9]+\]$/, '');
-          if (thisKey && !Array.isArray(clonedObj)) {
-            delete clonedObj[thisKey];
-          }
-          inputData = clonedObj;
-      } else {
-          inputData = parentObj;
-      }
-    } else {
-      inputData = parsedData;
+    } catch (e) {
+      console.warn("Could not extract input data", e);
     }
 
-    setJsNodeLoading(path, true);
-    setJsNodeError(path, null);
-    
-    try {
-      const sessionId = Date.now().toString() + Math.random().toString(36).substring(7);
-      if (store.autoClearLogs) {
-          await resetNodeSession(path, sessionId);
+    if (typeof parentObj === "object" && parentObj !== null) {
+      const clonedObj = Array.isArray(parentObj)
+        ? [...parentObj]
+        : { ...parentObj };
+      const thisKey = path
+        .split(".")
+        .pop()
+        ?.replace(/\[[0-9]+\]$/, "");
+      if (thisKey && !Array.isArray(clonedObj)) {
+        delete clonedObj[thisKey];
       }
+      inputData = clonedObj;
+    } else {
+      inputData = parentObj;
+    }
+  } else {
+    inputData = parsedData;
+  }
 
-      // Setup Virtual Filesystem
-      const vfs = buildVirtualFS(parsedData);
-      const state = useStore.getState();
-      for (const [objPath, codeOverride] of Object.entries(state.jsNodeCodeOverrides)) {
-          if (codeOverride !== undefined) {
-              const vPath = getVirtualPath(objPath, parsedData);
-              if (vPath) vfs[vPath] = codeOverride;
+  setJsNodeLoading(path, true);
+  setJsNodeError(path, null);
+
+  try {
+    const sessionId =
+      Date.now().toString() + Math.random().toString(36).substring(7);
+    if (store.autoClearLogs) {
+      await resetNodeSession(path, sessionId);
+    }
+
+    // Setup Virtual Filesystem
+    const vfs = buildVirtualFS(parsedData);
+    const state = useStore.getState();
+    for (const [objPath, codeOverride] of Object.entries(
+      state.jsNodeCodeOverrides,
+    )) {
+      if (codeOverride !== undefined) {
+        const vPath = getVirtualPath(objPath, parsedData);
+        if (vPath) vfs[vPath] = codeOverride;
+      }
+    }
+    const entryPath = getVirtualPath(path, parsedData);
+    vfs[entryPath] = codeToRun; // Override with the current edited code
+
+    // Transpilation Phase (JS -> JS with CommonJS imports via Sucrase)
+    const compiledVfs: Record<string, string> = {};
+    for (const [vPath, vCode] of Object.entries(vfs)) {
+      if (vPath.endsWith(".ts") || vPath.endsWith(".js")) {
+        try {
+          // even JS files might use 'import', so we use sucrase to convert to CJS
+          compiledVfs[vPath] = transform(vCode, {
+            transforms: ["typescript", "imports"],
+          }).code;
+        } catch (compileErr: any) {
+          if (vPath === entryPath) {
+            throw new Error(`Compilation Failed: ${compileErr.message}`);
           }
+          console.warn(`Failed to compile ${vPath}:`, compileErr);
+        }
+      } else if (vPath.endsWith(".json")) {
+        compiledVfs[vPath] = vCode;
       }
-      const entryPath = getVirtualPath(path, parsedData);
-      vfs[entryPath] = codeToRun; // Override with the current edited code
+    }
 
-      // Transpilation Phase (JS -> JS with CommonJS imports via Sucrase)
-      const compiledVfs: Record<string, string> = {};
-      for (const [vPath, vCode] of Object.entries(vfs)) {
-          if (vPath.endsWith('.ts') || vPath.endsWith('.js')) {
-              try {
-                  // even JS files might use 'import', so we use sucrase to convert to CJS
-                  compiledVfs[vPath] = transform(vCode, { transforms: ['typescript', 'imports'] }).code;
-              } catch (compileErr: any) {
-                  if (vPath === entryPath) {
-                      throw new Error(`Compilation Failed: ${compileErr.message}`);
-                  }
-                  console.warn(`Failed to compile ${vPath}:`, compileErr);
-              }
-          } else if (vPath.endsWith('.json')) {
-              compiledVfs[vPath] = `module.exports = ${vCode};`;
-          }
-      }
-
-       const workerCode = `
+    const workerCode = `
          self.addEventListener('error', (e) => {
              e.preventDefault();
              self.postMessage({ success: false, error: e.message || 'Worker global error', stack: e.error ? e.error.stack : undefined });
@@ -249,6 +274,18 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                     if (!vfsData[resolved]) throw new Error(\`Cannot resolve module '\${request}' from '\${currentPath}'\`);
                     
                     if (self.__modules__[resolved]) return self.__modules__[resolved].exports;
+
+                    if (resolved.endsWith('.json')) {
+                        const parsed = JSON.parse(vfsData[resolved]);
+                        const module = { exports: parsed };
+                        Object.defineProperty(parsed, 'default', {
+                            value: parsed,
+                            enumerable: false,
+                            configurable: true
+                        });
+                        self.__modules__[resolved] = module;
+                        return module.exports;
+                    }
                     
                     const module = { exports: {} };
                     self.__modules__[resolved] = module;
@@ -281,97 +318,108 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                self.postMessage({ success: false, error: eMsg, stack: eStack });
             }
          }
-       `.replace(/\\`/g, '`').replace(/\\\$/g, '$');
+       `
+      .replace(/\\`/g, "`")
+      .replace(/\\\$/g, "$");
 
-       const blob = new Blob([workerCode], { type: 'application/javascript' });
-       const workerUrl = URL.createObjectURL(blob);
-       const worker = new Worker(workerUrl);
-       
-       activeWorkers[path] = worker;
+    const blob = new Blob([workerCode], { type: "application/javascript" });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
 
-       const timeoutMs = 60000;
-       
-       const executionPromise = new Promise((resolve, reject) => {
-          activeRejectors[path] = reject;
-          
-          let hasFinished = false;
-          
-          const cleanup = () => {
-              if (activeWorkers[path] === worker) delete activeWorkers[path];
-              if (activeRejectors[path] === reject) delete activeRejectors[path];
-          };
+    activeWorkers[path] = worker;
 
-          worker.onmessage = async (e) => {
-             if (e.data.type === 'logs') {
-                 await appendLogs(path, e.data.logs);
-                 return;
-             }
+    const timeoutMs = 60000;
 
-             hasFinished = true;
-             if (e.data.type === 'need_prompt') {
-                  hasFinished = false; // reset finished state for timeout
-                  const s = useStore.getState();
-                  s.setActivePrompt(path, {
-                      sessionId: e.data.sessionId,
-                      promptText: e.data.promptText,
-                      defaultValue: e.data.defaultValue,
-                      type: e.data.promptType || 'prompt'
-                  });
-                  return;
-              }
+    const executionPromise = new Promise((resolve, reject) => {
+      activeRejectors[path] = reject;
 
-              if (e.data.success) {
-                resolve(e.data);
-             } else {
-                reject({ message: e.data.error || "Execution failed", stack: e.data.stack, isWorkerError: true });
-             }
-             worker.terminate();
-             URL.revokeObjectURL(workerUrl);
-             cleanup();
-          };
+      let hasFinished = false;
 
-          worker.onerror = (e) => {
-             e.preventDefault();
-             hasFinished = true;
-             reject(new Error(e.message));
-             worker.terminate();
-             URL.revokeObjectURL(workerUrl);
-             cleanup();
-          };
+      const cleanup = () => {
+        if (activeWorkers[path] === worker) delete activeWorkers[path];
+        if (activeRejectors[path] === reject) delete activeRejectors[path];
+      };
 
-          setTimeout(() => {
-             if (!hasFinished) {
-               worker.terminate();
-               URL.revokeObjectURL(workerUrl);
-               cleanup();
-               reject(new Error(`Execution Timeout: Script ran longer than ${timeoutMs}ms.`));
-             }
-          }, timeoutMs);
+      worker.onmessage = async (e) => {
+        if (e.data.type === "logs") {
+          await appendLogs(path, e.data.logs);
+          return;
+        }
 
-          worker.postMessage({ vfs: compiledVfs, entryPath, input: inputData });
-       });
+        hasFinished = true;
+        if (e.data.type === "need_prompt") {
+          hasFinished = false; // reset finished state for timeout
+          const s = useStore.getState();
+          s.setActivePrompt(path, {
+            sessionId: e.data.sessionId,
+            promptText: e.data.promptText,
+            defaultValue: e.data.defaultValue,
+            type: e.data.promptType || "prompt",
+          });
+          return;
+        }
 
-       const response: any = await executionPromise;
-       
-       const endTime = performance.now();
-       const duration = Math.round(endTime - startTime);
-       setJsNodeResponse(path, response.result);
-       store.setJsNodeRunMetadata(path, duration, "Just now");
-       
-    } catch (err: any) {
-       let errMsg = err.message || "Unknown error";
-       if (err.isWorkerError && err.stack) {
-           const match = err.stack.match(/<anonymous>:(\d+):(\d+)/) || err.stack.match(/eval:(\d+):(\d+)/);
-           if (match) {
-               const line = Math.max(1, parseInt(match[1]) - 3);
-               errMsg = `${errMsg}\n\n    at js:${line}:${match[2]} [Ln ${line}]`;
-           }
-       }
-       const endTime = performance.now();
-       const duration = Math.round(endTime - startTime);
-       store.setJsNodeRunMetadata(path, duration, "Just now");
-       setJsNodeError(path, errMsg);
-    } finally {
-       setJsNodeLoading(path, false);
+        if (e.data.success) {
+          resolve(e.data);
+        } else {
+          reject({
+            message: e.data.error || "Execution failed",
+            stack: e.data.stack,
+            isWorkerError: true,
+          });
+        }
+        worker.terminate();
+        URL.revokeObjectURL(workerUrl);
+        cleanup();
+      };
+
+      worker.onerror = (e) => {
+        e.preventDefault();
+        hasFinished = true;
+        reject(new Error(e.message));
+        worker.terminate();
+        URL.revokeObjectURL(workerUrl);
+        cleanup();
+      };
+
+      setTimeout(() => {
+        if (!hasFinished) {
+          worker.terminate();
+          URL.revokeObjectURL(workerUrl);
+          cleanup();
+          reject(
+            new Error(
+              `Execution Timeout: Script ran longer than ${timeoutMs}ms.`,
+            ),
+          );
+        }
+      }, timeoutMs);
+
+      worker.postMessage({ vfs: compiledVfs, entryPath, input: inputData });
+    });
+
+    const response: any = await executionPromise;
+
+    const endTime = performance.now();
+    const duration = Math.round(endTime - startTime);
+    setJsNodeResponse(path, response.result);
+    store.setJsNodeRunMetadata(path, duration, "Just now");
+  } catch (err: any) {
+    let errMsg = err.message || "Unknown error";
+    if (err.isWorkerError && err.stack) {
+      const match =
+        err.stack.match(/<anonymous>:(\d+):(\d+)/) ||
+        err.stack.match(/eval:(\d+):(\d+)/);
+      if (match) {
+        const line = Math.max(1, parseInt(match[1]) - 3);
+        errMsg = `${errMsg}\n\n    at js:${line}:${match[2]} [Ln ${line}]`;
+      }
     }
+    const endTime = performance.now();
+    const duration = Math.round(endTime - startTime);
+    store.setJsNodeRunMetadata(path, duration, "Just now");
+    setJsNodeError(path, errMsg);
+  } finally {
+    setJsNodeLoading(path, false);
+  }
 };
