@@ -47,6 +47,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   
   const [activeSidebarItem, setActiveSidebarItem] = useState(() => sessionStorage.getItem(`${path}_sidebar`) || "All Results");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
   const [isLangOpen, setIsLangOpen] = useState(false);
   const langDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -350,8 +351,20 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     }
   };
 
-  const loadArticle = async (title: string, langOverride?: string) => {
-    setIsSearching(true);
+  const loadArticle = async (title: string, langOverride?: string, preliminaryData?: any) => {
+    // If we have preliminary data (title, summary, thumbnail), set it immediately to show the viewer
+    if (preliminaryData) {
+      setActiveArticle({
+        title: preliminaryData.title || title,
+        description: preliminaryData.description || "",
+        extract: preliminaryData.summary || preliminaryData.snippet || "",
+        thumbnail: preliminaryData.thumbnail ? (typeof preliminaryData.thumbnail === 'string' ? { source: preliminaryData.thumbnail } : preliminaryData.thumbnail) : null,
+        html: "",
+        sections: [],
+        isLoading: true
+      });
+    }
+
     try {
       const lang = langOverride || language;
       const [summaryRes, parseRes] = await Promise.all([
@@ -369,14 +382,15 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
          thumbnail: summaryData.thumbnail || null,
          content_urls: summaryData.content_urls || null,
          html: parseData.parse?.text?.["*"] || "",
-         sections: parseData.parse?.sections || []
+         sections: parseData.parse?.sections || [],
+         isLoading: false
       };
 
       setActiveArticle(articleData);
+      return articleData;
     } catch(err) {
       console.error(err);
-    } finally {
-      setIsSearching(false);
+      return null;
     }
   };
 
@@ -448,25 +462,30 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
       </AnimatePresence>
 
       <div className={`
-        fixed lg:static inset-y-0 left-0 z-[210] w-[280px] lg:w-[260px] h-full bg-slate-100 dark:bg-[#0B1120] border-r border-slate-200 dark:border-slate-800 flex flex-col pt-4 overflow-y-auto shrink-0 transition-transform duration-300 shadow-2xl lg:shadow-none
+        fixed lg:relative inset-y-0 left-0 z-[210] bg-slate-100 dark:bg-[#0B1120] border-r border-slate-200 dark:border-slate-800 flex flex-col pt-4 overflow-y-auto shrink-0 transition-all duration-300 shadow-2xl lg:shadow-none
         ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+        ${isSidebarCollapsed ? "lg:w-[80px]" : "w-[280px] lg:w-[320px]"}
       `}>
-        <div className="px-5 mb-8 flex items-center justify-between">
+        <div className={`px-5 mb-8 flex items-center ${isSidebarCollapsed ? "justify-center" : "justify-between"}`}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-              <Search size={18} strokeWidth={2.5} />
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
+              <Search size={22} strokeWidth={2.5} />
             </div>
-            <span className="text-lg font-bold text-slate-900 dark:text-slate-100">Knowledge</span>
+            {!isSidebarCollapsed && (
+              <span className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Knowledge</span>
+            )}
           </div>
-          <button 
-            className="lg:hidden p-2 text-slate-500 hover:text-slate-800 dark:hover:text-white"
-            onClick={() => setIsMobileMenuOpen(false)}
-          >
-            <X size={20} />
-          </button>
+          {!isSidebarCollapsed && (
+            <button 
+              className="lg:hidden p-2 text-slate-500 hover:text-slate-800 dark:hover:text-white"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
 
-        <div className="flex flex-col gap-1 px-3">
+        <div className="flex flex-col gap-1.5 px-3">
           {[
             { id: 'All Results', icon: Search },
             { id: 'Images', icon: ImageIcon },
@@ -477,52 +496,87 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
             <button 
               key={item.id}
               onClick={() => handleSidebarClick(item.id)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium text-[15px]
+              className={`flex items-center gap-3 rounded-xl transition-all font-bold text-[15px] group
+                ${isSidebarCollapsed ? "justify-center p-3" : "px-4 py-3"}
                 ${activeSidebarItem === item.id 
-                  ? 'bg-blue-600/10 text-blue-600 dark:text-blue-500' 
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'}`}
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800/60'}`}
+              title={isSidebarCollapsed ? item.id : ""}
             >
-              <item.icon size={18} />
-              {item.id}
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="ml-auto text-xs bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full">{item.badge}</span>
+              <item.icon size={20} className={`${activeSidebarItem === item.id ? "text-white" : "group-hover:scale-110 transition-transform"}`} />
+              {!isSidebarCollapsed && (
+                <>
+                  <span className="flex-1 text-left">{item.id}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${activeSidebarItem === item.id ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </>
               )}
             </button>
           ))}
         </div>
 
-      <div className="mt-8 mb-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-        Recent Searches
-      </div>
-      <div className="flex flex-col gap-0.5 px-3">
-        {searchHistory.slice(0, 5).map(h => (
-          <button 
-            key={h.id}
-            onClick={() => {
-              setInputValue(h.query);
-              executeSearch(h.query, 0);
-            }}
-            className="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-800/50 rounded-lg transition-all text-sm group text-left truncate"
-          >
-            <Search size={14} className="opacity-50" />
-            <span className="truncate">{h.query}</span>
-          </button>
-        ))}
-      </div>
+      {!isSidebarCollapsed && (
+        <>
+          <div className="mt-10 mb-4 px-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+            Recent Searches
+          </div>
+          <div className="flex flex-col gap-0.5 px-3">
+            {searchHistory.slice(0, 5).map(h => (
+              <button 
+                key={h.id}
+                onClick={() => {
+                  setInputValue(h.query);
+                  executeSearch(h.query, 0);
+                }}
+                className="flex items-center gap-3 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800/40 rounded-xl transition-all text-sm group text-left truncate"
+              >
+                <Search size={14} className="opacity-40 group-hover:opacity-100 transition-opacity" />
+                <span className="truncate font-medium">{h.query}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
-      <div className="mt-auto p-4">
+      <div className="mt-auto p-4 border-t border-slate-200 dark:border-slate-800/50">
         <div 
           onClick={() => setIsDarkMode(!isDarkMode)}
-          className="flex items-center justify-between px-3 py-3 rounded-xl bg-slate-100 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800/50 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800/50 transition-colors"
+          className={`flex items-center gap-2 rounded-xl transition-colors cursor-pointer border border-transparent
+            ${isSidebarCollapsed ? "justify-center p-2" : "justify-between px-3 py-3 bg-slate-200/50 dark:bg-black/20 hover:bg-slate-200 dark:hover:bg-black/40"}
+          `}
+          title={isSidebarCollapsed ? (isDarkMode ? 'Light Mode' : 'Dark Mode') : ""}
         >
-          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-            {isDarkMode ? <Moon size={16} /> : <Sun size={16} />} 
-            {isDarkMode ? 'Dark Mode' : 'Light Mode'}
-          </div>
-          <div className={`w-10 h-6 rounded-full relative transition-colors ${isDarkMode ? 'bg-blue-600 shadow-[0_0_10px_rgba(37,99,235,0.4)]' : 'bg-slate-300'}`}>
-            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isDarkMode ? 'right-1' : 'left-1'}`}></div>
-          </div>
+          {!isSidebarCollapsed && (
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+              {isDarkMode ? <Moon size={14} /> : <Sun size={14} />} 
+              {isDarkMode ? 'Dark' : 'Light'}
+            </div>
+          )}
+          {isSidebarCollapsed ? (
+             isDarkMode ? <Moon size={20} className="text-blue-500" /> : <Sun size={20} className="text-amber-500" />
+          ) : (
+            <div className={`w-9 h-5 rounded-full relative transition-colors ${isDarkMode ? 'bg-blue-600 shadow-inner' : 'bg-slate-300 shadow-inner'}`}>
+              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-all ${isDarkMode ? 'right-0.5' : 'left-0.5'}`}></div>
+            </div>
+          )}
         </div>
+        
+        <button 
+          onClick={() => {
+            const next = !isSidebarCollapsed;
+            setIsSidebarCollapsed(next);
+            localStorage.setItem('sidebar_collapsed', String(next));
+          }}
+          className={`hidden lg:flex items-center gap-3 w-full mt-3 px-4 py-3 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition-all font-bold text-xs uppercase tracking-widest
+            ${isSidebarCollapsed ? "justify-center" : "justify-start"}
+          `}
+        >
+          {isSidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          {!isSidebarCollapsed && <span>Collapse</span>}
+        </button>
       </div>
     </div>
     </>
@@ -716,9 +770,19 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     
     if (isSearching && list.length === 0) {
       return (
-        <div className="flex flex-col gap-5 w-full">
+        <div className="flex flex-col gap-1 w-full max-w-4xl mx-auto">
            {[...Array(5)].map((_, i) => (
-             <div key={i} className="animate-pulse bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800/50 rounded-2xl h-40 w-full"></div>
+             <div key={i} className="py-8 px-2 border-b border-slate-100 dark:border-slate-800/40 flex flex-col sm:flex-row gap-6 animate-pulse">
+                <div className="w-full sm:w-44 h-48 sm:h-44 bg-slate-100 dark:bg-slate-800/50 rounded-2xl" />
+                <div className="flex-1 space-y-4 pt-1">
+                   <div className="h-3 w-20 bg-slate-100 dark:bg-slate-800/50 rounded" />
+                   <div className="h-6 w-3/4 bg-slate-100 dark:bg-slate-800/50 rounded-lg" />
+                   <div className="space-y-2">
+                      <div className="h-4 w-full bg-slate-100 dark:bg-slate-800/50 rounded" />
+                      <div className="h-4 w-5/6 bg-slate-100 dark:bg-slate-800/50 rounded" />
+                   </div>
+                </div>
+             </div>
            ))}
         </div>
       );
@@ -729,55 +793,54 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     }
 
     return (
-      <div className="flex flex-col gap-5 w-full">
+      <div className="flex flex-col gap-1 w-full max-w-4xl mx-auto">
         {list.map((r, i) => (
           <div 
             key={i} 
-            className="flex flex-col sm:flex-row gap-5 items-start bg-white dark:bg-[#151D2C]/60 hover:bg-blue-50/50 dark:hover:bg-[#1A2333] border border-slate-200 dark:border-slate-800/50 hover:border-blue-200 dark:hover:border-slate-600 p-5 rounded-3xl transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-pointer group w-full"
-            onClick={() => loadArticle(r.title)}
+            className="flex flex-col sm:flex-row gap-6 items-start py-8 px-2 border-b border-slate-100 dark:border-slate-800/40 hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-all cursor-pointer group w-full"
+            onClick={() => loadArticle(r.title, undefined, r)}
           >
-            {r.thumbnail && (
-              <div className="w-full sm:w-40 h-48 sm:h-40 shrink-0 bg-slate-100 dark:bg-[#0B1120] rounded-2xl overflow-hidden shadow-lg relative border border-slate-200 dark:border-slate-800">
-                <img src={r.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+            {r.thumbnail ? (
+              <div className="w-full sm:w-44 h-48 sm:h-44 shrink-0 bg-slate-100 dark:bg-[#0B1120] rounded-2xl overflow-hidden relative border border-slate-100 dark:border-slate-800/50 shadow-sm">
+                <img src={r.thumbnail} crossOrigin="anonymous" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
+              </div>
+            ) : (
+              <div className="w-full sm:w-44 h-48 sm:h-44 shrink-0 bg-slate-50 dark:bg-slate-800/30 rounded-2xl flex items-center justify-center border border-slate-100 dark:border-slate-800/30">
+                 <BookOpen size={32} className="text-slate-200 dark:text-slate-700" />
               </div>
             )}
-            <div className="flex-1 flex flex-col justify-center min-h-[160px] min-w-0 w-full">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-5 h-5 bg-white rounded flex items-center justify-center p-1">
-                   <span className="font-serif font-bold text-black text-[10px]">W</span>
+            <div className="flex-1 min-w-0 w-full pt-1">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-5 h-5 bg-white dark:bg-slate-200 rounded-md flex items-center justify-center">
+                   <span className="font-serif font-black text-black text-[10px]">W</span>
                 </div>
-                <span className="text-[13px] font-medium text-slate-600 dark:text-slate-400">Wikipedia</span>
+                <span className="text-[12px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Wikipedia</span>
               </div>
-              <h3 className="text-[20px] sm:text-[22px] font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 hover:underline decoration-blue-600 dark:decoration-blue-400 decoration-2 underline-offset-4 mb-2 leading-tight transition-colors break-words">
+              <h3 className="text-[22px] sm:text-[24px] font-black text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 leading-tight transition-colors mb-3">
                 {r.title}
               </h3>
               <p 
-                className="text-[14px] sm:text-[15px] leading-relaxed text-slate-600 dark:text-slate-400 mb-6 line-clamp-2 break-words"
+                className="text-[15px] sm:text-[16px] leading-relaxed text-slate-500 dark:text-slate-400 mb-6 line-clamp-3 break-words font-medium"
                 dangerouslySetInnerHTML={{ __html: r.snippet || r.summary || "" }}
               />
-              <div className="flex items-center gap-3 flex-wrap mt-auto">
-                {r.categories?.slice(0, 4).map((c: string) => (
-                  <span key={c} className="text-[11px] px-3 py-1 bg-blue-100 dark:bg-slate-800/80 text-blue-600 dark:text-blue-300 font-medium rounded-lg truncate max-w-full">
-                    {c}
-                  </span>
-                ))}
-              </div>
-              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-200 dark:border-slate-800/50">
-                  <div className="text-[11px] sm:text-[12px] text-slate-500 font-medium truncate pr-2">
-                    {r.timestamp && `Updated ${new Date(r.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`}
-                    {r.timestamp && r.wordcount && <span className="mx-1 sm:mx-2 opacity-50">•</span>}
-                    {r.wordcount ? `${Math.max(1, Math.ceil(r.wordcount / 200))} min read` : (r.timestamp ? '' : '3 min read')}
+              
+              <div className="flex items-center justify-between group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-3 text-[12px] font-semibold text-slate-400 dark:text-slate-600">
+                    <span>{r.wordcount ? `${Math.max(1, Math.ceil(r.wordcount / 200))}m reading` : '3m reading'}</span>
+                    <span className="w-1 h-1 rounded-full bg-slate-200 dark:bg-slate-800" />
+                    <span className="hidden sm:inline">{r.timestamp && new Date(r.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</span>
                   </div>
-                 <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 shrink-0">
-                   <button onClick={(e) => { e.stopPropagation(); toggleSaveArticle(r); }} className="hover:text-blue-400 transition-colors">
-                     <Bookmark size={18} fill={savedArticles.find(a => a.title === r.title) ? "currentColor" : "none"} className={savedArticles.find(a => a.title === r.title) ? "text-blue-400" : ""} />
+                 <div className="flex items-center gap-4 text-slate-400 dark:text-slate-500">
+                   <button onClick={(e) => { e.stopPropagation(); toggleSaveArticle(r); }} className="hover:text-blue-500 transition-all transform active:scale-90">
+                     <Bookmark size={18} fill={savedArticles.find(a => a.title === r.title) ? "currentColor" : "none"} className={savedArticles.find(a => a.title === r.title) ? "text-blue-500" : ""} />
                    </button>
                    <button 
                      onClick={(e) => { 
                        e.stopPropagation(); 
                        window.open(`https://${language}.wikipedia.org/wiki/${encodeURIComponent(r.title)}`, '_blank'); 
                      }} 
-                     className="hover:text-slate-800 dark:text-slate-200 transition-colors"
+                     className="hover:text-slate-900 dark:hover:text-white transition-all transform active:scale-90"
                    >
                      <ExternalLink size={18} />
                    </button>
@@ -788,6 +851,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
         ))}
       </div>
     );
+
   };
 
   const renderKnowledgePanel = () => {
@@ -808,7 +872,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
          <div className="bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
            {knowledgePanel.thumbnail?.source && (
              <div className="w-full h-[280px] relative group border-b border-slate-200 dark:border-slate-800">
-               <img src={knowledgePanel.thumbnail.source} className="w-full h-full object-cover" />
+               <img src={knowledgePanel.thumbnail.source} crossOrigin="anonymous" className="w-full h-full object-cover" />
                <div className="absolute inset-0 bg-gradient-to-t from-white dark:from-[#151D2C] via-white/40 dark:via-[#151D2C]/40 to-transparent"></div>
                <button onClick={() => toggleSaveArticle(knowledgePanel)} className={`absolute top-4 right-4 w-10 h-10 ${savedArticles.find(a => a.title === knowledgePanel.title) ? 'bg-blue-500/80 hover:bg-blue-600' : 'bg-black/40 hover:bg-black/60'} backdrop-blur-md rounded-full flex items-center justify-center text-white transition`}>
                   <Bookmark size={18} fill={savedArticles.find(a => a.title === knowledgePanel.title) ? "currentColor" : "none"} />
@@ -949,7 +1013,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
               className="break-inside-avoid mb-4 inline-block w-full relative group rounded-2xl overflow-hidden bg-white dark:bg-[#151D2C] cursor-zoom-in"
               onClick={() => setLightboxImage({ page, img })}
             >
-              <img src={img.url} className="w-full h-auto object-cover select-none group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+              <img src={img.url} crossOrigin="anonymous" className="w-full h-auto object-cover select-none group-hover:scale-105 transition-transform duration-500" loading="lazy" />
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end pointer-events-none">
                  <p className="text-white text-sm font-bold line-clamp-2 drop-shadow-md mb-1">{page.title.replace('File:', '')}</p>
                  <p className="text-white/70 text-[11px]">{img.width}x{img.height}</p>
@@ -984,7 +1048,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar">
               <div className="bg-slate-100 dark:bg-black/40 w-full aspect-square md:aspect-video flex items-center justify-center p-4">
-                <img src={img.url} className="max-w-full max-h-full object-contain shadow-lg" loading="lazy" />
+                <img src={img.url} crossOrigin="anonymous" className="max-w-full max-h-full object-contain shadow-lg" loading="lazy" />
               </div>
               <div className="p-6">
                 <a href={img.descriptionurl} target="_blank" rel="noreferrer" className="text-xl font-bold hover:text-blue-500 mb-2 block">
@@ -1003,7 +1067,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
         <div className="w-[400px] shrink-0 sticky top-36 hidden xl:flex flex-col h-fit max-h-[calc(100vh-140px)] overflow-y-auto no-scrollbar pb-10">
           <div className="bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
             <div className="w-full relative bg-slate-100 dark:bg-black/40 min-h-[250px] flex items-center justify-center p-4 group">
-               <img src={img.url} className="w-full h-auto max-h-[400px] object-contain shadow-lg" />
+               <img src={img.url} crossOrigin="anonymous" className="w-full h-auto max-h-[400px] object-contain shadow-lg" />
                <button className="absolute top-4 right-4 p-2 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60" onClick={() => setLightboxImage(null)}>
                  <X size={20} />
                </button>
@@ -1045,42 +1109,48 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   };
 
   return (
-    <div className="w-full h-full flex bg-slate-50 dark:bg-[#0F1623] text-slate-800 dark:text-slate-200 overflow-hidden style-wrapper font-sans">
+    <div className="w-full h-full flex bg-white dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 overflow-hidden style-wrapper font-sans">
       <style dangerouslySetInnerHTML={{__html: `
         .searchmatch { font-weight: bold; color: #60a5fa; background: rgba(96, 165, 250, 0.15); border-radius: 2px; padding: 0 2px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
 
+      {/* Left Container - Knowledge Navigation */}
       {renderSidebar()}
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto relative no-scrollbar">
-         {renderTopBar()}
-         
-         <div className="flex-1 w-full max-w-[1400px] mx-auto px-6 pt-2 pb-20">
-            {renderStats()}
-            <div className="flex gap-8">
-               <div className="flex-1 min-w-0">
-                 {activeTab === "Images" || activeSidebarItem === "Images" ? renderImages() : renderResults()}
-                 {renderLoadMore()}
-               </div>
-               {(activeTab !== "Images" && activeSidebarItem !== "Images") && renderKnowledgePanel()}
-               {renderImagePanel()}
-            </div>
-         </div>
-      </div>
+      {/* Right Container - Content Viewer area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-slate-50 dark:bg-[#0F1623]">
+        <AnimatePresence mode="wait">
+           {activeArticle && (
+             <ArticleReader 
+               activeArticle={activeArticle} 
+               setActiveArticle={setActiveArticle} 
+               loadArticle={loadArticle}
+               toggleSaveArticle={toggleSaveArticle}
+               savedArticles={savedArticles}
+               language={language}
+             />
+           )}
+        </AnimatePresence>
 
-      <AnimatePresence>
-         {activeArticle && (
-           <ArticleReader 
-             activeArticle={activeArticle} 
-             setActiveArticle={setActiveArticle} 
-             loadArticle={loadArticle}
-             toggleSaveArticle={toggleSaveArticle}
-             savedArticles={savedArticles}
-           />
-         )}
-      </AnimatePresence>
+        {/* Existing Content Layer */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto relative no-scrollbar">
+           {renderTopBar()}
+           
+           <div className="flex-1 w-full max-w-[1800px] mx-auto px-4 sm:px-8 pt-2 pb-20">
+              {renderStats()}
+              <div className="flex flex-col lg:flex-row gap-8">
+                 <div className="flex-1 min-w-0">
+                   {activeTab === "Images" || activeSidebarItem === "Images" ? renderImages() : renderResults()}
+                   {renderLoadMore()}
+                 </div>
+                 {(activeTab !== "Images" && activeSidebarItem !== "Images") && renderKnowledgePanel()}
+                 {renderImagePanel()}
+              </div>
+           </div>
+        </div>
+      </div>
     </div>
   );
 }

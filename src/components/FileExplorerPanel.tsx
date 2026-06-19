@@ -41,6 +41,8 @@ import {
   MarkdownIcon,
   TextIcon,
 } from "./FileIcons";
+import { performWorkspaceRenameScope, cleanNodeName } from "../utils/workspaceIntelliSense";
+import { getVirtualPath } from "../utils/vfs";
 
 interface ExplorerItem {
   id: string; // E.g., 'root.src.user_ts_node'
@@ -727,11 +729,23 @@ function isFileSystemMeaningful(value: any): boolean {
   };
 
   const executeRenameItem = async (parentPath: string, oldKey: string, finalNewKey: string, editingPath: string) => {
+    // Determine absolute VFS paths BEFORE mutation
+    const oldVfsPath = getVirtualPath(editingPath, parsedData);
+
     const updated = renameKeyAtPath(parsedData, parentPath, oldKey, finalNewKey);
-    await handleSave(updated);
+    const newPath = parentPath === "root" ? `root.${finalNewKey}` : `${parentPath}.${finalNewKey}`;
+    
+    let finalUpdated = updated;
+    if (oldVfsPath) {
+      const newVfsPath = getVirtualPath(newPath, updated);
+      if (newVfsPath && oldVfsPath !== newVfsPath) {
+        finalUpdated = performWorkspaceRenameScope(updated, oldVfsPath, newVfsPath);
+      }
+    }
+
+    await handleSave(finalUpdated);
 
     // If it was the active file or tab, update
-    const newPath = parentPath === "root" ? `root.${finalNewKey}` : `${parentPath}.${finalNewKey}`;
     updateWorkspaceTabPath(editingPath, newPath);
     
     setEditingPath(null);

@@ -38,7 +38,7 @@ function TextareaFallback(props: EditorProps) {
     theme.includes("dark") ||
     theme.includes("Dark") ||
     theme === "vs-dark";
-  
+
   return (
     <textarea
       value={value}
@@ -66,43 +66,64 @@ function SafeEditor(props: EditorProps) {
 
   let resolvedPath = props.path;
   if (resolvedPath) {
-    if (resolvedPath.endsWith("_py_node")) {
-      resolvedPath = resolvedPath.replace(/_py_node$/, ".py");
-    } else if (resolvedPath.endsWith("_ts_node")) {
-      resolvedPath = resolvedPath.replace(/_ts_node$/, ".ts");
-    } else if (resolvedPath.endsWith("_js_node")) {
-      resolvedPath = resolvedPath.replace(/_js_node$/, ".js");
-    } else if (resolvedPath.endsWith("_api_node")) {
-      resolvedPath = resolvedPath.replace(/_api_node$/, ".api");
+    if (
+      resolvedPath.startsWith("file:///") ||
+      resolvedPath.startsWith("inmemory://")
+    ) {
+      // Keep it as is
     } else {
-      const lowerPath = resolvedPath.toLowerCase();
-      const hasExtension = lowerPath.endsWith(".js") || 
-                            lowerPath.endsWith(".ts") || 
-                            lowerPath.endsWith(".py") || 
-                            lowerPath.endsWith(".json") || 
-                            lowerPath.endsWith(".md") || 
-                            lowerPath.endsWith(".html") || 
-                            lowerPath.endsWith(".css") || 
-                            lowerPath.endsWith(".api");
+      const parts = resolvedPath
+        .replace(/^root\.?/, "")
+        .split(/\.|(?=\[)/)
+        .filter(Boolean);
+
+      const cleanParts = parts.map((part) => {
+        let p = part;
+        if (p.startsWith("[")) p = p.slice(1, -1);
+        if (p.endsWith("_py_node")) return p.replace(/_py_node$/, ".py");
+        if (p.endsWith("_ts_node")) return p.replace(/_ts_node$/, ".ts");
+        if (p.endsWith("_js_node")) return p.replace(/_js_node$/, ".js");
+        if (p.endsWith("_api_node")) return p.replace(/_api_node$/, ".api");
+        if (p.endsWith("_json_node")) return p.replace(/_json_node$/, ".json");
+        if (p.endsWith("_json")) return p.replace(/_json$/, ".json");
+        if (p.endsWith("_yaml")) return p.replace(/_yaml$/, ".yaml");
+        if (p.endsWith("_yml")) return p.replace(/_yml$/, ".yml");
+        if (p.endsWith("_csv")) return p.replace(/_csv$/, ".csv");
+        if (p.endsWith("_xml")) return p.replace(/_xml$/, ".xml");
+        if (p.endsWith("_md")) return p.replace(/_md$/, ".md");
+        if (p.endsWith("_txt")) return p.replace(/_txt$/, ".txt");
+        return p;
+      });
+
+      let cleanPath = cleanParts.join("/");
+
+      const lowerPath = cleanPath.toLowerCase();
+      const hasExtension =
+        lowerPath.endsWith(".js") ||
+        lowerPath.endsWith(".ts") ||
+        lowerPath.endsWith(".py") ||
+        lowerPath.endsWith(".json") ||
+        lowerPath.endsWith(".md") ||
+        lowerPath.endsWith(".html") ||
+        lowerPath.endsWith(".css") ||
+        lowerPath.endsWith(".api");
+
       if (!hasExtension) {
-        let cleanPath = resolvedPath.replace(/\./g, "/");
         if (lang === "python") cleanPath += ".py";
         else if (lang === "typescript") cleanPath += ".ts";
         else if (lang === "javascript") cleanPath += ".js";
         else if (lang === "json") cleanPath += ".json";
         else if (lang === "markdown") cleanPath += ".md";
-        else {
-          cleanPath += `.${ext}`;
-        }
-        resolvedPath = `file:///${cleanPath}`;
+        else cleanPath += `.${ext}`;
       }
+      resolvedPath = `file:///${cleanPath}`;
     }
   } else {
     resolvedPath = `inmemory://model-${componentId}.${ext}`;
   }
 
-  const activeKey = props.path 
-    ? `path-${resolvedPath}` 
+  const activeKey = props.path
+    ? `path-${resolvedPath}`
     : `lang-${lang}-${componentId}`;
 
   const mergedOptions = React.useMemo(() => {
@@ -134,15 +155,15 @@ function SafeEditor(props: EditorProps) {
   };
 
   return (
-    <EditorErrorBoundary 
-      resetTrigger={activeKey} 
+    <EditorErrorBoundary
+      resetTrigger={activeKey}
       fallback={<TextareaFallback {...props} />}
     >
-      <MonacoEditor 
+      <MonacoEditor
         key={activeKey}
-        {...props} 
-        path={resolvedPath} 
-        options={mergedOptions} 
+        {...props}
+        path={resolvedPath}
+        options={mergedOptions}
         onMount={handleOnMount}
       />
     </EditorErrorBoundary>

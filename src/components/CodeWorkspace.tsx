@@ -50,6 +50,7 @@ import {
 } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
+import { registerWorkspaceIntelliSense, syncWorkspaceModelsToMonaco } from "../utils/workspaceIntelliSense";
 import { getMediaType } from "./NodeRenderer";
 import FileExplorerPanel from "./FileExplorerPanel";
 import {
@@ -805,6 +806,7 @@ declare const console: {
                   ?.NodeJs ?? 2,
               allowNonTsExtensions: false,
               isolatedModules: true,
+              resolveJsonModule: true,
               moduleDetection: 3,
             });
             defaults.setDiagnosticsOptions({
@@ -1102,6 +1104,12 @@ declare const console: {
       }
     }
   }, [jsNodeFocusLine, currentFilePath, setJsNodeFocusLine, openWorkspaceTab]);
+
+  useEffect(() => {
+    if (monaco && parsedData) {
+      syncWorkspaceModelsToMonaco(monaco, parsedData);
+    }
+  }, [monaco, parsedData]);
 
   // Code editor options properties
   const codeEditorOptions = useMemo(() => {
@@ -1939,6 +1947,7 @@ declare const console: {
                     beforeMount={handleEditorWillMount}
                     onMount={(editor, m) => {
                       editorRef.current = editor;
+                      registerWorkspaceIntelliSense(m, editor);
                       try {
                         editor.addCommand(
                           m.KeyMod.CtrlCmd | m.KeyCode.KeyG,
