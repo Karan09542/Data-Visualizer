@@ -740,6 +740,7 @@ const EquationInput = ({
   hoveredVar,
   error,
   onAddEnter,
+  onBlur,
   globalTime = 1,
 }: any) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -1098,7 +1099,10 @@ const EquationInput = ({
             onClick={(e) => setCursorPos(e.currentTarget.selectionStart || 0)}
             onKeyUp={(e) => setCursorPos(e.currentTarget.selectionStart || 0)}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+            onBlur={() => {
+              setTimeout(() => setIsFocused(false), 200);
+              if (onBlur) onBlur();
+            }}
             onKeyDown={handleKeyDown}
             className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
             placeholder={isFocused ? "e.g. a * sin(b*x + c)" : ""}
@@ -1430,8 +1434,23 @@ const LabelInput = ({
     let latexStr = value;
     // Try to parse as mathjs first to give it the "math like" formatting if it is an equation
     try {
-      const node = mathjs.parse(value);
-      latexStr = node.toTex();
+      const eqIndex = value.indexOf("=");
+      if (
+        eqIndex !== -1 &&
+        !value.includes("==") &&
+        !value.includes(">=") &&
+        !value.includes("<=") &&
+        !value.includes("!=")
+      ) {
+        const lhs = value.slice(0, eqIndex).trim();
+        const rhs = value.slice(eqIndex + 1).trim();
+        const lhsTex = mathjs.parse(lhs).toTex();
+        const rhsTex = mathjs.parse(rhs).toTex();
+        latexStr = `${lhsTex} = ${rhsTex}`;
+      } else {
+        const node = mathjs.parse(value);
+        latexStr = node.toTex();
+      }
     } catch (e) {
       // It's not a valid mathjs expression, stick to raw value
     }
@@ -1504,8 +1523,23 @@ const SafeLabel = ({
 
   let finalTex = tex;
   try {
-    const node = mathjs.parse(tex);
-    finalTex = node.toTex();
+    const eqIndex = tex.indexOf("=");
+    if (
+      eqIndex !== -1 &&
+      !tex.includes("==") &&
+      !tex.includes(">=") &&
+      !tex.includes("<=") &&
+      !tex.includes("!=")
+    ) {
+      const lhs = tex.slice(0, eqIndex).trim();
+      const rhs = tex.slice(eqIndex + 1).trim();
+      const lhsTex = mathjs.parse(lhs).toTex();
+      const rhsTex = mathjs.parse(rhs).toTex();
+      finalTex = `${lhsTex} = ${rhsTex}`;
+    } else {
+      const node = mathjs.parse(tex);
+      finalTex = node.toTex();
+    }
   } catch (e) {
     // Stick to raw tex
   }
@@ -1970,6 +2004,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   }, []);
 
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [showGridControls, setShowGridControls] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(
@@ -2282,6 +2317,31 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   // Debounced auto-save of state to node data
   const lastSavedValue = useRef<string | null>(null);
 
+  // Maintain actual latest state references to ensure instant event/onBlur handlers and unmount cleanups are never stale
+  const functionsRef = useRef(functions);
+  const variablesRef = useRef(variables);
+  const groupsRef = useRef(groups);
+
+  useEffect(() => { fnsRefUpdate: { functionsRef.current = functions; } }, [functions]);
+  useEffect(() => { varsRefUpdate: { variablesRef.current = variables; } }, [variables]);
+  useEffect(() => { grpsRefUpdate: { groupsRef.current = groups; } }, [groups]);
+
+  const saveImmediately = React.useCallback((
+    fns = functionsRef.current,
+    vars = variablesRef.current,
+    grps = groupsRef.current,
+  ) => {
+    if (!data || !data.path) return;
+    const stateToSave = {
+      functions: fns,
+      variables: vars,
+      groups: grps,
+    };
+    const newVal = JSON.stringify(stateToSave, null, 2);
+    lastSavedValue.current = newVal;
+    updateNodeValue(data.path, newVal);
+  }, [data, updateNodeValue]);
+
   const serializedValue =
     typeof data?.value === "object" && data?.value !== null
       ? JSON.stringify(data.value)
@@ -2342,9 +2402,36 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         updateNodeValue(data.path, newVal);
       }, 500); // 500ms debounce
 
-      return () => clearTimeout(timeoutId);
+      return () => {
+        clearTimeout(timeoutId);
+      };
     }
   }, [functions, variables, groups, data.path, updateNodeValue]);
+
+  useEffect(() => {
+    return () => {
+      // On unmount/path-change, flush any pending unsaved changes safely:
+      const latestFns = functionsRef.current;
+      const latestVars = variablesRef.current;
+      const latestGrps = groupsRef.current;
+
+      const stateToSave = {
+        functions: latestFns,
+        variables: latestVars,
+        groups: latestGrps,
+      };
+      const newValStr = JSON.stringify(stateToSave, null, 2);
+      if (newValStr !== lastSavedValue.current) {
+        lastSavedValue.current = newValStr;
+        // Defer to next tick to avoid React "cannot update while rendering" warning
+        setTimeout(() => {
+          if (data && data.path) {
+            useStore.getState().updateNodeValue(data.path, newValStr);
+          }
+        }, 0);
+      }
+    };
+  }, [data?.path]);
 
   const getAxisLabel = (n: number) => {
     if (n === 0) return 0; // Usually the origin is skipped or 0, let's keep 0
@@ -2578,7 +2665,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   };
 
   const handleDeleteVar = (id: string) => {
-    setVariables((prev) => prev.filter((v) => v.id !== id));
+    const next = variables.filter((v) => v.id !== id);
+    setVariables(next);
+    saveImmediately(undefined, next);
   };
 
   const handleUpdateExpr = (id: string, expr: string) => {
@@ -2689,7 +2778,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   };
 
   const handleRemoveFunction = (id: string) => {
-    setFunctions((prev) => prev.filter((f) => f.id !== id));
+    const next = functions.filter((f) => f.id !== id);
+    setFunctions(next);
+    saveImmediately(next);
     setActiveExample(null);
   };
 
@@ -3004,6 +3095,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         </div>
         <div className="flex items-center gap-1 nodrag">
           <button
+            onClick={() => setShowGridControls((prev) => !prev)}
+            className={`p-1 rounded transition-colors md:hidden ${
+              showGridControls 
+                ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" 
+                : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+            title="Grid & Axis Settings"
+          >
+            <Settings size={16} />
+          </button>
+          <button
             onClick={() => setViewResetKey((k) => k + 1)}
             className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
             title="Reset Origin (Center Graph)"
@@ -3031,7 +3133,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         {/* Mobile Overlay */}
         {isMobileSidebarOpen && (
           <div
-            className="absolute inset-0 bg-slate-900/20 dark:bg-slate-900/40 z-10 md:hidden nodrag"
+            className="absolute inset-0 bg-slate-900/20 dark:bg-slate-900/40 z-[45] md:hidden nodrag"
             onClick={() => {
               setIsMobileSidebarOpen(false);
             }}
@@ -3043,7 +3145,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           isPanelVisible && (
             <div
               ref={sidebarRef}
-              className={`bg-slate-50 dark:bg-slate-800 flex flex-col border-r border-slate-200 dark:border-slate-700 nodrag z-20 absolute inset-y-0 left-0 md:relative transition-transform duration-300 md:translate-x-0 w-full sm:w-[85vw] md:w-[var(--sidebar-width)] md:max-w-none ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
+              className={`bg-slate-50 dark:bg-slate-800 flex flex-col border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative transition-transform duration-300 md:translate-x-0 w-full sm:w-[85vw] md:w-[var(--sidebar-width)] md:max-w-none ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
               style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
               onClick={() => setActiveActionMenuId(null)}
             >
@@ -3108,7 +3210,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           }
                         }}
                         className={`flex flex-col md:flex-row md:items-center gap-2 bg-white dark:bg-slate-900/50 p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
-                      ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""}
+                      ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-30" : "z-10"}
                     `}
                         style={{ borderLeftColor: f.color }}
                       >
@@ -3272,6 +3374,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               onChange={(val: string) =>
                                 handleUpdateExpr(f.id, val)
                               }
+                              onBlur={saveImmediately}
                               variables={variables}
                               hoveredVar={hoveredVar}
                               setHoveredVar={setHoveredVar}
@@ -3430,21 +3533,37 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             {showPreviewLatex ? (
                                               (() => {
                                                 try {
-                                                  const parsed = mathjs.parse(
-                                                    f.expr,
-                                                  );
-                                                  const texStr = parsed.toTex();
-                                                  let prefix = "";
-                                                  if (f.type === "polar")
-                                                    prefix = "r = ";
-                                                  else if (
-                                                    f.type === "parametric"
-                                                  )
-                                                    prefix = "[x,y] = ";
-                                                  else prefix = "y = ";
+                                                  let fullTex = "";
+                                                  const eqIndex = f.expr.indexOf("=");
+                                                  if (
+                                                    eqIndex !== -1 &&
+                                                    !f.expr.includes("==") &&
+                                                    !f.expr.includes(">=") &&
+                                                    !f.expr.includes("<=") &&
+                                                    !f.expr.includes("!=")
+                                                  ) {
+                                                    const lhs = f.expr.slice(0, eqIndex).trim();
+                                                    const rhs = f.expr.slice(eqIndex + 1).trim();
+                                                    const lhsTex = mathjs.parse(lhs).toTex();
+                                                    const rhsTex = mathjs.parse(rhs).toTex();
+                                                    fullTex = `${lhsTex} = ${rhsTex}`;
+                                                  } else {
+                                                    const parsed = mathjs.parse(f.expr);
+                                                    const texStr = parsed.toTex();
+                                                    let prefix = "";
+                                                    if (f.type === "polar")
+                                                      prefix = "r = ";
+                                                    else if (
+                                                      f.type === "parametric"
+                                                    )
+                                                      prefix = "[x,y] = ";
+                                                    else if (f.type === "implicit")
+                                                      prefix = "";
+                                                    else prefix = "y = ";
 
-                                                  const fullTex =
-                                                    prefix + texStr;
+                                                    fullTex = prefix + texStr;
+                                                  }
+
                                                   const html =
                                                     katex.renderToString(
                                                       fullTex,
@@ -4579,10 +4698,28 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               <Trash2 size={14} />
                             </button>
                           </div>
-                          
-                          {/* Mobile Dropdown Actions Block */}
+                                                   {/* Mobile Dropdown Actions Block */}
                           {activeActionMenuId === f.id && (
                             <div className="md:hidden mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={() => { 
+                                 setActiveActionMenuId(null); 
+                                 setExpandedSettingsFnId(expandedSettingsFnId === f.id ? null : f.id);
+                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-650 dark:text-slate-200 text-xs font-semibold transition-colors">
+                                 <Settings size={14} className="text-blue-500 dark:text-blue-400"/> Settings & Properties
+                              </button>
+                              <button onClick={() => { 
+                                 setActiveActionMenuId(null); 
+                                 handleAddFunctionAt(f.id, "above");
+                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
+                                 <ChevronUp size={14} className="text-slate-500"/> Insert above
+                              </button>
+                              <button onClick={() => { 
+                                 setActiveActionMenuId(null); 
+                                 handleAddFunctionAt(f.id, "below");
+                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
+                                 <ChevronDown size={14} className="text-slate-500"/> Insert below
+                              </button>
+                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1"/>
                               <button onClick={() => { 
                                  setActiveActionMenuId(null); 
                                  try {
@@ -4598,8 +4735,25 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               <button onClick={() => { 
                                  setActiveActionMenuId(null); 
                                  try {
-                                   const node = mathjs.parse(f.expr);
-                                   navigator.clipboard.writeText(node.toTex({}));
+                                   let finalTex = "";
+                                   const eqIndex = f.expr.indexOf("=");
+                                   if (
+                                     eqIndex !== -1 &&
+                                     !f.expr.includes("==") &&
+                                     !f.expr.includes(">=") &&
+                                     !f.expr.includes("<=") &&
+                                     !f.expr.includes("!=")
+                                   ) {
+                                     const lhs = f.expr.slice(0, eqIndex).trim();
+                                     const rhs = f.expr.slice(eqIndex + 1).trim();
+                                     const lhsTex = mathjs.parse(lhs).toTex();
+                                     const rhsTex = mathjs.parse(rhs).toTex();
+                                     finalTex = `${lhsTex} = ${rhsTex}`;
+                                   } else {
+                                     const node = mathjs.parse(f.expr);
+                                     finalTex = node.toTex({});
+                                   }
+                                   navigator.clipboard.writeText(finalTex);
                                  } catch(e) {}
                               }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
                                  <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 22h20L12 2z"/></svg> Copy LaTeX
@@ -4825,15 +4979,34 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                     const renderFormulaLaTeX = (expr: string, type: string) => {
                       try {
-                        const parsed = mathjs.parse(expr);
-                        const texStr = parsed.toTex();
-                        let prefix = "";
-                        if (type === "polar") prefix = "r = ";
-                        else if (type === "parametric") prefix = "[x,y] = ";
-                        else prefix = "y = ";
+                        let fullTex = "";
+                        const eqIndex = expr.indexOf("=");
+                        if (
+                          eqIndex !== -1 &&
+                          !expr.includes("==") &&
+                          !expr.includes(">=") &&
+                          !expr.includes("<=") &&
+                          !expr.includes("!=")
+                        ) {
+                          const lhs = expr.slice(0, eqIndex).trim();
+                          const rhs = expr.slice(eqIndex + 1).trim();
+                          const lhsTex = mathjs.parse(lhs).toTex();
+                          const rhsTex = mathjs.parse(rhs).toTex();
+                          fullTex = `${lhsTex} = ${rhsTex}`;
+                        } else {
+                          const parsed = mathjs.parse(expr);
+                          const texStr = parsed.toTex();
+                          let prefix = "";
+                          if (type === "polar") prefix = "r = ";
+                          else if (type === "parametric") prefix = "[x,y] = ";
+                          else if (type === "implicit") prefix = "";
+                          else prefix = "y = ";
+                          fullTex = prefix + texStr;
+                        }
 
-                        const fullTex = prefix + texStr;
-                        const html = katex.renderToString(fullTex, { strict: "ignore", trust: true,
+                        const html = katex.renderToString(fullTex, {
+                          strict: "ignore",
+                          trust: true,
                           throwOnError: true,
                           displayMode: false,
                         });
@@ -6247,7 +6420,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         >
           {/* Graph Controls */}
           {(isExpanded || isFullscreen) && (
-            <div className="absolute top-4 left-4 z-40 flex bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl opacity-0 group-hover/graph:opacity-100 transition-opacity duration-300">
+            <div className={`absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-auto z-40 flex flex-wrap md:flex-nowrap items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl transition-all duration-300 ${
+              showGridControls 
+                ? "opacity-100 translate-y-0" 
+                : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
+            }`}>
               <button
                 onClick={() => setGridType("none")}
                 className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors ${gridType === "none" ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
@@ -6269,33 +6446,36 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               >
                 Polar
               </button>
-              <div className="w-px bg-slate-700 my-1 mx-1"></div>
-              <select
-                value={axisFilter}
-                onChange={(e) => setAxisFilter(e.target.value as any)}
-                className="bg-transparent text-slate-400 hover:text-slate-200 outline-none px-2 text-xs font-mono rounded-md cursor-pointer appearance-none"
-                title="Axis Label Filter"
-              >
-                <option value="all" className="bg-slate-800">
-                  Labels: All
-                </option>
-                <option value="even" className="bg-slate-800">
-                  Labels: Even
-                </option>
-                <option value="odd" className="bg-slate-800">
-                  Labels: Odd
-                </option>
-                <option value="custom" className="bg-slate-800">
-                  Labels: Custom
-                </option>
-              </select>
+              <div className="hidden md:block w-px bg-slate-700 my-1 mx-1 h-4"></div>
+              <div className="relative flex items-center">
+                <select
+                  value={axisFilter}
+                  onChange={(e) => setAxisFilter(e.target.value as any)}
+                  className="bg-transparent text-slate-400 hover:text-slate-200 outline-none pl-2 pr-6 py-1.5 text-xs font-mono rounded-md cursor-pointer appearance-none"
+                  title="Axis Label Filter"
+                >
+                  <option value="all" className="bg-slate-800">
+                    Labels: All
+                  </option>
+                  <option value="even" className="bg-slate-800">
+                    Labels: Even
+                  </option>
+                  <option value="odd" className="bg-slate-800">
+                    Labels: Odd
+                  </option>
+                  <option value="custom" className="bg-slate-800">
+                    Labels: Custom
+                  </option>
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-500 absolute right-1.5 pointer-events-none" />
+              </div>
               {axisFilter === "custom" && (
-                <div className="relative flex items-center group/filterinfo">
+                <div className="relative flex items-center group/filterinfo ml-1">
                   <input
                     type="text"
                     value={customAxisFilter}
                     onChange={(e) => setCustomAxisFilter(e.target.value)}
-                    className="bg-slate-900 border border-slate-600 rounded px-2 w-24 text-xs font-mono text-slate-200 outline-none focus:border-blue-500 ml-1"
+                    className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-slate-200 outline-none focus:border-blue-500"
                     placeholder="e.g. n % 3 == 0"
                   />
                   <HelpCircle className="w-3.5 h-3.5 text-slate-400 ml-1.5 cursor-help" />
@@ -7110,7 +7290,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           </Mafs>
 
           {isFullscreen && (
-            <div className="absolute top-4 right-4 bg-white/90 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-mono p-3 rounded-lg shadow-2xl">
+            <div className="absolute bottom-4 right-4 md:bottom-auto md:top-4 z-30 bg-white/90 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-mono p-3 rounded-lg shadow-2xl">
               <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1 border-b border-slate-200 dark:border-slate-700 pb-1">
                 Inspector
               </div>

@@ -8,6 +8,7 @@ import {
 import { useStore } from "../store/useStore";
 import { useNavigationStack } from "../hooks/useNavigationStack";
 import { HistoryEntry } from "../types/navigation";
+import { downloadImage } from "../utils/downloadUtils";
 
 interface ArticleReaderProps {
   activeArticle: any;
@@ -522,6 +523,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
 }
 
 function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back: () => void, updateCurrent: (u: any) => void }) {
+  const { setNotification } = useStore();
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -630,6 +632,15 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
     }
   };
 
+  const handleDownloadInternal = async (url: string) => {
+    const success = await downloadImage(url);
+    if (success) {
+      setNotification({ message: "Image downloaded", type: "success" });
+    } else {
+      setNotification({ message: "Failed to download image", type: "error" });
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight") handleNext();
@@ -678,8 +689,16 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
           <button onClick={() => setRotation(r => r + 90)} className="p-1.5 sm:p-2 hover:bg-white/10 rounded-xl text-white/80 active:scale-90 transition-all shrink-0">
             <RotateCcw size={18} />
           </button>
-          <button onClick={() => { setZoom(1); setRotation(0); setPan({ x: 0, y: 0 }); }} className="p-1.5 sm:p-2 hover:bg-white/10 rounded-xl text-white/80 active:scale-90 transition-all shrink-0">
+          <button onClick={() => { setZoom(1); setRotation(0); setPan({ x: 0, y: 0 }); }} className="p-1.5 sm:p-2 hover:bg-white/10 rounded-xl text-white/80 active:scale-90 transition-all shrink-0" title="Reset View">
             <Maximize2 size={18} />
+          </button>
+          <div className="w-px h-5 bg-white/10 mx-0.5 sm:mx-1" />
+          <button 
+            onClick={() => handleDownloadInternal(src)} 
+            className="p-1.5 sm:p-2 hover:bg-white/10 rounded-xl text-white/80 active:scale-90 transition-all shrink-0"
+            title="Download Image"
+          >
+            <Download size={18} />
           </button>
         </div>
 

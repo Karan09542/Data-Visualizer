@@ -1101,11 +1101,11 @@ export const useStore = create<StoreState>()(
         if (!parsedData) return;
 
         // Clone parsedData
-        const newData = JSON.parse(JSON.stringify(parsedData));
+        let newData = JSON.parse(JSON.stringify(parsedData));
 
         // Path is like 'root.key.subkey' or 'root[0].key'
         const parts = path
-          .replace(/root\.?/, "")
+          .replace(/^root\.?/, "")
           .split(/\.|(?=\[)/)
           .filter(Boolean);
 
@@ -1114,6 +1114,9 @@ export const useStore = create<StoreState>()(
           let part = parts[i];
           if (part.startsWith("[")) {
             part = part.slice(1, -1);
+            if ((part.startsWith('"') && part.endsWith('"')) || (part.startsWith("'") && part.endsWith("'"))) {
+              part = part.slice(1, -1);
+            }
           }
           current = current[part];
         }
@@ -1122,20 +1125,43 @@ export const useStore = create<StoreState>()(
           let lastPart = parts[parts.length - 1];
           if (lastPart.startsWith("[")) {
             lastPart = lastPart.slice(1, -1);
+            if ((lastPart.startsWith('"') && lastPart.endsWith('"')) || (lastPart.startsWith("'") && lastPart.endsWith("'"))) {
+              lastPart = lastPart.slice(1, -1);
+            }
           }
 
-          // Try to cast to number/boolean if applicable
           let finalVal = newValue;
-          if (newValue === "true") finalVal = true;
-          else if (newValue === "false") finalVal = false;
-          else if (newValue === "null") finalVal = null;
-          else if (!isNaN(Number(newValue)) && newValue.trim() !== "") {
-            finalVal = Number(newValue);
+          if (typeof newValue === "string") {
+            if (newValue === "true") finalVal = true;
+            else if (newValue === "false") finalVal = false;
+            else if (newValue === "null") finalVal = null;
+            else if (!isNaN(Number(newValue)) && newValue.trim() !== "") {
+              finalVal = Number(newValue);
+            }
+            if (typeof finalVal === "string" && (finalVal.trim().startsWith("{") || finalVal.trim().startsWith("["))) {
+              try {
+                finalVal = JSON.parse(finalVal);
+              } catch (e) {}
+            }
           }
 
           current[lastPart] = finalVal;
         } else {
-          // It's the root itself being edited? (Unlikely with this transformer)
+          let finalVal = newValue;
+          if (typeof newValue === "string") {
+            if (newValue === "true") finalVal = true;
+            else if (newValue === "false") finalVal = false;
+            else if (newValue === "null") finalVal = null;
+            else if (!isNaN(Number(newValue)) && newValue.trim() !== "") {
+              finalVal = Number(newValue);
+            }
+            if (typeof finalVal === "string" && (finalVal.trim().startsWith("{") || finalVal.trim().startsWith("["))) {
+              try {
+                finalVal = JSON.parse(finalVal);
+              } catch (e) {}
+            }
+          }
+          newData = finalVal;
         }
 
         // Enforce Search Node data validation before serialization

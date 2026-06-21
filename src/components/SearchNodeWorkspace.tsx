@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Search, X, Clock, MapPin, ExternalLink, Image as ImageIcon, 
   BookOpen, ChevronLeft, LayoutGrid, List, Maximize, Bookmark, ChevronRight,
-  History, Users, Layers, Activity, SlidersHorizontal, Moon, Sun, Info, Globe, Menu, ChevronDown
+  History, Users, Layers, Activity, SlidersHorizontal, Moon, Sun, Info, Globe, Menu, ChevronDown,
+  Download, FolderHeart, Compass
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useStore } from "../store/useStore";
@@ -10,6 +11,8 @@ import { db } from "../lib/db";
 import { liveQuery } from "dexie";
 import { getValueAtPath } from "../utils/pathUtils";
 import get from "lodash.get";
+import { downloadImage } from "../utils/downloadUtils";
+import { InteractiveZoomImage } from "./InteractiveZoomImage";
 
 import { ArticleReader } from "./ArticleReader";
 
@@ -37,10 +40,19 @@ const languages = [
 ];
 
 export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
-  const { updateNodeValue, code } = useStore();
+  const { updateNodeValue, code, setNotification } = useStore();
   const [query, setQuery] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
   const [inputValue, setInputValue] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => (sessionStorage.getItem(`${path}_tab`) as ActiveTab) || "All");
+  const [activeSavedSection, setActiveSavedSection] = useState<'Articles' | 'Images' | 'Collections' | 'History'>(() => {
+    const saved = sessionStorage.getItem(`${path}_saved_sect`);
+    return (saved as any) || 'Articles';
+  });
+
+  // Preserve activeSavedSection
+  useEffect(() => {
+    sessionStorage.setItem(`${path}_saved_sect`, activeSavedSection);
+  }, [activeSavedSection]);
   const [language, setLanguage] = useState(() => localStorage.getItem('wiki_lang') || "en");
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +92,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   const limit = 20;
 
   const [lastSearchedQuery, setLastSearchedQuery] = useState(() => sessionStorage.getItem(`${path}_last_searched_query`) || "");
+  const [lightboxImage, setLightboxImage] = useState<any | null>(null);
 
   // Persistence Hook
   useEffect(() => {
@@ -115,6 +128,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   // Persistence
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
   const [savedArticles, setSavedArticles] = useState<any[]>([]);
+  const [savedImages, setSavedImages] = useState<any[]>([]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -125,7 +139,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
         .where('storageKey')
         .equals(storageKey)
         .toArray()
-        .then(arr => arr.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10))
+        .then(arr => arr.sort((a, b) => b.timestamp - a.timestamp).slice(0, 20))
     ).subscribe({
       next: (result) => {
         if (!active) return;
@@ -146,10 +160,24 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
       }
     });
 
+    const savedImagesSub = liveQuery(() =>
+      db.nodeSearchImageBookmarks
+        .where('storageKey')
+        .equals(storageKey)
+        .toArray()
+        .then(arr => arr.sort((a, b) => b.timestamp - a.timestamp))
+    ).subscribe({
+      next: (result) => {
+        if (!active) return;
+        setTimeout(() => { if (active) setSavedImages(result || []); }, 0);
+      }
+    });
+
     return () => {
       active = false;
       historySub.unsubscribe();
       savedSub.unsubscribe();
+      savedImagesSub.unsubscribe();
     };
   }, [storageKey]);
 
@@ -269,12 +297,28 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     }
 
     try {
-      if (storageKey) {
+      if (storageKey && newOffset === 0) {
         const historyArr = await db.nodeSearchHistory.where('storageKey').equals(storageKey).toArray();
-        const existing = historyArr.find(h => h.query === q);
-        if (!existing || !existing.isPinned) {
-           if (existing) await db.nodeSearchHistory.delete(existing.id!);
-           await db.nodeSearchHistory.add({ storageKey, query: q, timestamp: Date.now() });
+        const normalizedQ = q.trim().toLowerCase();
+        
+        const existings = historyArr.filter(h => h.query.trim().toLowerCase() === normalizedQ);
+        const isPinned = existings.some(h => h.isPinned);
+
+        for (const existing of existings) {
+           await db.nodeSearchHistory.delete(existing.id!);
+        }
+
+        await db.nodeSearchHistory.add({ storageKey, query: q.trim(), timestamp: Date.now(), isPinned });
+
+        const updatedHistoryArr = await db.nodeSearchHistory.where('storageKey').equals(storageKey).toArray();
+        if (updatedHistoryArr.length > 20) {
+           const oldestFirst = updatedHistoryArr.sort((a, b) => a.timestamp - b.timestamp);
+           const excess = updatedHistoryArr.length - 20;
+           for (let i = 0; i < excess; i++) {
+               if (oldestFirst[i] && !oldestFirst[i].isPinned) {
+                 await db.nodeSearchHistory.delete(oldestFirst[i].id!);
+               }
+           }
         }
       }
     } catch(err) {}
@@ -403,6 +447,10 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
        
        if (existing) {
          await db.nodeSearchBookmarks.delete(existing.id!);
+         setNotification({
+           type: "info",
+           message: `"${result.title}" removed from saved articles.`
+         });
        } else {
          await db.nodeSearchBookmarks.add({
            storageKey,
@@ -412,10 +460,51 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
            thumbnail: result.thumbnail?.source || (typeof result.thumbnail === 'string' ? result.thumbnail : null),
            timestamp: Date.now()
          });
+         setNotification({
+           type: "success",
+           message: `"${result.title}" saved successfully!`
+         });
        }
      } catch(err) {
        console.error(err);
      }
+  };
+
+  const toggleSaveImage = async (url: string, title: string, thumbnail: string, source: string) => {
+    if (!storageKey) return;
+    try {
+      const existing = await db.nodeSearchImageBookmarks
+        .where('storageKey')
+        .equals(storageKey)
+        .filter(img => img.imageUrl === url)
+        .first();
+
+      const cleanTitle = title.replace('File:', '').trim() || "Image Preview";
+
+      if (existing) {
+        await db.nodeSearchImageBookmarks.delete(existing.id!);
+        setNotification({
+          type: "info",
+          message: `"${cleanTitle}" removed from saved images.`
+        });
+      } else {
+        await db.nodeSearchImageBookmarks.add({
+          storageKey,
+          imageUrl: url,
+          thumbnail: thumbnail || url,
+          title: title || "Untitled Image",
+          source: source || "",
+          searchQuery: query || "",
+          timestamp: Date.now()
+        });
+        setNotification({
+          type: "success",
+          message: `"${cleanTitle}" saved successfully!`
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleTabClick = (tab: ActiveTab) => {
@@ -448,6 +537,16 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   };
 
   // Components 
+  const handleDownload = async (url: string, title?: string) => {
+    const cleanTitle = title?.replace('File:', '').trim();
+    const success = await downloadImage(url, cleanTitle ? `${cleanTitle}` : undefined);
+    if (success) {
+      setNotification({ message: "Image downloaded", type: "success" });
+    } else {
+      setNotification({ message: "Failed to download image", type: "error" });
+    }
+  };
+
   const renderSidebar = () => (
     <>
       {/* Mobile Backdrop */}
@@ -490,32 +589,87 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
             { id: 'All Results', icon: Search },
             { id: 'Images', icon: ImageIcon },
             { id: 'Articles', icon: BookOpen },
-            { id: 'Saved', icon: Bookmark, badge: savedArticles.length },
+            { id: 'Saved', icon: Bookmark, badge: savedArticles.length + savedImages.length },
             { id: 'History', icon: History }
-          ].map(item => (
-            <button 
-              key={item.id}
-              onClick={() => handleSidebarClick(item.id)}
-              className={`flex items-center gap-3 rounded-xl transition-all font-bold text-[15px] group
-                ${isSidebarCollapsed ? "justify-center p-3" : "px-4 py-3"}
-                ${activeSidebarItem === item.id 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800/60'}`}
-              title={isSidebarCollapsed ? item.id : ""}
-            >
-              <item.icon size={20} className={`${activeSidebarItem === item.id ? "text-white" : "group-hover:scale-110 transition-transform"}`} />
-              {!isSidebarCollapsed && (
-                <>
-                  <span className="flex-1 text-left">{item.id}</span>
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${activeSidebarItem === item.id ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                      {item.badge}
-                    </span>
+          ].map(item => {
+            const isSavedActive = activeSidebarItem === 'Saved' || activeSidebarItem.startsWith('Saved_');
+            const isHistoryActive = activeSidebarItem === 'History' || activeSidebarItem === 'Saved_History';
+            const isActive = item.id === 'Saved' ? isSavedActive : (item.id === 'History' ? isHistoryActive : activeSidebarItem === item.id);
+
+            return (
+              <div key={item.id} className="flex flex-col gap-0.5 w-full">
+                <button 
+                  onClick={() => {
+                    if (item.id === 'Saved') {
+                      setActiveSidebarItem(`Saved_${activeSavedSection}`);
+                    } else if (item.id === 'History') {
+                      setActiveSidebarItem('Saved_History');
+                      setActiveSavedSection('History');
+                    } else {
+                      handleSidebarClick(item.id);
+                    }
+                  }}
+                  className={`flex items-center gap-3 rounded-xl transition-all font-bold text-[15px] group w-full text-left
+                    ${isSidebarCollapsed ? "justify-center p-3" : "px-4 py-3"}
+                    ${isActive 
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800/60'}`}
+                  title={isSidebarCollapsed ? item.id : ""}
+                >
+                  <item.icon size={20} className={`${isActive ? "text-white" : "group-hover:scale-110 transition-transform"}`} />
+                  {!isSidebarCollapsed && (
+                    <>
+                      <span className="flex-1 text-left">{item.id}</span>
+                      {item.id === 'Saved' && (savedArticles.length + savedImages.length) > 0 && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                          {savedArticles.length + savedImages.length}
+                        </span>
+                      )}
+                      {item.id === 'History' && searchHistory.length > 0 && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                          {searchHistory.length}
+                        </span>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </button>
-          ))}
+                </button>
+
+                {/* Sub Tree Branches specifically for Saved */}
+                {item.id === 'Saved' && isSavedActive && !isSidebarCollapsed && (
+                  <div className="pl-6 pr-1 py-1 flex flex-col gap-1 border-l-2 border-slate-200 dark:border-slate-800 ml-6 mt-1 mb-2">
+                    {[
+                      { key: 'Articles', label: 'Articles', count: savedArticles.length, prefix: '├─' },
+                      { key: 'Images', label: 'Images', count: savedImages.length, prefix: '├─' },
+                      { key: 'Collections', label: 'Collections', count: 0, prefix: '├─' },
+                      { key: 'History', label: 'History', count: searchHistory.length, prefix: '└─' }
+                    ].map(sub => (
+                      <button
+                        key={sub.key}
+                        onClick={() => {
+                          setActiveSidebarItem(`Saved_${sub.key}`);
+                          setActiveSavedSection(sub.key as any);
+                        }}
+                        className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all w-full text-left cursor-pointer
+                          ${activeSidebarItem === `Saved_${sub.key}`
+                            ? 'text-blue-500 dark:text-blue-400 bg-blue-500/10'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40'}`}
+                      >
+                        <span className="flex items-center gap-1 select-none font-sans">
+                          <span className="text-slate-300 dark:text-slate-700 mr-1 font-mono">{sub.prefix}</span> 
+                          <span>{sub.label}</span>
+                        </span>
+                        {sub.count > 0 && (
+                          <span className={`text-[9px] px-1.5 py-0.1 rounded-full ${activeSidebarItem === `Saved_${sub.key}` ? 'bg-blue-500/20 text-blue-500' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
+                            {sub.count}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
       {!isSidebarCollapsed && (
@@ -752,21 +906,170 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   );
 
   const renderStats = () => {
-    if (!query || activeSidebarItem === "Saved" || isSearching && results.length === 0) return null;
+    if (!query || activeSidebarItem === "Saved" || (isSearching && results.length === 0)) return null;
     return (
        <div className="flex justify-between items-center py-4 px-1 border-b border-slate-200 dark:border-slate-800/50 mb-6">
           <div className="text-[13px] text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1.5">
              About {totalHits.toLocaleString()} results ({searchTime}s) <Info size={12} className="opacity-50" />
           </div>
           <div className="flex text-[13px] text-slate-600 dark:text-slate-400 gap-2 items-center">
-             Sort by: <span className="text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer hover:text-white">Relevance <ChevronDown size={14} /></span>
+             Sort by: <span className="text-slate-800 dark:text-slate-200 flex items-center gap-1 cursor-pointer hover:text-slate-100 transition-colors">Relevance <ChevronDown size={14} /></span>
           </div>
        </div>
-    )
-  }
+    );
+  };
 
   const renderResults = () => {
-    const list = activeSidebarItem === "Saved" ? savedArticles : results;
+    if (activeSidebarItem === "Saved_Images") {
+      return renderImages();
+    }
+
+    if (activeSidebarItem === "Saved_Collections") {
+      return (
+        <div className="w-full max-w-4xl mx-auto py-6 px-2">
+          <div className="flex items-center gap-3 mb-6 border-b border-slate-205 dark:border-slate-800 pb-4">
+             <div className="p-2.5 bg-blue-100 dark:bg-blue-600/10 text-blue-500 rounded-xl">
+               <FolderHeart size={20} />
+             </div>
+             <div>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-none">Collections</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Organize your saved articles, images and findings into collections.</p>
+             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {/* Default general Collection */}
+            <div className="bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-violet-500/10 text-violet-500 rounded-xl group-hover:scale-110 transition-transform">
+                    <Bookmark size={22} fill="currentColor" />
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 uppercase tracking-wider">System</span>
+                </div>
+                <h4 className="font-bold text-slate-800 dark:text-white text-[16px] group-hover:text-blue-500 transition-colors">Default Collection</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{savedArticles.length + savedImages.length} elements saved in total.</p>
+              </div>
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/40 text-[11px] text-slate-400">
+                <span>Created automatically</span>
+                <span className="font-bold text-blue-500 hover:underline cursor-pointer text-xs" onClick={() => { setActiveSidebarItem("Saved_Articles"); setActiveSavedSection("Articles"); }}>Open Folder</span>
+              </div>
+            </div>
+
+            {/* Research Papers Mock */}
+            <div className="bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between opacity-75">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-xl">
+                    <Search size={22} />
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">User</span>
+                </div>
+                <h4 className="font-bold text-slate-800 dark:text-white text-[16px]">Research Projects</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Collect notes and publications for current nodes.</p>
+              </div>
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/40 text-[11px] text-slate-400">
+                <span>0 bookmarks</span>
+                <span className="font-mono text-[10px]">Empty</span>
+              </div>
+            </div>
+
+            {/* Moodboard Mock */}
+            <div className="bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between opacity-75">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-pink-500/10 text-pink-500 rounded-xl">
+                    <Compass size={22} />
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 uppercase tracking-wider">User</span>
+                </div>
+                <h4 className="font-bold text-slate-800 dark:text-white text-[16px]">Moodboard / Inspiration</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">A curated collection of media and graphic templates.</p>
+              </div>
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/40 text-[11px] text-slate-400">
+                <span>0 bookmarks</span>
+                <span className="font-mono text-[10px]">Empty</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSidebarItem === "Saved_History" || activeSidebarItem === "History") {
+      return (
+        <div className="w-full max-w-4xl mx-auto py-6 px-2">
+          <div className="flex items-center justify-between mb-6 border-b border-slate-200 dark:border-slate-800 pb-4">
+             <div className="flex items-center gap-3">
+               <div className="p-2.5 bg-blue-100 dark:bg-blue-600/10 text-blue-500 rounded-xl">
+                 <History size={20} />
+               </div>
+               <div>
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-none">Search History</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">A timeline of your search queries within the active node.</p>
+               </div>
+             </div>
+             {searchHistory.length > 0 && (
+               <button 
+                onClick={async () => {
+                  if (confirm("Are you sure you want to clear search history?")) {
+                    await db.nodeSearchHistory.where('storageKey').equals(storageKey).delete();
+                    setNotification({ type: "info", message: "Search History Cleared" });
+                  }
+                }}
+                className="text-xs font-bold text-red-500 hover:text-red-400 cursor-pointer flex items-center gap-1 hover:underline px-3 py-1 bg-red-500/10 rounded-lg transition-colors"
+               >
+                 Clear All
+               </button>
+             )}
+          </div>
+
+          {searchHistory.length === 0 ? (
+            <div className="text-center py-20 text-slate-500">
+              <History size={48} className="mx-auto text-slate-300 dark:text-slate-850 mb-3" />
+              <p className="font-bold text-lg">No search history</p>
+              <p className="text-sm text-slate-400 mt-1">Go back and issue a search to begin tracking research history.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5 bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 shadow-sm">
+              {searchHistory.map((h, i) => (
+                <div 
+                  key={h.id || i}
+                  className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/50 group transition-all"
+                >
+                  <div className="flex items-center gap-3.5 cursor-pointer flex-1" onClick={() => { setInputValue(h.query); executeSearch(h.query, 0); }}>
+                    <Search size={16} className="text-slate-400 dark:text-slate-600 group-hover:text-blue-500 transition-colors" />
+                    <div>
+                      <span className="font-bold text-sm text-slate-800 dark:text-slate-200 group-hover:text-blue-500 transition-colors">{h.query}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block mt-0.5">{new Date(h.timestamp).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => { setInputValue(h.query); executeSearch(h.query, 0); }}
+                      className="text-xs font-bold text-blue-500 hover:bg-blue-500/10 py-1.5 px-3 rounded-lg transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                    >
+                      Re-search
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        await db.nodeSearchHistory.delete(h.id!);
+                        setNotification({ type: "info", message: "History item deleted" });
+                      }}
+                      className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                      title="Delete entry"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const list = (activeSidebarItem === "Saved" || activeSidebarItem === "Saved_Articles") ? savedArticles : results;
     
     if (isSearching && list.length === 0) {
       return (
@@ -788,7 +1091,17 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
       );
     }
 
-    if (list.length === 0 && !isSearching && query) {
+    const isSavedView = activeSidebarItem === "Saved" || activeSidebarItem === "Saved_Articles";
+    if (list.length === 0 && !isSearching && (query || isSavedView)) {
+      if (isSavedView) {
+        return (
+          <div className="text-center py-20 text-slate-500">
+            <Bookmark size={48} className="mx-auto text-slate-305 dark:text-slate-750 mb-3" />
+            <p className="font-bold text-lg">No bookmarked articles yet</p>
+            <p className="text-sm text-slate-400 mt-1">Saved articles in the Default Collection will be displayed here.</p>
+          </div>
+        );
+      }
       return <div className="text-center py-20 text-slate-600 dark:text-slate-400">No results found for "{query}".</div>;
     }
 
@@ -832,7 +1145,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
                     <span className="hidden sm:inline">{r.timestamp && new Date(r.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}</span>
                   </div>
                  <div className="flex items-center gap-4 text-slate-400 dark:text-slate-500">
-                   <button onClick={(e) => { e.stopPropagation(); toggleSaveArticle(r); }} className="hover:text-blue-500 transition-all transform active:scale-90">
+                   <button onClick={(e) => { e.stopPropagation(); toggleSaveArticle(r); }} className="hover:text-blue-500 transition-all transform active:scale-90 cursor-pointer">
                      <Bookmark size={18} fill={savedArticles.find(a => a.title === r.title) ? "currentColor" : "none"} className={savedArticles.find(a => a.title === r.title) ? "text-blue-500" : ""} />
                    </button>
                    <button 
@@ -840,7 +1153,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
                        e.stopPropagation(); 
                        window.open(`https://${language}.wikipedia.org/wiki/${encodeURIComponent(r.title)}`, '_blank'); 
                      }} 
-                     className="hover:text-slate-900 dark:hover:text-white transition-all transform active:scale-90"
+                     className="hover:text-slate-900 dark:hover:text-white transition-all transform active:scale-90 cursor-pointer"
                    >
                      <ExternalLink size={18} />
                    </button>
@@ -851,7 +1164,6 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
         ))}
       </div>
     );
-
   };
 
   const renderKnowledgePanel = () => {
@@ -984,13 +1296,16 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   };
 
   const renderImages = () => {
-    if (activeTab !== "Images" && activeSidebarItem !== "Images") return null;
+    const isSavedImagesView = activeSidebarItem === "Saved_Images";
+    if (activeTab !== "Images" && activeSidebarItem !== "Images" && !isSavedImagesView) return null;
 
     const masonryClass = lightboxImage 
       ? "columns-2 md:columns-3 lg:columns-2 xl:columns-3 gap-4" 
       : "columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4";
 
-    if (isSearching && imageResults.length === 0) {
+    const displayList = isSavedImagesView ? savedImages : imageResults;
+
+    if (isSearching && !isSavedImagesView && displayList.length === 0) {
        return (
          <div className={masonryClass}>
            {[...Array(15)].map((_, i) => (
@@ -1000,23 +1315,87 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
        );
     }
 
-    if (imageResults.length === 0) return <div className="text-center mt-10 text-slate-500">No images found</div>;
+    if (displayList.length === 0) {
+      if (isSavedImagesView) {
+        return (
+          <div className="text-center py-20 text-slate-500">
+            <ImageIcon size={48} className="mx-auto text-slate-300 dark:text-slate-750 mb-3 animate-fade-in" />
+            <p className="font-bold text-lg block">No saved images yet</p>
+            <p className="text-sm text-slate-400 mt-1 block">Bookmarked images in the Default Collection will be displayed here.</p>
+          </div>
+        );
+      }
+      return <div className="text-center mt-10 text-slate-500">No images found</div>;
+    }
 
     return (
       <div className={masonryClass}>
-        {imageResults.map((page, i) => {
-          const img = page.imageinfo?.[0];
-          if (!img) return null;
+        {displayList.map((item, i) => {
+          let url = "";
+          let title = "";
+          let width = 0;
+          let height = 0;
+          let page: any = null;
+          let img: any = null;
+
+          if (isSavedImagesView) {
+            url = item.thumbnail || item.imageUrl;
+            title = item.title;
+            page = { title, imageinfo: [{ url: item.imageUrl, descriptionurl: item.source, width: 800, height: 600, size: 250 * 1024 }] };
+            img = page.imageinfo[0];
+          } else {
+            page = item;
+            img = page.imageinfo?.[0];
+            if (!img) return null;
+            url = img.url;
+            title = page.title;
+            width = img.width;
+            height = img.height;
+          }
+
+          const realUrl = isSavedImagesView ? item.imageUrl : img.url;
+          const realTitle = isSavedImagesView ? item.title : page.title;
+          const realThumb = isSavedImagesView ? item.thumbnail : img.url;
+          const realSource = isSavedImagesView ? item.source : img.descriptionurl;
+          
+          const isBookmarked = savedImages.some(saved => saved.imageUrl === realUrl);
+
           return (
             <div 
               key={i} 
-              className="break-inside-avoid mb-4 inline-block w-full relative group rounded-2xl overflow-hidden bg-white dark:bg-[#151D2C] cursor-zoom-in"
+              className="break-inside-avoid mb-4 inline-block w-full relative group rounded-2xl overflow-hidden bg-white dark:bg-[#151D2C] cursor-zoom-in border border-slate-100 dark:border-slate-800/60 shadow-sm"
               onClick={() => setLightboxImage({ page, img })}
             >
-              <img src={img.url} crossOrigin="anonymous" className="w-full h-auto object-cover select-none group-hover:scale-105 transition-transform duration-500" loading="lazy" />
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end pointer-events-none">
-                 <p className="text-white text-sm font-bold line-clamp-2 drop-shadow-md mb-1">{page.title.replace('File:', '')}</p>
-                 <p className="text-white/70 text-[11px]">{img.width}x{img.height}</p>
+              <img src={url} crossOrigin="anonymous" className="w-full h-auto object-cover select-none group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+              
+              {/* Quick Actions Overlay */}
+              <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownload(realUrl, realTitle);
+                  }}
+                  className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white rounded-full transition-all hover:scale-110 active:scale-95 shadow-lg cursor-pointer"
+                  title="Download Image"
+                >
+                  <Download size={15} />
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSaveImage(realUrl, realTitle, realThumb, realSource);
+                  }}
+                  className={`p-2.5 backdrop-blur-md rounded-full transition-all hover:scale-110 active:scale-95 shadow-lg cursor-pointer
+                    ${isBookmarked ? "bg-amber-500 text-white" : "bg-black/60 hover:bg-black/80 text-white"}`}
+                  title={isBookmarked ? "Remove Bookmark" : "Bookmark Image"}
+                >
+                  <Bookmark size={15} fill={isBookmarked ? "currentColor" : "none"} />
+                </button>
+              </div>
+
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end pointer-events-none">
+                 <p className="text-white text-sm font-bold line-clamp-2 drop-shadow-md mb-1">{title.replace('File:', '')}</p>
+                 <p className="text-white/70 text-[11px] font-medium">{width && height ? `${width}x${height}` : "HD Image"}</p>
               </div>
             </div>
           );
@@ -1025,38 +1404,93 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
     );
   };
 
-  const [lightboxImage, setLightboxImage] = useState<any | null>(null);
   const renderImagePanel = () => {
-    if ((activeTab !== "Images" && activeSidebarItem !== "Images") || !lightboxImage) return null;
+    if ((activeTab !== "Images" && activeSidebarItem !== "Images" && activeSidebarItem !== "Saved_Images") || !lightboxImage) return null;
     const { page, img } = lightboxImage;
+
+    const isBookmarked = savedImages.some(saved => saved.imageUrl === img.url);
+
+    // Dynamic resolution or metadata
+    const resolution = img.width && img.height ? `${img.width} × ${img.height} pixels` : "HD Resolution";
+    const fileSize = img.size ? `${Math.round(img.size / 1024)} KB` : "";
 
     return (
       <>
-        {/* Mobile Full Screen overlay */}
+        {/* Mobile Full Screen Interactive Overlay */}
         <AnimatePresence>
           <motion.div 
-            initial={{ opacity: 0, y: 100 }}
+            initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
-            className="xl:hidden fixed inset-0 z-[200] bg-white dark:bg-[#0B1120] flex flex-col"
+            exit={{ opacity: 0, y: 50 }}
+            className="xl:hidden fixed inset-0 z-[200] bg-slate-950 flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="font-bold truncate max-w-[70%]">{page.title.replace('File:', '')}</h3>
-              <button className="p-2 text-slate-500 hover:text-slate-800 dark:hover:text-white" onClick={() => setLightboxImage(null)}>
-                <X size={24} />
+            {/* Mobile Header */}
+            <div className="flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 text-white">
+              <div className="min-w-0 flex-1 mr-3">
+                <h3 className="font-bold text-xs truncate uppercase tracking-wider text-slate-400">Image Preview</h3>
+                <p className="font-black text-sm truncate text-white mt-0.5">{page.title.replace('File:', '')}</p>
+              </div>
+              <button 
+                className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full text-slate-300 hover:text-white transition-all active:scale-90 cursor-pointer" 
+                onClick={() => setLightboxImage(null)}
+                id="mobile-close-lightbox"
+              >
+                <X size={20} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar">
-              <div className="bg-slate-100 dark:bg-black/40 w-full aspect-square md:aspect-video flex items-center justify-center p-4">
-                <img src={img.url} crossOrigin="anonymous" className="max-w-full max-h-full object-contain shadow-lg" loading="lazy" />
+
+            {/* Main Interactive Zoom Box */}
+            <div className="flex-1 w-full bg-slate-900 flex items-center justify-center relative overflow-hidden select-none">
+              <InteractiveZoomImage src={img.url} alt={page.title} />
+              
+              <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-[11px] font-mono font-medium text-slate-300 flex items-center gap-1">
+                <span>Pinch to zoom / Drag to pan</span>
               </div>
-              <div className="p-6">
-                <a href={img.descriptionurl} target="_blank" rel="noreferrer" className="text-xl font-bold hover:text-blue-500 mb-2 block">
-                  {page.title.replace('File:', '')}
+            </div>
+
+            {/* Mobile Info & Touch-Friendly Actions Panel */}
+            <div className="bg-slate-900 border-t border-slate-800 p-5 pb-8 flex flex-col gap-4 text-white">
+              <div>
+                <h4 className="font-black text-[18px] leading-tight text-white mb-1.5">{page.title.replace('File:', '')}</h4>
+                <p className="text-[12px] font-semibold text-slate-400 uppercase tracking-widest">{resolution} {fileSize ? `• ${fileSize}` : ""}</p>
+              </div>
+
+              {/* Action grid optimized for thumb sizes (at least 48px height) */}
+              <div className="grid grid-cols-2 gap-3 mt-1 font-sans">
+                <button 
+                  onClick={() => handleDownload(img.url, page.title)}
+                  className="h-12 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer"
+                  id="mobile-btn-download"
+                >
+                  <Download size={18} /> Download
+                </button>
+
+                <button 
+                  onClick={() => toggleSaveImage(img.url, page.title, img.url, img.descriptionurl)}
+                  className={`h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md cursor-pointer
+                    ${isBookmarked ? "bg-amber-500 text-white" : "bg-slate-800 hover:bg-slate-700 text-slate-200"}`}
+                  id="mobile-btn-bookmark"
+                >
+                  <Bookmark size={18} fill={isBookmarked ? "currentColor" : "none"} />
+                  {isBookmarked ? "Bookmarked" : "Bookmark"}
+                </button>
+
+                <a 
+                  href={img.descriptionurl} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="h-12 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
+                >
+                  <Info size={18} /> Details
                 </a>
-                <p className="text-sm text-slate-500 mb-4">{img.width} x {img.height} pixels</p>
-                <a href={img.url} target="_blank" rel="noreferrer" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-500 transition-colors">
-                  <ExternalLink size={18} /> View Original Image
+
+                <a 
+                  href={img.url} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="h-12 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
+                >
+                  <ExternalLink size={18} /> Original
                 </a>
               </div>
             </div>
@@ -1064,28 +1498,84 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
         </AnimatePresence>
 
         {/* Desktop Side Panel */}
-        <div className="w-[400px] shrink-0 sticky top-36 hidden xl:flex flex-col h-fit max-h-[calc(100vh-140px)] overflow-y-auto no-scrollbar pb-10">
+        <div className="w-[430px] shrink-0 sticky top-36 hidden xl:flex flex-col h-fit max-h-[calc(100vh-140px)] overflow-y-auto no-scrollbar pb-10">
           <div className="bg-white dark:bg-[#151D2C] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
-            <div className="w-full relative bg-slate-100 dark:bg-black/40 min-h-[250px] flex items-center justify-center p-4 group">
-               <img src={img.url} crossOrigin="anonymous" className="w-full h-auto max-h-[400px] object-contain shadow-lg" />
-               <button className="absolute top-4 right-4 p-2 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60" onClick={() => setLightboxImage(null)}>
-                 <X size={20} />
-               </button>
-            </div>
-            <div className="p-6 flex flex-col gap-4">
-               <div>
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight mb-1" title={page.title}>{page.title.replace('File:', '')}</h3>
-                  <div className="text-sm text-slate-500">{img.width} x {img.height} - {Math.round(img.size / 1024)} KB</div>
-               </div>
+            
+            {/* Interactive Image Display Viewport */}
+            <div className="w-full relative bg-slate-100 dark:bg-black/40 h-[320px] flex items-center justify-center overflow-hidden group select-none border-b border-slate-150 dark:border-slate-800/80">
+               <InteractiveZoomImage src={img.url} alt={page.title} />
                
-               <div className="grid grid-cols-2 gap-3 mt-2">
-                 <a href={img.descriptionurl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 py-2.5 rounded-xl text-sm font-semibold transition-colors">
-                   <Info size={16} /> Details
-                 </a>
-                 <a href={img.url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">
-                   <ExternalLink size={16} /> Original
-                 </a>
+               <button 
+                 className="absolute top-4 right-4 p-2.5 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10" 
+                 onClick={() => setLightboxImage(null)}
+                 title="Close Panel"
+                 id="desktop-close-lightbox"
+               >
+                 <X size={18} />
+               </button>
+
+               <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-mono text-slate-200 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                 Scroll to zoom / Drag to pan image
                </div>
+            </div>
+
+            {/* Desktop Styling / Details Sidecard */}
+            <div className="p-6 flex flex-col gap-5">
+               <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">Media Spec</span>
+                    <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 font-bold">{fileSize}</span>
+                  </div>
+                  <h3 className="text-xl font-black text-slate-800 dark:text-white leading-tight break-words" title={page.title}>
+                    {page.title.replace('File:', '')}
+                  </h3>
+                  <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-2 flex items-center gap-1.5">
+                    <span>{resolution}</span>
+                  </div>
+               </div>
+
+                {/* Desktop Action Row strictly matching requirements: [Details] [Bookmark] [Download] [Original] */}
+                <div className="flex flex-col gap-2.5 mt-2 font-sans">
+                   <div className="grid grid-cols-2 gap-2.5">
+                     <a 
+                       href={img.descriptionurl} 
+                       target="_blank" 
+                       rel="noreferrer" 
+                       className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 h-11 rounded-xl text-xs font-bold transition-all transform active:scale-98 shadow-sm cursor-pointer"
+                     >
+                       <Info size={14} /> Details
+                     </a>
+
+                     <button 
+                       onClick={() => toggleSaveImage(img.url, page.title, img.url, img.descriptionurl)}
+                       className={`flex items-center justify-center gap-2 h-11 rounded-xl text-xs font-bold transition-all transform active:scale-98 shadow-sm cursor-pointer
+                         ${isBookmarked ? "bg-amber-500 hover:bg-amber-600 text-white" : "bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"}`}
+                       id="desktop-btn-bookmark"
+                     >
+                       <Bookmark size={14} fill={isBookmarked ? "currentColor" : "none"} />
+                       {isBookmarked ? "Bookmarked" : "Bookmark"}
+                     </button>
+                   </div>
+
+                   <div className="grid grid-cols-2 gap-2.5">
+                     <button 
+                       onClick={() => handleDownload(img.url, page.title)}
+                       className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white h-11 rounded-xl text-xs font-bold transition-all transform active:scale-98 shadow-md cursor-pointer"
+                       id="desktop-btn-download"
+                     >
+                       <Download size={14} /> Download
+                     </button>
+
+                     <a 
+                       href={img.url} 
+                       target="_blank" 
+                       rel="noreferrer" 
+                       className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 h-11 rounded-xl text-xs font-bold transition-all transform active:scale-98 shadow-sm cursor-pointer"
+                     >
+                       <ExternalLink size={14} /> Original
+                     </a>
+                   </div>
+                </div>
             </div>
           </div>
         </div>

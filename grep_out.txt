@@ -1,424 +1,644 @@
-27-  Menu,
-28-  MoreVertical,
-29-  Bookmark,
-30-  Save,
-31-  Check,
-32-  Eye,
-33-  Heart,
-34-  Sparkles,
-35-} from "lucide-react";
-36-import {
-37-  Mafs,
-38-  Coordinates,
-39-  Plot,
-40-  Transform,
-41-  Point,
-42-  Vector,
-43-  Polygon,
-44-  MovablePoint,
-45-  Text,
-46-  Line,
-47:  LaTeX,
-48-  usePaneContext,
-49-} from "mafs";
-50-import "mafs/core.css";
-51-import "mafs/font.css";
-52-import "katex/dist/katex.min.css";
-53-import katex from "katex";
-54-import * as mathjs from "mathjs";
-55-import Markdown from "react-markdown";
-56-import remarkMath from "remark-math";
-57-import rehypeKatex from "rehype-katex";
-58-import remarkGfm from "remark-gfm";
-59-import { useStore } from "../store/useStore";
-60-import { HexAlphaColorPicker } from "react-colorful";
-61-import { useLiveQuery } from "dexie-react-hooks";
-62-import { db } from "../lib/db";
-63-
-64-const InsertAboveIcon = ({
-65-  size = 14,
-66-  className = "",
-67-}: {
---
-987-                    : ""),
-988-                { throwOnError: true, displayMode: true },
-989-              ),
-990-            }}
-991-          />
-992-          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/80 dark:bg-slate-900/80 backdrop-blur rounded p-0.5 border border-slate-200 dark:border-slate-700 shadow-sm z-10">
-993-            {resStrOutput && (
-994-              <button
-995-                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-mono text-[9px] font-bold"
-996-                title="Copy Result"
-997-                onClick={(e) => {
-998-                  e.stopPropagation();
-999-                  navigator.clipboard.writeText(resStrOutput);
-1000-                }}
-1001-              >
-1002-                =
-1003-              </button>
-1004-            )}
-1005-            <button
-1006-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 font-serif text-[10px] font-bold px-1.5"
-1007:              title="Copy LaTeX"
-1008-              onClick={(e) => {
-1009-                e.stopPropagation();
-1010-                navigator.clipboard.writeText(rawLatexOutput);
-1011-              }}
-1012-            >
-1013:              TeX
-1014-            </button>
-1015-            <button
-1016-              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400"
-1017-              title="Copy Expression"
-1018-              onClick={(e) => {
-1019-                e.stopPropagation();
-1020-                navigator.clipboard.writeText(value);
-1021-              }}
-1022-            >
-1023-              <Copy size={12} />
-1024-            </button>
-1025-          </div>
-1026-        </>
-1027-      );
-1028-    } catch (e) {
-1029-      // 2. Fallback to Markdown or plain text
-1030-      renderedLatex = (
-1031-        <div className="markdown-body p-2 font-sans w-full text-sm text-slate-800 dark:text-slate-200">
-1032-           <Markdown
-1033-             remarkPlugins={MARKDOWN_REMARK_PLUGINS}
---
-1402-    // Try to parse as mathjs first to give it the "math like" formatting if it is an equation
-1403-    try {
-1404-      const node = mathjs.parse(value);
-1405-      latexStr = node.toTex();
-1406-    } catch (e) {
-1407-      // It's not a valid mathjs expression, stick to raw value
-1408-    }
-1409-
-1410-    try {
-1411-      renderedLatex = (
-1412-        <span
-1413-          dangerouslySetInnerHTML={{
-1414-            __html: katex.renderToString(latexStr, {
-1415-              throwOnError: true,
-1416-              displayMode: false,
-1417-            }),
-1418-          }}
-1419-        />
-1420-      );
-1421-    } catch (e) {
-1422:      // If KaTeX still fails (e.g. invalid latex like a raw backslash), fallback to plain text
-1423-      renderedLatex = <span className="font-mono">{value}</span>;
-1424-    }
-1425-  }
-1426-
-1427-  return (
-1428-    <div
-1429-      className={`relative w-[180px] rounded border transition-colors cursor-text min-h-[32px] overflow-hidden ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.5)]" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"}`}
-1430-      onClick={() => {
-1431-        if (!isFocused) setIsFocused(true);
-1432-        setTimeout(() => inputRef.current?.focus(), 10);
-1433-      }}
-1434-    >
-1435-      <div
-1436-        className={`relative w-full ${isFocused || !renderedLatex ? "block" : "hidden"}`}
-1437-      >
-1438-        <textarea
-1439-          ref={inputRef}
-1440-          value={value}
-1441-          onChange={(e) => onChange(e.target.value)}
-1442-          onFocus={() => setIsFocused(true)}
---
-1464-  at,
-1465-  tex,
-1466-  color,
-1467-}: {
-1468-  at: [number, number];
-1469-  tex: string;
-1470-  color: string;
-1471-}) => {
-1472-  if (!tex) return null;
-1473-
-1474-  let finalTex = tex;
-1475-  try {
-1476-    const node = mathjs.parse(tex);
-1477-    finalTex = node.toTex();
-1478-  } catch (e) {
-1479-    // Stick to raw tex
-1480-  }
-1481-
-1482-  try {
-1483-    katex.renderToString(finalTex, { throwOnError: true });
-1484:    return <LaTeX at={at} tex={finalTex} color={color} />;
-1485-  } catch (e) {
-1486-    return (
-1487-      <Text x={at[0]} y={at[1]} color={color} attach="ne">
-1488-        {tex}
-1489-      </Text>
-1490-    );
-1491-  }
-1492-};
-1493-
-1494-const ImplicitPlot: React.FC<{
-1495-  compiledLHS: any;
-1496-  compiledRHS: any;
-1497-  baseScope: any;
-1498-  color: string;
-1499-  weight?: number;
-1500-  opacity?: number;
-1501-  tx?: number;
-1502-  ty?: number;
-1503-  lineStyle?: string;
-1504-}> = ({
---
-3306-                                        </label>
-3307-                                        <div className="flex items-center gap-1.5 select-none">
-3308-                                          {/* Small Eye button to toggle raw / rendered */}
-3309-                                          <button
-3310-                                            type="button"
-3311-                                            onClick={(e) => {
-3312-                                              e.preventDefault();
-3313-                                              e.stopPropagation();
-3314-                                              setShowPreviewLatex(
-3315-                                                !showPreviewLatex,
-3316-                                              );
-3317-                                            }}
-3318-                                            className={`p-0.5 rounded border flex items-center justify-center h-5 w-5 cursor-pointer transition-colors ${
-3319-                                              showPreviewLatex
-3320-                                                ? "bg-blue-600/10 text-blue-405 border-blue-500/20 hover:bg-blue-600/20"
-3321-                                                : "bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-700/45"
-3322-                                            }`}
-3323-                                            title={
-3324-                                              showPreviewLatex
-3325-                                                ? "Show Raw Text Code"
-3326:                                                : "Show LaTeX Math Layout"
-3327-                                            }
-3328-                                          >
-3329-                                            <Eye
-3330-                                              size={11}
-3331-                                              className="stroke-[2]"
-3332-                                            />
-3333-                                          </button>
-3334-
-3335-                                          {/* Compact Copy action */}
-3336-                                          <button
-3337-                                            type="button"
-3338-                                            onClick={() => {
-3339-                                              navigator.clipboard.writeText(
-3340-                                                f.expr,
-3341-                                              );
-3342-                                              setPreviewCopied(true);
-3343-                                              setTimeout(
-3344-                                                () => setPreviewCopied(false),
-3345-                                                2000,
-3346-                                              );
---
-3751-                                    />
-3752-                                    <span className="text-slate-600 dark:text-slate-300">
-3753-                                      Show Label
-3754-                                    </span>
-3755-                                  </label>
-3756-                                </div>
-3757-
-3758-                                {f.showLabel && (
-3759-                                  <div className="flex mt-1">
-3760-                                    <LabelInput
-3761-                                      value={f.label || ""}
-3762-                                      onChange={(val) =>
-3763-                                        setFunctions((prev) =>
-3764-                                          prev.map((fn) =>
-3765-                                            fn.id === f.id
-3766-                                              ? { ...fn, label: val }
-3767-                                              : fn,
-3768-                                          ),
-3769-                                        )
-3770-                                      }
-3771:                                      placeholder="Text or LaTeX (e.g. A_1)"
-3772-                                    />
-3773-                                  </div>
-3774-                                )}
-3775-
-3776-                                <div className="flex items-center justify-between mt-1 p-2 border border-blue-500/10 bg-blue-500/5 dark:bg-blue-500/5 rounded">
-3777-                                  <span className="text-slate-600 dark:text-slate-400 text-[10px] font-semibold tracking-wide">
-3778-                                    Change Origin [h, k]
-3779-                                  </span>
-3780-                                  <div className="flex gap-1.5 flex-1 max-w-[100px]">
-3781-                                    <input
-3782-                                      title="h (shift for x-axis)"
-3783-                                      type="number"
-3784-                                      step="1"
-3785-                                      value={f.transformTranslate?.[0] || 0}
-3786-                                      onChange={(e) =>
-3787-                                        setFunctions((prev) =>
-3788-                                          prev.map((fn) =>
-3789-                                            fn.id === f.id
-3790-                                              ? {
-3791-                                                  ...fn,
---
-4726-                      setDragEnabledFormulaId(null);
-4727-                    };
-4728-
-4729-                    const toggleFavorite = async (formula: any) => {
-4730-                      if (formula.id) {
-4731-                        await db.customFormulas.update(formula.id, {
-4732-                          isFavorite: !formula.isFavorite,
-4733-                        });
-4734-                      }
-4735-                    };
-4736-
-4737-                    const handleSaveExpr = async (id: number) => {
-4738-                      if (editingFormulaExpr.trim()) {
-4739-                        await db.customFormulas.update(id, {
-4740-                          expr: editingFormulaExpr.trim(),
-4741-                        });
-4742-                      }
-4743-                      setEditingFormulaFieldId(null);
-4744-                    };
-4745-
-4746:                    const renderFormulaLaTeX = (expr: string, type: string) => {
-4747-                      try {
-4748-                        const parsed = mathjs.parse(expr);
-4749-                        const texStr = parsed.toTex();
-4750-                        let prefix = "";
-4751-                        if (type === "polar") prefix = "r = ";
-4752-                        else if (type === "parametric") prefix = "[x,y] = ";
-4753-                        else prefix = "y = ";
-4754-
-4755-                        const fullTex = prefix + texStr;
-4756-                        const html = katex.renderToString(fullTex, {
-4757-                          throwOnError: true,
-4758-                          displayMode: false,
-4759-                        });
-4760-                        return (
-4761-                          <div
-4762-                            className="text-blue-600 dark:text-blue-400 font-sans tracking-wide select-all text-xs"
-4763-                            dangerouslySetInnerHTML={{ __html: html }}
-4764-                          />
-4765-                        );
-4766-                      } catch (err) {
---
-5034-                                                      null,
-5035-                                                    );
-5036-                                                }}
-5037-                                                className="w-full bg-[#070b13] border border-blue-500 focus:border-blue-400 focus:ring-1 focus:ring-blue-450 rounded-lg h-8 px-2.5 outline-none font-mono text-xs text-blue-300 font-bold"
-5038-                                              />
-5039-                                            </div>
-5040-                                          ) : (
-5041-                                            <div
-5042-                                              onClick={() => {
-5043-                                                setEditingFormulaFieldId(
-5044-                                                  formula.id!,
-5045-                                                );
-5046-                                                setEditingFormulaExpr(
-5047-                                                  formula.expr,
-5048-                                                );
-5049-                                              }}
-5050-                                              className="ml-5 flex items-center justify-between bg-white dark:bg-[#070b13]/60 border border-rose-100/60 dark:border-rose-900/20 hover:border-rose-300 dark:hover:border-rose-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
-5051-                                              title="Click to Edit Formula"
-5052-                                            >
-5053-                                              <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
-5054:                                                {renderFormulaLaTeX(
-5055-                                                  formula.expr,
-5056-                                                  formula.type || "function",
-5057-                                                )}
-5058-                                              </div>
-5059-                                              <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 opacity-0 group-hover/math-block:opacity-100 transition-opacity">
-5060-                                                <Edit2
-5061-                                                  size={11}
-5062-                                                  className="text-pink-400"
-5063-                                                />
-5064-                                                <button
-5065-                                                  type="button"
-5066-                                                  onClick={(e) => {
-5067-                                                    e.stopPropagation();
-5068-                                                    navigator.clipboard.writeText(
-5069-                                                      formula.expr,
-5070-                                                    );
-5071-                                                    setCopiedFormulaId(
-5072-                                                      formula.id || null,
-5073-                                                    );
-5074-                                                    setTimeout(
---
-5232-                                                  await db.customFormulas.delete(
-5233-                                                    formula.id,
-5234-                                                  );
-5235-                                                }
-5236-                                              }}
-5237-                                              className="h-7 w-7 bg-red-500/10 hover:bg-red-500/25 text-red-500 rounded-md border border-red-500/15 flex items-center justify-center transition-all opacity-40 group-hover/formula:opacity-100 hover:scale-105 cursor-pointer shadow-xs"
-5238-                                              title="Delete Formula"
-5239-                                            >
-5240-                                              <Trash2 size={13} />
-5241-                                            </button>
-5242-                                          </div>
-5243-                                        </div>
-5244-
-5245-                                        {/* Formula Description */}
-5246-                                        {formula.description && (
-5247-                                          <p className="text-[10px] text-slate-500 dark:text-slate-450 leading-normal pl-5 pr-2">
-5248-                                            {formula.description}
-5249-                                          </p>
-5250-                                        )}
-5251-
-5252:                                        {/* Click to Edit / Blur to LaTeX Block */}
-5253-                                        {editingFormulaFieldId ===
-5254-                                        formula.id ? (
-5255-                                          <div className="pl-5 pr-1 mt-0.5">
-5256-                                            <input
-5257-                                              type="text"
-5258-                                              autoFocus
-5259-                                              value={editingFormulaExpr}
-5260-                                              onChange={(e) =>
-5261-                                                setEditingFormulaExpr(
-5262-                                                  e.target.value,
-5263-                                                )
-5264-                                              }
-5265-                                              onBlur={() =>
-5266-                                                handleSaveExpr(formula.id!)
-5267-                                              }
-5268-                                              onKeyDown={(e) => {
-5269-                                                if (e.key === "Enter")
-5270-                                                  handleSaveExpr(formula.id!);
-5271-                                                if (e.key === "Escape")
-5272-                                                  setEditingFormulaFieldId(
-5273-                                                    null,
-5274-                                                  );
-5275-                                              }}
-5276-                                              className="w-full bg-[#0D1527] border border-blue-500 hover:border-blue-400 focus:ring-1 focus:ring-blue-450 rounded-lg h-8 px-2.5 outline-none font-mono text-xs text-blue-300 font-bold"
-5277-                                            />
-5278-                                          </div>
-5279-                                        ) : (
-5280-                                          <div
-5281-                                            onClick={() => {
-5282-                                              setEditingFormulaFieldId(
-5283-                                                formula.id!,
-5284-                                              );
-5285-                                              setEditingFormulaExpr(
-5286-                                                formula.expr,
-5287-                                              );
-5288-                                            }}
-5289-                                            className="ml-5 flex items-center justify-between bg-slate-50 dark:bg-[#0D1527]/20 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-500/30 rounded-lg p-2.5 min-h-[2.25rem] cursor-text transition-all select-none group/math-block relative"
-5290-                                            title="Click to Edit Formula"
-5291-                                          >
-5292-                                            <div className="flex-1 overflow-x-auto custom-scrollbar scrollbar-none pr-6">
-5293:                                              {renderFormulaLaTeX(
-5294-                                                formula.expr,
-5295-                                                formula.type || "function",
-5296-                                              )}
-5297-                                            </div>
-5298-                                            <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 opacity-0 group-hover/math-block:opacity-100 transition-opacity">
-5299-                                              <Edit2
-5300-                                                size={11}
-5301-                                                className="text-blue-400"
-5302-                                              />
-5303-                                              <button
-5304-                                                type="button"
-5305-                                                onClick={(e) => {
-5306-                                                  e.stopPropagation();
-5307-                                                  navigator.clipboard.writeText(
-5308-                                                    formula.expr,
-5309-                                                  );
-5310-                                                  setCopiedFormulaId(
-5311-                                                    formula.id || null,
-5312-                                                  );
-5313-                                                  setTimeout(
+src/components/AnnotationRenderer.tsx:1:import React, { useMemo, useState, useEffect } from 'react';
+src/components/AnnotationRenderer.tsx:694:  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, anno: Annotation } | null>(null);
+src/components/AnnotationRenderer.tsx:695:  const [manualResizeAnno, setManualResizeAnno] = useState<Annotation | null>(null);
+src/components/TransformBox.tsx:1:import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
+src/components/TransformBox.tsx:27:  const [tooltipAngle, setTooltipAngle] = useState<number | null>(null);
+src/components/TransformBox.tsx:28:  const [resizingSize, setResizingSize] = useState<{ w: number, h: number } | null>(null);
+src/components/TransformBox.tsx:48:  const [toggleOffset, setToggleOffset] = useState({ x: 0, y: 0 });
+src/components/SearchNodeWorkspace.tsx:1:import React, { useState, useEffect, useRef, useMemo } from "react";
+src/components/SearchNodeWorkspace.tsx:44:  const [query, setQuery] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
+src/components/SearchNodeWorkspace.tsx:45:  const [inputValue, setInputValue] = useState(() => sessionStorage.getItem(`${path}_query`) || "");
+src/components/SearchNodeWorkspace.tsx:46:  const [activeTab, setActiveTab] = useState<ActiveTab>(() => (sessionStorage.getItem(`${path}_tab`) as ActiveTab) || "All");
+src/components/SearchNodeWorkspace.tsx:47:  const [activeSavedSection, setActiveSavedSection] = useState<'Articles' | 'Images' | 'Collections' | 'History'>(() => {
+src/components/SearchNodeWorkspace.tsx:56:  const [language, setLanguage] = useState(() => localStorage.getItem('wiki_lang') || "en");
+src/components/SearchNodeWorkspace.tsx:57:  const [isFocused, setIsFocused] = useState(false);
+src/components/SearchNodeWorkspace.tsx:60:  const [activeSidebarItem, setActiveSidebarItem] = useState(() => sessionStorage.getItem(`${path}_sidebar`) || "All Results");
+src/components/SearchNodeWorkspace.tsx:61:  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+src/components/SearchNodeWorkspace.tsx:62:  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
+src/components/SearchNodeWorkspace.tsx:63:  const [isLangOpen, setIsLangOpen] = useState(false);
+src/components/SearchNodeWorkspace.tsx:78:  const [suggestions, setSuggestions] = useState<string[]>([]);
+src/components/SearchNodeWorkspace.tsx:79:  const [results, setResults] = useState<any[]>(() => JSON.parse(sessionStorage.getItem(`${path}_results`) || "[]"));
+src/components/SearchNodeWorkspace.tsx:80:  const [imageResults, setImageResults] = useState<any[]>(() => JSON.parse(sessionStorage.getItem(`${path}_imageResults`) || "[]"));
+src/components/SearchNodeWorkspace.tsx:81:  const [isSearching, setIsSearching] = useState(false);
+src/components/SearchNodeWorkspace.tsx:82:  const [activeArticle, setActiveArticle] = useState<any | null>(() => JSON.parse(sessionStorage.getItem(`${path}_article`) || "null"));
+src/components/SearchNodeWorkspace.tsx:85:  const [knowledgePanel, setKnowledgePanel] = useState<any | null>(() => JSON.parse(sessionStorage.getItem(`${path}_kp`) || "null"));
+src/components/SearchNodeWorkspace.tsx:88:  const [offset, setOffset] = useState(() => parseInt(sessionStorage.getItem(`${path}_offset`) || "0"));
+src/components/SearchNodeWorkspace.tsx:89:  const [totalHits, setTotalHits] = useState(() => parseInt(sessionStorage.getItem(`${path}_totalHits`) || "0"));
+src/components/SearchNodeWorkspace.tsx:90:  const [searchTime, setSearchTime] = useState(0);
+src/components/SearchNodeWorkspace.tsx:91:  const [hasMore, setHasMore] = useState(true);
+src/components/SearchNodeWorkspace.tsx:94:  const [lastSearchedQuery, setLastSearchedQuery] = useState(() => sessionStorage.getItem(`${path}_last_searched_query`) || "");
+src/components/SearchNodeWorkspace.tsx:95:  const [lightboxImage, setLightboxImage] = useState<any | null>(null);
+src/components/SearchNodeWorkspace.tsx:129:  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+src/components/SearchNodeWorkspace.tsx:130:  const [savedArticles, setSavedArticles] = useState<any[]>([]);
+src/components/SearchNodeWorkspace.tsx:131:  const [savedImages, setSavedImages] = useState<any[]>([]);
+src/components/SearchNodeWorkspace.tsx:184:  const [isDarkMode, setIsDarkMode] = useState(() => {
+src/components/PyMissingPromptModal.tsx:1:import React, { useState } from "react";
+src/components/PyMissingPromptModal.tsx:11:  const [installing, setInstalling] = useState(false);
+src/components/PyMissingPromptModal.tsx:12:  const [currentInstallingPkg, setCurrentInstallingPkg] = useState("");
+src/components/PyMissingPromptModal.tsx:13:  const [completedPkgs, setCompletedPkgs] = useState<string[]>([]);
+src/components/PyMissingPromptModal.tsx:14:  const [errorPkg, setErrorPkg] = useState("");
+src/components/export/ExportStudio.tsx:2:import React, { useState } from 'react';
+src/components/export/ExportStudio.tsx:63:  const [uiMode, setUiMode] = useState<'basic' | 'advanced' | 'expert'>('basic');
+src/components/export/ExportStudio.tsx:64:  const [activeSection, setActiveSection] = useState<'codec' | 'resize' | 'presets'>('codec');
+src/components/SmartMediaRenderer.tsx:1:import React, { useState, useEffect } from 'react';
+src/components/SmartMediaRenderer.tsx:15:  const [mediaData, setMediaData] = useState<any>(() => {
+src/components/SmartMediaRenderer.tsx:24:  const [isLoading, setIsLoading] = useState(() => {
+src/components/SmartMediaRenderer.tsx:31:  const [renderState, setRenderState] = useState<RenderState>('direct');
+src/components/SmartMediaRenderer.tsx:32:  const [actualUrl, setActualUrl] = useState<string>(url);
+src/components/ServiceWorkerUpdater.tsx:1:import React, { useEffect, useState } from "react";
+src/components/ServiceWorkerUpdater.tsx:5:  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+src/components/ServiceWorkerUpdater.tsx:6:  const [showPrompt, setShowPrompt] = useState(false);
+src/components/ServiceWorkerUpdater.tsx:7:  const [isPWA, setIsPWA] = useState(false);
+src/components/PyNodeTerminalRenderer.tsx:1:import React, { useEffect, useRef, useState } from "react";
+src/components/PyNodeTerminalRenderer.tsx:13:  const [copied, setCopied] = useState(false);
+src/components/GraphVisualizer.tsx:6:  useState,
+src/components/GraphVisualizer.tsx:194:  const [contextMenu, setContextMenu] = useState<{
+src/components/GraphVisualizer.tsx:200:  const [tableViewData, setTableViewData] = useState<{
+src/components/GraphVisualizer.tsx:204:  const [mediaInfoModal, setMediaInfoModal] = useState<{
+src/components/GraphVisualizer.tsx:238:  const [editingNode, setEditingNode] = useState<{
+src/components/GraphVisualizer.tsx:883:  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+src/components/TsNodeTerminalRenderer.tsx:1:import React, { useEffect, useRef, useState } from "react";
+src/components/TsNodeTerminalRenderer.tsx:11:  const [copied, setCopied] = useState(false);
+src/components/TransferNodeRenderer.tsx:1:import React, { useState, useEffect, useRef, useCallback } from "react";
+src/components/TransferNodeRenderer.tsx:152:  const [content, setContent] = useState<string>("Loading...");
+src/components/TransferNodeRenderer.tsx:191:  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+src/components/TransferNodeRenderer.tsx:239:  const [connectionState, setConnectionState] = useState<
+src/components/TransferNodeRenderer.tsx:247:  const [isHosting, setIsHosting] = useState(false);
+src/components/TransferNodeRenderer.tsx:248:  const [messages, setMessages] = useState<Message[]>([]);
+src/components/TransferNodeRenderer.tsx:249:  const [chatInput, setChatInput] = useState("");
+src/components/TransferNodeRenderer.tsx:250:  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+src/components/TransferNodeRenderer.tsx:252:  const [offerQR, setOfferQR] = useState("");
+src/components/TransferNodeRenderer.tsx:253:  const [answerQR, setAnswerQR] = useState("");
+src/components/TransferNodeRenderer.tsx:255:  const [broadcastFrames, setBroadcastFrames] = useState<string[]>([]);
+src/components/TransferNodeRenderer.tsx:256:  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
+src/components/TransferNodeRenderer.tsx:257:  const [qrSpeed, setQrSpeed] = useState<"fast" | "balanced" | "reliable">("reliable");
+src/components/TransferNodeRenderer.tsx:259:  const [receivedChunks, setReceivedChunks] = useState<{
+src/components/TransferNodeRenderer.tsx:265:  const [completeScannedPayload, setCompleteScannedPayload] = useState<string | null>(null);
+src/components/TransferNodeRenderer.tsx:267:  const [scannerGuidance, setScannerGuidance] = useState<string>("Position QR in frame");
+src/components/TransferNodeRenderer.tsx:269:  const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
+src/components/TransferNodeRenderer.tsx:270:  const [scanError, setScanError] = useState<string | null>(null);
+src/components/TransferNodeRenderer.tsx:271:  const [copyPasteOffer, setCopyPasteOffer] = useState("");
+src/components/TransferNodeRenderer.tsx:272:  const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
+src/components/TransferNodeRenderer.tsx:292:  const [transferProgress, setTransferProgress] = useState(0);
+src/components/TransferNodeRenderer.tsx:293:  const [isFullscreen, setIsFullscreen] = useState(false);
+src/components/TransferNodeRenderer.tsx:294:  const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
+src/components/TransferNodeRenderer.tsx:295:  const [unreadCount, setUnreadCount] = useState(0);
+src/components/TransferNodeRenderer.tsx:296:  const [isAtBottom, setIsAtBottom] = useState(true);
+src/components/TransferNodeRenderer.tsx:297:  const [showScrollDown, setShowScrollDown] = useState(false);
+src/components/TransferNodeRenderer.tsx:303:    useState<NotificationPermission>("default");
+src/components/TransferNodeRenderer.tsx:305:  const [diagnostics, setDiagnostics] = useState({
+src/components/TransferNodeRenderer.tsx:343:  const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+src/components/TransferNodeRenderer.tsx:344:  const [viewedMediaIds, setViewedMediaIds] = useState<Set<string>>(new Set());
+src/components/TransferNodeRenderer.tsx:345:  const [showChrome, setShowChrome] = useState(true);
+src/components/TransferNodeRenderer.tsx:346:  const [copyStatus, setCopyStatus] = useState<{ id: string, status: "copying" | "success" } | null>(null);
+src/components/TransferNodeRenderer.tsx:573:  const [showContextMenu, setShowContextMenu] = useState<{
+src/components/TransferNodeRenderer.tsx:579:  const [pairingMode, setPairingMode] = useState<"local" | "universal">(
+src/components/TransferNodeRenderer.tsx:582:  const [pairingWorkflow, setPairingWorkflow] = useState<"qr" | "manual">("qr");
+src/components/TransferNodeRenderer.tsx:583:  const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<
+src/components/TransferNodeRenderer.tsx:586:  const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
+src/components/TransferNodeRenderer.tsx:587:  const [showDiagnostics, setShowDiagnostics] = useState(false);
+src/components/TransferNodeRenderer.tsx:588:  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+src/components/TransferNodeRenderer.tsx:589:  const [copiedSDP, setCopiedSDP] = useState(false);
+src/components/ApiNodeRenderer.tsx:1:import React, { useState, useEffect, useCallback } from 'react';
+src/components/ApiNodeRenderer.tsx:31:  const [useProxy, setUseProxy] = useState(false);
+src/components/ApiNodeRenderer.tsx:32:  const [showErrorPopup, setShowErrorPopup] = useState(false);
+src/components/ApiNodeRenderer.tsx:33:  const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
+src/components/DrawingToolbar.tsx:1:import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
+src/components/DrawingToolbar.tsx:17:  const [internalOpen, setInternalOpen] = useState(false);
+src/components/DrawingToolbar.tsx:66:  const [tex, setTex] = useState('');
+src/components/DrawingToolbar.tsx:67:  const [isVisible, setIsVisible] = useState(true);
+src/components/DrawingToolbar.tsx:68:  const [copied, setCopied] = useState(false);
+src/components/DrawingToolbar.tsx:283:  const [isOpen, setIsOpen] = useState(false);
+src/components/DrawingToolbar.tsx:284:  const [isMoreOpen, setIsMoreOpen] = useState(false);
+src/components/DrawingToolbar.tsx:285:  const [searchQuery, setSearchQuery] = useState('');
+src/components/DrawingToolbar.tsx:286:  const [expressionCopied, setExpressionCopied] = useState(false);
+src/components/DrawingToolbar.tsx:965:  const [val, setVal] = useState(initialScale);
+src/components/DrawingToolbar.tsx:1013:  const [showConfig, setShowConfig] = useState(false);
+src/components/DrawingToolbar.tsx:1014:  const [isDragging, setIsDragging] = useState(false);
+src/components/DrawingToolbar.tsx:1015:  const [isInitialLoad, setIsInitialLoad] = useState(true);
+src/components/DrawingToolbar.tsx:1016:  const [isMobile, setIsMobile] = useState(false);
+src/components/DrawingToolbar.tsx:1034:  const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function' | 'arrow'>('none');
+src/components/DrawingToolbar.tsx:1035:  const [isMoreOpen, setIsMoreOpen] = useState(false);
+src/components/DrawingToolbar.tsx:1036:  const [searchQuery, setSearchQuery] = useState('');
+src/components/DrawingToolbar.tsx:1037:  const [expressionCopied, setExpressionCopied] = useState(false);
+src/components/DrawingToolbar.tsx:1094:  const [localOptionsSize, setLocalOptionsSize] = useState({ w: store.optionsPanelWidth, h: store.optionsPanelHeight });
+src/components/DrawingToolbar.tsx:1095:  const [localFunctionSize, setLocalFunctionSize] = useState({ w: store.functionPanelWidth, h: store.functionPanelHeight });
+src/components/DrawingToolbar.tsx:1096:  const [localArrowSize, setLocalArrowSize] = useState({ w: store.arrowPanelWidth, h: store.arrowPanelHeight });
+src/components/DrawingToolbar.tsx:1097:  const [localScale, setLocalScale] = useState(store.toolbarScale);
+src/components/DrawingToolbar.tsx:1098:  const [isAdjustingScale, setIsAdjustingScale] = useState(false);
+src/components/SearchNodeRenderer.tsx:1:import React, { useState, useEffect } from "react";
+src/components/SearchNodeRenderer.tsx:15:  const [localSearchQuery, setLocalSearchQuery] = useState("");
+src/components/SearchNodeRenderer.tsx:29:  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+src/components/SearchNodeRenderer.tsx:30:  const [savedArticles, setSavedArticles] = useState<any[]>([]);
+src/components/SmartFallbackMedia.tsx:1:import React, { useState, useEffect } from 'react';
+src/components/SmartFallbackMedia.tsx:24:  const [renderState, setRenderState] = useState<'direct' | 'proxied' | 'failed'>('direct');
+src/components/SmartFallbackMedia.tsx:25:  const [resolvedUrl, setResolvedUrl] = useState<string>('');
+src/components/TodoSearchBar.tsx:1:import React, { useState, useRef, useEffect, useMemo } from "react";
+src/components/TodoSearchBar.tsx:52:  const [isFocused, setIsFocused] = useState(false);
+src/components/MediaPreviewPopup.tsx:17:  const [resolvedAssetUrl, setResolvedAssetUrl] = React.useState<string | null>(null);
+src/components/SchemaVisualizer.tsx:1:import React, { useState, useMemo, useEffect, useRef } from 'react';
+src/components/SchemaVisualizer.tsx:520:  const [expanded, setExpanded] = useState(false);
+src/components/SchemaVisualizer.tsx:521:  const [isHidden, setIsHidden] = useState(false);
+src/components/SchemaVisualizer.tsx:798:  const [hasSelection, setHasSelection] = useState(false);
+src/components/SchemaVisualizer.tsx:877:  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+src/components/ArticleReader.tsx:1:import React, { useEffect, useRef, useState, useMemo } from "react";
+src/components/ArticleReader.tsx:234:  const [isLoading, setIsLoading] = useState(false);
+src/components/ArticleReader.tsx:527:  const [zoom, setZoom] = useState(1);
+src/components/ArticleReader.tsx:528:  const [rotation, setRotation] = useState(0);
+src/components/ArticleReader.tsx:529:  const [pan, setPan] = useState({ x: 0, y: 0 });
+src/components/ArticleReader.tsx:530:  const [isPanning, setIsPanning] = useState(false);
+src/components/ArticleReader.tsx:541:  const [currentIndex, setCurrentIndex] = useState(entry.data?.index || 0);
+src/components/SavedDocumentsModal.tsx:1:import React, { useState, useMemo } from 'react';
+src/components/SavedDocumentsModal.tsx:9:  const [docName, setDocName] = useState('');
+src/components/SavedDocumentsModal.tsx:10:  const [searchQuery, setSearchQuery] = useState('');
+src/components/SavedDocumentsModal.tsx:11:  const [sortBy, setSortBy] = useState<'modified' | 'created' | 'name'>('modified');
+src/components/SavedDocumentsModal.tsx:12:  const [editingId, setEditingId] = useState<number | null>(null);
+src/components/SavedDocumentsModal.tsx:13:  const [editName, setEditName] = useState('');
+src/components/SavedDocumentsModal.tsx:14:  const [confirmAction, setConfirmAction] = useState<{
+src/components/Toolbar.tsx:9:import { useState, useEffect, useMemo, useRef } from "react";
+src/components/Toolbar.tsx:134:  const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
+src/components/Toolbar.tsx:287:  const [showEdgeWidthPopover, setShowEdgeWidthPopover] = useState(false);
+src/components/Toolbar.tsx:288:  const [popoverCoords, setPopoverCoords] = useState<{
+src/components/Toolbar.tsx:308:  const [isExporting, setIsExporting] = useState<boolean>(false);
+src/components/Toolbar.tsx:309:  const [exportStatus, setExportStatus] = useState<string>(
+src/components/SafeModelViewer.tsx:1:import React, { useEffect, useState } from "react";
+src/components/SafeModelViewer.tsx:13:  const [loaded, setLoaded] = useState(false);
+src/components/SafeModelViewer.tsx:14:  const [error, setError] = useState<string | null>(null);
+src/components/SafeModelViewer.tsx:15:  const [resolvedUrl, setResolvedUrl] = useState<string>('');
+src/components/FileExplorerPanel.tsx:1:import React, { useState, useRef, useEffect, useMemo } from "react";
+src/components/FileExplorerPanel.tsx:84:  const [searchQuery, setSearchQuery] = useState(explorerSearchQuery);
+src/components/FileExplorerPanel.tsx:85:  const [editingPath, setEditingPath] = useState<string | null>(null);
+src/components/FileExplorerPanel.tsx:86:  const [editingValue, setEditingValue] = useState("");
+src/components/FileExplorerPanel.tsx:87:  const [creatingInPath, setCreatingInPath] = useState<string | null>(null);
+src/components/FileExplorerPanel.tsx:88:  const [creatingType, setCreatingType] = useState<"js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "image_node" | "folder" | "primitive" | null>(null);
+src/components/FileExplorerPanel.tsx:89:  const [creatingValue, setCreatingValue] = useState("");
+src/components/FileExplorerPanel.tsx:92:  const [contextMenu, setContextMenu] = useState<{
+src/components/FileExplorerPanel.tsx:101:  const [draggedId, setDraggedId] = useState<string | null>(null);
+src/components/FileExplorerPanel.tsx:102:  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+src/components/FileExplorerPanel.tsx:104:  const [explorerError, setExplorerError] = useState<string | null>(null);
+src/components/FileExplorerPanel.tsx:105:  const [deleteItemsConfirm, setDeleteItemsConfirm] = useState<string[] | null>(null);
+src/components/FileExplorerPanel.tsx:106:  const [conflictConfirm, setConflictConfirm] = useState<{
+src/components/FileExplorerPanel.tsx:416:  const [moveConfirm, setMoveConfirm] = useState<{ sourceId: string; targetFolderId: string } | null>(null);
+src/components/PdfViewer.tsx:1:import React, { useEffect, useRef, useState } from "react";
+src/components/PdfViewer.tsx:13:  const [pdfDoc, setPdfDoc] = useState<any>(null);
+src/components/PdfViewer.tsx:14:  const [currentPage, setCurrentPage] = useState<number>(1);
+src/components/PdfViewer.tsx:15:  const [totalPages, setTotalPages] = useState<number>(0);
+src/components/PdfViewer.tsx:16:  const [scale, setScale] = useState<number>(1.2);
+src/components/PdfViewer.tsx:17:  const [loading, setLoading] = useState<boolean>(true);
+src/components/PdfViewer.tsx:18:  const [rendering, setRendering] = useState<boolean>(false);
+src/components/PdfViewer.tsx:19:  const [error, setError] = useState<string | null>(null);
+src/components/PdfViewer.tsx:20:  const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
+src/components/PdfViewer.tsx:21:  const [reloadKey, setReloadKey] = useState<number>(0);
+src/components/PdfViewer.tsx:24:  const [showControls, setShowControls] = useState(true);
+src/components/SmartFetchErrorUI.tsx:1:import { useState } from 'react';
+src/components/SmartFetchErrorUI.tsx:31:  const [showDetails, setShowDetails] = useState(false);
+src/components/SmartFetchErrorUI.tsx:32:  const [payloadViewMode, setPayloadViewMode] = useState<'raw' | 'rendered'>('rendered');
+src/components/PyNodeCodeRenderer.tsx:1:import React, { useState, useEffect } from "react";
+src/components/PyNodeCodeRenderer.tsx:32:  const [localCode, setLocalCode] = useState(code);
+src/components/PyNodeCodeRenderer.tsx:33:  const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
+src/components/PyNodeCodeRenderer.tsx:34:  const [goToLineValue, setGoToLineValue] = useState("");
+src/components/PyNodeCodeRenderer.tsx:53:  const [monaco, setMonaco] = useState<any>(null);
+src/components/TsNodeCodeRenderer.tsx:1:import React, { useState, useEffect } from "react";
+src/components/TsNodeCodeRenderer.tsx:32:  const [localCode, setLocalCode] = useState(code);
+src/components/TsNodeCodeRenderer.tsx:33:  const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
+src/components/TsNodeCodeRenderer.tsx:34:  const [goToLineValue, setGoToLineValue] = useState("");
+src/components/TsNodeCodeRenderer.tsx:53:  const [monaco, setMonaco] = useState<any>(null);
+src/components/NodeQueryEngine.tsx:1:import React, { useState, useEffect, useRef } from 'react';
+src/components/NodeQueryEngine.tsx:9:  const [localSearch, setLocalSearch] = useState(searchQuery);
+src/components/NodeQueryEngine.tsx:10:  const [isFocused, setIsFocused] = useState(false);
+src/components/NodeQueryEngine.tsx:11:  const [showHelp, setShowHelp] = useState(false);
+src/components/EdgeRenderer.tsx:1:import React, { useState } from 'react';
+src/components/EdgeRenderer.tsx:19:  const isHoveredState = useState(false);
+src/components/JsNodeTerminalRenderer.tsx:1:import React, { useEffect, useRef, useState } from "react";
+src/components/JsNodeTerminalRenderer.tsx:11:  const [copied, setCopied] = useState(false);
+src/components/GuiEditorPanel.tsx:1:import React, { useState, useMemo, useEffect, useRef } from "react";
+src/components/GuiEditorPanel.tsx:48:  const [isMobile, setIsMobile] = useState(false);
+src/components/GuiEditorPanel.tsx:59:  const [viewMode, setViewMode] = useState<"tree" | "flat">("tree");
+src/components/GuiEditorPanel.tsx:60:  const [collapsedPaths, setCollapsedPaths] = useState<Record<string, boolean>>(
+src/components/GuiEditorPanel.tsx:65:  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+src/components/GuiEditorPanel.tsx:67:  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+src/components/GuiEditorPanel.tsx:70:  const [searchQuery, setSearchQuery] = useState<string>("");
+src/components/GuiEditorPanel.tsx:71:  const [typeFilter, setTypeFilter] = useState<string>("all");
+src/components/GuiEditorPanel.tsx:74:  const [newKeyType, setNewKeyType] = useState<
+src/components/GuiEditorPanel.tsx:77:  const [newParentPath, setNewParentPath] = useState<string>("root");
+src/components/GuiEditorPanel.tsx:78:  const [newKeyName, setNewKeyName] = useState<string>("");
+src/components/GuiEditorPanel.tsx:81:  const [textValue, setTextValue] = useState<string>("");
+src/components/GuiEditorPanel.tsx:82:  const [numberValue, setNumberValue] = useState<number>(0);
+src/components/GuiEditorPanel.tsx:83:  const [booleanValue, setBooleanValue] = useState<boolean>(true);
+src/components/GuiEditorPanel.tsx:86:  const [editingPath, setEditingPath] = useState<string | null>(null);
+src/components/GuiEditorPanel.tsx:87:  const [editingTextValue, setEditingTextValue] = useState<string>("");
+src/components/GuiEditorPanel.tsx:88:  const [editingNumValue, setEditingNumValue] = useState<number>(0);
+src/components/GuiEditorPanel.tsx:89:  const [editingBoolValue, setEditingBoolValue] = useState<boolean>(true);
+src/components/GuiEditorPanel.tsx:92:  const [renamingPath, setRenamingPath] = useState<string | null>(0 as any); // path string or null
+src/components/GuiEditorPanel.tsx:93:  const [newKeyRenameValue, setNewKeyRenameValue] = useState<string>("");
+src/components/GuiEditorPanel.tsx:96:  const [movingPath, setMovingPath] = useState<string | null>(null);
+src/components/GuiEditorPanel.tsx:97:  const [moveToPath, setMoveToPath] = useState<string>("root");
+src/components/GuiEditorPanel.tsx:100:  const [activeMenuPath, setActiveMenuPath] = useState<string | null>(null);
+src/components/GuiEditorPanel.tsx:103:  const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(
+src/components/GuiEditorPanel.tsx:108:  const [guiHistory, setGuiHistory] = useState<string[]>([]);
+src/components/GuiEditorPanel.tsx:109:  const [guiRedo, setGuiRedo] = useState<string[]>([]);
+src/components/GuiEditorPanel.tsx:112:  const [formError, setFormError] = useState<string>("");
+src/components/GuiEditorPanel.tsx:113:  const [toastNotification, setToastNotification] = useState<{
+src/components/GuiEditorPanel.tsx:120:  const [editingArrayElementPath, setEditingArrayElementPath] = useState<string | null>(null);
+src/components/GuiEditorPanel.tsx:121:  const [editingArrayElementVal, setEditingArrayElementVal] = useState<any>("");
+src/components/GuiEditorPanel.tsx:122:  const [editingArrayElementType, setEditingArrayElementType] = useState<"string" | "number" | "boolean">("string");
+src/components/GuiEditorPanel.tsx:123:  const [newArrayElementInputs, setNewArrayElementInputs] = useState<Record<string, { value: string; type: "string" | "number" | "boolean" }>>({});
+src/components/JsNodeCodeRenderer.tsx:1:import React, { useState, useEffect } from "react";
+src/components/JsNodeCodeRenderer.tsx:32:  const [localCode, setLocalCode] = useState(code);
+src/components/JsNodeCodeRenderer.tsx:33:  const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
+src/components/JsNodeCodeRenderer.tsx:34:  const [goToLineValue, setGoToLineValue] = useState("");
+src/components/JsNodeCodeRenderer.tsx:53:  const [monaco, setMonaco] = useState<any>(null);
+src/components/InteractiveZoomImage.tsx:1:import React, { useState, useRef, useEffect } from "react";
+src/components/InteractiveZoomImage.tsx:11:  const [scale, setScale] = useState(1);
+src/components/InteractiveZoomImage.tsx:12:  const [position, setPosition] = useState({ x: 0, y: 0 });
+src/components/InteractiveZoomImage.tsx:13:  const [isDragging, setIsDragging] = useState(false);
+src/components/TodoNodeRenderer.tsx:1:import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+src/components/TodoNodeRenderer.tsx:69:  const [todoData, setTodoData] = useState<TodoNodeData>({ title: "Tasks", tasks: [] });
+src/components/TodoNodeRenderer.tsx:72:  const [nodeIsFlat, setNodeIsFlat] = useState<boolean>(false);
+src/components/TodoNodeRenderer.tsx:73:  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+src/components/TodoNodeRenderer.tsx:74:  const [newTaskText, setNewTaskText] = useState("");
+src/components/TodoNodeRenderer.tsx:75:  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+src/components/TodoNodeRenderer.tsx:76:  const [editingText, setEditingText] = useState("");
+src/components/TodoNodeRenderer.tsx:77:  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
+src/components/TodoNodeRenderer.tsx:78:  const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
+src/components/TodoNodeRenderer.tsx:79:  const [activeMenuTaskId, setActiveMenuTaskId] = useState<string | null>(null);
+src/components/TodoNodeRenderer.tsx:968:  const [style, setStyle] = useState<React.CSSProperties>({});
+src/components/TypographyPresets.tsx:1:import React, { useState, useRef, useEffect } from 'react';
+src/components/TypographyPresets.tsx:76:  const [isOpen, setIsOpen] = useState(false);
+src/components/InlineApiEditor.tsx:1:import React, { useState, useEffect, useRef } from 'react';
+src/components/InlineApiEditor.tsx:15:  const [url, setUrl] = useState(initialUrl);
+src/components/InlineApiEditor.tsx:16:  const [isValid, setIsValid] = useState(true);
+src/components/InlineApiEditor.tsx:21:  const [method, setMethod] = useState(currentConfig.method);
+src/components/InlineApiEditor.tsx:22:  const [responseType, setResponseType] = useState(currentConfig.responseType);
+src/components/InlineApiEditor.tsx:23:  const [timeout, setTimeoutVal] = useState(currentConfig.timeout.toString());
+src/components/MathNodeRenderer.tsx:1:import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+src/components/MathNodeRenderer.tsx:189:  const [formData, setFormData] = useState<MathVariable>(() => {
+src/components/MathNodeRenderer.tsx:208:  const [groupMode, setGroupMode] = useState<"select" | "new">("select");
+src/components/MathNodeRenderer.tsx:209:  const [newGroupName, setNewGroupName] = useState("");
+src/components/MathNodeRenderer.tsx:210:  const [error, setError] = useState("");
+src/components/MathNodeRenderer.tsx:745:  const [isFocused, setIsFocused] = useState(false);
+src/components/MathNodeRenderer.tsx:746:  const [cursorPos, setCursorPos] = useState(0);
+src/components/MathNodeRenderer.tsx:747:  const [suggestions, setSuggestions] = useState<any[]>([]);
+src/components/MathNodeRenderer.tsx:748:  const [selIndex, setSelIndex] = useState(0);
+src/components/MathNodeRenderer.tsx:749:  const [inputRect, setInputRect] = useState<DOMRect | null>(null);
+src/components/MathNodeRenderer.tsx:753:  const [copiedType, setCopiedType] = useState<string | null>(null);
+src/components/MathNodeRenderer.tsx:1221:  const [copied, setCopied] = useState(false);
+src/components/MathNodeRenderer.tsx:1276:  const [coords, setCoords] = useState<{ top: number; left: number }>({
+src/components/MathNodeRenderer.tsx:1425:  const [isFocused, setIsFocused] = useState(false);
+src/components/MathNodeRenderer.tsx:1966:  const [isFullscreen, setIsFullscreen] = useState(false);
+src/components/MathNodeRenderer.tsx:1967:  const [isPanelVisible, setIsPanelVisible] = useState(true);
+src/components/MathNodeRenderer.tsx:1968:  const [isShiftPressed, setIsShiftPressed] = useState(false);
+src/components/MathNodeRenderer.tsx:1970:  const [activeGizmo, setActiveGizmo] = useState<{
+src/components/MathNodeRenderer.tsx:2002:  const [viewResetKey, setViewResetKey] = useState(0);
+src/components/MathNodeRenderer.tsx:2003:  const [showGridControls, setShowGridControls] = useState(false);
+src/components/MathNodeRenderer.tsx:2004:  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+src/components/MathNodeRenderer.tsx:2005:  const [showHelp, setShowHelp] = useState(false);
+src/components/MathNodeRenderer.tsx:2006:  const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2009:  const [activeExample, setActiveExample] = useState<string | null>(null);
+src/components/MathNodeRenderer.tsx:2010:  const [activeColorPickerFnId, setActiveColorPickerFnId] = useState<
+src/components/MathNodeRenderer.tsx:2013:  const [activeColorPickerType, setActiveColorPickerType] = useState<
+src/components/MathNodeRenderer.tsx:2017:    useState<HTMLElement | null>(null);
+src/components/MathNodeRenderer.tsx:2018:  const [expandedSettingsFnId, setExpandedSettingsFnId] = useState<
+src/components/MathNodeRenderer.tsx:2022:  const [savingFormulaFnId, setSavingFormulaFnId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2025:  const [formulaName, setFormulaName] = useState("");
+src/components/MathNodeRenderer.tsx:2026:  const [formulaDesc, setFormulaDesc] = useState("");
+src/components/MathNodeRenderer.tsx:2027:  const [previewCopied, setPreviewCopied] = useState(false);
+src/components/MathNodeRenderer.tsx:2028:  const [showPreviewLatex, setShowPreviewLatex] = useState(true);
+src/components/MathNodeRenderer.tsx:2029:  const [savedFormulas, setSavedFormulas] = useState<any[]>([]);
+src/components/MathNodeRenderer.tsx:2046:  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+src/components/MathNodeRenderer.tsx:2047:  const [draggedGroup, setDraggedGroup] = useState<
+src/components/MathNodeRenderer.tsx:2050:  const [dragEnabledFormulaId, setDragEnabledFormulaId] = useState<
+src/components/MathNodeRenderer.tsx:2053:  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+src/components/MathNodeRenderer.tsx:2054:  const [hoveredGroup, setHoveredGroup] = useState<
+src/components/MathNodeRenderer.tsx:2057:  const [dragOverPosition, setDragOverPosition] = useState<
+src/components/MathNodeRenderer.tsx:2060:  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
+src/components/MathNodeRenderer.tsx:2061:  const [copiedFormulaId, setCopiedFormulaId] = useState<number | null>(null);
+src/components/MathNodeRenderer.tsx:2062:  const [formulaSearchQuery, setFormulaSearchQuery] = useState("");
+src/components/MathNodeRenderer.tsx:2063:  const [editingFormulaFieldId, setEditingFormulaFieldId] = useState<
+src/components/MathNodeRenderer.tsx:2066:  const [editingFormulaExpr, setEditingFormulaExpr] = useState("");
+src/components/MathNodeRenderer.tsx:2068:  const [functions, setFunctions] = useState<MathFunction[]>(() => {
+src/components/MathNodeRenderer.tsx:2099:  const [variables, setVariables] = useState<MathVariable[]>(() => {
+src/components/MathNodeRenderer.tsx:2152:  const [groups, setGroups] = useState<VariableGroup[]>(() => {
+src/components/MathNodeRenderer.tsx:2170:  const [searchVar, setSearchVar] = useState("");
+src/components/MathNodeRenderer.tsx:2171:  const [showSearch, setShowSearch] = useState(false);
+src/components/MathNodeRenderer.tsx:2172:  const [hoveredVar, setHoveredVar] = useState<string | null>(null);
+src/components/MathNodeRenderer.tsx:2173:  const [editingVar, setEditingVar] = useState<MathVariable | null>(null);
+src/components/MathNodeRenderer.tsx:2174:  const [showVarEditor, setShowVarEditor] = useState(false);
+src/components/MathNodeRenderer.tsx:2175:  const [missingVars, setMissingVars] = useState<string[]>([]);
+src/components/MathNodeRenderer.tsx:2178:  const [draggedFunctionId, setDraggedFunctionId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2181:  const [dragOverFunctionId, setDragOverFunctionId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2184:  const [dragOverFunctionPosition, setDragOverFunctionPosition] = useState<
+src/components/MathNodeRenderer.tsx:2187:  const [canDragFunctionId, setCanDragFunctionId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2191:  const [draggedVariableId, setDraggedVariableId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2194:  const [dragOverVariableId, setDragOverVariableId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2197:  const [dragOverVariablePosition, setDragOverVariablePosition] = useState<
+src/components/MathNodeRenderer.tsx:2200:  const [canDragVariableId, setCanDragVariableId] = useState<string | null>(
+src/components/MathNodeRenderer.tsx:2252:  const [sidebarWidth, setSidebarWidth] = useState(320);
+src/components/MathNodeRenderer.tsx:2253:  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+src/components/MathNodeRenderer.tsx:2288:  const [time, setTime] = useState(0);
+src/components/MathNodeRenderer.tsx:2289:  const [isPlaying, setIsPlaying] = useState(true);
+src/components/MathNodeRenderer.tsx:2290:  const [timeMode, setTimeMode] = useState<"loop" | "bounce" | "continuous">(
+src/components/MathNodeRenderer.tsx:2293:  const [timeBounds, setTimeBounds] = useState({
+src/components/MathNodeRenderer.tsx:2299:  const [showTimeSettings, setShowTimeSettings] = useState(false);
+src/components/MathNodeRenderer.tsx:2300:  const [tracePoints, setTracePoints] = useState(false);
+src/components/MathNodeRenderer.tsx:2301:  const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
+src/components/MathNodeRenderer.tsx:2304:  const [axisFilter, setAxisFilter] = useState<
+src/components/MathNodeRenderer.tsx:2307:  const [customAxisFilter, setCustomAxisFilter] = useState("n % 3 == 0");
+src/components/MathNodeRenderer.tsx:2308:  const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
+src/components/PyPackagesPanel.tsx:1:import React, { useState, useEffect } from "react";
+src/components/PyPackagesPanel.tsx:19:  const [searchQuery, setSearchQuery] = useState("");
+src/components/PyPackagesPanel.tsx:20:  const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});
+src/components/PyPackagesPanel.tsx:21:  const [confirmUninstallPkg, setConfirmUninstallPkg] = useState<string | null>(null);
+src/components/CustomSelect.tsx:1:import { useState, useRef, useLayoutEffect, useEffect } from "react";
+src/components/CustomSelect.tsx:32:  const [isOpen, setIsOpen] = useState(false);
+src/components/CustomSelect.tsx:35:  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+src/components/ImageWorkspace.tsx:1:import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from "react";
+src/components/ImageWorkspace.tsx:1397:  const [artboards, setArtboards] = useState<Artboard[]>([]);
+src/components/ImageWorkspace.tsx:1398:  const [isLoaded, setIsLoaded] = useState(false);
+src/components/ImageWorkspace.tsx:1399:  const [activeArtboardId, setActiveArtboardId] = useState<string>("artboard_default");
+src/components/ImageWorkspace.tsx:1402:  const [collagePaddingPercent, setCollagePaddingPercent] = useState<number>(5);
+src/components/ImageWorkspace.tsx:1403:  const [collageGapPercent, setCollageGapPercent] = useState<number>(2);
+src/components/ImageWorkspace.tsx:1404:  const [collageBgColor, setCollageBgColor] = useState<string>('#333333');
+src/components/ImageWorkspace.tsx:1405:  const [collageBorderColor, setCollageBorderColor] = useState<string>('#555555');
+src/components/ImageWorkspace.tsx:1406:  const [collageBorderWidth, setCollageBorderWidth] = useState<number>(2);
+src/components/ImageWorkspace.tsx:1407:  const [collageCornerRadius, setCollageCornerRadius] = useState<number>(8);
+src/components/ImageWorkspace.tsx:1408:  const [useIndividualCorners, setUseIndividualCorners] = useState<boolean>(false);
+src/components/ImageWorkspace.tsx:1409:  const [collageCornerTL, setCollageCornerTL] = useState<number>(8);
+src/components/ImageWorkspace.tsx:1410:  const [collageCornerTR, setCollageCornerTR] = useState<number>(8);
+src/components/ImageWorkspace.tsx:1411:  const [collageCornerBR, setCollageCornerBR] = useState<number>(8);
+src/components/ImageWorkspace.tsx:1412:  const [collageCornerBL, setCollageCornerBL] = useState<number>(8);
+src/components/ImageWorkspace.tsx:1413:  const [collageBorderStyle, setCollageBorderStyle] = useState<'solid' | 'dashed' | 'none'>('dashed');
+src/components/ImageWorkspace.tsx:1416:  const [shapeFillColor, setShapeFillColor] = useState<string>('transparent');
+src/components/ImageWorkspace.tsx:1417:  const [shapeStrokeColor, setShapeStrokeColor] = useState<string>('#000000');
+src/components/ImageWorkspace.tsx:1418:  const [shapeStrokeWidth, setShapeStrokeWidth] = useState<number>(2);
+src/components/ImageWorkspace.tsx:1419:  const [shapeBorderStyle, setShapeBorderStyle] = useState<'solid' | 'dashed' | 'none'>('solid');
+src/components/ImageWorkspace.tsx:1420:  const [shapeCornerRadius, setShapeCornerRadius] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1421:  const [shapeUseIndividualCorners, setShapeUseIndividualCorners] = useState<boolean>(false);
+src/components/ImageWorkspace.tsx:1422:  const [shapeCornerTL, setShapeCornerTL] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1423:  const [shapeCornerTR, setShapeCornerTR] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1424:  const [shapeCornerBL, setShapeCornerBL] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1425:  const [shapeCornerBR, setShapeCornerBR] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1426:  const [shapeOpacity, setShapeOpacity] = useState<number>(100);
+src/components/ImageWorkspace.tsx:1427:  const [shapeStrokeLineJoin, setShapeStrokeLineJoin] = useState<'miter' | 'round' | 'bevel'>('miter');
+src/components/ImageWorkspace.tsx:1428:  const [shapeStrokeLineCap, setShapeStrokeLineCap] = useState<'butt' | 'round' | 'square'>('butt');
+src/components/ImageWorkspace.tsx:1430:  const [zoomPercent, setZoomPercent] = useState(100);
+src/components/ImageWorkspace.tsx:1431:  const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
+src/components/ImageWorkspace.tsx:1432:  const [snapTolerance, setSnapTolerance] = useState(10);
+src/components/ImageWorkspace.tsx:1433:  const [isCropping, setIsCropping] = useState(false);
+src/components/ImageWorkspace.tsx:1440:  const [activeContextMenu, setActiveContextMenu] = useState<{
+src/components/ImageWorkspace.tsx:1447:  const [showShortcuts, setShowShortcuts] = useState(false);
+src/components/ImageWorkspace.tsx:1475:  const [artboardDropdown, setArtboardDropdown] = useState<{ id: string, x: number, y: number } | null>(null);
+src/components/ImageWorkspace.tsx:1476:  const [renamingArtboard, setRenamingArtboard] = useState<{ id: string; name: string } | null>(null);
+src/components/ImageWorkspace.tsx:1477:  const [isAltPressed, setIsAltPressed] = useState(false);
+src/components/ImageWorkspace.tsx:1478:  const [isShiftPressed, setIsShiftPressed] = useState(false);
+src/components/ImageWorkspace.tsx:1479:  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+src/components/ImageWorkspace.tsx:1480:  const [isSpacePressed, setIsSpacePressed] = useState(false);
+src/components/ImageWorkspace.tsx:1481:  const [guides, setGuides] = useState<{ type: 'v' | 'h'; pos: number }[]>([]);
+src/components/ImageWorkspace.tsx:1482:  const [activeSuggestion, setActiveSuggestion] = useState<{ id: string, type: string } | null>(null);
+src/components/ImageWorkspace.tsx:1483:  const [exportTarget, setExportTarget] = useState<"current" | "selected" | "all">("current");
+src/components/ImageWorkspace.tsx:1484:  const [selectedExportIds, setSelectedExportIds] = useState<Record<string, boolean>>(() => ({
+src/components/ImageWorkspace.tsx:1487:  const [selectionType, setSelectionType] = useState<string | null>(null);
+src/components/ImageWorkspace.tsx:1488:  const [parentAlignmentObj, setParentAlignmentObj] = useState<fabric.Object | null>(null);
+src/components/ImageWorkspace.tsx:1526:  const [isMobile, setIsMobile] = useState(false);
+src/components/ImageWorkspace.tsx:1528:  const [showMobilePanel, setShowMobilePanel] = useState(false);
+src/components/ImageWorkspace.tsx:1529:  const [showMobileArtboardsGallery, setShowMobileArtboardsGallery] = useState(false);
+src/components/ImageWorkspace.tsx:1530:  const [showMobileToolbox, setShowMobileToolbox] = useState(false);
+src/components/ImageWorkspace.tsx:1531:  const [showMobileDiagnosticsSheet, setShowMobileDiagnosticsSheet] = useState(false);
+src/components/ImageWorkspace.tsx:1532:  const [showAdvancedMobileExport, setShowAdvancedMobileExport] = useState(false);
+src/components/ImageWorkspace.tsx:1533:  const [mobileSettingsTab, setMobileSettingsTab] = useState<'format' | 'resize' | 'metadata'>('format');
+src/components/ImageWorkspace.tsx:1534:  const [showMobileCompareSwitcher, setShowMobileCompareSwitcher] = useState(false);
+src/components/ImageWorkspace.tsx:1667:  const [activeTool, setActiveTool] = useState("select");
+src/components/ImageWorkspace.tsx:1709:  const [layers, setLayers] = useState<fabric.Object[]>([]);
+src/components/ImageWorkspace.tsx:1710:  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+src/components/ImageWorkspace.tsx:1713:  const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards" | "quick">("properties");
+src/components/ImageWorkspace.tsx:1719:  const [panelWidth, setPanelWidth] = useState(() => {
+src/components/ImageWorkspace.tsx:1729:  const [isResizingPanel, setIsResizingPanel] = useState(false);
+src/components/ImageWorkspace.tsx:1785:  const [imageFilters, setImageFilters] = useState<FilterConfig[]>([]);
+src/components/ImageWorkspace.tsx:1786:  const [customPresets, setCustomPresets] = useState<{ name: string; stack: FilterConfig[] }[]>([]);
+src/components/ImageWorkspace.tsx:1787:  const [newPresetName, setNewPresetName] = useState("");
+src/components/ImageWorkspace.tsx:1788:  const [showSavePresetModal, setShowSavePresetModal] = useState(false);
+src/components/ImageWorkspace.tsx:1789:  const [benchmarkInfo, setBenchmarkInfo] = useState<any>(null);
+src/components/ImageWorkspace.tsx:1792:  const [commandsList, setCommandsList] = useState<Command[]>([]);
+src/components/ImageWorkspace.tsx:1793:  const [commandIndex, setCommandIndex] = useState(-1);
+src/components/ImageWorkspace.tsx:1794:  const [historyNames, setHistoryNames] = useState<string[]>([]);
+src/components/ImageWorkspace.tsx:1798:  const [draggedArtboardIdx, setDraggedArtboardIdx] = useState<number | null>(null);
+src/components/ImageWorkspace.tsx:1799:  const [dragOverArtboardIdx, setDragOverArtboardIdx] = useState<number | null>(null);
+src/components/ImageWorkspace.tsx:1806:  const [brushType, setBrushType] = useState<string>("pencil");
+src/components/ImageWorkspace.tsx:1807:  const [brushColor, setBrushColor] = useState("#ff0000");
+src/components/ImageWorkspace.tsx:1808:  const [brushSize, setBrushSize] = useState(10);
+src/components/ImageWorkspace.tsx:1809:  const [brushOpacity, setBrushOpacity] = useState<number>(100);
+src/components/ImageWorkspace.tsx:1810:  const [brushFlow, setBrushFlow] = useState<number>(100);
+src/components/ImageWorkspace.tsx:1811:  const [brushHardness, setBrushHardness] = useState<number>(100);
+src/components/ImageWorkspace.tsx:1812:  const [brushSpacing, setBrushSpacing] = useState<number>(25);
+src/components/ImageWorkspace.tsx:1813:  const [brushSmoothing, setBrushSmoothing] = useState<number>(40);
+src/components/ImageWorkspace.tsx:1816:  const [showHud, setShowHud] = useState(false);
+src/components/ImageWorkspace.tsx:1817:  const [hudPosition, setHudPosition] = useState<{ x: number, y: number } | null>(null);
+src/components/ImageWorkspace.tsx:1818:  const [activeBrushProperty, setActiveBrushProperty] = useState<'size' | 'opacity' | 'hardness'>('size');
+src/components/ImageWorkspace.tsx:1819:  const [hudFadingOut, setHudFadingOut] = useState(false);
+src/components/ImageWorkspace.tsx:1888:  const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
+src/components/ImageWorkspace.tsx:1891:  const [comparisonMode, setComparisonMode] = useState(false);
+src/components/ImageWorkspace.tsx:1892:  const [showDiagnostics, setShowDiagnostics] = useState(true);
+src/components/ImageWorkspace.tsx:1893:  const [mobileDetailsExpanded, setMobileDetailsExpanded] = useState(false);
+src/components/ImageWorkspace.tsx:1894:  const [comparisonPreviewMode, setComparisonPreviewMode] = useState<"split" | "side-by-side" | "original" | "optimized">("split");
+src/components/ImageWorkspace.tsx:1895:  const [comparisonDivider, setComparisonDivider] = useState(50);
+src/components/ImageWorkspace.tsx:1896:  const [comparisonZoom, setComparisonZoom] = useState(1);
+src/components/ImageWorkspace.tsx:1897:  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
+src/components/ImageWorkspace.tsx:1898:  const [optimizedImageUrl, setOptimizedImageUrl] = useState<string | null>(null);
+src/components/ImageWorkspace.tsx:1899:  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
+src/components/ImageWorkspace.tsx:1900:  const [currentPreviewOp, setCurrentPreviewOp] = useState<string>("");
+src/components/ImageWorkspace.tsx:1901:  const [originalSize, setOriginalSize] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1902:  const [optimizedSize, setOptimizedSize] = useState<number>(0);
+src/components/ImageWorkspace.tsx:1903:  const [psnr, setPsnr] = useState<number | undefined>(undefined);
+src/components/ImageWorkspace.tsx:1927:  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+src/components/ImageWorkspace.tsx:2431:  const [textProps, setTextProps] = useState({
+src/components/ImageWorkspace.tsx:2447:  const [frameBorderWidth, setFrameBorderWidth] = useState(20);
+src/components/ImageWorkspace.tsx:6300:  const [isExporting, setIsExporting] = useState(false);
+src/components/ImageWorkspace.tsx:10801:  const [position, setPosition] = useState({ top: 0, left: 0 });
+src/components/ImageWorkspace.tsx:10913:  const [isOpen, setIsOpen] = useState(false);
+src/components/ImageWorkspace.tsx:10997:   const [val, setVal] = useState(value || 0);
+src/components/EditorPanel.tsx:3:import { useEffect, useRef, useState } from "react";
+src/components/EditorPanel.tsx:49:  const [isLoading, setIsLoading] = useState(false);
+src/components/EditorPanel.tsx:50:  const [apiError, setApiError] = useState("");
+src/components/EditorPanel.tsx:51:  const [fetchProgress, setFetchProgress] = useState<{
+src/components/EditorPanel.tsx:56:  const [fetchResult, setFetchResult] = useState<SmartFetchResult | null>(null);
+src/components/EditorPanel.tsx:57:  const [appendData, setAppendData] = useState(false);
+src/components/EditorPanel.tsx:65:    useState<SmartFetchResult | null>(null);
+src/components/EditorPanel.tsx:66:  const [mergeStrategy, setMergeStrategy] = useState<
+src/components/EditorPanel.tsx:69:  const [customMergeKey, setCustomMergeKey] = useState("");
+src/components/EditorPanel.tsx:70:  const [conflictAction, setConflictAction] = useState<
+src/components/ImportModal.tsx:1:import { useState, useEffect, useRef } from "react";
+src/components/ImportModal.tsx:21:  const [importMode, setImportMode] = useState<
+src/components/ImportModal.tsx:24:  const [keyStrategy, setKeyStrategy] = useState<
+src/components/ImportModal.tsx:27:  const [customKey, setCustomKey] = useState("");
+src/components/ImportModal.tsx:28:  const [collisionAction, setCollisionAction] = useState<
+src/components/ImportModal.tsx:32:  const [detectedHeaders, setDetectedHeaders] = useState<string[]>([]);
+src/components/ImportModal.tsx:33:  const [rowCount, setRowCount] = useState<number>(0);
+src/components/CodeWorkspace.tsx:5:  useState,
+src/components/CodeWorkspace.tsx:68:  const [copied, setCopied] = useState(false);
+src/components/CodeWorkspace.tsx:157:  const [copied, setCopied] = useState(false);
+src/components/CodeWorkspace.tsx:158:  const [monaco, setMonaco] = useState<any>(null);
+src/components/CodeWorkspace.tsx:979:  const [settings, setSettings] = useState<WorkspaceSettings>(() => {
+src/components/CodeWorkspace.tsx:997:  const [isLayoutSettingsOpen, setIsLayoutSettingsOpen] = useState(false);
+src/components/CodeWorkspace.tsx:998:  const [panelSize, setPanelSize] = useState<number>(() => {
+src/components/CodeWorkspace.tsx:1007:  const [activeTab, setActiveTab] = useState<"result" | "console">("console");
+src/components/CodeWorkspace.tsx:1008:  const [sidebarTab, setSidebarTab] = useState<"files" | "packages">("files");
+src/components/CodeWorkspace.tsx:1009:  const [terminalInput, setTerminalInput] = useState("");
+src/components/CodeWorkspace.tsx:1010:  const [copiedConsole, setCopiedConsole] = useState(false);
+src/components/CodeWorkspace.tsx:1011:  const [layoutMode, setLayoutMode] = useState<"bottom" | "right">("bottom");
+src/components/CodeWorkspace.tsx:1012:  const [terminalState, setTerminalState] = useState<
+src/components/CodeWorkspace.tsx:1015:  const [wordWrap, setWordWrap] = useState<"on" | "off">("on");
+src/components/CodeWorkspace.tsx:1233:  const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
+src/components/CodeWorkspace.tsx:1234:  const [goToLineValue, setGoToLineValue] = useState("");
+src/components/CodeWorkspace.tsx:1250:  const [isMinimapMenuOpen, setIsMinimapMenuOpen] = useState(false);
+src/components/CodeWorkspace.tsx:1251:  const [activeSubmenu, setActiveSubmenu] = useState<
+src/components/MatplotlibPlotViewer.tsx:1:import React, { useState, useRef, useEffect } from "react";
+src/components/MatplotlibPlotViewer.tsx:16:  const [payload, setPayload] = useState<PlotPayload | null>(null);
+src/components/MatplotlibPlotViewer.tsx:17:  const [activeFormat, setActiveFormat] = useState<"svg" | "png" | "jpeg">("svg");
+src/components/MatplotlibPlotViewer.tsx:18:  const [zoom, setZoom] = useState(0.95); // compact default fit
+src/components/MatplotlibPlotViewer.tsx:19:  const [pan, setPan] = useState({ x: 0, y: 0 });
+src/components/MatplotlibPlotViewer.tsx:20:  const [isDragging, setIsDragging] = useState(false);
+src/components/MatplotlibPlotViewer.tsx:21:  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+src/components/MatplotlibPlotViewer.tsx:22:  const [showFormatsDropdown, setShowFormatsDropdown] = useState(false);
+src/components/FontPicker.tsx:1:import React, { useState, useEffect, useMemo, useRef } from 'react';
+src/components/FontPicker.tsx:16:  const [isOpen, setIsOpen] = useState(false);
+src/components/FontPicker.tsx:17:  const [search, setSearch] = useState("");
+src/components/FontPicker.tsx:18:  const [filter, setFilter] = useState<'all' | 'hindi' | 'english'>('all');
+src/components/FontPicker.tsx:19:  const [hoveredFont, setHoveredFont] = useState<FontNode | null>(null);
+src/components/FontPicker.tsx:20:  const [focusedIndex, setFocusedIndex] = useState(-1);
+src/components/FontPicker.tsx:22:  const [favorites, setFavorites] = useState<string[]>(() => {
+src/components/FontPicker.tsx:29:  const [recents, setRecents] = useState<string[]>(() => {
+src/components/NodeRenderer.tsx:146:  const [isDraggingLocally, setIsDraggingLocally] = React.useState(false);
+src/components/NodeRenderer.tsx:247:  const [smartMediaFailed, setSmartMediaFailed] = React.useState(false);
+src/components/NodeRenderer.tsx:248:  const [isExpanded, setIsExpanded] = React.useState(globalTextExpanded);
+src/components/NodeRenderer.tsx:278:  const [assetDetails, setAssetDetails] = React.useState<any>(null);
+src/components/CameraCaptureModal.tsx:1:import React, { useState, useEffect, useRef, useCallback } from 'react';
+src/components/CameraCaptureModal.tsx:15:  const [stream, setStream] = useState<MediaStream | null>(null);
+src/components/CameraCaptureModal.tsx:17:  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+src/components/CameraCaptureModal.tsx:18:  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+src/components/CameraCaptureModal.tsx:19:  const [errorMsg, setErrorMsg] = useState("");
+src/components/CameraCaptureModal.tsx:21:  const [mode, setMode] = useState<'photo' | 'video'>('photo');
+src/components/CameraCaptureModal.tsx:22:  const [isRecording, setIsRecording] = useState(false);
+src/components/CameraCaptureModal.tsx:26:  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+src/components/CameraCaptureModal.tsx:27:  const [capturedVideo, setCapturedVideo] = useState<Blob | null>(null);
+src/components/CameraCaptureModal.tsx:30:  const [isProcessing, setIsProcessing] = useState(false);
+src/components/CameraCaptureModal.tsx:33:  const [crop, setCrop] = useState<Crop>({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
+src/components/CameraCaptureModal.tsx:34:  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
+src/components/CameraCaptureModal.tsx:35:  const [aspect, setAspect] = useState<number | undefined>(undefined);
+src/components/CameraCaptureModal.tsx:36:  const [rotation, setRotation] = useState(0);
+src/components/TextPreviewPopup.tsx:10:  const [copied, setCopied] = React.useState(false);
+src/components/TextPreviewPopup.tsx:11:  const [viewMode, setViewMode] = React.useState<'raw' | 'markdown' | 'html' | 'edit'>('raw');
+src/components/TextPreviewPopup.tsx:12:  const [editText, setEditText] = React.useState('');
+src/components/ExpandableJSON.tsx:1:import React, { useState } from 'react';
+src/components/ExpandableJSON.tsx:5:  const [expanded, setExpanded] = useState(defaultExpanded);
+src/components/TaskImagePreview.tsx:1:import React, { useState, useEffect } from "react";
+src/components/TaskImagePreview.tsx:16:  const [urls, setUrls] = useState<string[]>([]);
+src/components/NodeHelpModal.tsx:1:import React, { useState } from 'react';
+src/components/NodeHelpModal.tsx:14:  const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image' | 'search' | 'transfer'>('api');
+src/components/AdvancedPanel.tsx:5:import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+src/components/AdvancedPanel.tsx:47:  const [showBgPicker, setShowBgPicker] = useState(false);
+src/components/AdvancedPanel.tsx:48:  const [showPatternPicker, setShowPatternPicker] = useState(false);
+src/components/AdvancedPanel.tsx:49:  const [showNodeColorPicker, setShowNodeColorPicker] = useState(false);
+src/components/AdvancedPanel.tsx:50:  const [showNodeTextColorPicker, setShowNodeTextColorPicker] = useState(false);
+src/components/AdvancedPanel.tsx:51:  const [showNodeGradient1Picker, setShowNodeGradient1Picker] = useState(false);
+src/components/AdvancedPanel.tsx:52:  const [showNodeGradient2Picker, setShowNodeGradient2Picker] = useState(false);
+src/components/AdvancedPanel.tsx:68:  const [bgPickerStyle, setBgPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+src/components/AdvancedPanel.tsx:69:  const [patternPickerStyle, setPatternPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+src/components/AdvancedPanel.tsx:70:  const [nodeColorPickerStyle, setNodeColorPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+src/components/AdvancedPanel.tsx:71:  const [nodeTextColorPickerStyle, setNodeTextColorPickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+src/components/AdvancedPanel.tsx:72:  const [nodeGradient1PickerStyle, setNodeGradient1PickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+src/components/AdvancedPanel.tsx:73:  const [nodeGradient2PickerStyle, setNodeGradient2PickerStyle] = useState<React.CSSProperties>({ position: 'fixed', top: -9999, left: -9999, opacity: 0 });
+src/components/AdvancedPanel.tsx:75:  const [isThemeExpanded, setIsThemeExpanded] = useState(false);
+src/components/AdvancedPanel.tsx:76:  const [isLinkStyleExpanded, setIsLinkStyleExpanded] = useState(false);
+src/components/SmartDatePicker.tsx:2:  useState, 
+src/components/SmartDatePicker.tsx:50:  const [isOpen, setIsOpen] = useState(false);
+src/components/SmartDatePicker.tsx:51:  const [currentMonth, setCurrentMonth] = useState(() => {
+src/components/SmartDatePicker.tsx:60:  const [coords, setCoords] = useState({ top: 0, left: 0, placement: 'bottom' as 'top' | 'bottom', width: 0 });
+src/components/SmartDatePicker.tsx:61:  const [isMobile, setIsMobile] = useState(false);
+src/components/TodoWorkspace.tsx:1:import React, { useState, useMemo, useEffect, useRef, forwardRef } from "react";
+src/components/TodoWorkspace.tsx:241:  const [internalIsOpen, setInternalIsOpen] = useState(false);
+src/components/TodoWorkspace.tsx:533:  const [searchTerm, setSearchTerm] = useState("");
+src/components/TodoWorkspace.tsx:534:  const [filter, setFilter] = useState<
+src/components/TodoWorkspace.tsx:537:  const [isFlatList, setIsFlatList] = useState(false);
+src/components/TodoWorkspace.tsx:538:  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+src/components/TodoWorkspace.tsx:541:  const [detailsWidth, setDetailsWidth] = useState(380);
+src/components/TodoWorkspace.tsx:542:  const [toast, setToast] = useState<string | null>(null);
+src/components/TodoWorkspace.tsx:543:  const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
+src/components/TodoWorkspace.tsx:544:  const [draggedId, setDraggedId] = useState<string | null>(null);
+src/components/TodoWorkspace.tsx:547:  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
+src/components/TodoWorkspace.tsx:1735:  const [isMenuOpen, setIsMenuOpen] = useState(false);
+src/components/TodoWorkspace.tsx:1736:  const [isNotesExpanded, setIsNotesExpanded] = useState(false);
+src/components/TodoWorkspace.tsx:1737:  const [isEditingNotesInline, setIsEditingNotesInline] = useState(false);
+src/components/TodoWorkspace.tsx:1738:  const [isHovered, setIsHovered] = useState(false);
+src/components/TodoWorkspace.tsx:1739:  const [isCopied, setIsCopied] = useState(false);
+src/components/TodoWorkspace.tsx:1740:  const [isEditingTitle, setIsEditingTitle] = useState(false);
+src/components/TodoWorkspace.tsx:1744:  const [isDraggable, setIsDraggable] = useState(false);
+src/components/TodoWorkspace.tsx:1745:  const [dropIndicator, setDropIndicator] = useState<"before" | "after" | "inside" | null>(null);
+src/components/TodoWorkspace.tsx:2517:  const [isEditingNotesInDetails, setIsEditingNotesInDetails] = useState(false);
+src/components/TodoWorkspace.tsx:2520:  const [isStatusOpen, setIsStatusOpen] = useState(false);
+src/components/TodoWorkspace.tsx:2521:  const [isPriorityOpen, setIsPriorityOpen] = useState(false);
+src/components/TodoWorkspace.tsx:2522:  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+src/components/TodoWorkspace.tsx:2523:  const [tagInput, setTagInput] = useState("");
+src/components/TodoWorkspace.tsx:2524:  const [isTagFocused, setIsTagFocused] = useState(false);
+src/components/ShareDialog.tsx:1:import React, { useState, useMemo, useEffect } from 'react';
+src/components/ShareDialog.tsx:28:  const [useOptimized, setUseOptimized] = useState(false);
+src/components/ShareDialog.tsx:29:  const [copied, setCopied] = useState(false);
+src/components/ShareDialog.tsx:30:  const [showDiagnostics, setShowDiagnostics] = useState(false);
+src/components/AnnotationControls.tsx:1:import React, { useState, useRef, useLayoutEffect } from 'react';
+src/components/AnnotationControls.tsx:51:  const [unit, setUnit] = useState<Unit>('px');
+src/components/AnnotationControls.tsx:52:  const [w, setW] = useState(convertFromPx(baseWidth * (anno.scaleX ?? 1), unit));
+src/components/AnnotationControls.tsx:53:  const [h, setH] = useState(convertFromPx(baseHeight * (anno.scaleY ?? 1), unit));
+src/components/AnnotationControls.tsx:56:  const [resizeMode, setResizeMode] = useState<ResizeMode>('proportional');
+src/components/AnnotationControls.tsx:194:  const [pos, setPos] = useState({ top: y, left: x });
+src/components/AnnotationControls.tsx:195:  const [isMeasured, setIsMeasured] = useState(false);
+src/components/ProductivityLayer.tsx:1:import React, { useState, useRef, useEffect, useMemo, forwardRef } from "react";
+src/components/ProductivityLayer.tsx:410:  const [open, setOpen] = useState(false);
+src/components/ProductivityLayer.tsx:482:  const [val, setVal] = useState("");
+src/components/ProductivityLayer.tsx:483:  const [open, setOpen] = useState(false);
+src/components/ProductivityLayer.tsx:484:  const [coords, setCoords] = useState({ top: 0, left: 0, isAbove: false });
+src/components/ProductivityLayer.tsx:643:  const [isTodoOpen, setIsTodoOpen] = useState(false);
+src/components/ProductivityLayer.tsx:644:  const [isFileOpen, setIsFileOpen] = useState(false);
+src/components/ProductivityLayer.tsx:647:  const [todoSearch, setTodoSearch] = useState("");
+src/components/ProductivityLayer.tsx:648:  const [fileSearch, setFileSearch] = useState("");
+src/components/ProductivityLayer.tsx:651:  const [selectedTodoIdx, setSelectedTodoIdx] = useState(0);
+src/components/ProductivityLayer.tsx:652:  const [selectedFileIdx, setSelectedFileIdx] = useState(0);
+src/components/ProductivityLayer.tsx:655:  const [activeTodo, setActiveTodo] = useState<FlatTodoItem | null>(null);
+src/components/ProductivityLayer.tsx:656:  const [todoViewMode, setTodoViewMode] = useState<"flat" | "tree">("flat");
+src/components/ProductivityLayer.tsx:657:  const [isEditingNotes, setIsEditingNotes] = useState(false);
+src/components/ProductivityLayer.tsx:658:  const [isCameraOpen, setIsCameraOpen] = useState(false);
+src/components/ProductivityLayer.tsx:659:  const [isUploading, setIsUploading] = useState(false);
+src/components/ProductivityLayer.tsx:660:  const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
+src/components/ProductivityLayer.tsx:663:  const [isCreatingTodo, setIsCreatingTodo] = useState(false);
+src/components/ProductivityLayer.tsx:664:  const [newTodoText, setNewTodoText] = useState("");
+src/components/ProductivityLayer.tsx:665:  const [selectedNodePath, setSelectedNodePath] = useState("");
+src/components/ProductivityLayer.tsx:666:  const [targetParentTaskId, setTargetParentTaskId] = useState("");
+src/components/ProductivityLayer.tsx:669:  const [inlineSubParentId, setInlineSubParentId] = useState<string | null>(null);
+src/components/ProductivityLayer.tsx:670:  const [inlineSubText, setInlineSubText] = useState("");
+src/components/ProductivityLayer.tsx:673:  const [recentFiles, setRecentFiles] = useState<string[]>(() => {
+src/components/ProductivityLayer.tsx:688:  const [pinnedFiles, setPinnedFiles] = useState<string[]>(() => {
+src/components/TodoImageGallery.tsx:1:import React, { useState, useEffect, useRef } from "react";
+src/components/TodoImageGallery.tsx:17:  const [urls, setUrls] = useState<string[]>([]);
+src/components/TodoImageGallery.tsx:18:  const [isFullscreen, setIsFullscreen] = useState(false);
+src/components/TodoImageGallery.tsx:19:  const [fullscreenIndex, setFullscreenIndex] = useState(0);
+src/components/TodoImageGallery.tsx:20:  const [slideDirection, setSlideDirection] = useState(0);
+src/components/TodoImageGallery.tsx:21:  const [showCamera, setShowCamera] = useState(false);
+src/components/TodoImageGallery.tsx:22:  const [hasCamera, setHasCamera] = useState(false);
+src/components/TableView.tsx:1:import React, { useMemo, useState, useRef } from 'react';
+src/components/TableView.tsx:129:  const [sorting, setSorting] = useState<SortingState>([]);
+src/components/TableView.tsx:130:  const [globalFilter, setGlobalFilter] = useState('');
+src/components/TableView.tsx:132:  const [columnFilters, setColumnFilters] = useState<any[]>([]);
+src/components/TableView.tsx:133:  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+src/utils/useExecutionLogs.ts:1:import { useState, useEffect, useRef, useCallback } from 'react';
+src/utils/useExecutionLogs.ts:7:  const [logCount, setLogCount] = useState(0);
+src/utils/useExecutionLogs.ts:8:  const [startOffset, setStartOffset] = useState(0);
+src/utils/useExecutionLogs.ts:9:  const [logChunks, setLogChunks] = useState<Record<number, any[]>>({});
+src/utils/iframeFallbackHelper.ts:1:import { useState, useEffect, useCallback } from 'react';
+src/utils/iframeFallbackHelper.ts:19:  const [useFallback, setUseFallback] = useState(false);
+src/utils/iframeFallbackHelper.ts:20:  const [loaded, setLoaded] = useState(false);
+src/pages/Examples.tsx:1:import React, { useEffect, useState } from 'react';
+src/pages/Examples.tsx:90:  const [copied, setCopied] = useState(false);
+src/App.tsx:1:import React, { useState, useRef, useCallback, useEffect } from "react";
+src/App.tsx:80:  const [editorWidth, setEditorWidth] = useState(30); // percentage
+src/App.tsx:113:  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+src/App.tsx:151:  const [isDragOver, setIsDragOver] = useState(false);
+src/hooks/useNavigationStack.ts:1:import { useState, useCallback, useEffect } from "react";
+src/hooks/useNavigationStack.ts:5:  const [navState, setNavState] = useState<NavigationState>(() => ({

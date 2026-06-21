@@ -83,7 +83,7 @@ function mapJediTypeToCompletionKind(type: string, monaco: any) {
 // Debounce timer mapping for real-time model syntax checking
 const diagnosticsDebounceTimers = new Map<string, NodeJS.Timeout>();
 
-function runDiagnostics(model: any, monaco: any) {
+export function runDiagnostics(model: any, monaco: any) {
   const modelUriStr = model.uri.toString();
   
   if (diagnosticsDebounceTimers.has(modelUriStr)) {
@@ -104,14 +104,21 @@ function runDiagnostics(model: any, monaco: any) {
           const lineNum = Math.max(1, err.line);
           const startCol = Math.max(1, err.column + 1);
           
+          let severity = monaco.MarkerSeverity.Error;
+          if (err.type === "warning") {
+            severity = monaco.MarkerSeverity.Warning;
+          } else if (err.type === "info") {
+            severity = monaco.MarkerSeverity.Info;
+          }
+          
           return {
             startLineNumber: lineNum,
             startColumn: startCol,
             endLineNumber: lineNum,
             endColumn: startCol + 1,
             message: err.message || "Syntax Error",
-            severity: monaco.MarkerSeverity.Error,
-            source: "Pyodide Jedi"
+            severity: severity,
+            source: "Pyodide Engine"
           };
         });
 

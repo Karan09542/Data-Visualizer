@@ -332,7 +332,7 @@ function NodeRenderer({
 
   const isTodoNode = typeof data.name === "string" && (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
   const isTransferNode = typeof data.name === "string" && (data.name.endsWith("_transfer_node") || data.name.endsWith(".transfer"));
-  const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math"));
+  const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math") || data.name.toLowerCase().endsWith("graph") || data.name.toLowerCase().endsWith("math"));
   const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
   const isSpecialNode = isApiNode || isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode;
@@ -1855,6 +1855,7 @@ function NodeRenderer({
                 )}
                 {isMathNode && (
                   <MathNodeRenderer 
+                    key={data.path}
                     nodeId={data.id} 
                     data={data} 
                     isExpanded={isExpanded}
@@ -1864,6 +1865,7 @@ function NodeRenderer({
                 )}
                 {isSearchNode && (
                    <SearchNodeRenderer
+                      key={data.path}
                       nodeId={data.id}
                       data={data}
                    />

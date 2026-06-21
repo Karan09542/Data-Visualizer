@@ -63,10 +63,27 @@ export const transformToTree = (
     return node;
   }
 
+  let isMathNode = false;
+  if (typeof name === 'string' && (name.endsWith('_math_node') || name.endsWith('.math') || name.toLowerCase().endsWith('graph') || name.toLowerCase().endsWith('math'))) {
+    isMathNode = true;
+  }
+
+  if (isMathNode) {
+    node.value = data;
+    node.children = undefined;
+    return node;
+  }
+
   if (type === 'object' && data !== null) {
-    node.children = Object.entries(data).map(([key, val]) => 
-      transformToTree(val, key, `${path}.${key}`, apiNodeResponses, jsNodeResponses, jsNodeVisibility)
-    );
+    node.children = Object.entries(data).map(([key, val]) => {
+      let safeKey = key;
+      if (key.includes('.') || key.includes('[') || key.includes(']')) {
+        safeKey = `["${key.replace(/"/g, '\\"')}"]`;
+      } else {
+        safeKey = `.${key}`;
+      }
+      return transformToTree(val, key, `${path}${safeKey}`, apiNodeResponses, jsNodeResponses, jsNodeVisibility);
+    });
   } else if (type === 'array') {
     node.children = data.map((val: any, index: number) => 
       transformToTree(val, `[${index}]`, `${path}[${index}]`, apiNodeResponses, jsNodeResponses, jsNodeVisibility)

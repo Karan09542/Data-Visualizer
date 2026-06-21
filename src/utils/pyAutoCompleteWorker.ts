@@ -130,6 +130,7 @@ def get_references(code, line, column, path="main.py"):
 
 def get_diagnostics(code, path="main.py"):
     try:
+        import ast
         script = jedi.Script(code, path=path)
         errors = script.get_syntax_errors()
         res = []
@@ -140,6 +141,31 @@ def get_diagnostics(code, path="main.py"):
                 "message": err.message,
                 "type": "error"
             })
+            
+        # Detect top-level side effects
+        try:
+            tree = ast.parse(code)
+            for node in tree.body:
+                # Safe top-level statements
+                if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Assign, ast.AnnAssign, ast.Pass)):
+                    continue
+                # Docstrings
+                if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    continue
+                # if __name__ == '__main__' patterns
+                if isinstance(node, ast.If):
+                    continue
+                    
+                # Other things are likely side effects (Expr, Print, calls, etc.)
+                res.append({
+                    "line": getattr(node, 'lineno', 1),
+                    "column": getattr(node, 'col_offset', 0),
+                    "message": "Warning: This module contains top-level executable code. Importing it will execute the module. Consider moving it inside a function or 'if __name__ == \"__main__\":' block.",
+                    "type": "warning" # Changed to highlight in editor
+                })
+        except Exception:
+            pass
+
         return json.dumps(res)
     except Exception as e:
         return json.dumps([])

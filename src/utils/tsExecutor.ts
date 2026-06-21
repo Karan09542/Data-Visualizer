@@ -358,11 +358,37 @@ export const executeTsNode = async (
                     
                     if (!vfsData[resolved]) throw new Error(\`Cannot resolve module '\${request}' from '\${currentPath}'\`);
                     
-                    if (self.__modules__[resolved]) return self.__modules__[resolved].exports;
+                    if (!self.__import_stack__) self.__import_stack__ = [];
+
+                    if (self.__modules__[resolved]) {
+                        if (self.__modules__[resolved].loading) {
+                            const cycleStartIndex = self.__import_stack__.indexOf(resolved);
+                            let cyclePathStr = "";
+                            if (cycleStartIndex !== -1) {
+                                const cyclePath = [...self.__import_stack__.slice(cycleStartIndex), resolved].map(p => p.startsWith('/') ? p.substring(1) : p);
+                                cyclePathStr = cyclePath.join(" -> ");
+                                customConsole.warn("Circular dependency detected:\\n\\n" + cyclePath.join("\\n → ") + "\\n\\nExports may be partially initialized.");
+                            }
+                            
+                            return new Proxy(self.__modules__[resolved].exports, {
+                                get(target, prop) {
+                                    const actualExports = self.__modules__[resolved].exports;
+                                    if (actualExports && typeof actualExports === 'object' && prop in actualExports) return actualExports[prop];
+                                    if (actualExports && typeof actualExports === 'function' && prop in actualExports) return actualExports[prop];
+                                    if (prop === '__esModule') return actualExports && actualExports.__esModule;
+                                    if (typeof prop === 'symbol') return undefined; // Avoid errors on Promise detection etc
+                                    if (prop === 'then') return undefined;
+                                    
+                                    throw new ReferenceError("Cannot access '" + String(prop) + "' before initialization. This export is uninitialized due to a circular dependency:\\n" + cyclePathStr);
+                                }
+                            });
+                        }
+                        return self.__modules__[resolved].exports;
+                    }
 
                     if (resolved.endsWith('.json')) {
                         const parsed = JSON.parse(vfsData[resolved]);
-                        const module = { exports: parsed };
+                        const module = { exports: parsed, loading: false, loaded: true };
                         Object.defineProperty(parsed, 'default', {
                             value: parsed,
                             enumerable: false,
@@ -372,24 +398,43 @@ export const executeTsNode = async (
                         return module.exports;
                     }
                     
-                    const module = { exports: {} };
+                    const module = { exports: {}, loading: true, loaded: false };
                     self.__modules__[resolved] = module;
                     
-                    const localRequire = (req) => customRequire(req, resolved);
-                    const wrapper = new Function('require', 'exports', 'module', 'console', 'input', vfsData[resolved]);
-                    wrapper(localRequire, module.exports, module, customConsole, input);
+                    self.__import_stack__.push(resolved);
+
+                    try {
+                        const localRequire = (req) => customRequire(req, resolved);
+                        const wrapper = new Function('require', 'exports', 'module', 'console', 'input', vfsData[resolved]);
+                        wrapper(localRequire, module.exports, module, customConsole, input);
+                    } finally {
+                        module.loading = false;
+                        module.loaded = true;
+                        self.__import_stack__.pop();
+                    }
+                    
                     return module.exports;
                 };
 
                 self.__modules__ = {};
+                self.__import_stack__ = [];
                 
                 // Polyfill async execution for the entry point
-                const entryModule = { exports: {} };
+                const entryModule = { exports: {}, loading: true, loaded: false };
                 self.__modules__[e.data.entryPath] = entryModule;
+                self.__import_stack__.push(e.data.entryPath);
+                
                 const localRequire = (req) => customRequire(req, e.data.entryPath);
                 
                 const executionFunc = new Function('require', 'exports', 'module', 'console', 'input', "return (async () => {\\n" + e.data.vfs[e.data.entryPath] + "\\n})();");
-                const result = await executionFunc(localRequire, entryModule.exports, entryModule, customConsole, input);
+                let result;
+                try {
+                    result = await executionFunc(localRequire, entryModule.exports, entryModule, customConsole, input);
+                } finally {
+                    entryModule.loading = false;
+                    entryModule.loaded = true;
+                    self.__import_stack__.pop();
+                }
                clearInterval(flushInterval);
                flushLogs();
                self.postMessage({ success: true, result });

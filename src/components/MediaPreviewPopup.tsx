@@ -179,7 +179,7 @@ const MediaPreviewPopup: React.FC = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[10001] flex flex-col bg-slate-950/95 backdrop-blur-xl group"
+          className="fixed inset-0 z-[20000] flex flex-col bg-slate-950/95 backdrop-blur-xl group"
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}

@@ -27,10 +27,16 @@ import {
   CornerDownLeft,
   Edit2,
   ExternalLink,
-  Plus
+  Plus,
+  Camera,
+  Upload,
+  Video,
+  Music,
+  Image as ImageIcon
 } from "lucide-react";
 import Markdown from "react-markdown";
 import { SmartDatePicker } from "./SmartDatePicker";
+import { CameraCaptureModal } from "./CameraCaptureModal";
 import { format, parseISO } from "date-fns";
 import { useStore } from "../store/useStore";
 import { getValueAtPath, setValueAtPath } from "../utils/pathUtils";
@@ -38,6 +44,7 @@ import { STATUS_OPTIONS, PRIORITY_OPTIONS, PREDEFINED_TAGS, getTagColorClass } f
 import { JavaScriptIcon, TypeScriptIcon, PythonIcon, JsonIcon, MarkdownIcon, TextIcon } from "./FileIcons";
 import { TaskImagePreview } from "./TaskImagePreview";
 import { cn } from "@/lib/utils";
+import { importFile } from "../utils/assetManager";
 
 // --- Types ---
 export interface FlatFileItem {
@@ -648,6 +655,9 @@ export default function ProductivityLayer() {
   const [activeTodo, setActiveTodo] = useState<FlatTodoItem | null>(null);
   const [todoViewMode, setTodoViewMode] = useState<"flat" | "tree">("flat");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
 
   // New task creation states
   const [isCreatingTodo, setIsCreatingTodo] = useState(false);
@@ -918,6 +928,76 @@ export default function ProductivityLayer() {
       message: `Deleted task "${task.text || "unlabeled task"}"`,
       type: "success"
     });
+  };
+
+  const handleMediaUpload = async (files: FileList | File[]) => {
+    if (!activeTodo) return;
+    setIsUploading(true);
+    try {
+      const hashes = [...(activeTodo.imageHashes || [])];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+          const { assetId } = await importFile(file);
+          if (!hashes.includes(assetId)) {
+            hashes.push(assetId);
+          }
+        }
+      }
+      if (hashes.length !== (activeTodo.imageHashes || []).length) {
+        await handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "imageHashes", hashes);
+      }
+    } catch (err) {
+      console.error("Paste/Upload failed", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteMedia = async (index: number) => {
+    if (!activeTodo || !activeTodo.imageHashes) return;
+    const hashes = [...activeTodo.imageHashes];
+    hashes.splice(index, 1);
+    await handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "imageHashes", hashes);
+  };
+
+  const handleDeleteAllMedia = async () => {
+    if (!activeTodo) return;
+    await handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "imageHashes", []);
+    setIsConfirmingDeleteAll(false);
+  };
+
+  const handlePreviewMedia = async (index: number) => {
+    if (!activeTodo || !activeTodo.imageHashes) return;
+    const hash = activeTodo.imageHashes[index];
+    
+    let type: "image" | "video" | "audio" | "smart" = "smart";
+    const lowerHash = hash.toLowerCase();
+    if (lowerHash.endsWith('.mp4') || lowerHash.endsWith('.mov') || lowerHash.endsWith('.webm')) type = "video";
+    else if (lowerHash.endsWith('.mp3') || lowerHash.endsWith('.wav') || lowerHash.endsWith('.ogg')) type = "audio";
+    else if (lowerHash.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) type = "image";
+    else if (hash.startsWith('img_')) type = "image"; // Assets starting with img_ are usually images
+
+    useStore.getState().setActivePreviewMedia({ url: hash, type });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!activeTodo) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file') {
+        const file = items[i].getAsFile();
+        if (file) files.push(file);
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      handleMediaUpload(files);
+    }
   };
 
   const allTodoFiles = useMemo(() => {
@@ -1497,6 +1577,7 @@ export default function ProductivityLayer() {
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 className="w-full max-w-[680px] bg-white/95 dark:bg-[#0d1117]/95 backdrop-blur-2xl rounded-3xl border border-slate-200/50 dark:border-slate-800/50 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden max-h-[90vh]"
                 onClick={(e) => e.stopPropagation()}
+                onPaste={handlePaste}
               >
                 {/* Header controls layout */}
                 <div className="px-5 py-4 bg-slate-50/50 dark:bg-[#0f141d]/50 border-b border-slate-100 dark:border-slate-800/50 flex items-center justify-between shrink-0 select-none">
@@ -1569,13 +1650,19 @@ export default function ProductivityLayer() {
                       autoFocus
                       value={activeTodo.text || ""}
                       onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "text", e.target.value)}
+                      ref={(el) => {
+                        if (el) {
+                          el.style.height = 'auto';
+                          el.style.height = `${el.scrollHeight}px`;
+                        }
+                      }}
                       onInput={(e) => {
                         const target = e.target as HTMLTextAreaElement;
                         target.style.height = 'auto';
                         target.style.height = `${target.scrollHeight}px`;
                       }}
                       placeholder="Task Headline..."
-                      className="w-full text-2xl sm:text-3xl font-black bg-transparent border-none outline-none text-slate-900 dark:text-white py-1 focus:ring-0 resize-none placeholder-slate-200 dark:placeholder-slate-800 leading-[1.1] transition-all px-1"
+                      className="w-full text-2xl sm:text-3xl font-black bg-transparent border-none outline-none text-slate-900 dark:text-white py-1 focus:ring-0 resize-none placeholder-slate-200 dark:placeholder-slate-800 leading-[1.1] transition-all px-1 overflow-hidden"
                     />
                   </div>
 
@@ -1646,21 +1733,125 @@ export default function ProductivityLayer() {
                   </div>
 
                   {/* Attached Media Section */}
-                  {activeTodo.imageHashes && activeTodo.imageHashes.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-                        <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.2em] select-none flex items-center gap-2 shrink-0">
-                          <Hash size={12} strokeWidth={3} className="text-emerald-500" />
-                          Attached Media
-                        </label>
-                        <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-                      </div>
-                      <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 overflow-hidden">
-                        <TaskImagePreview imageHashes={activeTodo.imageHashes} compact={false} />
-                      </div>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
+                      <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.2em] select-none flex items-center gap-2 shrink-0">
+                        <Hash size={12} strokeWidth={3} className="text-emerald-500" />
+                        Attached Media
+                      </label>
+                      <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
+                      {activeTodo.imageHashes && activeTodo.imageHashes.length > 0 && (
+                        <div className="flex items-center gap-1">
+                          {isConfirmingDeleteAll ? (
+                            <div className="flex items-center gap-1 bg-rose-500/10 rounded-lg p-0.5 animate-in slide-in-from-right-2">
+                               <button 
+                                 onClick={handleDeleteAllMedia}
+                                 className="px-2 py-1 text-[9px] font-bold text-rose-500 hover:bg-rose-500 hover:text-white rounded transition-colors"
+                               >
+                                 Confirm Delete All
+                               </button>
+                               <button 
+                                 onClick={() => setIsConfirmingDeleteAll(false)}
+                                 className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                               >
+                                 Cancel
+                               </button>
+                            </div>
+                          ) : (
+                            <button 
+                              onClick={() => setIsConfirmingDeleteAll(true)}
+                              className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                              title="Delete all media"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-4">
+                      {activeTodo.imageHashes && activeTodo.imageHashes.length > 0 ? (
+                        <div className="space-y-4">
+                           <TaskImagePreview 
+                             imageHashes={activeTodo.imageHashes} 
+                             compact={false} 
+                             onDelete={handleDeleteMedia}
+                             onPreview={handlePreviewMedia}
+                           />
+                           <div className="flex items-center gap-2">
+                             <button 
+                               onClick={() => {
+                                 const input = document.createElement('input');
+                                 input.type = 'file';
+                                 input.multiple = true;
+                                 input.accept = 'image/*,video/*,audio/*';
+                                 input.onchange = (e: any) => {
+                                   if (e.target.files) handleMediaUpload(e.target.files);
+                                 };
+                                 input.click();
+                               }}
+                               disabled={isUploading}
+                               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:text-blue-500 hover:border-blue-500/50 transition-all shadow-sm"
+                             >
+                                <Upload size={14} strokeWidth={2.5} />
+                                {isUploading ? "Uploading..." : "Add More Media"}
+                             </button>
+                             <button 
+                               onClick={() => setIsCameraOpen(true)}
+                               className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-emerald-500 hover:border-emerald-500/50 transition-all shadow-sm"
+                             >
+                                <Camera size={16} strokeWidth={2.5} />
+                             </button>
+                           </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8 gap-4">
+                          <div className="flex gap-4">
+                            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                              <ImageIcon size={24} />
+                            </div>
+                            <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                              <Video size={24} />
+                            </div>
+                            <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
+                              <Music size={24} />
+                            </div>
+                          </div>
+                          <div className="text-center space-y-1">
+                            <h4 className="text-[13px] font-bold text-slate-700 dark:text-slate-200">No media attached</h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-500">Upload images, videos, or record a clip</p>
+                          </div>
+                          <div className="flex items-center gap-2 w-full max-w-[280px]">
+                            <button 
+                              onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.multiple = true;
+                                input.accept = 'image/*,video/*,audio/*';
+                                input.onchange = (e: any) => {
+                                  if (e.target.files) handleMediaUpload(e.target.files);
+                                };
+                                input.click();
+                              }}
+                              disabled={isUploading}
+                              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[11px] hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                            >
+                               <Upload size={14} strokeWidth={2.5} />
+                               {isUploading ? "Uploading..." : "Upload File"}
+                            </button>
+                            <button 
+                              onClick={() => setIsCameraOpen(true)}
+                              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:text-emerald-500 hover:border-emerald-500/50 transition-all shadow-sm"
+                            >
+                               <Camera size={16} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Notes / Description */}
                   <div className="space-y-3">
@@ -1685,12 +1876,13 @@ export default function ProductivityLayer() {
                       </button>
                     </div>
                     
-                    <div className="relative group">
+                    <div className="relative group" onPaste={handlePaste}>
                       {isEditingNotes ? (
                         <textarea
                           rows={6}
                           value={activeTodo.notes || ""}
                           onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "notes", e.target.value)}
+                          onPaste={handlePaste}
                           placeholder="Strategize, plan, and document..."
                           className="w-full text-sm font-medium bg-white dark:bg-[#090c12] border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder-slate-300 dark:placeholder-slate-700 outline-none leading-relaxed transition-all shadow-sm"
                         />
@@ -1762,6 +1954,13 @@ export default function ProductivityLayer() {
                     Esc to Close
                   </div>
                 </div>
+
+                {isCameraOpen && (
+                  <CameraCaptureModal 
+                    onClose={() => setIsCameraOpen(false)}
+                    onCapture={(file) => handleMediaUpload([file])}
+                  />
+                )}
               </motion.div>
             </motion.div>
           )}

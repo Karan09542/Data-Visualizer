@@ -1,0 +1,166 @@
+113:  return (
+191:      return { showSlider: variable.showSlider !== false, ...variable };
+193:    return {
+215:    if (!trimmedSymbol) return setError("Symbol is required.");
+217:      return setError(
+225:      return setError(`Symbol '${trimmedSymbol}' already exists.`);
+232:      return setError("Min must be less than Max.");
+252:        return setError("Please enter a custom group name.");
+273:  return (
+554:    return Math.round(255 * color)
+558:  return `#${f(0)}${f(8)}${f(4)}`;
+567:  return hslToHex(hue, 85, 65);
+766:      return;
+790:        if (aStarts && !bStarts) return -1;
+791:        if (!aStarts && bStarts) return 1;
+792:        return a.name.localeCompare(b.name);
+829:        if (aStarts && !bStarts) return -1;
+830:        if (!aStarts && bStarts) return 1;
+831:        return a.name.localeCompare(b.name);
+839:      return;
+881:    if (!value) return <span className="opacity-0">placeholder</span>;
+884:    return tokens.map((tok: string, i: number) => {
+900:          return (
+915:          return (
+922:      return (
+935:        return n.toTex({
+953:                return `\\textcolor{${color}}{${display}}`;
+956:            return undefined;
+1072:  return (
+1174:  if (!baseHex) return "#ffffff33";
+1199:    return baseHex;
+1203:  return `${cleanHex}${hexAlpha}`;
+1208:    return hex.substring(0, 7);
+1210:  return hex;
+1214:  if (style === "dashed") return "8, 6";
+1215:  if (style === "dotted") return "2, 4";
+1216:  if (style === "dashdot") return "10, 4, 2, 4";
+1217:  return undefined; // solid or undefined
+1234:  return (
+1282:    if (!isOpen || !triggerEl || !popoverRef.current) return;
+1287:      if (!trigger || !popover) return;
+1331:    return () => {
+1339:    if (!isOpen) return;
+1358:    return () => {
+1363:  if (!isOpen) return null;
+1365:  return createPortal(
+1473:  return (
+1518:  if (!tex) return null;
+1545:    return <LaTeX at={at} tex={finalTex} color={color} />;
+1547:    return (
+1592:    if (!compiledLHS) return [];
+1618:          if (!val) return false;
+1619:          if (Array.isArray(val)) return true;
+1626:            return true;
+1627:          return false;
+1647:        return lhs - rhs;
+1649:        return NaN;
+1671:      if (Math.abs(val1 - val2) < 1e-9) return p1;
+1674:      return [
+1713:              return lerp(p00, p10, v00, v10);
+1715:              return lerp(p10, p11, v10, v11);
+1717:              return lerp(p01, p11, v01, v11);
+1719:              return lerp(p00, p01, v00, v01);
+1721:              return p00;
+1778:    return localSegments;
+1804:  return (
+1825:    return {
+1883:  return {
+1946:  return { newExpr, changed };
+1996:    return () => {
+2035:        if (!active) return;
+2041:    return () => {
+2072:        if (parsed && Array.isArray(parsed.functions)) return parsed.functions;
+2079:      return data.value.functions;
+2081:    return [
+2103:        if (parsed && Array.isArray(parsed.variables)) return parsed.variables;
+2110:      return data.value.variables;
+2112:    return [
+2156:        if (parsed && Array.isArray(parsed.groups)) return parsed.groups;
+2163:      return data.value.groups;
+2165:    return [
+2210:    if (draggedId === targetId) return list;
+2212:    if (draggedIndex === -1) return list;
+2218:    if (targetIndex === -1) return list;
+2222:    return newList;
+2226:    if (!draggedFunctionId || draggedFunctionId === targetId) return;
+2240:    if (!draggedVariableId || draggedVariableId === targetId) return;
+2245:      return reorderList(updatedGroupId, draggedVariableId, targetId, position);
+2257:    if (!isResizingSidebar) return;
+2280:    return () => {
+2353:    if (!data || !data.path) return;
+2367:      return;
+2376:      return () => clearTimeout(timeoutId);
+2381:    if (n === 0) return 0; // Usually the origin is skipped or 0, let's keep 0
+2382:    if (axisFilter === "all") return n % 1 === 0 ? n : "";
+2383:    if (axisFilter === "even") return n % 2 === 0 ? n : "";
+2384:    if (axisFilter === "odd") return Math.abs(n % 2) === 1 ? n : "";
+2388:        return res ? n : "";
+2390:        return "";
+2393:    return n;
+2397:    if (!graphContainerRef.current) return;
+2407:    return () => observer.disconnect();
+2453:          return {
+2495:        return { ...f, compiled, error: undefined };
+2497:        return { ...f, compiled: undefined, error: e.message };
+2520:      return;
+2548:        return newTime;
+2555:    return () => {
+2638:      if (targetIndex === -1) return prev;
+2651:      return next;
+2658:      if (targetIndex === -1) return prev;
+2669:      return next;
+2679:      if (targetIndex === -1) return prev;
+2718:      return next;
+2732:      return;
+3516:                                                  return (
+3525:                                                  return (
+3566:                                        if (!formulaName.trim()) return;
+4466:                                            return {
+4472:                                          return fn;
+4747:                        return orderA - orderB;
+4761:                        return orderA - orderB;
+4785:                      return (
+4864:                            return orderA - orderB;
+4952:                        return (
+4959:                        return (
+4965:                    return (
+5844:                      if (groupVars.length === 0 && searchVar) return null;
+5847:                      return (
+6427:                      Use a valid mathjs expression returning a boolean. The
+6521:                      if (points.length === 0) return null;
+6591:                        return [x4 + px + tx, y4 + py + ty] as [number, number];
+6594:                      return (
+6607:                                            return (
+6968:                      return null;
+6973:                    return (
+6985:                                return [
+6990:                              return [tx, ty];
+6992:                              return [tx, ty];
+7026:                    return (
+7055:                    return (
+7071:                                return [tx, ty];
+7072:                              return [
+7077:                              return [tx, ty];
+7121:                                return typeof r === "object"
+7125:                                return tx;
+7141:                                return typeof r === "object"
+7145:                                return ty;
+7155:                  return (
+7166:                              return NaN;
+7167:                            return Number(res) + ty;
+7169:                            return NaN;
+7207:                              return typeof res === "object"
+7211:                              return ty;
+7227:                return null;
+7252:                          return null;
+7254:                        return (
+7279:                          if (isNaN(r)) return null;
+7280:                          return (
+7300:                            return (
+7325:                            return (
+7337:                      return null;
+7339:                      return null;
+7598:                      return prev;
+7600:                    return [...prev, newGroup];
+7622:  return isFullscreen ? (

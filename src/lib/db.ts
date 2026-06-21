@@ -130,6 +130,17 @@ export interface NodeSearchSettings {
   // any other preferences
 }
 
+export interface NodeSearchImageBookmark {
+  id?: number;
+  storageKey: string;
+  imageUrl: string;
+  thumbnail: string;
+  title: string;
+  source: string;
+  searchQuery: string;
+  timestamp: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -145,6 +156,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   nodeSearchBookmarks: EntityTable<NodeSearchBookmark, 'id'>;
   nodeSearchCollections: EntityTable<NodeSearchCollection, 'id'>;
   nodeSearchSettings: EntityTable<NodeSearchSettings, 'storageKey'>;
+  nodeSearchImageBookmarks: EntityTable<NodeSearchImageBookmark, 'id'>;
 };
 
 db.version(8).stores({
@@ -168,6 +180,14 @@ db.version(10).stores({
   nodeSearchBookmarks: '++id, storageKey, collectionId, title, timestamp',
   nodeSearchCollections: '++id, storageKey, name, timestamp',
   nodeSearchSettings: 'storageKey'
+});
+
+db.version(11).stores({
+  nodeSearchHistory: '++id, storageKey, query, timestamp, isPinned',
+  nodeSearchBookmarks: '++id, storageKey, collectionId, title, timestamp',
+  nodeSearchCollections: '++id, storageKey, name, timestamp',
+  nodeSearchSettings: 'storageKey',
+  nodeSearchImageBookmarks: '++id, storageKey, imageUrl, title, searchQuery, timestamp'
 });
 
 export { db };
