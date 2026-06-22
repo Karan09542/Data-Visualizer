@@ -1,0 +1,19 @@
+50:  usePaneContext,
+766:  useEffect(() => {
+1287:  useLayoutEffect(() => {
+1344:  useEffect(() => {
+1995:  useEffect(() => {
+2025:    useState<HTMLElement | null>(null);
+2039:  useEffect(() => {
+2264:  useEffect(() => {
+2372:  useEffect(() => { fnsRefUpdate: { functionsRef.current = functions; } }, [functions]);
+2373:  useEffect(() => { varsRefUpdate: { variablesRef.current = variables; } }, [variables]);
+2374:  useEffect(() => { grpsRefUpdate: { groupsRef.current = groups; } }, [groups]);
+2375:  useEffect(() => { 
+2405:  useEffect(() => {
+2450:  useEffect(() => {
+2493:  useEffect(() => {
+2513:            useStore.getState().updateNodeValue(data.path, newValStr);
+2614:  useEffect(() => {
+2634:  useEffect(() => {
+2734:  useEffect(() => {

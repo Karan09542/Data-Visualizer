@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Maximize2,
@@ -32,6 +32,8 @@ import {
   Eye,
   Heart,
   Sparkles,
+  Type,
+  List,
 } from "lucide-react";
 import {
   Mafs,
@@ -46,6 +48,7 @@ import {
   Line,
   LaTeX,
   usePaneContext,
+  useTransformContext,
 } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
@@ -133,6 +136,7 @@ interface MathFunction {
     | "polar"
     | "vector"
     | "polygon"
+    | "inequality"
     | "line";
   compiled?: any;
   expr2?: string; // For parametric x/y or polar r/theta
@@ -142,6 +146,10 @@ interface MathFunction {
   label?: string;
   fillColor?: string;
   fillOpacity?: number;
+  fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
+  patternSpacing?: number;
+  patternThickness?: number;
+  patternAngle?: number;
   lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
 
   // Behaviors
@@ -150,6 +158,7 @@ interface MathFunction {
   isRotatable?: boolean;
   isResizable?: boolean;
   isPivotEnabled?: boolean;
+  showPoint?: boolean;
 
   // Transform States
   transformTranslate?: [number, number]; // [x, y]
@@ -1476,7 +1485,7 @@ const LabelInput = ({
 
   return (
     <div
-      className={`relative w-[180px] rounded border transition-colors cursor-text min-h-[32px] overflow-hidden ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.5)]" : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"}`}
+      className={`relative w-full rounded-md border transition-colors cursor-text min-h-[36px] overflow-hidden ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.5)]" : "bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"}`}
       onClick={() => {
         if (!isFocused) setIsFocused(true);
         setTimeout(() => inputRef.current?.focus(), 10);
@@ -1491,7 +1500,7 @@ const LabelInput = ({
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          className="w-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-xs px-2 py-1 resize-y text-slate-800 dark:text-slate-200 custom-scrollbar min-h-[32px] block"
+          className="w-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-xs px-2.5 py-1.5 resize-y text-slate-800 dark:text-slate-200 custom-scrollbar min-h-[36px] block"
           placeholder={isFocused ? placeholder : ""}
           spellCheck={false}
           autoComplete="off"
@@ -1500,7 +1509,7 @@ const LabelInput = ({
       </div>
 
       {!isFocused && renderedLatex && (
-        <div className="w-full px-2 py-1.5 flex flex-wrap items-center overflow-x-auto overflow-y-hidden custom-scrollbar">
+        <div className="w-full px-2.5 py-1.5 flex flex-wrap items-center overflow-x-auto overflow-y-hidden custom-scrollbar">
           <div className="text-slate-800 dark:text-slate-200 text-[12px] [&_.katex]:text-[13px] [&_.katex-display]:m-0 min-w-min">
             {renderedLatex}
           </div>
@@ -1556,6 +1565,269 @@ const SafeLabel = ({
   }
 };
 
+const InequalityPlot: React.FC<{
+  compiledLHS: any;
+  compiledRHS: any;
+  operator: string;
+  baseScope: any;
+  color: string;
+  weight?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
+  patternSpacing?: number;
+  patternThickness?: number;
+  patternAngle?: number;
+  tx?: number;
+  ty?: number;
+  lineStyle?: string;
+  samplingDepth?: number;
+  id?: string;
+}> = ({
+  compiledLHS,
+  compiledRHS,
+  operator,
+  baseScope,
+  color,
+  weight = 3,
+  fillColor,
+  fillOpacity = 0.3,
+  fillPattern = "hatch-diagonal",
+  patternSpacing,
+  patternThickness,
+  patternAngle,
+  tx = 0,
+  ty = 0,
+  lineStyle,
+  samplingDepth = 14,
+  id,
+}) => {
+  let xRange: [number, number] = [-10, 10];
+  let yRange: [number, number] = [-10, 10];
+
+  try {
+    const pane = usePaneContext();
+    if (pane && pane.xPaneRange && pane.yPaneRange) {
+      xRange = pane.xPaneRange;
+      yRange = pane.yPaneRange;
+    }
+  } catch (e) {}
+
+  const patternId = `pattern-${id || Math.random().toString(36).substring(2)}`;
+  const maskId = `mask-${id || Math.random().toString(36).substring(2)}`;
+
+  const paths = useMemo(() => {
+    if (!compiledLHS) return { fill: "", boundary: "" };
+
+    const GRID_SIZE = Math.max(20, Math.min(200, samplingDepth * 4)); // Less dense for better performance
+    const xMin = xRange[0];
+    const xMax = xRange[1];
+    const yMin = yRange[0];
+    const yMax = yRange[1];
+    
+    const dx = (xMax - xMin) / GRID_SIZE;
+    const dy = (yMax - yMin) / GRID_SIZE;
+
+    const isInside = (val: number) => {
+        if (isNaN(val)) return false;
+        if (operator === "<" || operator === "<=") return val < 0;
+        if (operator === ">" || operator === ">=") return val > 0;
+        return val === 0;
+    };
+
+    let fillPath = "";
+    
+    // Evaluate horizontally
+    const scope = { ...baseScope, x: 0, y: 0 };
+    for (let j = 0; j <= GRID_SIZE; j++) {
+        const y = yMin + j * dy;
+        scope.y = y - ty;
+        let xStart: number | null = null;
+        
+        for (let i = 0; i <= GRID_SIZE; i++) {
+            const x = xMin + i * dx;
+            scope.x = x - tx;
+            
+            let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
+            let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
+            const val = Number(l) - Number(r);
+            const inside = isInside(val);
+            
+            if (inside && xStart === null) xStart = x;
+            else if (!inside && xStart !== null) {
+                fillPath += `M ${xStart} ${y} L ${x} ${y} `;
+                xStart = null;
+            }
+        }
+        if (xStart !== null) fillPath += `M ${xStart} ${y} L ${xMax} ${y} `;
+    }
+
+    // Now extract boundary using marching squares (edges only)
+    let boundaryPath = "";
+    const grid = new Float32Array((GRID_SIZE + 1) * (GRID_SIZE + 1));
+    for (let i = 0; i <= GRID_SIZE; i++) {
+        scope.x = xMin + i * dx - tx;
+        for (let j = 0; j <= GRID_SIZE; j++) {
+            scope.y = yMin + j * dy - ty;
+            let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
+            let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
+            grid[i * (GRID_SIZE + 1) + j] = Number(l) - Number(r);
+        }
+    }
+
+    const lerp = (p1: number[], p2: number[], val1: number, val2: number) => {
+      if (isNaN(val1) || isNaN(val2)) return p1;
+      if (Math.abs(val1 - val2) < 1e-9) return p1;
+      const t = -val1 / (val2 - val1);
+      const clampedT = Math.max(0, Math.min(1, t));
+      return [ p1[0] + clampedT * (p2[0] - p1[0]), p1[1] + clampedT * (p2[1] - p1[1]) ];
+    };
+
+    for (let i = 0; i < GRID_SIZE; i++) {
+      const x0 = xMin + i * dx;
+      const x1 = x0 + dx;
+      for (let j = 0; j < GRID_SIZE; j++) {
+        const y0 = yMin + j * dy;
+        const y1 = y0 + dy;
+
+        const v00 = grid[i * (GRID_SIZE + 1) + j];
+        const v10 = grid[(i + 1) * (GRID_SIZE + 1) + j];
+        const v11 = grid[(i + 1) * (GRID_SIZE + 1) + (j + 1)];
+        const v01 = grid[i * (GRID_SIZE + 1) + (j + 1)];
+
+        if (isNaN(v00) || isNaN(v10) || isNaN(v11) || isNaN(v01)) {
+          continue;
+        }
+
+        const b00 = isInside(v00) ? 1 : 0;
+        const b10 = isInside(v10) ? 1 : 0;
+        const b11 = isInside(v11) ? 1 : 0;
+        const b01 = isInside(v01) ? 1 : 0;
+
+        const index = (b01 << 3) | (b11 << 2) | (b10 << 1) | b00;
+        if (index === 0 || index === 15) continue;
+
+        const p00 = [x0, y0];
+        const p10 = [x1, y0];
+        const p11 = [x1, y1];
+        const p01 = [x0, y1];
+
+        const e0 = lerp(p00, p10, v00, v10);
+        const e1 = lerp(p10, p11, v10, v11);
+        const e2 = lerp(p01, p11, v01, v11);
+        const e3 = lerp(p00, p01, v00, v01);
+
+        switch(index) {
+          case 1: boundaryPath += `M${e0[0]},${e0[1]} L${e3[0]},${e3[1]} `; break;
+          case 2: boundaryPath += `M${e1[0]},${e1[1]} L${e0[0]},${e0[1]} `; break;
+          case 3: boundaryPath += `M${e1[0]},${e1[1]} L${e3[0]},${e3[1]} `; break;
+          case 4: boundaryPath += `M${e2[0]},${e2[1]} L${e1[0]},${e1[1]} `; break;
+          case 5: boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `; break;
+          case 6: boundaryPath += `M${e2[0]},${e2[1]} L${e0[0]},${e0[1]} `; break;
+          case 7: boundaryPath += `M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `; break;
+          case 8: boundaryPath += `M${e3[0]},${e3[1]} L${e2[0]},${e2[1]} `; break;
+          case 9: boundaryPath += `M${e0[0]},${e0[1]} L${e2[0]},${e2[1]} `; break;
+          case 10: boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `; break;
+          case 11: boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} `; break;
+          case 12: boundaryPath += `M${e3[0]},${e3[1]} L${e1[0]},${e1[1]} `; break;
+          case 13: boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} `; break;
+          case 14: boundaryPath += `M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `; break;
+        }
+      }
+    }
+
+    return { fill: fillPath, boundary: boundaryPath, dy };
+  }, [compiledLHS, compiledRHS, operator, baseScope, samplingDepth, xRange[0], xRange[1], yRange[0], yRange[1], tx, ty]);
+
+  const customDashPattern = lineStyle && lineStyle !== "solid" ? getStrokeDasharray(lineStyle) : undefined;
+  const isStrict = operator === "<" || operator === ">";
+  const finalStrokeDash = customDashPattern || (isStrict ? "6,6" : "none");
+
+  const pColor = fillColor || color;
+  const pSpace = patternSpacing || 15;
+  const pSize = pSpace;
+  const pThick = Math.max(1, patternThickness || 2);
+
+  // Calculate visual properties from mafs context
+  let sx = 1;
+  let sy = 1;
+  try {
+    const transform = useTransformContext();
+    // transform.viewTransform is [a, c, tx,  b, d, ty] in 2D vector form from mafs vec. Matrix is [m00, m01, m02, m10, m11, m12] 
+    // Usually a = pixel_width / math_width, d = - pixel_height / math_height
+    // We just want rough scale factor to invert
+    if (transform && transform.viewTransform) {
+      sx = Math.abs(transform.viewTransform[0]);
+      sy = Math.abs(transform.viewTransform[4]); // index 4 is m11 (or d)
+    }
+  } catch (e) {}
+
+  const baseScaleX = sx || 50;
+  const baseScaleY = sy || 50;
+
+  return (
+    <g style={{ transform: "var(--mafs-view-transform)", transformOrigin: "0 0" }}>
+      <defs>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]}>
+          {paths.fill && <path d={paths.fill} fill="none" stroke="white" strokeWidth={paths.dy * 1.5} vectorEffect="non-scaling-stroke" />}
+        </mask>
+        {fillPattern !== "solid" && (
+          <pattern id={patternId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${1 / baseScaleX}, ${1 / baseScaleY}) rotate(${patternAngle || 0})`}>
+            {fillPattern === "hatch-diagonal" && (
+              <>
+                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+              </>
+            )}
+            {fillPattern === "hatch-reverse" && (
+              <>
+                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+              </>
+            )}
+            {fillPattern === "hatch-cross" && (
+              <>
+                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+              </>
+            )}
+            {fillPattern === "dotted" && (
+              <circle cx={pSize/2} cy={pSize/2} r={pThick} fill={pColor} fillOpacity={fillOpacity} />
+            )}
+            {fillPattern === "grid" && (
+              <>
+                <line x1={0} y1={0} x2={pSize} y2={0} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={0} x2={0} y2={pSize} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+              </>
+            )}
+            {fillPattern === "dashed" && (
+              <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} strokeDasharray={`${pSize/2},${pSize/2}`} />
+            )}
+            {fillPattern === "math-region" && (
+              <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={Math.max(1, pThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} />
+            )}
+          </pattern>
+        )}
+      </defs>
+
+      {paths.fill && (
+        fillPattern === "solid" ? (
+          <rect x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]} fill={pColor} fillOpacity={fillOpacity} mask={`url(#${maskId})`} />
+        ) : (
+          <rect x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]} fill={`url(#${patternId})`} mask={`url(#${maskId})`} />
+        )
+      )}
+      {paths.boundary && <path d={paths.boundary} fill="none" stroke={color} strokeWidth={weight} strokeDasharray={finalStrokeDash} style={{ vectorEffect: "non-scaling-stroke" }} />}
+    </g>
+  );
+}
+
 const ImplicitPlot: React.FC<{
   compiledLHS: any;
   compiledRHS: any;
@@ -1566,6 +1838,7 @@ const ImplicitPlot: React.FC<{
   tx?: number;
   ty?: number;
   lineStyle?: string;
+  samplingDepth?: number;
 }> = ({
   compiledLHS,
   compiledRHS,
@@ -1576,6 +1849,7 @@ const ImplicitPlot: React.FC<{
   tx = 0,
   ty = 0,
   lineStyle,
+  samplingDepth = 14,
 }) => {
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
@@ -1590,9 +1864,9 @@ const ImplicitPlot: React.FC<{
     // Fallback if not inside pane context
   }
 
-  const GRID_SIZE = 60;
+  const GRID_SIZE = Math.max(20, Math.min(200, samplingDepth * 6)); // E.g., depth 14 -> 84, depth 20 -> 120
 
-  const segments = React.useMemo(() => {
+  const segments = useMemo(() => {
     if (!compiledLHS) return [];
 
     const xMin = xRange[0];
@@ -2302,14 +2576,54 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   });
   const [showTimeSettings, setShowTimeSettings] = useState(false);
   const [tracePoints, setTracePoints] = useState(false);
-  const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
-    "cartesian",
-  );
-  const [axisFilter, setAxisFilter] = useState<
-    "all" | "even" | "odd" | "custom"
-  >("even"); // Default to even as it was before
-  const [customAxisFilter, setCustomAxisFilter] = useState("n % 3 == 0");
+  const initialGridSettings = useMemo(() => {
+    let settings: any = {};
+    if (typeof data?.value === "string") {
+      try {
+        const parsed = JSON.parse(data.value);
+        if (parsed && parsed.gridSettings) {
+          settings = parsed.gridSettings;
+        }
+      } catch (e) {}
+    } else if (data?.value && typeof data.value === "object" && data.value.gridSettings) {
+      settings = data.value.gridSettings;
+    }
+    return {
+      gridType: settings.gridType !== undefined ? settings.gridType : ("cartesian" as any),
+      axisFilter: settings.axisFilter !== undefined ? settings.axisFilter : ("numeric" as any),
+      axisStepStr: settings.axisStepStr !== undefined ? settings.axisStepStr : "1",
+      customAxisFilter: settings.customAxisFilter !== undefined ? settings.customAxisFilter : "n % 3 == 0",
+      customAxisMapping: settings.customAxisMapping !== undefined ? settings.customAxisMapping : "0: Origin\n1: Start\n2: A\n3: B\n4: End",
+      axisPrefix: settings.axisPrefix !== undefined ? settings.axisPrefix : "",
+      axisSuffix: settings.axisSuffix !== undefined ? settings.axisSuffix : "",
+      axisDecimals: settings.axisDecimals !== undefined ? settings.axisDecimals : 2,
+      axisThousandsSep: settings.axisThousandsSep !== undefined ? settings.axisThousandsSep : false,
+      samplingDepth: settings.samplingDepth !== undefined ? settings.samplingDepth : 14,
+      gridSubdivisions: settings.gridSubdivisions !== undefined ? settings.gridSubdivisions : 4,
+    };
+  }, []);
+
+  const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(initialGridSettings.gridType);
+  const [axisFilter, setAxisFilter] = useState<"all" | "even" | "odd" | "numeric" | "pi" | "euler" | "complex" | "degrees" | "radians" | "fractions" | "scientific" | "custom_mapping" | "custom">(initialGridSettings.axisFilter);
+  const [axisStepStr, setAxisStepStr] = useState<string>(initialGridSettings.axisStepStr);
+  const parsedAxisStep = useMemo(() => {
+    try {
+      const val = mathjs.evaluate(axisStepStr);
+      return typeof val === "number" && val > 0 ? val : 1;
+    } catch {
+      return 1;
+    }
+  }, [axisStepStr]);
+  const [customAxisFilter, setCustomAxisFilter] = useState(initialGridSettings.customAxisFilter);
+  const [customAxisMapping, setCustomAxisMapping] = useState(initialGridSettings.customAxisMapping);
+  const [axisPrefix, setAxisPrefix] = useState(initialGridSettings.axisPrefix);
+  const [axisSuffix, setAxisSuffix] = useState(initialGridSettings.axisSuffix);
+  const [axisDecimals, setAxisDecimals] = useState(initialGridSettings.axisDecimals);
+  const [axisThousandsSep, setAxisThousandsSep] = useState(initialGridSettings.axisThousandsSep);
+  const [showAdvancedAxisControls, setShowAdvancedAxisControls] = useState(false);
   const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
+  const [samplingDepth, setSamplingDepth] = useState(initialGridSettings.samplingDepth);
+  const [gridSubdivisions, setGridSubdivisions] = useState(initialGridSettings.gridSubdivisions);
   const graphContainerRef = useRef<HTMLDivElement>(null);
   const appTheme = useStore((state) => state.appTheme);
   const updateNodeValue = useStore((state) => state.updateNodeValue);
@@ -2321,21 +2635,33 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const functionsRef = useRef(functions);
   const variablesRef = useRef(variables);
   const groupsRef = useRef(groups);
+  const gridSettingsRef = useRef({
+    gridType, axisFilter, axisStepStr, customAxisFilter, customAxisMapping, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions
+  });
 
-  useEffect(() => { fnsRefUpdate: { functionsRef.current = functions; } }, [functions]);
-  useEffect(() => { varsRefUpdate: { variablesRef.current = variables; } }, [variables]);
-  useEffect(() => { grpsRefUpdate: { groupsRef.current = groups; } }, [groups]);
+  useEffect(() => { functionsRef.current = functions; }, [functions]);
+  useEffect(() => { variablesRef.current = variables; }, [variables]);
+  useEffect(() => { groupsRef.current = groups; }, [groups]);
+  useEffect(() => { 
+    gridSettingsRef.current = { gridType, axisFilter, axisStepStr, customAxisFilter, customAxisMapping, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions }; 
+  }, [gridType, axisFilter, axisStepStr, customAxisFilter, customAxisMapping, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions]);
 
-  const saveImmediately = React.useCallback((
+
+  const stripFunctions = (fns: MathFunction[]) =>
+    fns.map(({ compiled, compiled2, error, ...f }) => f);
+
+  const saveImmediately = useCallback((
     fns = functionsRef.current,
     vars = variablesRef.current,
     grps = groupsRef.current,
+    gridSettings = gridSettingsRef.current,
   ) => {
     if (!data || !data.path) return;
     const stateToSave = {
-      functions: fns,
+      functions: stripFunctions(fns),
       variables: vars,
       groups: grps,
+      gridSettings: gridSettings
     };
     const newVal = JSON.stringify(stateToSave, null, 2);
     lastSavedValue.current = newVal;
@@ -2363,6 +2689,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               functions: parsed.functions || [],
               variables: parsed.variables || [],
               groups: parsed.groups || [],
+              gridSettings: parsed.gridSettings || {},
             },
             null,
             2,
@@ -2372,6 +2699,19 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             if (Array.isArray(parsed.functions)) setFunctions(parsed.functions);
             if (Array.isArray(parsed.variables)) setVariables(parsed.variables);
             if (Array.isArray(parsed.groups)) setGroups(parsed.groups);
+            if (parsed.gridSettings) {
+              if (parsed.gridSettings.gridType !== undefined) setGridType(parsed.gridSettings.gridType);
+              if (parsed.gridSettings.axisFilter !== undefined) setAxisFilter(parsed.gridSettings.axisFilter);
+              if (parsed.gridSettings.axisStepStr !== undefined) setAxisStepStr(parsed.gridSettings.axisStepStr);
+              if (parsed.gridSettings.customAxisMapping !== undefined) setCustomAxisMapping(parsed.gridSettings.customAxisMapping);
+              if (parsed.gridSettings.customAxisFilter !== undefined) setCustomAxisFilter(parsed.gridSettings.customAxisFilter);
+              if (parsed.gridSettings.axisPrefix !== undefined) setAxisPrefix(parsed.gridSettings.axisPrefix);
+              if (parsed.gridSettings.axisSuffix !== undefined) setAxisSuffix(parsed.gridSettings.axisSuffix);
+              if (parsed.gridSettings.axisDecimals !== undefined) setAxisDecimals(parsed.gridSettings.axisDecimals);
+              if (parsed.gridSettings.axisThousandsSep !== undefined) setAxisThousandsSep(parsed.gridSettings.axisThousandsSep);
+              if (parsed.gridSettings.samplingDepth !== undefined) setSamplingDepth(parsed.gridSettings.samplingDepth);
+              if (parsed.gridSettings.gridSubdivisions !== undefined) setGridSubdivisions(parsed.gridSettings.gridSubdivisions);
+            }
           }
         }
       } catch (e) {}
@@ -2383,9 +2723,22 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
     // Save to the graph every time there's a state change
     const stateToSave = {
-      functions,
+      functions: stripFunctions(functions),
       variables,
       groups,
+      gridSettings: {
+        gridType,
+        axisFilter,
+        axisStepStr,
+        customAxisMapping,
+        customAxisFilter,
+        axisPrefix,
+        axisSuffix,
+        axisDecimals,
+        axisThousandsSep,
+        samplingDepth,
+        gridSubdivisions,
+      }
     };
 
     const newVal = JSON.stringify(stateToSave, null, 2);
@@ -2406,7 +2759,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         clearTimeout(timeoutId);
       };
     }
-  }, [functions, variables, groups, data.path, updateNodeValue]);
+  }, [functions, variables, groups, data.path, updateNodeValue, gridType, axisFilter, axisStepStr, customAxisMapping, customAxisFilter, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions]);
 
   useEffect(() => {
     return () => {
@@ -2414,11 +2767,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       const latestFns = functionsRef.current;
       const latestVars = variablesRef.current;
       const latestGrps = groupsRef.current;
+      const latestGridSettings = gridSettingsRef.current;
 
       const stateToSave = {
-        functions: latestFns,
+        functions: stripFunctions(latestFns),
         variables: latestVars,
         groups: latestGrps,
+        gridSettings: latestGridSettings
       };
       const newValStr = JSON.stringify(stateToSave, null, 2);
       if (newValStr !== lastSavedValue.current) {
@@ -2434,19 +2789,97 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   }, [data?.path]);
 
   const getAxisLabel = (n: number) => {
-    if (n === 0) return 0; // Usually the origin is skipped or 0, let's keep 0
-    if (axisFilter === "all") return n % 1 === 0 ? n : "";
-    if (axisFilter === "even") return n % 2 === 0 ? n : "";
-    if (axisFilter === "odd") return Math.abs(n % 2) === 1 ? n : "";
-    if (axisFilter === "custom") {
+    if (n === 0 && axisFilter !== "custom_mapping" && axisFilter !== "custom") return 0;
+
+    let baseLabel: React.ReactNode = "";
+
+    if (axisFilter === "all") {
+      baseLabel = n % 1 === 0 ? n : "";
+    } else if (axisFilter === "even") {
+      baseLabel = n % 2 === 0 ? n : "";
+    } else if (axisFilter === "odd") {
+      baseLabel = Math.abs(n % 2) === 1 ? n : "";
+    } else if (axisFilter === "custom") {
       try {
         const res = mathjs.evaluate(customAxisFilter, { n });
-        return res ? n : "";
+        if (res) baseLabel = n;
       } catch {
-        return "";
+        baseLabel = "";
       }
+    } else if (axisFilter === "custom_mapping") {
+      const linesStr = customAxisMapping.split("\n");
+      for (const line of linesStr) {
+        // Use either ':' or '->' or '→' as delimiter
+        const delimiter = line.includes('→') ? '→' : line.includes('->') ? '->' : ':';
+        const [k, ...vParts] = line.split(delimiter);
+        if (vParts.length > 0 && parseFloat(k.trim()) === n) {
+          baseLabel = vParts.join(delimiter).trim();
+          break;
+        }
+      }
+    } else if (axisFilter === "pi") {
+      const fraction = n / Math.PI;
+      const rounded = Math.round(fraction * 1000) / 1000;
+      if (Math.abs(rounded) < 0.001) baseLabel = "0";
+      else if (Math.abs(rounded - 1) < 0.001) baseLabel = "π";
+      else if (Math.abs(rounded + 1) < 0.001) baseLabel = "-π";
+      else baseLabel = `${rounded}π`;
+    } else if (axisFilter === "euler") {
+      const superscriptMap: Record<string, string> = {
+        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻'
+      };
+      if (n === 0) baseLabel = "0";
+      else if (n === 1) baseLabel = "e";
+      else if (n === -1) baseLabel = "e⁻¹";
+      else {
+         const supN = n.toString().split('').map(c => superscriptMap[c] || c).join('');
+         baseLabel = `e${supN}`;
+      }
+    } else if (axisFilter === "complex") {
+      if (n === 0) baseLabel = "0";
+      else if (n === 1) baseLabel = "i";
+      else if (n === -1) baseLabel = "-i";
+      else baseLabel = `${n}i`;
+    } else if (axisFilter === "degrees") {
+      baseLabel = `${n}°`;
+    } else if (axisFilter === "radians") {
+      baseLabel = `${n} rad`;
+    } else if (axisFilter === "scientific") {
+      if (n === 0) baseLabel = "0";
+      else {
+        const [m, eStr] = n.toExponential(axisDecimals).split('e');
+        const exponent = eStr.replace('+', '');
+        const superscriptMap: Record<string, string> = {
+          '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+          '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻'
+        };
+        const supExp = exponent.split('').map(c => superscriptMap[c] || c).join('');
+        baseLabel = `${m} × 10${supExp}`;
+      }
+    } else if (axisFilter === "fractions") {
+       if (n % 1 === 0) baseLabel = n.toString();
+       else {
+          const precision = 1000000;
+          const numerator = Math.round(n * precision);
+          const denominator = precision;
+          const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
+          const d = gcd(Math.abs(numerator), denominator);
+          baseLabel = `${numerator/d}/${denominator/d}`;
+       }
+    } else { // "numeric"
+      const rounded = +(Math.round(Number(n + "e+" + axisDecimals)) + "e-" + axisDecimals);
+      baseLabel = axisThousandsSep ? rounded.toLocaleString() : rounded;
     }
-    return n;
+
+    if (baseLabel === "") return "";
+    
+    // React supports strings in Mafs labels if not using foreignObject
+    if (typeof baseLabel === "string" || typeof baseLabel === "number") {
+      return `${axisPrefix}${baseLabel}${axisSuffix}`;
+    }
+    
+    return <>{axisPrefix}{baseLabel}{axisSuffix}</>;
   };
 
   useEffect(() => {
@@ -2475,8 +2908,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
     const newFunctions = functions.map((f) => {
       try {
-        if (f.type === "implicit") {
-          const parts = f.expr.split("=");
+        if (f.type === "implicit" || f.type === "inequality") {
+          let op = "=";
+          let parts = f.expr.split("=");
+          
+          if (f.type === "inequality") {
+            const match = f.expr.match(/(<=|>=|<|>)/);
+            if (match) {
+              op = match[1];
+              parts = f.expr.split(op);
+            }
+          }
+          
           const lhsStr = parts[0].trim();
           const rhsStr = parts[1] ? parts[1].trim() : "0";
 
@@ -2510,6 +2953,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             ...f,
             compiled: compiledLHS,
             compiled2: compiledRHS,
+            expr2: op, // Store the operator for inequality
             error: undefined,
           };
         }
@@ -2566,6 +3010,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   }, [
     functions.map((f) => f.expr).join(","),
     variables.map((v) => v.name).join(","),
+    functions.some((f) => !("compiled" in f) && !("error" in f))
   ]); // Compile when expressions or variables change
 
   // Animation loop
@@ -3174,6 +3619,49 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                     </div>
                   </div>
 
+                  <div className="flex flex-col gap-1.5 px-1 pb-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        Grid Resolution (Depth Sampling)
+                        <span className="text-[10px] normal-case font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
+                          {samplingDepth <= 8 ? "⚡ Fast" : samplingDepth <= 14 ? "⚡ Balanced" : samplingDepth <= 20 ? "⚡ High Quality" : "⚡ Ultra Detail"}
+                        </span>
+                      </label>
+                      <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
+                        {samplingDepth}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={30}
+                      step={1}
+                      value={samplingDepth}
+                      onChange={(e) => setSamplingDepth(Number(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 px-1 pb-4 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        Grid Subdivisions
+                      </label>
+                      <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
+                        {gridSubdivisions}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={gridSubdivisions}
+                      onChange={(e) => setGridSubdivisions(Number(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
+                    />
+                  </div>
+
                   <div className="flex flex-col gap-3">
                     {functions.map((f) => (
                       <div
@@ -3288,6 +3776,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             ? "Point"
                                             : f.type === "line"
                                               ? "Line Segment"
+                                              : f.type === "inequality"
+                                                ? "Inequality"
                                               : f.type === "polygon"
                                                 ? "Polygon"
                                                 : "Select function type"
@@ -3343,6 +3833,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 Line =
                               </option>
                               <option
+                                value="inequality"
+                                title="Inequality Region"
+                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                              >
+                                Ineq =
+                              </option>
+                              <option
                                 value="polygon"
                                 title="Polygon"
                                 className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
@@ -3374,7 +3871,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               onChange={(val: string) =>
                                 handleUpdateExpr(f.id, val)
                               }
-                              onBlur={saveImmediately}
+                              onBlur={() => saveImmediately()}
                               variables={variables}
                               hoveredVar={hoveredVar}
                               setHoveredVar={setHoveredVar}
@@ -3899,6 +4396,50 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     </label>
                                   )}
 
+                                  {f.type === "point" && (
+                                    <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                      <div
+                                        className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.showPoint !== false ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
+                                      >
+                                        {f.showPoint !== false && (
+                                          <svg
+                                            className="w-2.5 h-2.5"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={3}
+                                              d="M5 13l4 4L19 7"
+                                            />
+                                          </svg>
+                                        )}
+                                      </div>
+                                      <input
+                                        type="checkbox"
+                                        checked={f.showPoint !== false}
+                                        onChange={(e) =>
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? {
+                                                    ...fn,
+                                                    showPoint: e.target.checked,
+                                                  }
+                                                : fn,
+                                            ),
+                                          )
+                                        }
+                                        className="hidden"
+                                      />
+                                      <span className="text-slate-600 dark:text-slate-300">
+                                        Show Point
+                                      </span>
+                                    </label>
+                                  )}
+
                                   {/* Show Label */}
                                   <label className="flex items-center gap-1.5 cursor-pointer group/cb">
                                     <div
@@ -3944,7 +4485,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 </div>
 
                                 {f.showLabel && (
-                                  <div className="flex mt-1">
+                                  <div className="flex w-full mt-2 mb-1">
                                     <LabelInput
                                       value={f.label || ""}
                                       onChange={(val) =>
@@ -4185,6 +4726,45 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   </div>
                                 )}
                               </div>
+                              {/* Inequality Operator Control */}
+                              {f.type === "inequality" && (
+                                <div className="flex flex-col gap-1 pb-1">
+                                  <span className="text-slate-500 dark:text-slate-400 font-semibold mb-0.5">
+                                    Inequality Type:
+                                  </span>
+                                  <div className="flex border border-slate-200 dark:border-slate-700/60 rounded overflow-hidden">
+                                    {["<", "<=", ">", ">="].map((op) => (
+                                      <button
+                                        key={op}
+                                        onClick={() => {
+                                          let currentOp = f.expr2 || "<=";
+                                          let newExpr = f.expr;
+                                          if (f.expr.includes(currentOp)) {
+                                            const parts = f.expr.split(currentOp);
+                                            newExpr = parts.join(op);
+                                          } else if (f.expr.match(/(<=|>=|<|>)/)) {
+                                            newExpr = f.expr.replace(/(<=|>=|<|>)/, op);
+                                          }
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? { ...fn, expr: newExpr, expr2: op }
+                                                : fn
+                                            )
+                                          );
+                                        }}
+                                        className={`flex-1 py-1 px-2 font-mono text-[11px] font-bold transition-colors ${
+                                          (f.expr2 || "<=") === op
+                                            ? "bg-blue-500 text-white"
+                                            : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                        } border-r border-slate-200 dark:border-slate-700/60 last:border-r-0`}
+                                      >
+                                        {op}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                               {/* Outline/Stroke Color */}
                               <div className="flex flex-col gap-1">
                                 <div className="flex items-center justify-between">
@@ -4277,11 +4857,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 />
                               </div>
 
-                              {/* Divider */}
-                              <div className="border-t border-slate-200 dark:border-slate-800/60 my-0.5" />
+                              {f.type !== "point" && f.type !== "line" && (
+                                <>
+                                  <div className="border-t border-slate-200 dark:border-slate-800/60 my-0.5" />
 
-                              {/* Is Custom Fill Active */}
-                              <div className="flex flex-col gap-1.5">
+                                  {/* Is Custom Fill Active */}
+                                  <div className="flex flex-col gap-1.5">
                                 <div className="flex items-center justify-between">
                                   <span className="text-slate-500 dark:text-slate-400 font-semibold font-semibold">
                                     Fill Customization
@@ -4321,7 +4902,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                         f.fillOpacity !==
                                                           undefined
                                                           ? f.fillOpacity
-                                                          : 0.2,
+                                                          : 0.3,
                                                       )
                                                     : undefined,
                                                 }
@@ -4369,7 +4950,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             const currentAlpha =
                                               f.fillOpacity !== undefined
                                                 ? f.fillOpacity
-                                                : 0.2;
+                                                : 0.3;
                                             const colorWithAlpha =
                                               getHexWithAlpha(c, currentAlpha);
                                             setFunctions((prev) =>
@@ -4444,13 +5025,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         f.fillColor || f.color,
                                         f.fillOpacity !== undefined
                                           ? f.fillOpacity
-                                          : 0.2,
+                                          : 0.3,
                                       )}
                                       onChange={(newColor) => {
                                         let parsedAlpha =
                                           f.fillOpacity !== undefined
                                             ? f.fillOpacity
-                                            : 0.2;
+                                            : 0.3;
                                         if (
                                           newColor.startsWith("#") &&
                                           newColor.length === 9
@@ -4496,7 +5077,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     {Math.round(
                                       (f.fillOpacity !== undefined
                                         ? f.fillOpacity
-                                        : 0.2) * 100,
+                                        : 0.3) * 100,
                                     )}
                                     %
                                   </span>
@@ -4513,7 +5094,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     value={
                                       f.fillOpacity !== undefined
                                         ? f.fillOpacity
-                                        : 0.2
+                                        : 0.3
                                     }
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value);
@@ -4541,8 +5122,92 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   </span>
                                 </div>
                               </div>
+                              
+                              {/* Pattern Style Selection (For Regions) */}
+                              {f.type === "inequality" && (
+                                <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/60">
+                                  <span className="text-slate-550 dark:text-slate-400 font-semibold mb-0.5">
+                                    Region Style
+                                  </span>
+                                  <div className="grid grid-cols-4 gap-1.5">
+                                    {(
+                                      [
+                                        { value: "solid", label: "Solid", icon: "▧" },
+                                        { value: "hatch-diagonal", label: "Diagonal", icon: "///" },
+                                        { value: "hatch-reverse", label: "Reverse", icon: "\\\\\\" },
+                                        { value: "hatch-cross", label: "Cross", icon: "XXX" },
+                                        { value: "dotted", label: "Dotted", icon: "•••" },
+                                        { value: "grid", label: "Grid", icon: "+++" },
+                                        { value: "dashed", label: "Dashed", icon: "---" },
+                                        { value: "math-region", label: "Math", icon: "///" },
+                                      ] as const
+                                    ).map((style) => {
+                                      const isSelected = (f.fillPattern || "hatch-diagonal") === style.value;
+                                      return (
+                                        <button
+                                          key={style.value}
+                                          type="button"
+                                          onClick={() => {
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? { ...fn, fillPattern: style.value }
+                                                  : fn
+                                              )
+                                            );
+                                          }}
+                                          className={`flex flex-col items-center justify-center p-1.5 rounded transition-all select-none border ${
+                                            isSelected
+                                              ? "bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-400/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+                                          }`}
+                                          title={style.label}
+                                        >
+                                          <div className="font-mono text-[10px] tracking-tighter opacity-80 mt-0.5 h-3 flex items-center">{style.icon}</div>
+                                          <div className="text-[9px] font-semibold opacity-90 mt-1">{style.label}</div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  
+                                  {/* Pattern Advanced Controls */}
+                                  {(f.fillPattern || "hatch-diagonal") !== "solid" && (
+                                    <div className="grid grid-cols-2 gap-3 mt-1.5 p-2 bg-slate-50 dark:bg-slate-900/40 rounded border border-slate-200 dark:border-slate-800">
+                                      {/* Spacing */}
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between items-center text-[10px]">
+                                          <span className="text-slate-500 dark:text-slate-400">Spacing</span>
+                                          <span className="font-mono text-slate-400">{f.patternSpacing || 15}</span>
+                                        </div>
+                                        <input
+                                          type="range" min="4" max="40" step="1"
+                                          value={f.patternSpacing || 15}
+                                          onChange={(e) => setFunctions(prev => prev.map(fn => fn.id === f.id ? { ...fn, patternSpacing: parseInt(e.target.value) } : fn))}
+                                          className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+                                        />
+                                      </div>
+                                      {/* Thickness */}
+                                      <div className="flex flex-col gap-1">
+                                        <div className="flex justify-between items-center text-[10px]">
+                                          <span className="text-slate-500 dark:text-slate-400">Thickness</span>
+                                          <span className="font-mono text-slate-400">{f.patternThickness || 2}</span>
+                                        </div>
+                                        <input
+                                          type="range" min="1" max="10" step="0.5"
+                                          value={f.patternThickness || 2}
+                                          onChange={(e) => setFunctions(prev => prev.map(fn => fn.id === f.id ? { ...fn, patternThickness: parseFloat(e.target.value) } : fn))}
+                                          className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )}
 
-                              {/* Line Style Selection */}
+                          {/* Line Style Selection */}
+                          {f.type !== "point" && (
                               <div className="flex flex-col gap-1 mt-1 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
                                 <span className="text-slate-550 dark:text-slate-400 font-semibold mb-1">
                                   Line Style
@@ -4621,6 +5286,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   ))}
                                 </div>
                               </div>
+                          )}
                             </div>
                           )}
                         </div>
@@ -5658,6 +6324,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             fn: "[[x, y, 1], [2, 3, 1], [-1, -3, 1]] = 0",
                             type: "implicit",
                           },
+                          {
+                            label: "Region (Inequality)",
+                            fn: "x^2 + y^2 <= 16",
+                            type: "inequality",
+                          },
                         ].map((tmpl) => (
                           <button
                             key={tmpl.label}
@@ -6448,68 +7119,159 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               </button>
               <div className="hidden md:block w-px bg-slate-700 my-1 mx-1 h-4"></div>
               <div className="relative flex items-center">
-                <select
-                  value={axisFilter}
-                  onChange={(e) => setAxisFilter(e.target.value as any)}
-                  className="bg-transparent text-slate-400 hover:text-slate-200 outline-none pl-2 pr-6 py-1.5 text-xs font-mono rounded-md cursor-pointer appearance-none"
-                  title="Axis Label Filter"
+                <button
+                  onClick={() => setShowAdvancedAxisControls(!showAdvancedAxisControls)}
+                  className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors flex items-center gap-1.5 ${showAdvancedAxisControls ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
+                  title="Axis Labels Setup"
                 >
-                  <option value="all" className="bg-slate-800">
-                    Labels: All
-                  </option>
-                  <option value="even" className="bg-slate-800">
-                    Labels: Even
-                  </option>
-                  <option value="odd" className="bg-slate-800">
-                    Labels: Odd
-                  </option>
-                  <option value="custom" className="bg-slate-800">
-                    Labels: Custom
-                  </option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-slate-500 absolute right-1.5 pointer-events-none" />
-              </div>
-              {axisFilter === "custom" && (
-                <div className="relative flex items-center group/filterinfo ml-1">
-                  <input
-                    type="text"
-                    value={customAxisFilter}
-                    onChange={(e) => setCustomAxisFilter(e.target.value)}
-                    className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-slate-200 outline-none focus:border-blue-500"
-                    placeholder="e.g. n % 3 == 0"
-                  />
-                  <HelpCircle className="w-3.5 h-3.5 text-slate-400 ml-1.5 cursor-help" />
+                  <List size={14} />
+                  <span>Axis Labels</span>
+                  <Settings size={12} />
+                </button>
 
-                  <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-slate-800 border border-slate-600 rounded-lg text-xs text-slate-300 shadow-2xl opacity-0 group-hover/filterinfo:opacity-100 pointer-events-none transition-opacity whitespace-normal z-50">
-                    <p className="font-semibold text-slate-200 mb-1">
-                      Custom Label Filter
-                    </p>
-                    <p className="mb-1">
-                      Use a valid mathjs expression returning a boolean. The
-                      variable{" "}
-                      <code className="text-blue-400 bg-slate-900 px-1 rounded">
-                        n
-                      </code>{" "}
-                      represents the axis sub-division value.
-                    </p>
-                    <p className="text-slate-400">Examples:</p>
-                    <ul className="list-disc pl-4 text-slate-400 mt-0.5 space-y-0.5">
-                      <li>
-                        <code className="text-blue-400">n % 3 == 0</code>{" "}
-                        (multiples of 3)
-                      </li>
-                      <li>
-                        <code className="text-blue-400">abs(n) &gt; 2</code>{" "}
-                        (skip -2 to 2)
-                      </li>
-                      <li>
-                        <code className="text-blue-400">n &gt; 0</code>{" "}
-                        (positive only)
-                      </li>
-                    </ul>
+                {showAdvancedAxisControls && (
+                  <div className="absolute top-[calc(100%+8px)] right-0 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-5 z-[100] w-[340px] flex flex-col gap-5 overflow-visible cursor-default" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <h3 className="text-sm font-medium text-slate-200 flex items-center gap-2 tracking-wide">
+                        <Type size={16} className="text-blue-500" /> Axis Labels Setup
+                      </h3>
+                      <button onClick={() => setShowAdvancedAxisControls(false)} className="text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-md hover:bg-slate-800">
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+                      <div className="flex flex-col gap-2 col-span-2">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Label Mode</label>
+                        <select 
+                          value={axisFilter}
+                          onChange={(e) => setAxisFilter(e.target.value as any)}
+                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 hover:border-slate-700 transition-colors"
+                        >
+                          <optgroup label="Basic">
+                            <option value="all">All Subdivisions</option>
+                            <option value="even">Even Numbers</option>
+                            <option value="odd">Odd Numbers</option>
+                          </optgroup>
+                          <optgroup label="Mathematical Presets">
+                            <option value="numeric">Numeric (Default)</option>
+                            <option value="pi">π Multiples</option>
+                            <option value="euler">Euler (e)</option>
+                            <option value="complex">Complex (i)</option>
+                            <option value="degrees">Degrees</option>
+                            <option value="radians">Radians</option>
+                            <option value="fractions">Fractions</option>
+                            <option value="scientific">Scientific</option>
+                          </optgroup>
+                          <optgroup label="Custom">
+                            <option value="custom_mapping">Custom Mapping</option>
+                            <option value="custom">Logic Rule (e.g. n%2==0)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      <div className="flex flex-col gap-2 col-span-2">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Axis Step Size (lines)</label>
+                        <input
+                          type="text"
+                          value={axisStepStr}
+                          onChange={(e) => setAxisStepStr(e.target.value)}
+                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 transition-colors placeholder:text-slate-600"
+                          placeholder="e.g. 1, 0.5, pi/2"
+                        />
+                      </div>
+                      
+                      {axisFilter === "custom_mapping" && (
+                        <div className="flex flex-col gap-2 col-span-2">
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Value → Label Map</label>
+                          <textarea
+                            value={customAxisMapping}
+                            onChange={(e) => setCustomAxisMapping(e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 h-28 whitespace-pre custom-scrollbar resize-none placeholder:text-slate-600"
+                            placeholder="0 → Origin&#10;1 → Start&#10;2 → End"
+                          />
+                        </div>
+                      )}
+
+                      {axisFilter === "custom" && (
+                        <div className="flex flex-col gap-2 col-span-2">
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Logic Rule (Returns Boolean)</label>
+                          <input
+                            type="text"
+                            value={customAxisFilter}
+                            onChange={(e) => setCustomAxisFilter(e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
+                            placeholder="e.g. abs(n) > 2"
+                          />
+                        </div>
+                      )}
+
+                      {["numeric", "scientific"].includes(axisFilter) && (
+                        <>
+                          <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Decimals</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              value={axisDecimals}
+                              onChange={(e) => setAxisDecimals(Number(e.target.value))}
+                              className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 col-span-2 sm:col-span-1 pb-2 self-end">
+                            <input
+                              type="checkbox"
+                              id="thousandsSep"
+                              checked={axisThousandsSep}
+                              onChange={(e) => setAxisThousandsSep(e.target.checked)}
+                              className="rounded border-slate-700 bg-slate-950 focus:ring-blue-500/50 focus:ring-offset-slate-900 focus:border-slate-600 size-4 cursor-pointer"
+                            />
+                            <label htmlFor="thousandsSep" className="text-xs text-slate-300 select-none cursor-pointer">Thousands Separator</label>
+                          </div>
+                        </>
+                      )}
+
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Prefix</label>
+                        <input
+                          type="text"
+                          value={axisPrefix}
+                          onChange={(e) => setAxisPrefix(e.target.value)}
+                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
+                          placeholder="e.g. $"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Suffix</label>
+                        <input
+                          type="text"
+                          value={axisSuffix}
+                          onChange={(e) => setAxisSuffix(e.target.value)}
+                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
+                          placeholder="s"
+                        />
+                      </div>
+
+                      <div className="col-span-2 mt-2 bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 text-slate-300 flex flex-col gap-3 relative">
+                        <h4 className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Live Preview</h4>
+                        <div className="flex items-center font-mono text-xs overflow-x-auto custom-scrollbar pb-1 text-slate-200">
+                          {[0, parsedAxisStep, parsedAxisStep * 2, parsedAxisStep * 3].map((val, idx) => {
+                              const lbl = getAxisLabel(val);
+                              return (
+                                <React.Fragment key={val}>
+                                  {idx > 0 && <span className="text-slate-700 font-sans mx-3">|</span>}
+                                  <span className="shrink-0">{lbl === "" ? "—" : lbl}</span>
+                                </React.Fragment>
+                              );
+                          })}
+                        </div>
+                      </div>
+
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 
@@ -6524,13 +7286,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           >
             {gridType === "cartesian" && (
               <Coordinates.Cartesian
-                xAxis={{ lines: 1, labels: getAxisLabel }}
-                yAxis={{ lines: 1, labels: getAxisLabel }}
-                subdivisions={4}
+                xAxis={{ lines: parsedAxisStep, labels: getAxisLabel }}
+                yAxis={{ lines: parsedAxisStep, labels: getAxisLabel }}
+                subdivisions={gridSubdivisions}
               />
             )}
             {gridType === "polar" && (
-              <Coordinates.Polar lines={1} subdivisions={4} />
+              <Coordinates.Polar lines={parsedAxisStep} subdivisions={gridSubdivisions} />
             )}
 
             {functions
@@ -6667,31 +7429,33 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               f.showLabel && f.label;
                                             return (
                                               <React.Fragment key={i}>
-                                                {isBasicPointDraggable ? (
-                                                  <MovablePoint
-                                                    point={[p[0], p[1]]}
-                                                    color={f.color}
-                                                    onMove={(newPt) => {
-                                                      let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
-                                                      const match =
-                                                        f.expr.match(
-                                                          /^([^=]+=\s*)/,
+                                                {f.showPoint !== false && (
+                                                  isBasicPointDraggable ? (
+                                                    <MovablePoint
+                                                      point={[p[0], p[1]]}
+                                                      color={f.color}
+                                                      onMove={(newPt) => {
+                                                        let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                        const match =
+                                                          f.expr.match(
+                                                            /^([^=]+=\s*)/,
+                                                          );
+                                                        if (match) {
+                                                          newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                        }
+                                                        handleUpdateExpr(
+                                                          f.id,
+                                                          newExpr,
                                                         );
-                                                      if (match) {
-                                                        newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
-                                                      }
-                                                      handleUpdateExpr(
-                                                        f.id,
-                                                        newExpr,
-                                                      );
-                                                    }}
-                                                  />
-                                                ) : (
-                                                  <Point
-                                                    x={p[0]}
-                                                    y={p[1]}
-                                                    color={f.color}
-                                                  />
+                                                      }}
+                                                    />
+                                                  ) : (
+                                                    <Point
+                                                      x={p[0]}
+                                                      y={p[1]}
+                                                      color={f.color}
+                                                    />
+                                                  )
                                                 )}
                                                 {showLabel && (
                                                   <SafeLabel
@@ -6796,6 +7560,45 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     );
                                     const dX = pt[0] - cGlobal[0];
                                     const dY = pt[1] - cGlobal[1];
+
+                                    if (f.type === "line" || f.type === "point") {
+                                      const match = f.expr.match(/^([^=]+=\s*)/);
+                                      const prefix = match ? match[1] : "";
+                                      
+                                      const ptStrs = points
+                                        .map((p: any) => {
+                                          const gPt = localToGlobal(p[0], p[1]);
+                                          return `[${(gPt[0] + dX).toFixed(2)}, ${(gPt[1] + dY).toFixed(2)}]`;
+                                        })
+                                        .join(", ");
+                                        
+                                      // If it was a single point that somehow ended up here, preserve brackets.
+                                      const isSingle = points.length === 1 && f.expr.includes("[[");
+                                      
+                                      let newExpr = "";
+                                      if (isSingle) {
+                                        const gPt = localToGlobal(points[0][0], points[0][1]);
+                                        newExpr = `${prefix}[[${(gPt[0] + dX).toFixed(2)}], [${(gPt[1] + dY).toFixed(2)}]]`;
+                                      } else {
+                                        newExpr = `${prefix}[${ptStrs}]`;
+                                      }
+
+                                      setFunctions((prev) =>
+                                        prev.map((fn) =>
+                                          fn.id === f.id
+                                            ? {
+                                                ...fn,
+                                                expr: newExpr,
+                                                transformTranslate: undefined,
+                                                transformRotate: undefined,
+                                                transformScale: undefined,
+                                                transformPivot: undefined,
+                                              }
+                                            : fn,
+                                        ),
+                                      );
+                                      return;
+                                    }
 
                                     const { newExpr } = decoupleGeometry(
                                       f,
@@ -7034,6 +7837,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                     return (
                       <React.Fragment key={f.id}>
                         <Plot.Parametric
+                          minSamplingDepth={samplingDepth}
+                          maxSamplingDepth={samplingDepth}
                           xy={(t: number) => {
                             try {
                               const res = f.compiled.evaluate({
@@ -7083,6 +7888,36 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                     );
                   }
 
+                  if (f.type === "inequality") {
+                    return (
+                      <InequalityPlot
+                        key={f.id}
+                        id={f.id}
+                        compiledLHS={f.compiled}
+                        compiledRHS={f.compiled2}
+                        operator={f.expr2 || "<="}
+                        baseScope={baseScope}
+                        color={f.color}
+                        fillColor={f.fillColor}
+                        fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
+                        fillPattern={f.fillPattern}
+                        patternSpacing={f.patternSpacing}
+                        patternThickness={f.patternThickness}
+                        patternAngle={f.patternAngle}
+                        samplingDepth={samplingDepth}
+                        weight={
+                          hoveredVar &&
+                          new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                            ? 6
+                            : 3
+                        }
+                        tx={tx}
+                        ty={ty}
+                        lineStyle={f.lineStyle}
+                      />
+                    );
+                  }
+
                   if (f.type === "implicit") {
                     return (
                       <ImplicitPlot
@@ -7091,6 +7926,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         compiledRHS={f.compiled2}
                         baseScope={baseScope}
                         color={f.color}
+                        samplingDepth={samplingDepth}
                         weight={
                           hoveredVar &&
                           new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
@@ -7116,6 +7952,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                     return (
                       <React.Fragment key={f.id}>
                         <Plot.Parametric
+                          minSamplingDepth={samplingDepth}
+                          maxSamplingDepth={samplingDepth}
                           xy={(tVal: number) => {
                             try {
                               const scope = { ...baseScope };
@@ -7216,6 +8054,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   return (
                     <React.Fragment key={f.id}>
                       <Plot.OfX
+                        minSamplingDepth={samplingDepth}
+                        maxSamplingDepth={samplingDepth}
                         y={(x) => {
                           try {
                             const res = f.compiled.evaluate({

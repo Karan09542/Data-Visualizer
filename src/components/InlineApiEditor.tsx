@@ -15,6 +15,7 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
   const [url, setUrl] = useState(initialUrl);
   const [isValid, setIsValid] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const originalUrlRef = useRef(initialUrl);
   const { updateNodeValue, setInlineApiEditor, inlineApiEditor, apiNodeConfig, setApiNodeConfig } = useStore();
 
   const currentConfig = apiNodeConfig[path] || { method: 'GET', responseType: 'auto', timeout: 5000 };
@@ -106,7 +107,7 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
     setApiNodeConfig(path, { method, responseType, timeout: validTimeout });
 
     if (validateUrl(url) || url.trim() === '') {
-      if (url !== initialUrl) {
+      if (url !== originalUrlRef.current) {
         await updateNodeValue(path, url);
       }
     }
