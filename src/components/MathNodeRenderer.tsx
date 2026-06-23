@@ -2856,7 +2856,37 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         // Defer to next tick to avoid React "cannot update while rendering" warning
         setTimeout(() => {
           if (data && data.path) {
-            useStore.getState().updateNodeValue(data.path, newValStr);
+            // Verify path existence in parsedData before performing unmount auto-save
+            const parsedData = useStore.getState().parsedData;
+            if (!parsedData) return;
+
+            const parts = data.path
+              .replace(/^root\.?/, "")
+              .split(/\.|(?=\[)/)
+              .filter(Boolean);
+
+            let current = parsedData;
+            let exists = true;
+            for (let i = 0; i < parts.length; i++) {
+              let part = parts[i];
+              if (part.startsWith("[")) {
+                part = part.slice(1, -1);
+                if ((part.startsWith('"') && part.endsWith('"')) || (part.startsWith("'") && part.endsWith("'"))) {
+                  part = part.slice(1, -1);
+                }
+              }
+              if (current === null || current === undefined || typeof current !== "object" || !(part in current)) {
+                exists = false;
+                break;
+              }
+              current = (current as any)[part];
+            }
+
+            if (exists) {
+              useStore.getState().updateNodeValue(data.path, newValStr);
+            } else {
+              console.log("MathNodeRenderer: Path", data.path, "no longer exists in store parsedData. Skipping unmount auto-save.");
+            }
           }
         }, 0);
       }

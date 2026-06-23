@@ -1100,14 +1100,37 @@ export const useStore = create<StoreState>()(
         const { parsedData, code, setCode, codeFormat } = get();
         if (!parsedData) return;
 
-        // Clone parsedData
-        let newData = JSON.parse(JSON.stringify(parsedData));
-
         // Path is like 'root.key.subkey' or 'root[0].key'
         const parts = path
           .replace(/^root\.?/, "")
           .split(/\.|(?=\[)/)
           .filter(Boolean);
+
+        // Verify if the path actually exists in the original parsedData first:
+        let checkCurrent = parsedData;
+        let exists = true;
+        for (let i = 0; i < parts.length; i++) {
+          let part = parts[i];
+          if (part.startsWith("[")) {
+            part = part.slice(1, -1);
+            if ((part.startsWith('"') && part.endsWith('"')) || (part.startsWith("'") && part.endsWith("'"))) {
+              part = part.slice(1, -1);
+            }
+          }
+          if (checkCurrent === null || checkCurrent === undefined || typeof checkCurrent !== "object" || !(part in checkCurrent)) {
+            exists = false;
+            break;
+          }
+          checkCurrent = (checkCurrent as any)[part];
+        }
+
+        if (!exists) {
+          console.warn("updateNodeValue: Path does not exist in parsedData, ignoring update to prevent resurrection or errors.", path);
+          return;
+        }
+
+        // Clone parsedData
+        let newData = JSON.parse(JSON.stringify(parsedData));
 
         let current = newData;
         for (let i = 0; i < parts.length - 1; i++) {
