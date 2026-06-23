@@ -1663,7 +1663,9 @@ const InequalityPlot: React.FC<{
             scope.y = (ny / scaleY) + py;
 
             let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
+            if (l && (l.isMatrix || Array.isArray(l))) { try { l = mathjs.det(l); } catch { l = NaN; } }
             let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
+            if (r && (r.isMatrix || Array.isArray(r))) { try { r = mathjs.det(r); } catch { r = NaN; } }
             const val = Number(l) - Number(r);
             const inside = isInside(val);
             
@@ -1691,7 +1693,9 @@ const InequalityPlot: React.FC<{
             scope.y = (ny / scaleY) + py;
 
             let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
+            if (l && (l.isMatrix || Array.isArray(l))) { try { l = mathjs.det(l); } catch { l = NaN; } }
             let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
+            if (r && (r.isMatrix || Array.isArray(r))) { try { r = mathjs.det(r); } catch { r = NaN; } }
             grid[i * (GRID_SIZE + 1) + j] = Number(l) - Number(r);
         }
     }
@@ -3694,7 +3698,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   <div className="flex flex-col gap-1.5 px-1 pb-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        Grid Resolution (Depth Sampling)
+                        Curve Resolution (Depth Sampling)
                         <span className="text-[10px] normal-case font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
                           {samplingDepth <= 8 ? "⚡ Fast" : samplingDepth <= 14 ? "⚡ Balanced" : samplingDepth <= 20 ? "⚡ High Quality" : "⚡ Ultra Detail"}
                         </span>
@@ -7502,7 +7506,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           for (let j=-3; j<=3 && !found; j+=0.5) {
                             try {
                               let l = f.compiled.evaluate({...baseScope, x: i, y: j});
+                              if (l && (l.isMatrix || Array.isArray(l))) { try { l = mathjs.det(l); } catch { l = NaN; } }
                               let r = f.compiled2 ? f.compiled2.evaluate({...baseScope, x: i, y: j}) : 0;
+                              if (r && (r.isMatrix || Array.isArray(r))) { try { r = mathjs.det(r); } catch { r = NaN; } }
                               if (f.type === "implicit" && Math.abs(Number(l)-Number(r)) < 2) { pt = [i, j]; found = true; }
                               else if (f.type === "inequality" && Number(l)-Number(r) <= 0) { pt = [i, j]; found = true; }
                             } catch{}
@@ -7721,8 +7727,8 @@ return (
 
                           {!isInteractionLayer && !isPointBased && f.type === "parametric" && (
                                         <Plot.Parametric
-                                          minSamplingDepth={samplingDepth}
-                                          maxSamplingDepth={samplingDepth}
+                                          minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
+                                          maxSamplingDepth={Math.max(1, samplingDepth)}
                                           xy={(t: number) => {
                                             try {
                                               const res = f.compiled.evaluate({
@@ -7798,13 +7804,14 @@ return (
                                               : 3
                                           }
                                           id={f.id}
+                                          samplingDepth={samplingDepth}
                                         />
                                       )}
 
                                       {!isInteractionLayer && !isPointBased && f.type === "polar" && (
                                         <Plot.Parametric
-                                          minSamplingDepth={samplingDepth}
-                                          maxSamplingDepth={samplingDepth}
+                                          minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
+                                          maxSamplingDepth={Math.max(1, samplingDepth)}
                                           xy={(tVal: number) => {
                                             try {
                                               const useThetaAsAngle = /\btheta\b/.test(f.expr);
@@ -7858,8 +7865,8 @@ return (
 
                                       {!isInteractionLayer && !isPointBased && f.type === "function" && (
                                         <Plot.Parametric
-                                          minSamplingDepth={samplingDepth}
-                                          maxSamplingDepth={samplingDepth}
+                                          minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
+                                          maxSamplingDepth={Math.max(1, samplingDepth)}
                                           t={[-50, 50]}
                                           xy={(t) => {
                                             try {
