@@ -141,9 +141,11 @@ interface MathFunction {
   compiled?: any;
   expr2?: string; // For parametric x/y or polar r/theta
   compiled2?: any;
+  operator?: string;
   error?: string;
   showLabel?: boolean;
   label?: string;
+  labelPosition?: [number, number];
   fillColor?: string;
   fillOpacity?: number;
   fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
@@ -1024,7 +1026,7 @@ const EquationInput = ({
       }
 
       renderedLatex = (
-        <>
+        <React.Fragment>
           <span
             className="math-rendered-block block w-full px-2 py-1.5 text-xs sm:text-sm pointer-events-none"
             dangerouslySetInnerHTML={{
@@ -1062,7 +1064,7 @@ const EquationInput = ({
               {copiedType === "expr" ? <Check size={13} /> : <Copy size={13} className="md:w-[12px] md:h-[12px]" />}
             </button>
           </div>
-        </>
+        </React.Fragment>
       );
     } catch (e) {
       // 2. Fallback to Markdown or plain text
@@ -1580,6 +1582,10 @@ const InequalityPlot: React.FC<{
   patternAngle?: number;
   tx?: number;
   ty?: number;
+  rot?: number;
+  scaleX?: number; scaleY?: number;
+  px?: number;
+  py?: number;
   lineStyle?: string;
   samplingDepth?: number;
   id?: string;
@@ -1598,6 +1604,8 @@ const InequalityPlot: React.FC<{
   patternAngle,
   tx = 0,
   ty = 0,
+  rot = 0, scaleX = 1, scaleY = 1, px = 0,
+  py = 0,
   lineStyle,
   samplingDepth = 14,
   id,
@@ -1605,13 +1613,11 @@ const InequalityPlot: React.FC<{
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
 
-  try {
-    const pane = usePaneContext();
-    if (pane && pane.xPaneRange && pane.yPaneRange) {
-      xRange = pane.xPaneRange;
-      yRange = pane.yPaneRange;
-    }
-  } catch (e) {}
+  const pane = usePaneContext();
+  if (pane && pane.xPaneRange && pane.yPaneRange) {
+    xRange = pane.xPaneRange;
+    yRange = pane.yPaneRange;
+  }
 
   const patternId = `pattern-${id || Math.random().toString(36).substring(2)}`;
   const maskId = `mask-${id || Math.random().toString(36).substring(2)}`;
@@ -1636,18 +1642,26 @@ const InequalityPlot: React.FC<{
     };
 
     let fillPath = "";
-    
     // Evaluate horizontally
     const scope = { ...baseScope, x: 0, y: 0 };
+    if (operator && operator !== "=") {
     for (let j = 0; j <= GRID_SIZE; j++) {
         const y = yMin + j * dy;
-        scope.y = y - ty;
         let xStart: number | null = null;
         
         for (let i = 0; i <= GRID_SIZE; i++) {
             const x = xMin + i * dx;
-            scope.x = x - tx;
             
+            // Inverse Transform for Inequality
+            let lx = x - tx - px;
+            let ly = y - ty - py;
+            
+            const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
+            const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
+            
+            scope.x = (nx / scaleX) + px;
+            scope.y = (ny / scaleY) + py;
+
             let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
             let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
             const val = Number(l) - Number(r);
@@ -1658,17 +1672,24 @@ const InequalityPlot: React.FC<{
                 fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${x - dx/2} ${y - dy/2} L ${x - dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
                 xStart = null;
             }
-        }
-        if (xStart !== null) fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${xMax + dx/2} ${y - dy/2} L ${xMax + dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
+        }        if (xStart !== null) fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${xMax + dx/2} ${y - dy/2} L ${xMax + dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
+    }
     }
 
     // Now extract boundary using marching squares (edges only)
     let boundaryPath = "";
     const grid = new Float32Array((GRID_SIZE + 1) * (GRID_SIZE + 1));
     for (let i = 0; i <= GRID_SIZE; i++) {
-        scope.x = xMin + i * dx - tx;
+        const x = xMin + i * dx;
         for (let j = 0; j <= GRID_SIZE; j++) {
-            scope.y = yMin + j * dy - ty;
+            const y = yMin + j * dy;
+            let lx = x - tx - px;
+            let ly = y - ty - py;
+            const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
+            const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
+            scope.x = (nx / scaleX) + px;
+            scope.y = (ny / scaleY) + py;
+
             let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
             let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
             grid[i * (GRID_SIZE + 1) + j] = Number(l) - Number(r);
@@ -1699,10 +1720,10 @@ const InequalityPlot: React.FC<{
           continue;
         }
 
-        const b00 = isInside(v00) ? 1 : 0;
-        const b10 = isInside(v10) ? 1 : 0;
-        const b11 = isInside(v11) ? 1 : 0;
-        const b01 = isInside(v01) ? 1 : 0;
+        const b00 = v00 > 0 ? 1 : 0;
+        const b10 = v10 > 0 ? 1 : 0;
+        const b11 = v11 > 0 ? 1 : 0;
+        const b01 = v01 > 0 ? 1 : 0;
 
         const index = (b01 << 3) | (b11 << 2) | (b10 << 1) | b00;
         if (index === 0 || index === 15) continue;
@@ -1737,7 +1758,7 @@ const InequalityPlot: React.FC<{
     }
 
     return { fill: fillPath, boundary: boundaryPath, dy };
-  }, [compiledLHS, compiledRHS, operator, baseScope, samplingDepth, xRange[0], xRange[1], yRange[0], yRange[1], tx, ty]);
+  }, [compiledLHS, compiledRHS, operator, baseScope, samplingDepth, xRange[0], xRange[1], yRange[0], yRange[1], tx, ty, px, py, rot, scaleX, scaleY]);
 
   const customDashPattern = lineStyle && lineStyle !== "solid" ? getStrokeDasharray(lineStyle) : undefined;
   const isStrict = operator === "<" || operator === ">";
@@ -1812,43 +1833,43 @@ const InequalityPlot: React.FC<{
         {fillPattern !== "solid" && (
           <pattern id={patternId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}>
             {fillPattern === "hatch-diagonal" && (
-              <>
-                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-              </>
+              <React.Fragment>
+                <line x1={0} y1={pSize} x2={pSize} y2={0}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={-1} y1={1} x2={1} y2={-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              </React.Fragment>
             )}
             {fillPattern === "hatch-reverse" && (
-              <>
-                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-              </>
+              <React.Fragment>
+                <line x1={0} y1={0} x2={pSize} y2={pSize}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              </React.Fragment>
             )}
             {fillPattern === "hatch-cross" && (
-              <>
-                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-              </>
+              <React.Fragment>
+                <line x1={0} y1={pSize} x2={pSize} y2={0}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={0} y1={0} x2={pSize} y2={pSize}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={-1} y1={1} x2={1} y2={-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              </React.Fragment>
             )}
             {fillPattern === "dotted" && (
               <circle cx={pSize/2} cy={pSize/2} r={strokeThick} fill={pColor} fillOpacity={fillOpacity} />
             )}
             {fillPattern === "grid" && (
-              <>
-                <line x1={0} y1={0} x2={pSize} y2={0} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-                <line x1={0} y1={0} x2={0} y2={pSize} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
-              </>
+              <React.Fragment>
+                <line x1={0} y1={0} x2={pSize} y2={0}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line x1={0} y1={0} x2={0} y2={pSize}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              </React.Fragment>
             )}
             {fillPattern === "dashed" && (
-              <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} />
+              <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} style={{ stroke: pColor }} />
             )}
             {fillPattern === "math-region" && (
-              <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={Math.max(1, strokeThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} />
+              <line x1={0} y1={pSize} x2={pSize} y2={0}  strokeWidth={Math.max(1, strokeThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} style={{ stroke: pColor }} />
             )}
           </pattern>
         )}
@@ -1861,7 +1882,7 @@ const InequalityPlot: React.FC<{
           <rect x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]} fill={`url(#${patternId})`} mask={`url(#${maskId})`} />
         )
       )}
-      {paths.boundary && <path d={paths.boundary} fill="none" stroke={color} strokeWidth={weight} strokeDasharray={finalStrokeDash} style={{ vectorEffect: "non-scaling-stroke" }} />}
+      {paths.boundary && <path d={paths.boundary} fill="none" strokeWidth={weight} strokeDasharray={finalStrokeDash} style={{ stroke: color, vectorEffect: "non-scaling-stroke" }} />}
     </g>
   );
 }
@@ -1875,6 +1896,11 @@ const ImplicitPlot: React.FC<{
   opacity?: number;
   tx?: number;
   ty?: number;
+  rot?: number;
+  scaleX?: number;
+  scaleY?: number;
+  px?: number;
+  py?: number;
   lineStyle?: string;
   samplingDepth?: number;
 }> = ({
@@ -1886,20 +1912,18 @@ const ImplicitPlot: React.FC<{
   opacity = 1,
   tx = 0,
   ty = 0,
+  rot = 0, scaleX = 1, scaleY = 1, px = 0,
+  py = 0,
   lineStyle,
   samplingDepth = 14,
 }) => {
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
 
-  try {
-    const pane = usePaneContext();
-    if (pane && pane.xPaneRange && pane.yPaneRange) {
-      xRange = pane.xPaneRange;
-      yRange = pane.yPaneRange;
-    }
-  } catch (e) {
-    // Fallback if not inside pane context
+  const pane = usePaneContext();
+  if (pane && pane.xPaneRange && pane.yPaneRange) {
+    xRange = pane.xPaneRange;
+    yRange = pane.yPaneRange;
   }
 
   const GRID_SIZE = Math.max(20, Math.min(200, samplingDepth * 6)); // E.g., depth 14 -> 84, depth 20 -> 120
@@ -2204,6 +2228,14 @@ const computePCA = (points: [number, number][]) => {
 };
 
 const decoupleGeometry = (f: MathFunction, baseScope: any) => {
+  if (
+    f.type !== "point" &&
+    f.type !== "vector" &&
+    f.type !== "polygon" &&
+    f.type !== "line"
+  ) {
+    return { newExpr: f.expr, changed: false };
+  }
   let changed = false;
   let newExpr = f.expr;
   if (f.compiled) {
@@ -2285,13 +2317,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   const [activeGizmo, setActiveGizmo] = useState<{
     id: string;
-    type: "drag" | "rotate" | "scale" | "pivot";
+    type: "drag" | "rotate" | "scale" | "pivot" | "label";
   } | null>(null);
   const gizmoTimeout = useRef<any>(null);
 
   const handleGizmoMove = (
     id: string,
-    type: "drag" | "rotate" | "scale" | "pivot",
+    type: "drag" | "rotate" | "scale" | "pivot" | "label",
   ) => {
     setActiveGizmo({ id, type });
     if (gizmoTimeout.current) clearTimeout(gizmoTimeout.current);
@@ -2381,6 +2413,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   >(null);
   const [editingFormulaExpr, setEditingFormulaExpr] = useState("");
 
+  const geomCacheRef = useRef<Record<string, [number, number][]>>({});
   const [functions, setFunctions] = useState<MathFunction[]>(() => {
     if (typeof data.value === "string") {
       try {
@@ -2917,7 +2950,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       return `${axisPrefix}${baseLabel}${axisSuffix}`;
     }
     
-    return <>{axisPrefix}{baseLabel}{axisSuffix}</>;
+    return <React.Fragment>{axisPrefix}{baseLabel}{axisSuffix}</React.Fragment>;
   };
 
   useEffect(() => {
@@ -2992,6 +3025,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             compiled: compiledLHS,
             compiled2: compiledRHS,
             expr2: op, // Store the operator for inequality
+            operator: op, // FIX: also store in operator explicitly
             error: undefined,
           };
         }
@@ -4786,7 +4820,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           setFunctions((prev) =>
                                             prev.map((fn) =>
                                               fn.id === f.id
-                                                ? { ...fn, expr: newExpr, expr2: op }
+                                                ? { ...fn, expr: newExpr, expr2: op, operator: op }
                                                 : fn
                                             )
                                           );
@@ -4896,7 +4930,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               </div>
 
                               {f.type !== "point" && f.type !== "line" && (
-                                <>
+                                <React.Fragment>
                                   <div className="border-t border-slate-200 dark:border-slate-800/60 my-0.5" />
 
                                   {/* Is Custom Fill Active */}
@@ -5218,37 +5252,37 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 {style.value !== "solid" && (
                                                   <pattern id={pId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${previewScale})`}>
                                                     {style.value === "hatch-diagonal" && (
-                                                      <>
+                                                      <React.Fragment>
                                                         <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={-1} y1={1} x2={1} y2={-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </>
+                                                      </React.Fragment>
                                                     )}
                                                     {style.value === "hatch-reverse" && (
-                                                      <>
+                                                      <React.Fragment>
                                                         <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </>
+                                                      </React.Fragment>
                                                     )}
                                                     {style.value === "hatch-cross" && (
-                                                      <>
+                                                      <React.Fragment>
                                                         <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={-1} y1={1} x2={1} y2={-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </>
+                                                      </React.Fragment>
                                                     )}
                                                     {style.value === "dotted" && (
                                                       <circle cx={pSize/2} cy={pSize/2} r={pt} fill={pCol} fillOpacity={op} />
                                                     )}
                                                     {style.value === "grid" && (
-                                                      <>
+                                                      <React.Fragment>
                                                         <line x1={0} y1={0} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
                                                         <line x1={0} y1={0} x2={0} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </>
+                                                      </React.Fragment>
                                                     )}
                                                     {style.value === "dashed" && (
                                                       <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pCol} strokeWidth={pt} strokeOpacity={op} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} />
@@ -5306,7 +5340,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   )}
                                 </div>
                               )}
-                            </>
+                            </React.Fragment>
                           )}
 
                           {/* Line Style Selection */}
@@ -7310,7 +7344,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       )}
 
                       {["numeric", "scientific"].includes(axisFilter) && (
-                        <>
+                        <React.Fragment>
                           <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
                             <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Decimals</label>
                             <input
@@ -7332,7 +7366,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             />
                             <label htmlFor="thousandsSep" className="text-xs text-slate-300 select-none cursor-pointer">Thousands Separator</label>
                           </div>
-                        </>
+                        </React.Fragment>
                       )}
 
                       <div className="flex flex-col gap-2">
@@ -7398,9 +7432,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               <Coordinates.Polar lines={parsedAxisStep} subdivisions={gridSubdivisions} />
             )}
 
-            {functions
-              .filter((f) => f.visible)
-              .map((f) => {
+            {(() => {
+  const renderMathNodes = (isInteractionLayer: boolean) => functions.filter((f) => f.visible).map((f) => {
                 if (f.compiled) {
                   const tx = f.transformTranslate?.[0] || 0;
                   const ty = f.transformTranslate?.[1] || 0;
@@ -7408,15 +7441,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   const sx = f.transformScale?.[0] || 1;
                   const sy = f.transformScale?.[1] || 1;
 
-                  if (
-                    f.type === "point" ||
-                    f.type === "vector" ||
-                    f.type === "polygon" ||
-                    f.type === "line"
-                  ) {
+                  const isPointBased = f.type === "point" || f.type === "vector" || f.type === "polygon" || f.type === "line";
+                  let points: [number, number][] = [];
+
+                  if (isPointBased) {
                     try {
                       const evaluated = f.compiled.evaluate(baseScope);
-                      let points: [number, number][] = [];
 
                       // Handle mathjs Matrix or JS Array
                       const data =
@@ -7445,9 +7475,48 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       );
 
                       if (points.length === 0) return null;
+                    } catch {
+                      return null;
+                    }
+                  } else if (f.isDraggable || f.isTransformable) {
+                    const cacheId = f.id + f.expr;
+                    if (geomCacheRef.current[cacheId]) {
+                      points = geomCacheRef.current[cacheId];
+                    } else {
+                      let pt: [number, number] = [0, 0];
+                      if (f.type === "function") {
+                        for (let x of [0, 1, -1, 2, -2, 3, -3]) {
+                          try { let y = Number(f.compiled.evaluate({...baseScope, x})); if (isFinite(y)) { pt = [x, y]; break; } } catch{}
+                        }
+                      } else if (f.type === "parametric") {
+                        for (let t of [0, Math.PI/4, Math.PI/2, Math.PI]) {
+                          try { let res = f.compiled.evaluate({...baseScope, t, x: t, theta: t}); let arr = res.toArray ? res.toArray() : res; pt = [Number(arr[0]), Number(arr[1])]; break; } catch{}
+                        }
+                      } else if (f.type === "polar") {
+                        for (let t of [0, Math.PI/4, Math.PI/2, Math.PI]) {
+                          try { let r = Number(f.compiled.evaluate({...baseScope, theta: t, x: t, t})); if (isFinite(r)) { pt = [r*Math.cos(t), r*Math.sin(t)]; break; } } catch{}
+                        }
+                      } else if (f.type === "implicit" || f.type === "inequality") {
+                        let found = false;
+                        for (let i=-3; i<=3 && !found; i+=0.5) {
+                          for (let j=-3; j<=3 && !found; j+=0.5) {
+                            try {
+                              let l = f.compiled.evaluate({...baseScope, x: i, y: j});
+                              let r = f.compiled2 ? f.compiled2.evaluate({...baseScope, x: i, y: j}) : 0;
+                              if (f.type === "implicit" && Math.abs(Number(l)-Number(r)) < 2) { pt = [i, j]; found = true; }
+                              else if (f.type === "inequality" && Number(l)-Number(r) <= 0) { pt = [i, j]; found = true; }
+                            } catch{}
+                          }
+                        }
+                      }
+                      points = pt ? [pt] : [];
+                      geomCacheRef.current[cacheId] = points;
+                    }
+                  }
 
-                      let cx = 0,
-                        cy = 0;
+                  try {
+                    let cx = 0,
+                      cy = 0;
                       if (points.length > 0) {
                         cx =
                           points.reduce((s, p) => s + p[0], 0) / points.length;
@@ -7464,16 +7533,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       // Use PCA to compute natural axes for resizing
                       const pca = computePCA(points);
                       // Let pca angle be the base orientaion of the shape when rotation is 0
-                      const baseAngle = Math.atan2(pca.u[1], pca.u[0]);
+                      const baseAngle = !f.isTransformable ? 0 : Math.atan2(pca.u[1], pca.u[0]);
 
-                      const px =
+                      const px = !f.isTransformable ? 0 : (
                         f.isPivotEnabled && f.transformPivot
                           ? f.transformPivot[0]
-                          : pca.center[0];
-                      const py =
+                          : pca.center[0]
+                      );
+                      const py = !f.isTransformable ? 0 : (
                         f.isPivotEnabled && f.transformPivot
                           ? f.transformPivot[1]
-                          : pca.center[1];
+                          : pca.center[1]
+                      );
 
                       // Determine handle radius based on shape size
                       let baseRadius = 2.0;
@@ -7517,139 +7588,337 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         return [x4 + px + tx, y4 + py + ty] as [number, number];
                       };
 
-                      return (
-                        <React.Fragment key={f.id}>
-                          <Transform translate={[tx, ty]}>
-                            <Transform translate={[px, py]}>
-                              <Transform rotate={rot}>
-                                <Transform rotate={baseAngle}>
-                                  <Transform scale={[sx, sy]}>
-                                    <Transform rotate={-baseAngle}>
-                                      <Transform translate={[-px, -py]}>
-                                        {f.type === "point" &&
-                                          points.map((p, i) => {
-                                            const showLabel =
-                                              f.showLabel && f.label;
-                                            return (
-                                              <React.Fragment key={i}>
-                                                {f.showPoint !== false && (
-                                                  isBasicPointDraggable ? (
-                                                    <MovablePoint
-                                                      point={[p[0], p[1]]}
-                                                      color={f.color}
-                                                      onMove={(newPt) => {
-                                                        let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
-                                                        const match =
-                                                          f.expr.match(
-                                                            /^([^=]+=\s*)/,
+                      
+                      const applyForwardTransform = (pt: [number, number]): [number, number] => {
+                        if (isNaN(pt[0]) || isNaN(pt[1])) return pt;
+                        let lx = pt[0] - px;
+                        let ly = pt[1] - py;
+                        
+                        let x1 = lx * Math.cos(-baseAngle) - ly * Math.sin(-baseAngle);
+                        let y1 = lx * Math.sin(-baseAngle) + ly * Math.cos(-baseAngle);
+                        
+                        x1 *= sx;
+                        y1 *= sy;
+                        
+                        let x2 = x1 * Math.cos(rot + baseAngle) - y1 * Math.sin(rot + baseAngle);
+                        let y2 = x1 * Math.sin(rot + baseAngle) + y1 * Math.cos(rot + baseAngle);
+                        
+                        return [x2 + px + tx, y2 + py + ty];
+                      };
+
+return (
+<React.Fragment key={f.id}>
+
+                                      
+                          {isPointBased && (
+                            <Transform translate={[tx, ty]}>
+                              <Transform translate={[px, py]}>
+                                <Transform rotate={rot}>
+                                  <Transform rotate={baseAngle}>
+                                    <Transform scale={[sx, sy]}>
+                                      <Transform rotate={-baseAngle}>
+                                        <Transform translate={[-px, -py]}>
+                                          {f.type === "point" &&
+                                            points.map((p, i) => {
+                                              const showLabel =
+                                                f.showLabel && f.label;
+                                              return (
+                                                <React.Fragment key={i}>
+                                                  {f.showPoint !== false && (
+                                                    isBasicPointDraggable ? ( isInteractionLayer ? (
+                                                      <MovablePoint
+                                                        point={(() => {
+                                                          const m = f.expr.match(/\[([-\d.]+),\s*([-\d.]+)\]/);
+                                                          if (m && !isNaN(Number(m[1])) && !isNaN(Number(m[2]))) {
+                                                            return [Number(m[1]), Number(m[2])];
+                                                          }
+                                                          const m2 = f.expr.match(/\(([-\d.]+),\s*([-\d.]+)\)/);
+                                                          if (m2 && !isNaN(Number(m2[1])) && !isNaN(Number(m2[2]))) {
+                                                            return [Number(m2[1]), Number(m2[2])];
+                                                          }
+                                                          return [p[0], p[1]];
+                                                        })()}
+                                                        color={f.color}
+                                                        onMove={(newPt) => {
+                                                          let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                          const match =
+                                                            f.expr.match(
+                                                              /^([^=]+=\s*)/,
+                                                            );
+                                                          if (match) {
+                                                            newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                          }
+                                                          setFunctions((prev) =>
+                                                            prev.map((fn) =>
+                                                              fn.id === f.id
+                                                                ? {
+                                                                    ...fn,
+                                                                    expr: newExpr,
+                                                                  }
+                                                                : fn,
+                                                            ),
                                                           );
-                                                        if (match) {
-                                                          newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
-                                                        }
-                                                        handleUpdateExpr(
-                                                          f.id,
-                                                          newExpr,
-                                                        );
-                                                      }}
-                                                    />
-                                                  ) : (
-                                                    <Point
-                                                      x={p[0]}
-                                                      y={p[1]}
+                                                        }}
+                                                      />
+                                                    ) : null ) : ( !isInteractionLayer ? (
+                                                      <Point x={p[0]} y={p[1]} color={f.color} /> ) : null )
+                                                  )}
+                                                  {showLabel && !isInteractionLayer && (
+                                                    <SafeLabel
+                                                      at={[
+                                                        p[0] + (f.labelPosition?.[0] ?? 0.3),
+                                                        p[1] + (f.labelPosition?.[1] ?? 0.3),
+                                                      ]}
+                                                      tex={f.label}
                                                       color={f.color}
                                                     />
-                                                  )
-                                                )}
-                                                {showLabel && (
-                                                  <SafeLabel
-                                                    at={[
-                                                      p[0] + 0.3,
-                                                      p[1] + 0.3,
-                                                    ]}
-                                                    tex={f.label || ""}
-                                                    color={f.color}
-                                                  />
-                                                )}
-                                              </React.Fragment>
-                                            );
-                                          })}
-                                        {f.type === "vector" &&
-                                          points.map((p, i) => (
-                                            <Vector
-                                              key={i}
-                                              tail={[0, 0]}
-                                              tip={p}
-                                              color={f.color}
-                                            />
-                                          ))}
-                                        {f.type === "polygon" &&
-                                          points.length > 2 && (
-                                            <Polygon
-                                              points={points}
-                                              color={f.color}
-                                              fillOpacity={
-                                                f.fillOpacity !== undefined
-                                                  ? f.fillOpacity
-                                                  : 0.2
-                                              }
-                                              svgPolygonProps={{
-                                                style: {
-                                                  fill: stripAlpha(
-                                                    f.fillColor !== undefined
-                                                      ? f.fillColor
-                                                      : f.color,
-                                                  ),
-                                                  stroke: f.color,
-                                                },
-                                              }}
-                                            />
-                                          )}
-                                        {f.type === "line" &&
-                                          points.length >= 2 &&
-                                          (f.lineStyle &&
-                                          f.lineStyle !== "solid" ? (
-                                            <g
-                                              style={
-                                                {
-                                                  "--mafs-line-stroke-dash-style":
-                                                    getStrokeDasharray(
-                                                      f.lineStyle,
-                                                    ),
-                                                } as React.CSSProperties
-                                              }
-                                            >
-                                              <Line.Segment
-                                                point1={points[0]}
-                                                point2={points[1]}
+                                                  )}
+                                                </React.Fragment>
+                                              );
+                                            })}
+                                          {!isInteractionLayer && f.type === "vector" &&
+                                            points.map((p, i) => (
+                                              <Vector
+                                                key={i}
+                                                tail={[0, 0]}
+                                                tip={p}
                                                 color={f.color}
-                                                style="dashed"
                                               />
-                                            </g>
-                                          ) : (
+                                            ))}
+                                          {!isInteractionLayer && f.type === "polygon" &&
+                                            points.length > 2 && (
+                                              <Polygon
+                                                points={points}
+                                                color={f.color}
+                                                fillOpacity={
+                                                  f.fillOpacity !== undefined
+                                                    ? f.fillOpacity
+                                                    : 0.2
+                                                }
+                                                svgPolygonProps={{
+                                                  style: {
+                                                    strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                                  },
+                                                }}
+                                              />
+                                            )}
+                                          {!isInteractionLayer && f.type === "line" && points.length >= 2 && (
                                             <Line.Segment
                                               point1={points[0]}
                                               point2={points[1]}
                                               color={f.color}
                                               style="solid"
                                             />
-                                          ))}
+                                          )}
+                                        </Transform>
                                       </Transform>
                                     </Transform>
                                   </Transform>
                                 </Transform>
                               </Transform>
                             </Transform>
-                          </Transform>
-                          {/* Advanced Transformation Gizmos over the transformed geometry */}
+                          )}
+
+                          {!isInteractionLayer && !isPointBased && f.type === "parametric" && (
+                                        <Plot.Parametric
+                                          minSamplingDepth={samplingDepth}
+                                          maxSamplingDepth={samplingDepth}
+                                          xy={(t: number) => {
+                                            try {
+                                              const res = f.compiled.evaluate({
+                                                ...baseScope,
+                                                t,
+                                              });
+                                              const arr =
+                                                res && res.toArray ? res.toArray() : res;
+                                              if (Array.isArray(arr) && arr.length >= 2) {
+                                                return applyForwardTransform([
+                                                  Number(arr[0]),
+                                                  Number(arr[1]),
+                                                ]);
+                                              }
+                                              return [0, 0];
+                                            } catch {
+                                              return [0, 0];
+                                            }
+                                          }}
+                                          t={[0, 2 * Math.PI]}
+                                          color={f.color}
+                                          weight={
+                                            hoveredVar &&
+                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                              ? 6
+                                              : 3
+                                          }
+                                          opacity={
+                                            hoveredVar
+                                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                ? 1
+                                                : 0.3
+                                              : 1
+                                          }
+                                          style={
+                                            f.lineStyle && f.lineStyle !== "solid"
+                                              ? "dashed"
+                                              : "solid"
+                                          }
+                                          svgPathProps={{
+                                            style: {
+                                              strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                            },
+                                          }}
+                                        />
+                                      )}
+
+                                      {!isInteractionLayer && !isPointBased && (f.type === "inequality" || f.type === "implicit") && (
+                                        <InequalityPlot
+                                          compiledLHS={f.compiled}
+                                          compiledRHS={f.compiled2}
+                                          operator={f.operator || f.expr2 || (f.type === "implicit" ? "=" : "<")}
+                                          baseScope={baseScope}
+                                          color={f.color}
+                                          fillColor={f.fillColor}
+                                          fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
+                                          fillPattern={f.fillPattern}
+                                          patternSpacing={f.patternSpacing}
+                                          patternThickness={f.patternThickness}
+                                          patternAngle={f.patternAngle}
+                                          tx={tx}
+                                          ty={ty}
+                                          rot={rot}
+                                          scaleX={sx}
+                                          scaleY={sy}
+                                          px={px}
+                                          py={py}
+                                          lineStyle={f.lineStyle}
+                                          weight={
+                                            hoveredVar &&
+                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                              ? 6
+                                              : 3
+                                          }
+                                          id={f.id}
+                                        />
+                                      )}
+
+                                      {!isInteractionLayer && !isPointBased && f.type === "polar" && (
+                                        <Plot.Parametric
+                                          minSamplingDepth={samplingDepth}
+                                          maxSamplingDepth={samplingDepth}
+                                          xy={(tVal: number) => {
+                                            try {
+                                              const useThetaAsAngle = /\btheta\b/.test(f.expr);
+                                              const scope = { ...baseScope };
+                                              if (useThetaAsAngle) {
+                                                scope.theta = tVal;
+                                                scope.x = tVal;
+                                              } else {
+                                                scope.t = tVal;
+                                                scope.x = tVal;
+                                                scope.theta = tVal;
+                                              }
+                                              const r = Number(f.compiled.evaluate(scope));
+                                              if (isNaN(r) || typeof r === "object")
+                                                return [0, 0];
+                                              return applyForwardTransform([
+                                                r * Math.cos(tVal),
+                                                r * Math.sin(tVal),
+                                              ]);
+                                            } catch {
+                                              return [0, 0];
+                                            }
+                                          }}
+                                          t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
+                                          color={f.color}
+                                          weight={
+                                            hoveredVar &&
+                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                              ? 6
+                                              : 3
+                                          }
+                                          opacity={
+                                            hoveredVar
+                                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                ? 1
+                                                : 0.3
+                                              : 1
+                                          }
+                                          style={
+                                            f.lineStyle && f.lineStyle !== "solid"
+                                              ? "dashed"
+                                              : "solid"
+                                          }
+                                          svgPathProps={{
+                                            style: {
+                                              strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                            },
+                                          }}
+                                        />
+                                      )}
+
+                                      {!isInteractionLayer && !isPointBased && f.type === "function" && (
+                                        <Plot.Parametric
+                                          minSamplingDepth={samplingDepth}
+                                          maxSamplingDepth={samplingDepth}
+                                          t={[-50, 50]}
+                                          xy={(t) => {
+                                            try {
+                                              const res = f.compiled.evaluate({
+                                                ...baseScope,
+                                                x: t,
+                                              });
+                                              if (typeof res === "object" && res.im !== undefined)
+                                                return applyForwardTransform([t, NaN]);
+                                              return applyForwardTransform([t, Number(res)]);
+                                            } catch {
+                                              return [t, NaN];
+                                            }
+                                          }}
+                                          color={f.color}
+                                          weight={
+                                            hoveredVar &&
+                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                              ? 6
+                                              : 3
+                                          }
+                                          opacity={
+                                            hoveredVar
+                                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                ? 1
+                                                : 0.3
+                                              : 1
+                                          }
+                                          style={
+                                            f.lineStyle && f.lineStyle !== "solid"
+                                              ? "dashed"
+                                              : "solid"
+                                          }
+                                          svgPathProps={{
+                                            style: {
+                                              strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                            },
+                                          }}
+                                        />
+                                      )}
+
+                                      {!isInteractionLayer && !isPointBased && f.showLabel && f.label && (
+                                        <SafeLabel
+                                          at={applyForwardTransform([px + (f.labelPosition?.[0] ?? 0.3), py + (f.labelPosition?.[1] ?? 0.3)])}
+                                          tex={f.label}
+                                          color={f.color}
+                                        />
+                                      )}
+
+{/* Advanced Transformation Gizmos over the transformed geometry */}
 
                           {/* General Draggable handle for shapes, lines, or multiple points */}
-                          {f.isDraggable &&
+                          {isInteractionLayer && f.isDraggable &&
                             !isBasicPointDraggable &&
                             (!activeGizmo ||
                               activeGizmo.id !== f.id ||
                               activeGizmo.type === "drag") && (
                               <React.Fragment>
-                                <MovablePoint
+<MovablePoint
                                   point={localToGlobal(
                                     pca.center[0],
                                     pca.center[1],
@@ -7740,15 +8009,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               </React.Fragment>
                             )}
 
-                          {f.isTransformable && (
-                            <>
+                          {isInteractionLayer && f.isTransformable && (
+                            <React.Fragment>
                               {/* Rotation Handle (Yellowish) - placed along rotated bounding box right edge */}
                               {f.isRotatable &&
                                 (!activeGizmo ||
                                   activeGizmo.id !== f.id ||
                                   activeGizmo.type === "rotate") && (
                                   <React.Fragment>
-                                    <MovablePoint
+<MovablePoint
                                       point={localToGlobal(
                                         px + Math.cos(baseAngle) * baseRadius,
                                         py + Math.sin(baseAngle) * baseRadius,
@@ -7802,7 +8071,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   activeGizmo.id !== f.id ||
                                   activeGizmo.type === "scale") && (
                                   <React.Fragment>
-                                    <MovablePoint
+<MovablePoint
                                       point={localToGlobal(
                                         px +
                                           Math.cos(baseAngle - Math.PI / 4) *
@@ -7901,6 +8170,52 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   </React.Fragment>
                                 )}
 
+                              {/* Label Position Handle */}
+                              {f.showLabel && f.label && f.isDraggable &&
+                                (!activeGizmo ||
+                                  activeGizmo.id !== f.id ||
+                                  activeGizmo.type === "label") && (
+                                  <MovablePoint
+                                    point={localToGlobal(
+                                      px + (f.labelPosition?.[0] ?? 0.3),
+                                      py + (f.labelPosition?.[1] ?? 0.3)
+                                    )}
+                                    color="rgba(150, 150, 150, 0.5)"
+                                    onMove={(pt) => {
+                                      handleGizmoMove(f.id, "label");
+                                      const baseGlobal = localToGlobal(px, py);
+                                      const dX = pt[0] - baseGlobal[0];
+                                      const dY = pt[1] - baseGlobal[1];
+                                      
+                                      // We need to un-rotate and un-scale to get local offset.
+                                      // Actually, the label follows transforms, but we just store its local offset.
+                                      // If the graph is scaled or rotated, the offset visually scales!
+                                      // Let's compute local offset:
+                                      const cos = Math.cos(-(rot));
+                                      const sin = Math.sin(-(rot));
+                                      
+                                      let localDx = dX * cos - dY * sin;
+                                      let localDy = dX * sin + dY * cos;
+                                      
+                                      const scaleX = sx || 1;
+                                      const scaleY = sy || 1;
+                                      localDx /= scaleX;
+                                      localDy /= scaleY;
+                                      
+                                      setFunctions((prev) =>
+                                        prev.map((fn) =>
+                                          fn.id === f.id
+                                            ? {
+                                                ...fn,
+                                                labelPosition: [localDx, localDy],
+                                              }
+                                            : fn,
+                                        ),
+                                      );
+                                    }}
+                                  />
+                                )}
+
                               {/* Pivot Editor/Handle (Blueish) */}
                               {f.isPivotEnabled &&
                                 (!activeGizmo ||
@@ -7911,15 +8226,48 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     color="#3b82f6"
                                     onMove={(pt) => {
                                       handleGizmoMove(f.id, "pivot");
+                                      
+                                      // Math for keeping the object physically stationary:
+                                      // old pivot global = px + tx
+                                      const ptOld = [px + tx, py + ty];
+                                      const dGlobal = [pt[0] - ptOld[0], pt[1] - ptOld[1]];
+                                      
+                                      // A = R(rot) * R(base) * S(sx,sy) * R(-base)
+                                      const c1 = Math.cos(rot + baseAngle);
+                                      const s1 = Math.sin(rot + baseAngle);
+                                      const c2 = Math.cos(-baseAngle);
+                                      const s2 = Math.sin(-baseAngle);
+                                      
+                                      // For A^-1, we invert them backwards: R(base) * S(1/sx, 1/sy) * R(-base - rot)
+                                      const invRot = -rot - baseAngle;
+                                      const ic1 = Math.cos(invRot);
+                                      const is1 = Math.sin(invRot);
+                                      
+                                      let vX = dGlobal[0] * ic1 - dGlobal[1] * is1;
+                                      let vY = dGlobal[0] * is1 + dGlobal[1] * ic1;
+                                      
+                                      vX /= (sx || 1);
+                                      vY /= (sy || 1);
+                                      
+                                      const bc1 = Math.cos(baseAngle);
+                                      const bs1 = Math.sin(baseAngle);
+                                      
+                                      const dLocalX = vX * bc1 - vY * bs1;
+                                      const dLocalY = vX * bs1 + vY * bc1;
+                                      
+                                      const pNewX = px + dLocalX;
+                                      const pNewY = py + dLocalY;
+                                      
+                                      const tNewX = pt[0] - pNewX;
+                                      const tNewY = pt[1] - pNewY;
+
                                       setFunctions((prev) =>
                                         prev.map((fn) =>
                                           fn.id === f.id
                                             ? {
                                                 ...fn,
-                                                transformPivot: [
-                                                  pt[0] - tx,
-                                                  pt[1] - ty,
-                                                ],
+                                                transformPivot: [pNewX, pNewY],
+                                                transformTranslate: [tNewX, tNewY]
                                               }
                                             : fn,
                                         ),
@@ -7927,309 +8275,27 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     }}
                                   />
                                 )}
-                            </>
-                          )}
+                           </React.Fragment>
+                            )}
                         </React.Fragment>
                       );
                     } catch {
                       return null;
                     }
-                  }
 
-                  if (f.type === "parametric") {
-                    return (
-                      <React.Fragment key={f.id}>
-                        <Plot.Parametric
-                          minSamplingDepth={samplingDepth}
-                          maxSamplingDepth={samplingDepth}
-                          xy={(t: number) => {
-                            try {
-                              const res = f.compiled.evaluate({
-                                ...baseScope,
-                                t,
-                              });
-                              const arr =
-                                res && res.toArray ? res.toArray() : res;
-                              if (Array.isArray(arr) && arr.length >= 2) {
-                                return [
-                                  Number(arr[0]) + tx,
-                                  Number(arr[1]) + ty,
-                                ];
-                              }
-                              return [tx, ty];
-                            } catch {
-                              return [tx, ty];
-                            }
-                          }}
-                          t={[0, 2 * Math.PI]}
-                          color={f.color}
-                          weight={
-                            hoveredVar &&
-                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                              ? 6
-                              : 3
-                          }
-                          opacity={
-                            hoveredVar
-                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                ? 1
-                                : 0.3
-                              : 1
-                          }
-                          style={
-                            f.lineStyle && f.lineStyle !== "solid"
-                              ? "dashed"
-                              : "solid"
-                          }
-                          svgPathProps={{
-                            style: {
-                              strokeDasharray: getStrokeDasharray(f.lineStyle),
-                            },
-                          }}
-                        />
-                      </React.Fragment>
-                    );
+                    // Handled under <Transform> blocks
+                    return null;
                   }
-
-                  if (f.type === "inequality") {
-                    return (
-                      <InequalityPlot
-                        key={f.id}
-                        id={f.id}
-                        compiledLHS={f.compiled}
-                        compiledRHS={f.compiled2}
-                        operator={f.expr2 || "<="}
-                        baseScope={baseScope}
-                        color={f.color}
-                        fillColor={f.fillColor}
-                        fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
-                        fillPattern={f.fillPattern}
-                        patternSpacing={f.patternSpacing}
-                        patternThickness={f.patternThickness}
-                        patternAngle={f.patternAngle}
-                        samplingDepth={samplingDepth}
-                        weight={
-                          hoveredVar &&
-                          new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                            ? 6
-                            : 3
-                        }
-                        tx={tx}
-                        ty={ty}
-                        lineStyle={f.lineStyle}
-                      />
-                    );
-                  }
-
-                  if (f.type === "implicit") {
-                    return (
-                      <ImplicitPlot
-                        key={f.id}
-                        compiledLHS={f.compiled}
-                        compiledRHS={f.compiled2}
-                        baseScope={baseScope}
-                        color={f.color}
-                        samplingDepth={samplingDepth}
-                        weight={
-                          hoveredVar &&
-                          new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                            ? 6
-                            : 3
-                        }
-                        opacity={
-                          hoveredVar
-                            ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                              ? 1
-                              : 0.3
-                            : 1
-                        }
-                        tx={tx}
-                        ty={ty}
-                        lineStyle={f.lineStyle}
-                      />
-                    );
-                  }
-
-                  if (f.type === "polar") {
-                    const useThetaAsAngle = /\btheta\b/.test(f.expr);
-                    return (
-                      <React.Fragment key={f.id}>
-                        <Plot.Parametric
-                          minSamplingDepth={samplingDepth}
-                          maxSamplingDepth={samplingDepth}
-                          xy={(tVal: number) => {
-                            try {
-                              const scope = { ...baseScope };
-                              if (useThetaAsAngle) {
-                                scope.theta = tVal;
-                                scope.x = tVal;
-                              } else {
-                                scope.t = tVal;
-                                scope.x = tVal;
-                                scope.theta = tVal;
-                              }
-                              const r = Number(f.compiled.evaluate(scope));
-                              if (isNaN(r) || typeof r === "object")
-                                return [tx, ty];
-                              return [
-                                r * Math.cos(tVal) + tx,
-                                r * Math.sin(tVal) + ty,
-                              ];
-                            } catch {
-                              return [tx, ty];
-                            }
-                          }}
-                          t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
-                          color={f.color}
-                          weight={
-                            hoveredVar &&
-                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                              ? 6
-                              : 3
-                          }
-                          opacity={
-                            hoveredVar
-                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                ? 1
-                                : 0.3
-                              : 1
-                          }
-                          style={
-                            f.lineStyle && f.lineStyle !== "solid"
-                              ? "dashed"
-                              : "solid"
-                          }
-                          svgPathProps={{
-                            style: {
-                              strokeDasharray: getStrokeDasharray(f.lineStyle),
-                            },
-                          }}
-                        />
-                        {tracePoints && (
-                          <Point
-                            x={(() => {
-                              try {
-                                const tVal = (time / 2) % (2 * Math.PI);
-                                const scope = { ...baseScope };
-                                if (useThetaAsAngle) {
-                                  scope.theta = tVal;
-                                  scope.x = tVal;
-                                } else {
-                                  scope.t = tVal;
-                                  scope.x = tVal;
-                                  scope.theta = tVal;
-                                }
-                                const r = Number(f.compiled.evaluate(scope));
-                                return typeof r === "object"
-                                  ? NaN
-                                  : r * Math.cos(tVal) + tx;
-                              } catch {
-                                return tx;
-                              }
-                            })()}
-                            y={(() => {
-                              try {
-                                const tVal = (time / 2) % (2 * Math.PI);
-                                const scope = { ...baseScope };
-                                if (useThetaAsAngle) {
-                                  scope.theta = tVal;
-                                  scope.x = tVal;
-                                } else {
-                                  scope.t = tVal;
-                                  scope.x = tVal;
-                                  scope.theta = tVal;
-                                }
-                                const r = Number(f.compiled.evaluate(scope));
-                                return typeof r === "object"
-                                  ? NaN
-                                  : r * Math.sin(tVal) + ty;
-                              } catch {
-                                return ty;
-                              }
-                            })()}
-                            color={f.color}
-                          />
-                        )}
-                      </React.Fragment>
-                    );
-                  }
-                  // Cartesian default
-                  return (
-                    <React.Fragment key={f.id}>
-                      <Plot.OfX
-                        minSamplingDepth={samplingDepth}
-                        maxSamplingDepth={samplingDepth}
-                        y={(x) => {
-                          try {
-                            const res = f.compiled.evaluate({
-                              ...baseScope,
-                              x: x - tx,
-                            });
-                            // Return NaN if imaginary or invalid
-                            if (typeof res === "object" && res.im !== undefined)
-                              return NaN;
-                            return Number(res) + ty;
-                          } catch {
-                            return NaN;
-                          }
-                        }}
-                        color={f.color}
-                        weight={
-                          hoveredVar &&
-                          new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                            ? 6
-                            : 3
-                        }
-                        opacity={
-                          hoveredVar
-                            ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                              ? 1
-                              : 0.3
-                            : 1
-                        }
-                        style={
-                          f.lineStyle && f.lineStyle !== "solid"
-                            ? "dashed"
-                            : "solid"
-                        }
-                        svgPathProps={{
-                          style: {
-                            strokeDasharray: getStrokeDasharray(f.lineStyle),
-                          },
-                        }}
-                      />
-                      {/* Trace Point Support */}
-                      {tracePoints && (
-                        <Point
-                          x={(time % 10) - 5}
-                          y={(() => {
-                            try {
-                              const res = f.compiled.evaluate({
-                                ...baseScope,
-                                x: (time % 10) - 5 - tx,
-                              });
-                              return typeof res === "object"
-                                ? NaN
-                                : Number(res) + ty;
-                            } catch {
-                              return ty;
-                            }
-                          })()}
-                          color={f.color}
-                          opacity={
-                            hoveredVar
-                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                ? 1
-                                : 0.3
-                              : 1
-                          }
-                        />
-                      )}
-                    </React.Fragment>
-                  );
-                }
-                return null;
-              })}
+                  return null;
+                });
+                
+                return (
+                  <React.Fragment>
+                    <g className="math-geometry-layer">{renderMathNodes(false)}</g>
+                    <g className="math-interaction-layer">{renderMathNodes(true)}</g>
+                  </React.Fragment>
+                );
+              })()}
           </Mafs>
 
           {isFullscreen && (
@@ -8624,7 +8690,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   );
 
   return isFullscreen ? (
-    <>
+    <React.Fragment>
       <div className="w-full h-full flex items-center justify-center bg-slate-900 border border-slate-700 rounded-xl relative overflow-hidden group">
         <div className="absolute inset-0 opacity-20 pointer-events-none">
           <svg width="100%" height="100%">
@@ -8659,7 +8725,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         </div>
       </div>
       {createPortal(content, document.body)}
-    </>
+    </React.Fragment>
   ) : (
     content
   );
