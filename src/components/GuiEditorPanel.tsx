@@ -61,7 +61,7 @@ export default function GuiEditorPanel() {
     {},
   );
 
-  // Collapsible sidebar for Tablet & Desktop
+  // Editor Layout State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   // Bottom sheet or full drawer on mobile trigger
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -120,14 +120,56 @@ export default function GuiEditorPanel() {
   const [editingArrayElementPath, setEditingArrayElementPath] = useState<string | null>(null);
   const [editingArrayElementVal, setEditingArrayElementVal] = useState<any>("");
   const [editingArrayElementType, setEditingArrayElementType] = useState<"string" | "number" | "boolean">("string");
-  const [newArrayElementInputs, setNewArrayElementInputs] = useState<Record<string, { value: string; type: "string" | "number" | "boolean" }>>({});
+  const [newArrayElementInputs, setNewArrayElementInputs] = useState<Record<string, { value: string; type: "string" | "number" | "boolean" | "null" | "array" | "object"; key?: string }>>({});
 
   // Handlers for managing list/array elements
+  const handleAddObjectProperty = (objectPath: string) => {
+    const input = newArrayElementInputs[objectPath] || { value: "", type: "string", key: "" };
+    if (!input.key || input.key.trim() === "") {
+        triggerToast("Please provide a valid key name", "error");
+        return;
+    }
+    
+    let finalVal: any = input.value;
+    if (input.type === "number") finalVal = Number(input.value) || 0;
+    if (input.type === "boolean") finalVal = input.value === "true" || input.value === "True";
+    if (input.type === "null") finalVal = null;
+    if (input.type === "object") finalVal = {};
+    if (input.type === "array") finalVal = [];
+
+    const updatedData = parsedData ? JSON.parse(JSON.stringify(parsedData)) : {};
+    const parts = objectPath.split(".");
+    if (parts[0] === "root") parts.shift(); // remove 'root'
+
+    let target = updatedData;
+    for (const p of parts) {
+      if (target) target = target[p];
+    }
+
+    if (target && typeof target === "object" && !Array.isArray(target)) {
+      if (input.key in target) {
+          triggerToast(`Key "${input.key}" already exists`, "error");
+          return;
+      }
+      snapshotHistory();
+      target[input.key] = finalVal;
+      saveUpdatedData(updatedData);
+      triggerToast("Added property to object", "success");
+      setNewArrayElementInputs((prev) => ({
+        ...prev,
+        [objectPath]: { value: "", type: "string", key: "" },
+      }));
+    }
+  };
+
   const handleAddArrayElement = (arrayPath: string) => {
     const input = newArrayElementInputs[arrayPath] || { value: "", type: "string" };
     let finalVal: any = input.value;
     if (input.type === "number") finalVal = Number(input.value) || 0;
     if (input.type === "boolean") finalVal = input.value === "true" || input.value === "True";
+    if (input.type === "null") finalVal = null;
+    if (input.type === "object") finalVal = {};
+    if (input.type === "array") finalVal = [];
 
     const updatedData = parsedData ? JSON.parse(JSON.stringify(parsedData)) : {};
     const parts = arrayPath.split(".");
@@ -327,39 +369,30 @@ export default function GuiEditorPanel() {
       parentPath = "",
     ): LeafField[] {
       const fields: LeafField[] = [];
-      if (obj && typeof obj === "object") {
-        if (Array.isArray(obj)) {
+      if (obj !== null && typeof obj === "object") {
+        for (const key of Object.keys(obj)) {
+          const val = obj[key as keyof typeof obj];
+          const nestedPath =
+            currentPath === "root" ? `root.${key}` : `${currentPath}.${key}`;
+          const isArr = Array.isArray(val);
+          const isObj = val !== null && typeof val === "object" && !isArr;
+          const isNull = val === null;
+          const itemType = isNull ? "null" : isArr
+            ? "array"
+            : isObj
+              ? "object"
+              : (typeof val as "string" | "number" | "boolean");
+
           fields.push({
-            path: currentPath,
-            parentPath,
-            keyName: currentPath.split(".").pop() || "",
-            value: obj,
-            type: "array",
+            path: nestedPath,
+            parentPath: currentPath,
+            keyName: key,
+            value: val,
+            type: itemType as any,
           });
-        } else {
-          for (const key of Object.keys(obj)) {
-            const val = obj[key];
-            const nestedPath =
-              currentPath === "root" ? `root.${key}` : `${currentPath}.${key}`;
-            const isArr = Array.isArray(val);
-            const isObj = val !== null && typeof val === "object" && !isArr;
-            const itemType = isArr
-              ? "array"
-              : isObj
-                ? "object"
-                : (typeof val as "string" | "number" | "boolean");
 
-            fields.push({
-              path: nestedPath,
-              parentPath: currentPath,
-              keyName: key,
-              value: val,
-              type: itemType,
-            });
-
-            if (isObj) {
-              fields.push(...getFields(val, nestedPath, currentPath));
-            }
+          if (isObj || isArr) {
+            fields.push(...getFields(val, nestedPath, currentPath));
           }
         }
       }
@@ -1449,6 +1482,15 @@ export default function GuiEditorPanel() {
                 const depth =
                   viewMode === "tree" ? getFieldDepth(field.path) : 0;
 
+                const parentPathParts = field.parentPath.split(".");
+                if (parentPathParts[0] === "root") parentPathParts.shift();
+                let parentObj = parsedData;
+                for (const p of parentPathParts) {
+                  if (parentObj) parentObj = parentObj[p];
+                }
+                const isArrayChild = Array.isArray(parentObj);
+                const arrayIndex = isArrayChild ? parseInt(field.keyName, 10) : -1;
+
                 return (
                   <div
                     key={field.path}
@@ -1497,7 +1539,7 @@ export default function GuiEditorPanel() {
                           )}
 
                           {/* Interactive Renaming Form inline */}
-                          {isRenaming ? (
+                          {isRenaming && !isArrayChild ? (
                             <div className="flex items-center gap-1.5">
                               <input
                                 type="text"
@@ -1535,17 +1577,20 @@ export default function GuiEditorPanel() {
                           ) : (
                             <span
                               onClick={() => {
+                                if (isArrayChild) return;
                                 setRenamingPath(field.path);
                                 setNewKeyRenameValue(field.keyName);
                               }}
-                              className="font-mono text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline flex items-center gap-1"
-                              title="Click to rename field"
+                              className={`font-mono text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 ${!isArrayChild ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline' : ''}`}
+                              title={isArrayChild ? "Array elements cannot be renamed" : "Click to rename field"}
                             >
-                              {viewMode === "tree" ? field.keyName : field.path}
-                              <Edit3
-                                size={10}
-                                className="opacity-0 group-hover:opacity-60 text-slate-400 dark:text-slate-500 transition-opacity"
-                              />
+                              {isArrayChild ? `#${field.keyName}` : (viewMode === "tree" ? field.keyName : field.path)}
+                              {!isArrayChild && (
+                                <Edit3
+                                  size={10}
+                                  className="opacity-0 group-hover:opacity-60 text-slate-400 dark:text-slate-500 transition-opacity"
+                                />
+                              )}
                             </span>
                           )}
 
@@ -1638,7 +1683,7 @@ export default function GuiEditorPanel() {
                                   />
                                 )}
                                 {field.type === "boolean" && (
-                                  <div className="flex items-center p-0.5 bg-slate-105 dark:bg-[#0a0e17] border border-slate-200 dark:border-slate-800 rounded-lg w-full max-w-[140px] select-all shadow-sm">
+                                  <div className="flex items-center p-0.5 bg-slate-105 dark:bg-[#0a0e17] border border-slate-200 dark:border-slate-800 rounded-lg w-full max-w-[140px] select-none shadow-sm">
                                     <button
                                       type="button"
                                       onClick={() => setEditingBoolValue(true)}
@@ -1840,17 +1885,19 @@ export default function GuiEditorPanel() {
                                 </button>
                               )}
 
-                              <button
-                                onClick={() => {
-                                  setRenamingPath(field.path);
-                                  setNewKeyRenameValue(field.keyName);
-                                  setActiveMenuPath(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
-                              >
-                                <Settings size={12} className="text-blue-550 dark:text-blue-400" />
-                                <span>Rename Key</span>
-                              </button>
+                              {!isArrayChild && (
+                                <button
+                                  onClick={() => {
+                                    setRenamingPath(field.path);
+                                    setNewKeyRenameValue(field.keyName);
+                                    setActiveMenuPath(null);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                >
+                                  <Settings size={12} className="text-blue-550 dark:text-blue-400" />
+                                  <span>Rename Key</span>
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => {
@@ -1863,17 +1910,46 @@ export default function GuiEditorPanel() {
                                 <span>Duplicate</span>
                               </button>
 
-                              <button
-                                onClick={() => {
-                                  setMovingPath(field.path);
-                                  setMoveToPath(field.parentPath || "root");
-                                  setActiveMenuPath(null);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
-                              >
-                                <Move size={12} className="text-cyan-600 dark:text-cyan-400" />
-                                <span>Relocate/Move To</span>
-                              </button>
+                              {!isArrayChild && (
+                                <button
+                                  onClick={() => {
+                                    setMovingPath(field.path);
+                                    setMoveToPath(field.parentPath || "root");
+                                    setActiveMenuPath(null);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                >
+                                  <Move size={12} className="text-cyan-600 dark:text-cyan-400" />
+                                  <span>Relocate/Move To</span>
+                                </button>
+                              )}
+
+                              {isArrayChild && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      handleMoveArrayElement(field.parentPath, arrayIndex, "up");
+                                      setActiveMenuPath(null);
+                                    }}
+                                    disabled={arrayIndex === 0}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                                  >
+                                    <ChevronDown size={12} className="rotate-180 text-slate-500" />
+                                    <span>Move Up</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleMoveArrayElement(field.parentPath, arrayIndex, "down");
+                                      setActiveMenuPath(null);
+                                    }}
+                                    disabled={!Array.isArray(parentObj) || arrayIndex === parentObj.length - 1}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                                  >
+                                    <ChevronDown size={12} className="text-slate-500" />
+                                    <span>Move Down</span>
+                                  </button>
+                                </>
+                              )}
 
                               <hr className="my-1 border-slate-150 dark:border-slate-800" />
 
@@ -1893,7 +1969,99 @@ export default function GuiEditorPanel() {
                       </div>
                     </div>
 
-                    {/* Inline Deletion Confirmation container */}
+                    {/* Inline Add Property block for objects */}
+                    {field.type === "object" && !isCollapsed && (
+                      <div 
+                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full" 
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="Key name"
+                            value={newArrayElementInputs[field.path]?.key || ""}
+                            onChange={(e) => {
+                              setNewArrayElementInputs((prev) => ({
+                                ...prev,
+                                [field.path]: {
+                                  value: prev[field.path]?.value || "",
+                                  type: prev[field.path]?.type || "string",
+                                  key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+                                },
+                              }));
+                            }}
+                            className="w-24 shrink-0 text-[11px] px-2.5 py-1 bg-white dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100 font-mono placeholder-slate-400 dark:placeholder-slate-650"
+                          />
+
+                          <div className="flex items-center bg-slate-200 dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded p-0.5 shrink-0 shadow-inner overflow-x-auto no-scrollbar max-w-full">
+                            {(["string", "number", "boolean", "null", "object", "array"] as const).map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => {
+                                  setNewArrayElementInputs((prev) => ({
+                                    ...prev,
+                                    [field.path]: {
+                                      value: prev[field.path]?.value || "",
+                                      type: t as any,
+                                      key: prev[field.path]?.key || "",
+                                    },
+                                  }));
+                                }}
+                                className={`px-2 py-0.5 text-[8.5px] font-extrabold uppercase rounded-sm transition-all whitespace-nowrap ${
+                                  (newArrayElementInputs[field.path]?.type || "string") === t
+                                    ? "bg-blue-600 dark:bg-blue-500/20 text-white dark:text-blue-400 border border-blue-500/20 shadow-sm"
+                                    : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                                }`}
+                              >
+                                {t === "string" ? "str" : t === "number" ? "num" : t === "boolean" ? "bool" : t}
+                              </button>
+                            ))}
+                          </div>
+
+                          {(newArrayElementInputs[field.path]?.type === "object" || newArrayElementInputs[field.path]?.type === "array" || newArrayElementInputs[field.path]?.type === "null") ? (
+                            <div className="flex-1 text-[11px] px-2.5 py-1 text-slate-500 italic">
+                                {newArrayElementInputs[field.path]?.type === "object" ? "Adds empty object {}" : newArrayElementInputs[field.path]?.type === "array" ? "Adds empty array []" : "Adds null"}
+                            </div>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder={
+                                (newArrayElementInputs[field.path]?.type || "string") === "boolean"
+                                  ? "Enter true or false"
+                                  : (newArrayElementInputs[field.path]?.type || "string") === "number"
+                                    ? "Enter number value"
+                                    : "Enter field value"
+                              }
+                              value={newArrayElementInputs[field.path]?.value || ""}
+                              onChange={(e) => {
+                                setNewArrayElementInputs((prev) => ({
+                                  ...prev,
+                                  [field.path]: {
+                                    value: e.target.value,
+                                    type: prev[field.path]?.type || "string",
+                                    key: prev[field.path]?.key || "",
+                                  },
+                                }));
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleAddObjectProperty(field.path);
+                              }}
+                              className="flex-1 min-w-[100px] text-[11px] px-2.5 py-1 bg-white dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100 font-mono placeholder-slate-400 dark:placeholder-slate-650"
+                            />
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleAddObjectProperty(field.path)}
+                            className="px-3.5 py-1.5 text-[10.5px] font-bold rounded bg-blue-600 hover:bg-blue-500 text-slate-100 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
+                          >
+                            <Plus size={12} />
+                            <span>Add Property</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <AnimatePresence>
                       {confirmDeletePath === field.path && (
                         <motion.div
@@ -1929,174 +2097,12 @@ export default function GuiEditorPanel() {
                     {/* Dedicated List elements block for visual array editing */}
                     {field.type === "array" && !isCollapsed && (
                       <div 
-                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full select-all" 
+                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full" 
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2 mb-1.5">
-                          <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                            <span>List Elements</span>
-                            <span className="px-1.5 text-[9px] bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 rounded-full font-mono font-extrabold">
-                              {Array.isArray(field.value) ? field.value.length : 0} items
-                            </span>
-                          </span>
-                        </div>
-
-                        {Array.isArray(field.value) && field.value.length === 0 ? (
-                          <p className="text-[10px] text-slate-550 dark:text-slate-500 italic py-1">No items in lists. Add one below.</p>
-                        ) : (
-                          <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto custom-scrollbar pr-1">
-                            {Array.isArray(field.value) &&
-                              field.value.map((item, itemIdx) => {
-                                const itemPath = `${field.path}[${itemIdx}]`;
-                                const isItemEditing = editingArrayElementPath === itemPath;
-                                const itemType = typeof item;
-
-                                return (
-                                  <div
-                                    key={itemPath}
-                                    className="flex items-center justify-between gap-2 p-2 bg-slate-100/40 dark:bg-[#121824]/50 hover:bg-slate-200/50 dark:hover:bg-[#121824] border border-slate-200 dark:border-slate-800/60 rounded-md group/item transition-colors select-none"
-                                  >
-                                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-500 font-bold">
-                                        #{itemIdx}
-                                      </span>
-
-                                      {isItemEditing ? (
-                                        <div className="flex items-center gap-1.5 flex-1 select-text">
-                                          {editingArrayElementType === "string" && (
-                                            <div className="flex-1 flex flex-col gap-1 w-full">
-                                              <textarea
-                                                value={editingArrayElementVal}
-                                                onChange={(e) => setEditingArrayElementVal(e.target.value)}
-                                                className="px-2.5 py-1.5 text-xs bg-white dark:bg-[#161d2d] border border-slate-250 dark:border-blue-500 rounded text-slate-800 dark:text-slate-100 font-mono w-full focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[60px]"
-                                                autoFocus
-                                                onKeyDown={(e) => {
-                                                  if (e.key === "Enter" && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    handleUpdateArrayElement(field.path, itemIdx);
-                                                  }
-                                                  if (e.key === "Escape") setEditingArrayElementPath(null);
-                                                }}
-                                                placeholder="Enter item value..."
-                                              />
-                                              <span className="text-[8px] text-slate-500 dark:text-slate-400 px-1">Enter to save, Shift+Enter for newline</span>
-                                            </div>
-                                          )}
-                                          {editingArrayElementType === "number" && (
-                                            <input
-                                              type="number"
-                                              value={editingArrayElementVal}
-                                              onChange={(e) => setEditingArrayElementVal(e.target.value)}
-                                              className="px-2 py-0.5 text-xs bg-white dark:bg-[#161d2d] border border-slate-250 dark:border-blue-500 rounded text-slate-800 dark:text-slate-100 font-mono max-w-[120px] focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                              autoFocus
-                                              onKeyDown={(e) => {
-                                                if (e.key === "Enter") handleUpdateArrayElement(field.path, itemIdx);
-                                                if (e.key === "Escape") setEditingArrayElementPath(null);
-                                              }}
-                                            />
-                                          )}
-                                          {editingArrayElementType === "boolean" && (
-                                            <div className="flex items-center p-0.5 bg-slate-200 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800 rounded-lg shadow-sm">
-                                              <button
-                                                type="button"
-                                                onClick={() => setEditingArrayElementVal(true)}
-                                                className={`px-2 py-0.5 text-[10px] font-bold rounded-sm transition-all ${
-                                                  editingArrayElementVal === true || editingArrayElementVal === "true"
-                                                    ? "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
-                                                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                                                }`}
-                                              >
-                                                True
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => setEditingArrayElementVal(false)}
-                                                className={`px-2 py-0.5 text-[10px] font-bold rounded-sm transition-all ${
-                                                  editingArrayElementVal === false || editingArrayElementVal === "false"
-                                                    ? "bg-rose-600/10 text-rose-700 dark:text-rose-400 border border-rose-500/20"
-                                                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                                                }`}
-                                              >
-                                                False
-                                              </button>
-                                            </div>
-                                          )}
-
-                                          <div className="flex items-center gap-1 shrink-0">
-                                            <button
-                                              onClick={() => handleUpdateArrayElement(field.path, itemIdx)}
-                                              className="p-1 px-1.5 text-[9px] font-bold text-green-700 dark:text-green-400 bg-green-500/10 hover:bg-green-500/20 rounded"
-                                            >
-                                              Save
-                                            </button>
-                                            <button
-                                              onClick={() => setEditingArrayElementPath(null)}
-                                              className="p-1 px-1.5 text-[9px] font-bold text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-300 dark:hover:bg-slate-705 rounded h-6 flex items-center shadow-sm"
-                                            >
-                                              X
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div
-                                          onClick={() => {
-                                            setEditingArrayElementPath(itemPath);
-                                            setEditingArrayElementVal(String(item));
-                                            setEditingArrayElementType(typeof item === "number" ? "number" : typeof item === "boolean" ? "boolean" : "string");
-                                          }}
-                                          className="font-mono text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 hover:bg-slate-200/55 dark:hover:text-white dark:hover:bg-slate-800/40 px-1.5 py-0.5 rounded cursor-pointer break-all flex-1 select-text"
-                                          title="Click to edit item"
-                                        >
-                                          {item === "" ? (
-                                            <span className="text-slate-400 dark:text-slate-500 italic">""</span>
-                                          ) : typeof item === "boolean" ? (
-                                            <span className={`text-[10px] font-extrabold uppercase px-1 py-0.5 rounded ${item ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10" : "text-rose-700 dark:text-rose-400 bg-rose-500/10"}`}>
-                                              {String(item)}
-                                            </span>
-                                          ) : (
-                                            String(item)
-                                          )}
-                                          <span className="text-[9px] text-slate-500 dark:text-slate-500 ml-2 italic group-hover/item:opacity-100 opacity-0 transition-opacity whitespace-nowrap">
-                                            ({itemType})
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <button
-                                        onClick={() => handleMoveArrayElement(field.path, itemIdx, "up")}
-                                        disabled={itemIdx === 0}
-                                        className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none rounded hover:bg-slate-200 dark:hover:bg-slate-800/60 transition-colors"
-                                        title="Move up"
-                                      >
-                                        <ChevronDown size={11} className="rotate-180" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleMoveArrayElement(field.path, itemIdx, "down")}
-                                        disabled={itemIdx === field.value.length - 1}
-                                        className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30 disabled:pointer-events-none rounded hover:bg-slate-200 dark:hover:bg-slate-800/60 transition-colors"
-                                        title="Move down"
-                                      >
-                                        <ChevronDown size={11} />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteArrayElement(field.path, itemIdx)}
-                                        className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-450 rounded hover:bg-slate-250 dark:hover:bg-slate-800/60 transition-colors"
-                                        title="Remove item"
-                                      >
-                                        <Trash2 size={11} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        )}
-
-                        <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                          <div className="flex items-center bg-slate-200 dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded p-0.5 shrink-0 self-start sm:self-auto shadow-inner">
-                            {(["string", "number", "boolean"] as const).map((t) => (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center bg-slate-200 dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded p-0.5 shrink-0 shadow-inner overflow-x-auto no-scrollbar max-w-full">
+                            {(["string", "number", "boolean", "null", "object", "array"] as const).map((t) => (
                               <button
                                 key={t}
                                 type="button"
@@ -2105,7 +2111,7 @@ export default function GuiEditorPanel() {
                                     ...prev,
                                     [field.path]: {
                                       value: prev[field.path]?.value || "",
-                                      type: t,
+                                      type: t as any,
                                     },
                                   }));
                                 }}
@@ -2115,35 +2121,41 @@ export default function GuiEditorPanel() {
                                     : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                                 }`}
                               >
-                                {t === "string" ? "str" : t === "number" ? "num" : "bool"}
+                                {t === "string" ? "str" : t === "number" ? "num" : t === "boolean" ? "bool" : t}
                               </button>
                             ))}
                           </div>
 
-                          <input
-                            type="text"
-                            placeholder={
-                              (newArrayElementInputs[field.path]?.type || "string") === "boolean"
-                                ? "Enter true or false"
-                                : (newArrayElementInputs[field.path]?.type || "string") === "number"
-                                  ? "Enter number value"
-                                  : "Enter item value"
-                            }
-                            value={newArrayElementInputs[field.path]?.value || ""}
-                            onChange={(e) => {
-                              setNewArrayElementInputs((prev) => ({
-                                ...prev,
-                                [field.path]: {
-                                  value: e.target.value,
-                                  type: prev[field.path]?.type || "string",
-                                },
-                              }));
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleAddArrayElement(field.path);
-                            }}
-                            className="flex-1 text-[11px] px-2.5 py-1 bg-white dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 text-slate-800 dark:text-slate-100 font-mono placeholder-slate-400 dark:placeholder-slate-650"
-                          />
+                          {(newArrayElementInputs[field.path]?.type === "object" || newArrayElementInputs[field.path]?.type === "array" || newArrayElementInputs[field.path]?.type === "null") ? (
+                            <div className="flex-1 text-[11px] px-2.5 py-1 text-slate-500 italic">
+                                {newArrayElementInputs[field.path]?.type === "object" ? "Adds empty object {}" : newArrayElementInputs[field.path]?.type === "array" ? "Adds empty array []" : "Adds null"}
+                            </div>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder={
+                                (newArrayElementInputs[field.path]?.type || "string") === "boolean"
+                                  ? "Enter true or false"
+                                  : (newArrayElementInputs[field.path]?.type || "string") === "number"
+                                    ? "Enter number value"
+                                    : "Enter item value"
+                              }
+                              value={newArrayElementInputs[field.path]?.value || ""}
+                              onChange={(e) => {
+                                setNewArrayElementInputs((prev) => ({
+                                  ...prev,
+                                  [field.path]: {
+                                    value: e.target.value,
+                                    type: prev[field.path]?.type || "string",
+                                  },
+                                }));
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleAddArrayElement(field.path);
+                              }}
+                              className="flex-1 min-w-[100px] text-[11px] px-2.5 py-1 bg-white dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 text-slate-800 dark:text-slate-100 font-mono placeholder-slate-400 dark:placeholder-slate-650"
+                            />
+                          )}
 
                           <button
                             type="button"

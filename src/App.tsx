@@ -112,6 +112,7 @@ export default function App() {
 
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragSplitting, setIsDragSplitting] = useState(false);
   const isDragging = useRef(false);
 
   // Restore state from URL on load
@@ -154,6 +155,7 @@ export default function App() {
   const startDragging = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       isDragging.current = true;
+      setIsDragSplitting(true);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
       document.body.style.webkitUserSelect = "none";
@@ -165,6 +167,7 @@ export default function App() {
   const stopDragging = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
+      setIsDragSplitting(false);
       document.body.style.cursor = "default";
       document.body.style.userSelect = "";
       document.body.style.webkitUserSelect = "";
@@ -419,6 +422,10 @@ export default function App() {
         )}
 
         <div className="flex-1 h-full min-w-0 relative">
+          {/* Overlay to catch pointer events during resize so iframes don't steal mouse hover events */}
+          {isDragSplitting && (
+            <div className="absolute inset-0 z-[1000] bg-transparent cursor-col-resize" />
+          )}
           <DrawingToolbar />
           <ErrorBoundary fallback={
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-md z-50 text-white p-6">

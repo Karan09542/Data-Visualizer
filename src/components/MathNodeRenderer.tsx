@@ -1619,7 +1619,7 @@ const InequalityPlot: React.FC<{
   const paths = useMemo(() => {
     if (!compiledLHS) return { fill: "", boundary: "" };
 
-    const GRID_SIZE = Math.max(20, Math.min(200, samplingDepth * 4)); // Less dense for better performance
+    const GRID_SIZE = Math.max(40, Math.min(300, samplingDepth * 8)); // Higher resolution for smoother inequality masks
     const xMin = xRange[0];
     const xMax = xRange[1];
     const yMin = yRange[0];
@@ -1655,11 +1655,11 @@ const InequalityPlot: React.FC<{
             
             if (inside && xStart === null) xStart = x;
             else if (!inside && xStart !== null) {
-                fillPath += `M ${xStart} ${y} L ${x} ${y} `;
+                fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${x - dx/2} ${y - dy/2} L ${x - dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
                 xStart = null;
             }
         }
-        if (xStart !== null) fillPath += `M ${xStart} ${y} L ${xMax} ${y} `;
+        if (xStart !== null) fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${xMax + dx/2} ${y - dy/2} L ${xMax + dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
     }
 
     // Now extract boundary using marching squares (edges only)
@@ -1749,68 +1749,106 @@ const InequalityPlot: React.FC<{
   const pThick = Math.max(1, patternThickness || 2);
 
   // Calculate visual properties from mafs context
-  let sx = 1;
-  let sy = 1;
+  let sx = 50;
+  let sy = 50;
   try {
     const transform = useTransformContext();
-    // transform.viewTransform is [a, c, tx,  b, d, ty] in 2D vector form from mafs vec. Matrix is [m00, m01, m02, m10, m11, m12] 
-    // Usually a = pixel_width / math_width, d = - pixel_height / math_height
-    // We just want rough scale factor to invert
     if (transform && transform.viewTransform) {
       sx = Math.abs(transform.viewTransform[0]);
-      sy = Math.abs(transform.viewTransform[4]); // index 4 is m11 (or d)
+      sy = Math.abs(transform.viewTransform[3]); // d
     }
   } catch (e) {}
 
-  const baseScaleX = sx || 50;
-  const baseScaleY = sy || 50;
+  // Pattern coordinate system: 
+  // We define the pattern in a sensible "pixel-like" coordinate system (e.g. 0 to 15).
+  // Then we map it into the world space. We assume 50 pixels = 1 world unit natively.
+  const PATTERN_BASE_SCALE = 50; 
+  
+  // Calculate how many screen pixels 1 pattern repetition currently occupies:
+  const currentScreenSpacing = (pSpace / PATTERN_BASE_SCALE) * sx;
+  
+  // Adaptive zoom factor:
+  let adaptiveFactor = 1;
+  if (currentScreenSpacing > 0) {
+    if (currentScreenSpacing < 6) {
+      // Zoomed way out. Increase pattern world size to prevent pure solid blobs
+      while (currentScreenSpacing * adaptiveFactor < 12) adaptiveFactor *= 1.5;
+    } else if (currentScreenSpacing > 80) {
+      // Zoomed way in. Decrease pattern world size to prevent giant gaps
+      while (currentScreenSpacing * adaptiveFactor > 40) adaptiveFactor /= 1.5;
+    }
+  }
+
+  // To put our 0..15 pattern box into world space, we scale it down by 1/50.
+  // We also apply our adaptive factor to prevent the extremes.
+  // Because we want it to map correctly to both X and Y, we use sx/sy to correct non-square aspect ratios if any,
+  // but wait - world is world! If sx != sy, the world cells are stretched. We should stretch the pattern to match?
+  // Actually, patternTransform scales the pattern relative to world space.
+  // We just use uniform scale if world is uniform. If world was non-uniform scaled by mafs, 
+  // maybe we should maintain aspect ratio by applying `sx/sy`?
+  // Usually, sx == sy in mafs graphs.
+  const ptScaleX = (1 / PATTERN_BASE_SCALE) * adaptiveFactor * (50 / sx) * (sx / 50); // simplified to just standard scale
+  
+  // Actually, wait! The user wants the pattern spacing to "exist in graph/world coordinates".
+  // This means if I have a grid, its lines should stay pinned to the same world values during zoom/pan!
+  // If we just do `scale( adaptiveFactor / PATTERN_BASE_SCALE )`, it satisfies this perfectly!
+  const finalScaleX = adaptiveFactor / PATTERN_BASE_SCALE;
+  const finalScaleY = adaptiveFactor / PATTERN_BASE_SCALE;
+
+  // Let's ensure thickness stays exactly exactly pThick target screen pixels.
+  // The pattern gets scaled by finalScaleX relative to world, and then by sx for the screen.
+  // We want: strokeWidth * finalScaleX * sx = target_screen_pixels
+  // So: strokeWidth = pThick / (finalScaleX * sx);  
+  // We add a minor clamping to ensure it's not negative or zero.
+  const targetScreenPixels = Math.max(0.5, pThick);
+  const strokeThick = targetScreenPixels / (finalScaleX * sx);
 
   return (
     <g style={{ transform: "var(--mafs-view-transform)", transformOrigin: "0 0" }}>
       <defs>
-        <mask id={maskId} maskUnits="userSpaceOnUse" x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]}>
-          {paths.fill && <path d={paths.fill} fill="none" stroke="white" strokeWidth={paths.dy * 1.5} vectorEffect="non-scaling-stroke" />}
+         <mask id={maskId} maskUnits="userSpaceOnUse" x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]}>
+          {paths.fill && <path d={paths.fill} fill="white" stroke="white" strokeWidth={paths.dy * 0.1} strokeLinejoin="round" />}
         </mask>
         {fillPattern !== "solid" && (
-          <pattern id={patternId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${1 / baseScaleX}, ${1 / baseScaleY}) rotate(${patternAngle || 0})`}>
+          <pattern id={patternId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}>
             {fillPattern === "hatch-diagonal" && (
               <>
-                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
               </>
             )}
             {fillPattern === "hatch-reverse" && (
               <>
-                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
               </>
             )}
             {fillPattern === "hatch-cross" && (
               <>
-                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={1} x2={1} y2={-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
               </>
             )}
             {fillPattern === "dotted" && (
-              <circle cx={pSize/2} cy={pSize/2} r={pThick} fill={pColor} fillOpacity={fillOpacity} />
+              <circle cx={pSize/2} cy={pSize/2} r={strokeThick} fill={pColor} fillOpacity={fillOpacity} />
             )}
             {fillPattern === "grid" && (
               <>
-                <line x1={0} y1={0} x2={pSize} y2={0} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
-                <line x1={0} y1={0} x2={0} y2={pSize} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={0} x2={pSize} y2={0} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
+                <line x1={0} y1={0} x2={0} y2={pSize} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} />
               </>
             )}
             {fillPattern === "dashed" && (
-              <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pColor} strokeWidth={pThick} strokeOpacity={fillOpacity} strokeDasharray={`${pSize/2},${pSize/2}`} />
+              <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pColor} strokeWidth={strokeThick} strokeOpacity={fillOpacity} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} />
             )}
             {fillPattern === "math-region" && (
-              <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={Math.max(1, pThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} />
+              <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pColor} strokeWidth={Math.max(1, strokeThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} />
             )}
           </pattern>
         )}
@@ -5132,17 +5170,28 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   <div className="grid grid-cols-4 gap-1.5">
                                     {(
                                       [
-                                        { value: "solid", label: "Solid", icon: "▧" },
-                                        { value: "hatch-diagonal", label: "Diagonal", icon: "///" },
-                                        { value: "hatch-reverse", label: "Reverse", icon: "\\\\\\" },
-                                        { value: "hatch-cross", label: "Cross", icon: "XXX" },
-                                        { value: "dotted", label: "Dotted", icon: "•••" },
-                                        { value: "grid", label: "Grid", icon: "+++" },
-                                        { value: "dashed", label: "Dashed", icon: "---" },
-                                        { value: "math-region", label: "Math", icon: "///" },
+                                        { value: "solid", label: "Solid" },
+                                        { value: "hatch-diagonal", label: "Diagonal" },
+                                        { value: "hatch-reverse", label: "Reverse" },
+                                        { value: "hatch-cross", label: "Cross" },
+                                        { value: "dotted", label: "Dotted" },
+                                        { value: "grid", label: "Grid" },
+                                        { value: "dashed", label: "Dashed" },
+                                        { value: "math-region", label: "Math" },
                                       ] as const
                                     ).map((style) => {
                                       const isSelected = (f.fillPattern || "hatch-diagonal") === style.value;
+                                      const pCol = f.fillColor || f.color || "#3b82f6";
+                                      const op = f.fillOpacity ?? 0.65;
+                                      const pId = `preview-${f.id}-${style.value}`;
+                                      const pt = f.patternThickness || 2;
+                                      const ps = f.patternSpacing || 15;
+                                      
+                                      // Scale down the preview pattern to fit nicely in the button
+                                      // Default pSize is 15. We can render standard 15 size and let it tile in the 24x24 box.
+                                      const previewScale = style.value === 'math-region' ? 0.75 : 0.6;
+                                      const pSize = ps;
+                                      
                                       return (
                                         <button
                                           key={style.value}
@@ -5156,15 +5205,69 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               )
                                             );
                                           }}
-                                          className={`flex flex-col items-center justify-center p-1.5 rounded transition-all select-none border ${
+                                          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded transition-all select-none border ${
                                             isSelected
                                               ? "bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400"
                                               : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-400/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
                                           }`}
                                           title={style.label}
                                         >
-                                          <div className="font-mono text-[10px] tracking-tighter opacity-80 mt-0.5 h-3 flex items-center">{style.icon}</div>
-                                          <div className="text-[9px] font-semibold opacity-90 mt-1">{style.label}</div>
+                                          <div className="h-6 w-10 mt-0.5 mb-1 rounded-[3px] border border-slate-200/50 dark:border-slate-700/50 overflow-hidden flex items-center justify-center bg-white dark:bg-slate-900/50">
+                                            <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                                              <defs>
+                                                {style.value !== "solid" && (
+                                                  <pattern id={pId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${previewScale})`}>
+                                                    {style.value === "hatch-diagonal" && (
+                                                      <>
+                                                        <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={-1} y1={1} x2={1} y2={-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                      </>
+                                                    )}
+                                                    {style.value === "hatch-reverse" && (
+                                                      <>
+                                                        <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                      </>
+                                                    )}
+                                                    {style.value === "hatch-cross" && (
+                                                      <>
+                                                        <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={-1} y1={1} x2={1} y2={-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                      </>
+                                                    )}
+                                                    {style.value === "dotted" && (
+                                                      <circle cx={pSize/2} cy={pSize/2} r={pt} fill={pCol} fillOpacity={op} />
+                                                    )}
+                                                    {style.value === "grid" && (
+                                                      <>
+                                                        <line x1={0} y1={0} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                        <line x1={0} y1={0} x2={0} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
+                                                      </>
+                                                    )}
+                                                    {style.value === "dashed" && (
+                                                      <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pCol} strokeWidth={pt} strokeOpacity={op} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} />
+                                                    )}
+                                                    {style.value === "math-region" && (
+                                                      <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={Math.max(1, pt * 0.5)} strokeOpacity={Math.min(1, op * 1.5)} />
+                                                    )}
+                                                  </pattern>
+                                                )}
+                                              </defs>
+                                              
+                                              {style.value === "solid" ? (
+                                                <rect width="100%" height="100%" fill={pCol} fillOpacity={op} />
+                                              ) : (
+                                                <rect width="100%" height="100%" fill={`url(#${pId})`} />
+                                              )}
+                                            </svg>
+                                          </div>
+                                          <div className="text-[9px] font-semibold opacity-90">{style.label}</div>
                                         </button>
                                       );
                                     })}
