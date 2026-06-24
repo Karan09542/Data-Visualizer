@@ -280,6 +280,19 @@ export default function GuiEditorPanel() {
   // Hotkey support `Ctrl+Z` to undo visual actions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field or interactive form element
+      const activeEl = document.activeElement;
+      const isInputFocused =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT" ||
+          (activeEl as HTMLElement).isContentEditable);
+
+      if (isInputFocused) {
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
         triggerUndo();

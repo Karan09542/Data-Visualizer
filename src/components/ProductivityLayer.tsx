@@ -32,7 +32,9 @@ import {
   Upload,
   Video,
   Music,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ChevronLeft,
+  Star
 } from "lucide-react";
 import Markdown from "react-markdown";
 import { SmartDatePicker } from "./SmartDatePicker";
@@ -265,21 +267,21 @@ export async function saveTodoChangesToWorkspace(
   }
 
   const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
-  setValueAtPath(updatedData, nodePath, finalVal);
+  const nextUpdatedData = setValueAtPath(updatedData, nodePath, finalVal);
 
   let newCode = "";
   if (codeFormat === "yaml") {
     try {
       const yaml = (await import("js-yaml")).default;
-      newCode = yaml.dump(updatedData);
+      newCode = yaml.dump(nextUpdatedData);
     } catch {
-      newCode = JSON.stringify(updatedData, null, 2);
+      newCode = JSON.stringify(nextUpdatedData, null, 2);
     }
   } else {
-    newCode = JSON.stringify(updatedData, null, 2);
+    newCode = JSON.stringify(nextUpdatedData, null, 2);
   }
   setCode(newCode);
-  return updatedData;
+  return nextUpdatedData;
 }
 
 export async function addNewTodoToWorkspace(
@@ -336,21 +338,21 @@ export async function addNewTodoToWorkspace(
   }
 
   const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
-  setValueAtPath(updatedData, nodePath, finalVal);
+  const nextUpdatedData = setValueAtPath(updatedData, nodePath, finalVal);
 
   let newCode = "";
   if (codeFormat === "yaml") {
     try {
       const yaml = (await import("js-yaml")).default;
-      newCode = yaml.dump(updatedData);
+      newCode = yaml.dump(nextUpdatedData);
     } catch {
-      newCode = JSON.stringify(updatedData, null, 2);
+      newCode = JSON.stringify(nextUpdatedData, null, 2);
     }
   } else {
-    newCode = JSON.stringify(updatedData, null, 2);
+    newCode = JSON.stringify(nextUpdatedData, null, 2);
   }
   setCode(newCode);
-  return updatedData;
+  return nextUpdatedData;
 }
 
 // --- Helper: fuzzy match algorithm ---
@@ -641,6 +643,7 @@ export default function ProductivityLayer() {
 
   // Dialog opened states
   const [isTodoOpen, setIsTodoOpen] = useState(false);
+  const wasTodoOpenRef = useRef(false);
   const [isFileOpen, setIsFileOpen] = useState(false);
 
   // Search input state
@@ -662,8 +665,33 @@ export default function ProductivityLayer() {
   // New task creation states
   const [isCreatingTodo, setIsCreatingTodo] = useState(false);
   const [newTodoText, setNewTodoText] = useState("");
+  const [isNewTodoFocused, setIsNewTodoFocused] = useState(false);
+  const [isDetailTitleFocused, setIsDetailTitleFocused] = useState(false);
   const [selectedNodePath, setSelectedNodePath] = useState("");
   const [targetParentTaskId, setTargetParentTaskId] = useState("");
+
+  // List/Todo Node Navigation & Default Selection states
+  const [todoCenterMode, setTodoCenterMode] = useState<"nodes_list" | "tasks_list">("tasks_list");
+  const [defaultTodoNodeId, setDefaultTodoNodeIdState] = useState<string | null>(() => 
+    localStorage.getItem("productivity_default_todo_node")
+  );
+
+  const setDefaultTodoNodeId = (id: string | null) => {
+    setDefaultTodoNodeIdState(id);
+    if (id) {
+      localStorage.setItem("productivity_default_todo_node", id);
+    } else {
+      localStorage.removeItem("productivity_default_todo_node");
+    }
+  };
+
+  // Create new .todo node (list) states
+  const [isCreatingTodoNode, setIsCreatingTodoNode] = useState(false);
+  const [newTodoNodeName, setNewTodoNodeName] = useState("");
+
+  // Dropdown open states
+  const [isDefaultDropdownOpen, setIsDefaultDropdownOpen] = useState(false);
+  const [isDetailDefaultDropdownOpen, setIsDetailDefaultDropdownOpen] = useState(false);
 
   // Inline subtask states
   const [inlineSubParentId, setInlineSubParentId] = useState<string | null>(null);
@@ -805,13 +833,17 @@ export default function ProductivityLayer() {
   const allWorkspaceTodos = useMemo(() => scanAllTodos(parsedData), [parsedData]);
 
   const filteredTodos = useMemo(() => {
+    const todosForNode = selectedNodePath
+      ? allWorkspaceTodos.filter(t => t.nodePath === selectedNodePath)
+      : allWorkspaceTodos;
+
     if (!todoSearch.trim()) {
       // Default grouping order: Overdue first, then High priority, then Pinned, then Chronological Active
-      return allWorkspaceTodos;
+      return todosForNode;
     }
 
     const q = todoSearch.toLowerCase().trim();
-    const matched = allWorkspaceTodos
+    const matched = todosForNode
       .map(t => {
         const scText = scoreFuzzy(t.text || "", q);
         const scNotes = scoreFuzzy(t.notes || "", q);
@@ -829,7 +861,7 @@ export default function ProductivityLayer() {
       .map(x => x.item);
 
     return matched;
-  }, [allWorkspaceTodos, todoSearch]);
+  }, [allWorkspaceTodos, todoSearch, selectedNodePath]);
 
   // Auto bounds selector checks
   useEffect(() => {
@@ -868,21 +900,42 @@ export default function ProductivityLayer() {
 
   // Keyboard navigation for Todo Center overlays
   const handleTodoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedTodoIdx((prev) => (prev + 1) % Math.max(1, filteredTodos.length));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedTodoIdx((prev) => (prev - 1 + filteredTodos.length) % Math.max(1, filteredTodos.length));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const target = filteredTodos[selectedTodoIdx];
-      if (target) {
-        setActiveTodo(target);
+    if (todoCenterMode === "nodes_list") {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedTodoIdx((prev) => (prev + 1) % Math.max(1, allTodoFiles.length));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedTodoIdx((prev) => (prev - 1 + allTodoFiles.length) % Math.max(1, allTodoFiles.length));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const target = allTodoFiles[selectedTodoIdx];
+        if (target) {
+          setSelectedNodePath(target.id);
+          setTodoCenterMode("tasks_list");
+          setSelectedTodoIdx(0);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsTodoOpen(false);
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setIsTodoOpen(false);
+    } else {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedTodoIdx((prev) => (prev + 1) % Math.max(1, filteredTodos.length));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedTodoIdx((prev) => (prev - 1 + filteredTodos.length) % Math.max(1, filteredTodos.length));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const target = filteredTodos[selectedTodoIdx];
+        if (target) {
+          setActiveTodo(target);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsTodoOpen(false);
+      }
     }
   };
 
@@ -1005,10 +1058,60 @@ export default function ProductivityLayer() {
   }, [allWorkspaceFiles]);
 
   useEffect(() => {
-    if (allTodoFiles.length > 0 && !selectedNodePath) {
-      setSelectedNodePath(allTodoFiles[0].id);
+    if (isTodoOpen && !wasTodoOpenRef.current) {
+      if (allTodoFiles.length === 0) {
+        setTodoCenterMode("tasks_list");
+      } else if (allTodoFiles.length === 1) {
+        setSelectedNodePath(allTodoFiles[0].id);
+        setTodoCenterMode("tasks_list");
+      } else {
+        const foundDefault = allTodoFiles.find(f => f.id === defaultTodoNodeId);
+        if (foundDefault) {
+          setSelectedNodePath(foundDefault.id);
+          setTodoCenterMode("tasks_list");
+        } else {
+          setTodoCenterMode("nodes_list");
+          setSelectedTodoIdx(0);
+        }
+      }
     }
-  }, [allTodoFiles, selectedNodePath]);
+    wasTodoOpenRef.current = isTodoOpen;
+  }, [isTodoOpen, allTodoFiles, defaultTodoNodeId]);
+
+  const handleCreateTodoNodeSubmit = async () => {
+    if (!newTodoNodeName.trim()) return;
+    try {
+      const cleanName = newTodoNodeName.trim();
+      const finalKey = cleanName.replace(/\s+/g, "_") + "_todo_node";
+      const initialValue = JSON.stringify({ title: cleanName, tasks: [] }, null, 2);
+      
+      const { parsedData, setCode, codeFormat } = useStore.getState();
+      const updatedData = JSON.parse(JSON.stringify(parsedData));
+      
+      const nextUpdatedData = setValueAtPath(updatedData, `root.${finalKey}`, initialValue);
+      
+      let newCode = "";
+      if (codeFormat === "yaml") {
+        try {
+          const yaml = (await import("js-yaml")).default;
+          newCode = yaml.dump(nextUpdatedData);
+        } catch {
+          newCode = JSON.stringify(nextUpdatedData, null, 2);
+        }
+      } else {
+        newCode = JSON.stringify(nextUpdatedData, null, 2);
+      }
+      setCode(newCode);
+      
+      const newPathId = `root.${finalKey}`;
+      setSelectedNodePath(newPathId);
+      setNewTodoNodeName("");
+      setIsCreatingTodoNode(false);
+      setTodoCenterMode("tasks_list");
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleCreateTodoSubmit = async () => {
     if (!newTodoText.trim() || !selectedNodePath) return;
@@ -1078,7 +1181,12 @@ export default function ProductivityLayer() {
                       setFileSearch(e.target.value.replace(/^~/, ''));
                       setSelectedFileIdx(0);
                     }}
-                    onKeyDown={handleFileKeyDown}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
+                        e.stopPropagation();
+                      }
+                      handleFileKeyDown(e);
+                    }}
                     placeholder="Search files fuzzy matching (glob pattern search allowed here, Shift+~ to close)..."
                     className="w-full text-sm font-mono bg-transparent border-none outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-550"
                   />
@@ -1193,33 +1301,207 @@ export default function ProductivityLayer() {
                       setTodoSearch(e.target.value);
                       setSelectedTodoIdx(0);
                     }}
-                    onKeyDown={handleTodoKeyDown}
-                    placeholder="Search all todos, filter by Priority, Status, Label (Alt + T to close)..."
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
+                        e.stopPropagation();
+                      }
+                      handleTodoKeyDown(e);
+                    }}
+                    placeholder={
+                      todoCenterMode === "nodes_list"
+                        ? "Navigate through lists (arrow keys)..."
+                        : "Search tasks, filter by Priority, Status, Label (Alt + T to close)..."
+                    }
                     className="w-full text-sm font-sans bg-transparent border-none outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-550"
                   />
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => setIsCreatingTodo(prev => !prev)}
+                      onClick={() => {
+                        setIsCreatingTodoNode(prev => !prev);
+                        setIsCreatingTodo(false);
+                      }}
                       className={cn(
                         "px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors flex items-center gap-1",
-                        isCreatingTodo
-                          ? "bg-emerald-600 text-white"
-                          : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                        isCreatingTodoNode
+                          ? "bg-amber-600 text-white"
+                          : "bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
                       )}
                     >
-                      + Create
+                      + New List
                     </button>
-                    <button
-                      onClick={() => setTodoViewMode(prev => prev === "tree" ? "flat" : "tree")}
-                      className={cn("px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors", todoViewMode === "tree" ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}
-                    >
-                      {todoViewMode === "tree" ? "Tree View" : "Flat List"}
-                    </button>
+                    {todoCenterMode === "tasks_list" && allTodoFiles.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setIsCreatingTodo(prev => !prev);
+                          setIsCreatingTodoNode(false);
+                        }}
+                        className={cn(
+                          "px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors flex items-center gap-1",
+                          isCreatingTodo
+                            ? "bg-emerald-600 text-white"
+                            : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                        )}
+                      >
+                        + Create
+                      </button>
+                    )}
+                    {todoCenterMode === "tasks_list" && allTodoFiles.length > 0 && (
+                      <button
+                        onClick={() => setTodoViewMode(prev => prev === "tree" ? "flat" : "tree")}
+                        className={cn("px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors", todoViewMode === "tree" ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}
+                      >
+                        {todoViewMode === "tree" ? "Tree View" : "Flat List"}
+                      </button>
+                    )}
                     <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-500 font-bold font-mono ml-2">
                       Alt + T
                     </div>
                   </div>
                 </div>
+
+                {isCreatingTodoNode && (
+                  <div className="px-4 py-3.5 bg-slate-50 dark:bg-[#111622] border-b border-slate-100 dark:border-slate-800/80 flex flex-col gap-3 select-none animate-in slide-in-from-top-2 duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                        Create New Todo List
+                      </span>
+                      <button 
+                        onClick={() => setIsCreatingTodoNode(false)} 
+                        className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newTodoNodeName}
+                        onChange={(e) => setNewTodoNodeName(e.target.value)}
+                        placeholder="Type list name (e.g. Work, Personal)..."
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleCreateTodoNodeSubmit();
+                          }
+                        }}
+                        className="flex-1 text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 focus:border-amber-500 transition-colors"
+                      />
+                      <button
+                        onClick={handleCreateTodoNodeSubmit}
+                        disabled={!newTodoNodeName.trim()}
+                        className="p-2.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer bg-amber-600 hover:bg-amber-500"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Subheader for current todo list in tasks_list mode */}
+                {todoCenterMode === "tasks_list" && allTodoFiles.length > 0 && (
+                  <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-[#0c1017] border-b border-slate-100 dark:border-slate-800/80 text-[11px]">
+                    <div className="flex items-center gap-2 text-slate-650 dark:text-slate-400">
+                      {allTodoFiles.length > 1 && (
+                        <button
+                          onClick={() => setTodoCenterMode("nodes_list")}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-150 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 font-bold text-[9px] text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                        >
+                          <ChevronLeft size={10} />
+                          All Lists
+                        </button>
+                      )}
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {allTodoFiles.find(f => f.id === selectedNodePath)?.name || "Task List"}
+                      </span>
+                      {allTodoFiles.length > 1 && (
+                        <button
+                          onClick={() => {
+                            if (selectedNodePath) {
+                              setDefaultTodoNodeId(defaultTodoNodeId === selectedNodePath ? null : selectedNodePath);
+                            }
+                          }}
+                          className="text-amber-500 hover:scale-110 active:scale-95 transition-transform"
+                          title={defaultTodoNodeId === selectedNodePath ? "Remove as default list" : "Set as default list"}
+                        >
+                          <Star 
+                            size={12} 
+                            fill={defaultTodoNodeId === selectedNodePath ? "currentColor" : "none"} 
+                            className={cn(defaultTodoNodeId === selectedNodePath ? "text-amber-500 animate-pulse" : "text-slate-300 dark:text-slate-600")}
+                          />
+                        </button>
+                      )}
+                    </div>
+                    
+                    {allTodoFiles.length > 1 && (
+                      <div className="flex items-center gap-1.5 font-mono text-[9px] text-slate-400 relative">
+                        <span>Default:</span>
+                        <div className="relative">
+                          <button
+                            onClick={() => setIsDefaultDropdownOpen(prev => !prev)}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-350 hover:border-amber-500/50 hover:text-slate-800 dark:hover:text-slate-200 transition-colors font-sans text-[10px] font-semibold cursor-pointer shrink-0"
+                          >
+                            <span className="truncate max-w-[80px]">
+                              {allTodoFiles.find(f => f.id === defaultTodoNodeId)?.name || "(None)"}
+                            </span>
+                            <ChevronDown size={10} className="text-slate-400" />
+                          </button>
+                          
+                          <AnimatePresence>
+                            {isDefaultDropdownOpen && (
+                              <>
+                                {/* Backdrop click listener */}
+                                <div className="fixed inset-0 z-40" onClick={() => setIsDefaultDropdownOpen(false)} />
+                                
+                                <motion.div
+                                  initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                                  transition={{ duration: 0.1 }}
+                                  className="absolute right-0 mt-1.5 w-36 bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 text-[10px] font-sans text-slate-750 dark:text-slate-300 overflow-hidden"
+                                >
+                                  <button
+                                    onClick={() => {
+                                      setDefaultTodoNodeId(null);
+                                      setIsDefaultDropdownOpen(false);
+                                    }}
+                                    className={cn(
+                                      "w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors font-medium",
+                                      !defaultTodoNodeId && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
+                                    )}
+                                  >
+                                    <span>(None)</span>
+                                    {!defaultTodoNodeId && <Check size={11} className="text-amber-500 shrink-0" />}
+                                  </button>
+                                  {allTodoFiles.map(f => {
+                                    const isSelected = f.id === defaultTodoNodeId;
+                                    return (
+                                      <button
+                                        key={f.id}
+                                        onClick={() => {
+                                          setDefaultTodoNodeId(f.id);
+                                          setIsDefaultDropdownOpen(false);
+                                        }}
+                                        className={cn(
+                                          "w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors truncate font-medium",
+                                          isSelected && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
+                                        )}
+                                      >
+                                        <span className="truncate mr-2">{f.name}</span>
+                                        {isSelected && <Check size={11} className="text-amber-500 shrink-0" />}
+                                      </button>
+                                    );
+                                  })}
+                                </motion.div>
+                              </>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {isCreatingTodo && (
                   <div className="px-4 py-3.5 bg-slate-50 dark:bg-[#111622] border-b border-slate-100 dark:border-slate-800/80 flex flex-col gap-3 select-none">
@@ -1251,7 +1533,7 @@ export default function ProductivityLayer() {
                           className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2 outline-none text-slate-850 dark:text-slate-200 cursor-pointer"
                         >
                           {allTodoFiles.map((file) => (
-                            <option key={file.id} value={file.id}>
+                            <option key={file.id} value={file.id} className="bg-white dark:bg-[#161d2b] text-slate-800 dark:text-slate-100">
                               {file.name}
                             </option>
                           ))}
@@ -1268,11 +1550,11 @@ export default function ProductivityLayer() {
                           onChange={(e) => setTargetParentTaskId(e.target.value)}
                           className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2 outline-none text-slate-850 dark:text-slate-200 cursor-pointer"
                         >
-                          <option value="">None (Top Level Root Task)</option>
+                          <option value="" className="bg-white dark:bg-[#161d2b] text-slate-800 dark:text-slate-100">None (Top Level Root Task)</option>
                           {allWorkspaceTodos
                             .filter((t) => t.nodePath === selectedNodePath)
                             .map((t) => (
-                              <option key={t.id} value={t.id}>
+                              <option key={t.id} value={t.id} className="bg-white dark:bg-[#161d2b] text-slate-800 dark:text-slate-100">
                                 {"— ".repeat(t.depth || 0)}{t.text}
                               </option>
                             ))}
@@ -1281,19 +1563,29 @@ export default function ProductivityLayer() {
                     </div>
 
                     {/* Task text bar and Submit button */}
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={newTodoText}
-                        onChange={(e) => setNewTodoText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleCreateTodoSubmit();
-                          }
-                        }}
-                        placeholder="Type task details and press Enter to save..."
-                        className="flex-1 text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 focus:border-blue-500 transition-colors"
-                      />
+                    <div className="flex items-center gap-2 w-full">
+                      <div className="relative flex-1 flex items-center">
+                        <input
+                          type="text"
+                          maxLength={100}
+                          value={newTodoText}
+                          onChange={(e) => setNewTodoText(e.target.value)}
+                          onFocus={() => setIsNewTodoFocused(true)}
+                          onBlur={() => setIsNewTodoFocused(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleCreateTodoSubmit();
+                            }
+                          }}
+                          placeholder="Type task details and press Enter to save..."
+                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 focus:border-blue-500 transition-colors pr-16"
+                        />
+                        {isNewTodoFocused && (
+                          <span className="absolute right-3 text-[9px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 py-0.5 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10 animate-in fade-in duration-100 animate-out fade-out">
+                            Max: 100 | Remaining: {100 - newTodoText.length}
+                          </span>
+                        )}
+                      </div>
                       <button
                         onClick={handleCreateTodoSubmit}
                         disabled={!newTodoText.trim() || !selectedNodePath}
@@ -1310,7 +1602,110 @@ export default function ProductivityLayer() {
                   ref={todoCenterListEl}
                   className="flex-1 overflow-y-auto py-1.5 divide-y divide-slate-50 dark:divide-slate-900/40"
                 >
-                  {filteredTodos.length === 0 ? (
+                  {allTodoFiles.length === 0 ? (
+                    <div className="p-10 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center gap-3">
+                      <ClipboardList size={32} className="text-slate-300 dark:text-slate-700 animate-bounce" />
+                      <div className="text-sm font-bold text-slate-700 dark:text-slate-300">No Todo Lists Found</div>
+                      <span className="text-xs max-w-[320px] leading-relaxed">
+                        Create your first todo list below to start adding tasks and organizing your workspace.
+                      </span>
+                      <div className="flex flex-col gap-2 w-full max-w-[320px] mt-2">
+                        <input
+                          type="text"
+                          value={newTodoNodeName}
+                          onChange={(e) => setNewTodoNodeName(e.target.value)}
+                          placeholder="Type list name (e.g. Tasks, Work)..."
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleCreateTodoNodeSubmit();
+                            }
+                          }}
+                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 text-center"
+                        />
+                        <button
+                          onClick={handleCreateTodoNodeSubmit}
+                          disabled={!newTodoNodeName.trim()}
+                          className="w-full p-2.5 text-white text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors disabled:opacity-40"
+                        >
+                          Create First Todo List
+                        </button>
+                      </div>
+                    </div>
+                  ) : todoCenterMode === "nodes_list" ? (
+                    <div className="px-2.5 py-1.5 space-y-1">
+                      <div className="px-3.5 py-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                        Select a Todo List to view tasks
+                      </div>
+                      {allTodoFiles.map((file, idx) => {
+                        const isSelected = idx === selectedTodoIdx;
+                        const isDefault = file.id === defaultTodoNodeId;
+                        
+                        // Count tasks in this list
+                        const listTasks = allWorkspaceTodos.filter(t => t.nodePath === file.id);
+                        const completedCount = listTasks.filter(t => t.completed || t.status === "Completed").length;
+                        
+                        return (
+                          <motion.div
+                            key={file.id}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={cn(
+                              "is-selected-todo flex items-center justify-between px-4 py-3 cursor-pointer transition-all relative select-none mx-1 my-0.5 rounded-xl border group",
+                              isSelected
+                                ? "bg-amber-600/15 border-amber-500/30 dark:bg-amber-600/20 dark:border-amber-500/40 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]"
+                                : "bg-white dark:bg-[#0d1117]/50 border-slate-200/60 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                            )}
+                            onClick={() => {
+                              setSelectedNodePath(file.id);
+                              setTodoCenterMode("tasks_list");
+                              setSelectedTodoIdx(0);
+                            }}
+                          >
+                            {isSelected && (
+                              <div className="absolute left-0 top-3 bottom-3 w-1 bg-amber-500 rounded-r-full shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                            )}
+                            
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              <ClipboardList size={16} className={cn(isSelected ? "text-amber-500" : "text-slate-400")} />
+                              <div className="flex flex-col min-w-0 leading-tight">
+                                <span className={cn(
+                                  "text-xs font-semibold truncate",
+                                  isSelected ? "text-slate-900 dark:text-white" : "text-slate-700 dark:text-slate-300"
+                                )}>
+                                  {file.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                                  {listTasks.length === 0 ? "No tasks" : `${completedCount}/${listTasks.length} tasks completed`}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {isDefault && (
+                                <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                                  <Star size={10} fill="currentColor" />
+                                  Default
+                                </span>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDefaultTodoNodeId(isDefault ? null : file.id);
+                                }}
+                                className={cn(
+                                  "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-slate-100 dark:hover:bg-slate-800",
+                                  isDefault ? "opacity-100 text-amber-500" : "text-slate-400 hover:text-amber-500"
+                                )}
+                                title={isDefault ? "Remove as default" : "Set as default"}
+                              >
+                                <Star size={13} fill={isDefault ? "currentColor" : "none"} />
+                              </button>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  ) : filteredTodos.length === 0 ? (
                     <div className="p-10 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center gap-2">
                       <ClipboardList size={28} className="text-slate-300 dark:text-slate-700" />
                       <span className="text-xs font-semibold">No tasks match your search criteria</span>
@@ -1468,6 +1863,7 @@ export default function ProductivityLayer() {
                                   <div className="bg-slate-50/50 dark:bg-slate-900/20 border border-slate-200/80 dark:border-slate-800/60 rounded-2xl p-4 shadow-inner">
                                     <div className="border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden bg-white dark:bg-[#0d1117] flex flex-col shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)] focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/50 transition-all">
                                       <textarea
+                                        maxLength={100}
                                         autoFocus
                                         rows={1}
                                         value={inlineSubText}
@@ -1496,12 +1892,18 @@ export default function ProductivityLayer() {
                                           }
                                         }}
                                         placeholder="What needs to be done?"
-                                        className="w-full bg-transparent p-4 text-[13px] text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 outline-none resize-none min-h-[50px] transition-height duration-200 font-medium"
+                                        className="w-full bg-transparent p-4 text-[13px] text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 outline-none resize-none min-h-[50px] transition-height duration-200 font-medium pr-16"
                                       />
                                       <div className="flex justify-between items-center px-3 py-2 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800/50">
-                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono pl-1">
-                                          <span className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Esc</span>
-                                          <span>to cancel</span>
+                                        <div className="flex items-center gap-3 text-[10px] text-slate-400 font-mono pl-1">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Esc</span>
+                                            <span>to cancel</span>
+                                          </div>
+                                          <div className="w-px h-3 bg-slate-200 dark:bg-slate-700" />
+                                          <div className="text-blue-500 font-bold">
+                                            {inlineSubText.length}/100
+                                          </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <button
@@ -1641,15 +2043,25 @@ export default function ProductivityLayer() {
                 {/* Body Content Editor */}
                 <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8 custom-scrollbar">
                   {/* Title editor */}
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none px-1">
-                      Task Title
-                    </label>
+                  <div className="space-y-2 relative">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none px-1">
+                        Task Title
+                      </label>
+                      {isDetailTitleFocused && (
+                        <span className="text-[10px] font-mono font-bold text-blue-500 bg-blue-100/60 dark:bg-blue-950/40 px-1.5 py-0.5 rounded shadow-sm border border-blue-200/55 dark:border-blue-900/60 pointer-events-none select-none animate-in fade-in duration-100">
+                          Max: 100 | Remaining: {100 - (activeTodo.text || "").length}
+                        </span>
+                      )}
+                    </div>
                     <textarea
+                      maxLength={100}
                       rows={1}
                       autoFocus
                       value={activeTodo.text || ""}
                       onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "text", e.target.value)}
+                      onFocus={() => setIsDetailTitleFocused(true)}
+                      onBlur={() => setIsDetailTitleFocused(false)}
                       ref={(el) => {
                         if (el) {
                           el.style.height = 'auto';
@@ -1729,6 +2141,77 @@ export default function ProductivityLayer() {
                         </div>
                         <span className="text-[10px] font-mono font-bold text-slate-400">ACTIVE</span>
                       </div>
+
+                      {/* Default Todo Node / List selector (when multiple exist) */}
+                      {allTodoFiles.length > 1 && (
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-150 dark:border-slate-800/80 relative">
+                          <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <Star size={13} className="text-amber-500" fill={defaultTodoNodeId === activeTodo.nodePath ? "currentColor" : "none"} />
+                            <span>Default List</span>
+                          </div>
+                          <div className="relative">
+                            <button
+                              onClick={() => setIsDetailDefaultDropdownOpen(prev => !prev)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-500/50 hover:text-slate-900 dark:hover:text-slate-100 transition-colors font-sans text-[11px] font-bold cursor-pointer"
+                            >
+                              <span className="truncate max-w-[120px]">
+                                {allTodoFiles.find(f => f.id === defaultTodoNodeId)?.name || "None (Always Select)"}
+                              </span>
+                              <ChevronDown size={11} className="text-slate-400" />
+                            </button>
+                            
+                            <AnimatePresence>
+                              {isDetailDefaultDropdownOpen && (
+                                <>
+                                  {/* Backdrop click listener */}
+                                  <div className="fixed inset-0 z-40" onClick={() => setIsDetailDefaultDropdownOpen(false)} />
+                                  
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                                    transition={{ duration: 0.1 }}
+                                    className="absolute right-0 bottom-full mb-1.5 w-44 bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 text-[11px] font-sans text-slate-750 dark:text-slate-300 overflow-hidden"
+                                  >
+                                    <button
+                                      onClick={() => {
+                                        setDefaultTodoNodeId(null);
+                                        setIsDetailDefaultDropdownOpen(false);
+                                      }}
+                                      className={cn(
+                                        "w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors font-medium",
+                                        !defaultTodoNodeId && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
+                                      )}
+                                    >
+                                      <span>None (Always Select)</span>
+                                      {!defaultTodoNodeId && <Check size={12} className="text-amber-500 shrink-0" />}
+                                    </button>
+                                    {allTodoFiles.map(f => {
+                                      const isSelected = f.id === defaultTodoNodeId;
+                                      return (
+                                        <button
+                                          key={f.id}
+                                          onClick={() => {
+                                            setDefaultTodoNodeId(f.id);
+                                            setIsDetailDefaultDropdownOpen(false);
+                                          }}
+                                          className={cn(
+                                            "w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors truncate font-medium",
+                                            isSelected && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
+                                          )}
+                                        >
+                                          <span className="truncate mr-2">{f.name}</span>
+                                          {isSelected && <Check size={12} className="text-amber-500 shrink-0" />}
+                                        </button>
+                                      );
+                                    })}
+                                  </motion.div>
+                                </>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1948,7 +2431,7 @@ export default function ProductivityLayer() {
                 <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-[#090d14] flex items-center justify-between">
                   <div className="flex items-center gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] animate-pulse" />
-                    Live Cloud Sync Active
+                    Secure Local Storage Active
                   </div>
                   <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest opacity-60">
                     Esc to Close

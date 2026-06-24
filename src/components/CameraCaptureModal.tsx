@@ -229,6 +229,147 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
     }
   };
 
+  const handlePresetClick = useCallback((presetValue: number | undefined) => {
+    setAspect(presetValue);
+    
+    const image = imgRef.current;
+    if (!image) {
+      return;
+    }
+
+    const renderedWidth = image.width || image.clientWidth;
+    const renderedHeight = image.height || image.clientHeight;
+    
+    if (renderedWidth <= 0 || renderedHeight <= 0) {
+      // Fallback to natural dimensions if layout is not ready
+      const naturalWidth = image.naturalWidth;
+      const naturalHeight = image.naturalHeight;
+      const imageAspect = naturalWidth / naturalHeight;
+      
+      if (!presetValue) {
+        setCrop({
+          unit: '%',
+          width: 100,
+          height: 100,
+          x: 0,
+          y: 0
+        });
+        setCompletedCrop(null);
+        return;
+      }
+
+      let cropWidthPercent = 100;
+      let cropHeightPercent = 100;
+      let cropXPercent = 0;
+      let cropYPercent = 0;
+
+      if (imageAspect > presetValue) {
+        cropWidthPercent = (presetValue / imageAspect) * 100;
+        cropHeightPercent = 100;
+        cropXPercent = (100 - cropWidthPercent) / 2;
+        cropYPercent = 0;
+      } else {
+        cropWidthPercent = 100;
+        cropHeightPercent = (imageAspect / presetValue) * 100;
+        cropXPercent = 0;
+        cropYPercent = (100 - cropHeightPercent) / 2;
+      }
+
+      setCrop({
+        unit: '%',
+        width: cropWidthPercent,
+        height: cropHeightPercent,
+        x: cropXPercent,
+        y: cropYPercent
+      });
+      return;
+    }
+
+    const imageAspect = renderedWidth / renderedHeight;
+
+    if (!presetValue) {
+      const newCrop: Crop = {
+        unit: '%',
+        width: 100,
+        height: 100,
+        x: 0,
+        y: 0
+      };
+      setCrop(newCrop);
+      setCompletedCrop({
+        unit: 'px',
+        x: 0,
+        y: 0,
+        width: renderedWidth,
+        height: renderedHeight
+      });
+      return;
+    }
+
+    let cropWidthPercent = 100;
+    let cropHeightPercent = 100;
+    let cropXPercent = 0;
+    let cropYPercent = 0;
+
+    if (imageAspect > presetValue) {
+      cropWidthPercent = (presetValue / imageAspect) * 100;
+      cropHeightPercent = 100;
+      cropXPercent = (100 - cropWidthPercent) / 2;
+      cropYPercent = 0;
+    } else {
+      cropWidthPercent = 100;
+      cropHeightPercent = (imageAspect / presetValue) * 100;
+      cropXPercent = 0;
+      cropYPercent = (100 - cropHeightPercent) / 2;
+    }
+
+    setCrop({
+      unit: '%',
+      width: cropWidthPercent,
+      height: cropHeightPercent,
+      x: cropXPercent,
+      y: cropYPercent
+    });
+
+    const pixelWidth = (cropWidthPercent / 100) * renderedWidth;
+    const pixelHeight = (cropHeightPercent / 100) * renderedHeight;
+    const pixelX = (cropXPercent / 100) * renderedWidth;
+    const pixelY = (cropYPercent / 100) * renderedHeight;
+
+    setCompletedCrop({
+      unit: 'px',
+      x: pixelX,
+      y: pixelY,
+      width: pixelWidth,
+      height: pixelHeight
+    });
+  }, [aspect]);
+
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const renderedWidth = img.width || img.clientWidth;
+    const renderedHeight = img.height || img.clientHeight;
+    
+    if (aspect) {
+      handlePresetClick(aspect);
+    } else {
+      setCrop({
+        unit: '%',
+        width: 100,
+        height: 100,
+        x: 0,
+        y: 0
+      });
+      setCompletedCrop({
+        unit: 'px',
+        x: 0,
+        y: 0,
+        width: renderedWidth || img.naturalWidth,
+        height: renderedHeight || img.naturalHeight
+      });
+    }
+  }, [aspect, handlePresetClick]);
+
   const renderCropPresets = () => (
     <div className="flex gap-2 p-3 overflow-x-auto no-scrollbar bg-black items-center shrink-0 w-full z-10 bottom-safe">
       {[ 
@@ -240,11 +381,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
       ].map(preset => (
         <button 
           key={preset.label}
-          onClick={() => {
-             setAspect(preset.value);
-             if (preset.value) setCrop(c => ({...c, aspect: preset.value}));
-             else setCrop(c => ({...c, aspect: undefined}));
-          }}
+          onClick={() => handlePresetClick(preset.value)}
           className={cn(
             "px-4 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-colors", 
             aspect === preset.value ? "bg-blue-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
@@ -355,6 +492,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
                      <img 
                         ref={imgRef}
                         src={capturedImage} 
+                        onLoad={handleImageLoad}
                         style={{ transform: `rotate(${rotation}deg)`, maxHeight: '80vh', objectFit: 'contain' }}
                         alt="Captured"
                      />

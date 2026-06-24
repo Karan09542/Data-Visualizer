@@ -1933,38 +1933,44 @@ function TodoWorkspaceItem({
         {/* Core title editor */}
         <div className="flex-1 flex flex-col min-w-0 gap-1">
           {isEditingTitle ? (
-            <textarea
-              id={`input-${task.id}`}
-              className={cn(
-                "w-full bg-slate-150/40 dark:bg-[#161b22]/50 border border-slate-200/50 dark:border-[#21262d] rounded-md outline-none text-[13px] font-semibold px-2 py-1 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/60 min-h-[38px] resize-none overflow-hidden transition-all",
-                isCompleted
-                  ? "line-through text-slate-400 dark:text-slate-600"
-                  : "text-slate-800 dark:text-slate-100",
-              )}
-              value={task.text}
-              placeholder="New Task... (Press Enter)"
-              onChange={(e) => onUpdate(task.id, { text: e.target.value })}
-              onBlur={() => {
-                setIsEditingTitle(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
+            <div className="relative w-full flex flex-col">
+              <textarea
+                id={`input-${task.id}`}
+                maxLength={100}
+                className={cn(
+                  "w-full bg-slate-150/40 dark:bg-[#161b22]/50 border border-slate-200/50 dark:border-[#21262d] rounded-md outline-none text-[13px] font-semibold pl-2 pr-14 py-1 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/60 min-h-[38px] resize-none overflow-hidden transition-all",
+                  isCompleted
+                    ? "line-through text-slate-400 dark:text-slate-600"
+                    : "text-slate-800 dark:text-slate-100",
+                )}
+                value={task.text}
+                placeholder="New Task... (Press Enter)"
+                onChange={(e) => onUpdate(task.id, { text: e.target.value })}
+                onBlur={() => {
                   setIsEditingTitle(false);
-                }
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              ref={(el) => {
-                if (el) {
-                  el.focus();
-                  const len = el.value.length;
-                  el.setSelectionRange(len, len);
-                }
-              }}
-            />
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    setIsEditingTitle(false);
+                  }
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                ref={(el) => {
+                  if (el) {
+                    el.focus();
+                    const len = el.value.length;
+                    el.setSelectionRange(len, len);
+                  }
+                }}
+              />
+              <span className="absolute right-1.5 bottom-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10">
+                {task.text.length}/100
+              </span>
+            </div>
           ) : (
             <input
               id={`input-${task.id}`}
@@ -2515,6 +2521,7 @@ function TodoTaskDetails({
   const hasIncompleteChildren = !isFlatList && checkHasIncompleteChildren(foundTask.tasks);
 
   const [isEditingNotesInDetails, setIsEditingNotesInDetails] = useState(false);
+  const [isDetailTitleFocused, setIsDetailTitleFocused] = useState(false);
 
   // Controlled dropdown open states for reliable popup toggles
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -2656,11 +2663,14 @@ function TodoTaskDetails({
 
       <div className="flex-1 overflow-y-auto px-5 pb-12 pt-5 custom-scrollbar flex flex-col gap-6">
         {/* Title input field auto growers */}
-        <div className="flex flex-col -ml-1">
+        <div className="flex flex-col -ml-1 relative">
           <textarea
+            maxLength={100}
             value={foundTask.text || ""}
             onChange={(e) => onUpdate(foundTask!.id, { text: e.target.value })}
-            className="w-full bg-transparent border-transparent text-2xl font-bold tracking-tight text-slate-900 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 focus:ring-0 resize-none overflow-hidden leading-tight p-1 focus:border-transparent"
+            onFocus={() => setIsDetailTitleFocused(true)}
+            onBlur={() => setIsDetailTitleFocused(false)}
+            className="w-full bg-transparent border-transparent text-2xl font-bold tracking-tight text-slate-900 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 focus:ring-0 resize-none overflow-hidden leading-tight p-1 focus:border-transparent pr-16"
             placeholder="Untitled Task"
             rows={1}
             onInput={(e) => {
@@ -2675,6 +2685,11 @@ function TodoTaskDetails({
               }
             }}
           />
+          {isDetailTitleFocused && (
+            <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-blue-500 bg-blue-100 dark:bg-blue-950/40 px-1.5 py-0.5 rounded shadow-sm border border-blue-200 dark:border-blue-900 pointer-events-none select-none z-10 animate-in fade-in duration-100">
+              {(foundTask.text || "").length}/100
+            </span>
+          )}
         </div>
 
         {/* Metadatas select list */}

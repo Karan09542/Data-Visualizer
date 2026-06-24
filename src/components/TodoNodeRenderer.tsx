@@ -77,6 +77,8 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
   const [activeMenuTaskId, setActiveMenuTaskId] = useState<string | null>(null);
+  const [isTitleFocused, setIsTitleFocused] = useState(false);
+  const [isFooterInputFocused, setIsFooterInputFocused] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const serializedValue = typeof data?.value === "object" && data?.value !== null
@@ -622,18 +624,28 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 dark:bg-[#1e40af]/20 border border-blue-200 dark:border-[#3b82f6]/30 shadow-[0_0_12px_rgba(59,130,246,0.25)] text-blue-400 shrink-0">
             <ListTodo size={17} />
           </div>
-          <div className="flex flex-col min-w-0">
+          <div className="flex flex-col min-w-0 flex-1">
             <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none mb-0.5 select-none font-bold truncate max-w-full">
               node: {typeof data.name === "string" ? data.name.replace("_todo_node", "").replace(".todo", "") : "tasks"}
             </span>
-            <input
-              type="text"
-              className="font-bold text-[15px] leading-tight text-slate-800 dark:text-slate-100 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-blue-500/30 rounded px-1 -ml-1 transition-all"
-              value={todoData.title || "Tasks"}
-              onChange={(e) => saveTodoData({ ...todoData, title: e.target.value })}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-            />
+            <div className="relative w-full flex items-center">
+              <input
+                type="text"
+                maxLength={50}
+                className="font-bold text-[15px] leading-tight text-slate-800 dark:text-slate-100 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-blue-500/30 rounded px-1 -ml-1 transition-all pr-12"
+                value={todoData.title || "Tasks"}
+                onChange={(e) => saveTodoData({ ...todoData, title: e.target.value })}
+                onFocus={() => setIsTitleFocused(true)}
+                onBlur={() => setIsTitleFocused(false)}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+              {isTitleFocused && (
+                <span className="absolute right-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 py-0.5 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10 animate-in fade-in duration-100">
+                  {todoData.title?.length || 0}/50
+                </span>
+              )}
+            </div>
           </div>
           <span className="text-[11px] font-semibold text-blue-400 bg-blue-500/15 px-2.5 py-0.5 rounded-full border border-blue-500/10 shrink-0">
             {completed} / {total}
@@ -806,44 +818,50 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                   {/* Title */}
                   {editingTaskId === task.id ? (
-                    <textarea
-                      value={editingText}
-                      onChange={(e) => {
-                        setEditingText(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          saveEditedTaskName(task.id, editingText);
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setEditingTaskId(null);
-                        } else if (e.key === "Tab") {
-                          e.preventDefault();
-                          if (e.shiftKey) {
+                    <div className="relative w-full flex flex-col">
+                      <textarea
+                        maxLength={100}
+                        value={editingText}
+                        onChange={(e) => {
+                          setEditingText(e.target.value);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
                             saveEditedTaskName(task.id, editingText);
-                            outdentTask(task.id);
-                          } else {
-                            saveEditedTaskName(task.id, editingText);
-                            indentTask(task.id);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setEditingTaskId(null);
+                          } else if (e.key === "Tab") {
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                              saveEditedTaskName(task.id, editingText);
+                              outdentTask(task.id);
+                            } else {
+                              saveEditedTaskName(task.id, editingText);
+                              indentTask(task.id);
+                            }
                           }
-                        }
-                      }}
-                      onBlur={() => saveEditedTaskName(task.id, editingText)}
-                      autoFocus
-                      rows={1}
-                      className="bg-white dark:bg-[#111625] text-slate-800 dark:text-white text-[12.5px] px-1.5 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal resize-none overflow-hidden"
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      style={{ minHeight: "24px", height: "auto" }}
-                      onFocus={(e) => {
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
-                        e.target.setSelectionRange(e.target.value.length, e.target.value.length);
-                      }}
-                    />
+                        }}
+                        onBlur={() => saveEditedTaskName(task.id, editingText)}
+                        autoFocus
+                        rows={1}
+                        className="bg-white dark:bg-[#111625] text-slate-800 dark:text-white text-[12.5px] pl-1.5 pr-14 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal resize-none overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        style={{ minHeight: "24px", height: "auto" }}
+                        onFocus={(e) => {
+                          e.target.style.height = 'auto';
+                          e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
+                          e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+                        }}
+                      />
+                      <span className="absolute right-1 bottom-0.5 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10">
+                        {editingText.length}/100
+                      </span>
+                    </div>
                   ) : (
                     <span 
                       className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${
@@ -935,13 +953,23 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
         >
           <Plus size={12} />
         </button>
-        <input 
-          type="text"
-          placeholder="Add new task..."
-          value={newTaskText}
-          onChange={(e) => setNewTaskText(e.target.value)}
-          className="bg-transparent border-none outline-none text-xs text-slate-800 dark:text-slate-100 placeholder-slate-500 w-full focus:ring-0"
-        />
+        <div className="relative flex-1 flex items-center min-w-0">
+          <input 
+            type="text"
+            maxLength={100}
+            placeholder="Add new task..."
+            value={newTaskText}
+            onChange={(e) => setNewTaskText(e.target.value)}
+            onFocus={() => setIsFooterInputFocused(true)}
+            onBlur={() => setIsFooterInputFocused(false)}
+            className="bg-transparent border-none outline-none text-xs text-slate-800 dark:text-slate-100 placeholder-slate-500 w-full focus:ring-0 pr-14"
+          />
+          {isFooterInputFocused && (
+            <span className="absolute right-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none">
+              {newTaskText.length}/100
+            </span>
+          )}
+        </div>
         <button
           type="submit"
           className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shrink-0"

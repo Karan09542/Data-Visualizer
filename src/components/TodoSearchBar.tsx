@@ -281,7 +281,12 @@ export function TodoSearchBar({
             }}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
+                e.stopPropagation();
+              }
+              handleKeyDown(e);
+            }}
             placeholder={filters.length === 0 && !inputValue ? "Search tasks... (Ctrl+K)" : ""}
             className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-xs font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 p-0 h-full"
             spellCheck={false}

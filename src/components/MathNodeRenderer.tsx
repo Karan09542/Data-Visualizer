@@ -63,6 +63,7 @@ import { useStore } from "../store/useStore";
 import { HexAlphaColorPicker } from "react-colorful";
 import { liveQuery } from "dexie";
 import { db } from "../lib/db";
+import MathHelpPopup from "./MathHelpPopup";
 
 const InsertAboveIcon = ({
   size = 14,
@@ -2449,6 +2450,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") setIsShiftPressed(true);
+
+      // Keyboard shortcuts for Math Graph Help Center
+      if (
+        e.key === "F1" ||
+        (e.altKey && (e.key === "h" || e.key === "H")) ||
+        (e.ctrlKey && e.key === "/")
+      ) {
+        e.preventDefault();
+        setShowHelp(true);
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Shift") setIsShiftPressed(false);
@@ -3350,6 +3361,26 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     ]);
   };
 
+  const handleInsertFunctionFromHelp = (formula: {
+    type: "function" | "parametric" | "point" | "implicit" | "polar" | "vector" | "polygon" | "inequality" | "line";
+    expr: string;
+    expr2?: string;
+    name?: string;
+  }) => {
+    setFunctions((prev) => [
+      ...prev,
+      {
+        id: generateSafeId(),
+        expr: formula.expr,
+        expr2: formula.expr2,
+        name: formula.name || "",
+        color: COLORS[prev.length % COLORS.length],
+        visible: true,
+        type: formula.type,
+      },
+    ]);
+  };
+
   const handleAddFunctionAt = (
     targetFnId: string,
     position: "above" | "below",
@@ -3777,10 +3808,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           </button>
           <button
             onClick={() => setShowHelp(true)}
-            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-            title="Help & Info"
+            className="px-1.5 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 rounded transition-all text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 text-xs"
+            title="Help & Documentation (F1 / Alt+H)"
           >
-            <HelpCircle size={16} />
+            <HelpCircle size={14} />
+            <span>Help</span>
           </button>
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
@@ -8810,238 +8842,11 @@ return (
         </div>
 
         {/* Help Modal Overlay */}
-        {showHelp &&
-          createPortal(
-            <div className="fixed inset-0 z-[99999] bg-slate-900/60 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-6">
-              <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 shadow-2xl rounded-xl w-full max-w-2xl max-h-full flex flex-col nodrag cursor-default text-slate-800 dark:text-slate-200">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 rounded-t-xl">
-                  <h3 className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <HelpCircle size={18} className="text-blue-400" />
-                    Advanced Math Graph Guide
-                  </h3>
-                  <button
-                    onClick={() => setShowHelp(false)}
-                    className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white rounded transition-colors"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="p-5 overflow-y-auto custom-scrollbar flex flex-col gap-6 text-sm text-slate-600 dark:text-slate-300">
-                  <section>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                      Mathematical Elements (Types)
-                    </h4>
-                    <p className="mb-2">
-                      Click the type selector on the left of any equation to
-                      change its type and behavior:
-                    </p>
-                    <ul className="space-y-2">
-                      <li>
-                        <strong className="text-blue-400">
-                          y = (Function)
-                        </strong>{" "}
-                        Standard Cartesian functions. Example:{" "}
-                        <code>sin(x)</code>
-                      </li>
-                      <li>
-                        <strong className="text-blue-400">r = (Polar)</strong>{" "}
-                        Polar coordinates using 't' or 'theta'. Example:{" "}
-                        <code>sin(5*t)</code>
-                      </li>
-                      <li>
-                        <strong className="text-blue-400">
-                          [x,y] = (Parametric)
-                        </strong>{" "}
-                        Parametric curves. Example:{" "}
-                        <code>[cos(t), sin(t)]</code>
-                      </li>
-                      <li>
-                        <strong className="text-blue-400">
-                          XY = (Implicit)
-                        </strong>{" "}
-                        Express planar curves, conic sections, or{" "}
-                        <strong>matrix equations</strong> set to 0. Example:{" "}
-                        <code>[[x,y,1],[3,4,1],[2,4,1]]=0</code>
-                      </li>
-                      <li>
-                        <strong className="text-blue-400">V = (Vector)</strong>{" "}
-                        Draw a directed vector. Example: <code>[3, 1]</code> or{" "}
-                        <code>A - B</code>
-                      </li>
-                      <li>
-                        <strong className="text-blue-400">P = (Point)</strong>{" "}
-                        Plot points on the graph. Example: <code>[2, 3]</code>
-                      </li>
-                      <li>
-                        <strong className="text-blue-400">
-                          Poly = (Polygon)
-                        </strong>{" "}
-                        Draw a filled polygon connecting points. Example:{" "}
-                        <code>[A, B, C]</code>
-                      </li>
-                    </ul>
-                  </section>
-                  <section>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                      Expressions & Constants
-                    </h4>
-                    <p className="mb-2">
-                      Enter any valid mathematical expression using standard
-                      syntax. Supported by <code>math.js</code>.
-                    </p>
-                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50 font-mono text-xs">
-                      <div className="text-blue-500 dark:text-blue-400 mb-1">
-                        operators:{" "}
-                        <span className="text-slate-700 dark:text-slate-300">
-                          +, -, *, /, ^, %
-                        </span>
-                      </div>
-                      <div className="text-blue-500 dark:text-blue-400 mb-1">
-                        functions:{" "}
-                        <span className="text-slate-700 dark:text-slate-300">
-                          sin(x), cos(x), tan(x), sqrt(x), log(x), exp(x),
-                          abs(x)
-                        </span>
-                      </div>
-                      <div className="text-blue-500 dark:text-blue-400">
-                        constants:{" "}
-                        <span className="text-slate-700 dark:text-slate-300">
-                          pi, e, phi, tau
-                        </span>
-                      </div>
-                    </div>
-                  </section>
-                  <section>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                      Automated Custom Variables
-                    </h4>
-                    <p className="mb-2">
-                      When you type an unknown variable into an expression (like{" "}
-                      <code className="text-blue-400 font-mono">
-                        a, b, m, k, freq
-                      </code>
-                      ), the node will{" "}
-                      <strong>automatically create a slider</strong> for it. You
-                      don't need to manually define them.
-                    </p>
-                    <ul className="list-disc pl-5 space-y-1.5 marker:text-slate-500">
-                      <li>
-                        <strong>
-                          <code className="text-blue-400 font-mono">
-                            a, b, c...
-                          </code>
-                        </strong>
-                        : Custom variables automatically generate adjustable
-                        sliders.
-                      </li>
-                      <li>
-                        <strong>
-                          <code className="text-blue-400 font-mono">x</code>
-                        </strong>
-                        : The built-in horizontal axis space.
-                      </li>
-                      <li>
-                        <strong>
-                          <code className="text-blue-400 font-mono">t</code>
-                        </strong>
-                        : The built-in timeline space. Link it to expressions
-                        like{" "}
-                        <code className="text-blue-400 font-mono">
-                          sin(x + t)
-                        </code>{" "}
-                        to create animations!
-                      </li>
-                    </ul>
-                  </section>
-                  <section>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                      Matrix Determinant Equations
-                    </h4>
-                    <p className="mb-2">
-                      Now you can write equations involving the{" "}
-                      <strong>determinants of matrices</strong> containing
-                      variables <code>x</code> and <code>y</code>! Set them to{" "}
-                      <code>0</code> as an <strong>Implicit</strong> relation to
-                      plot complex shapes directly:
-                    </p>
-                    <ul className="list-disc pl-5 space-y-1.5 marker:text-slate-500">
-                      <li>
-                        <strong>Collinear Lines:</strong>{" "}
-                        <code>[[x, y, 1], [x1, y1, 1], [x2, y2, 1]] = 0</code>{" "}
-                        evaluates the determinant. If it equates to zero, it
-                        defines the line passing through those points.
-                      </li>
-                      <li>
-                        <strong>Dynamic Nodes:</strong> You can reference other
-                        draggable coordinates (e.g. <code>A[1]</code> and{" "}
-                        <code>A[2]</code> representing point <code>A</code>) so
-                        your curves and shapes dynamically transform as you drag
-                        nodes on the graph!
-                      </li>
-                    </ul>
-                  </section>
-                  <section>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                      Interactive Geometry Workspace
-                    </h4>
-                    <p className="mb-2">
-                      You can construct geometry like GeoGebra using draggable
-                      points and references!
-                    </p>
-                    <ul className="list-disc pl-5 space-y-1.5 marker:text-slate-500">
-                      <li>
-                        <strong>Create Points:</strong> Add a Point{" "}
-                        <code>[2, 3]</code>, give it a Label (e.g.,{" "}
-                        <code>A</code>), and toggle <strong>Draggable</strong>.
-                      </li>
-                      <li>
-                        <strong>Reference Points:</strong> Create another Point{" "}
-                        <code>B</code>. Now add a <strong>Line Segment</strong>{" "}
-                        or <strong>Polygon</strong> and use the points:{" "}
-                        <code>[A, B]</code>.
-                      </li>
-                      <li>
-                        <strong>Drag to Update:</strong> Dragging point{" "}
-                        <code>A</code> on the canvas will automatically update
-                        the line or polygon in real-time!
-                      </li>
-                    </ul>
-                  </section>
-                  <section>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2 border-b border-slate-200 dark:border-slate-700 pb-1">
-                      Drawing Modes & Features
-                    </h4>
-                    <ul className="list-disc pl-5 space-y-1.5 marker:text-slate-500">
-                      <li>
-                        <strong>Graph Tracing:</strong> Use the "Trace" button
-                        on the timeline to spawn an active particle that tracks
-                        the function at the current time <code>t</code>.
-                      </li>
-                      <li>
-                        <strong>Full Screen:</strong> Click the Maximize icon to
-                        enter full-screen immersive mathematics mode. Useful for
-                        studying intersections.
-                      </li>
-                      <li>
-                        <strong>Inspector:</strong> When Maximized, a HUD will
-                        appear displaying real-time coordinate positions of the
-                        active Trace points.
-                      </li>
-                    </ul>
-                  </section>
-                </div>
-                <div className="p-4 border-t border-slate-700 bg-slate-800/80 rounded-b-xl flex justify-end">
-                  <button
-                    onClick={() => setShowHelp(false)}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium shadow transition-colors"
-                  >
-                    Get Started
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
+        <MathHelpPopup
+          isOpen={showHelp}
+          onClose={() => setShowHelp(false)}
+          onInsertFormula={handleInsertFunctionFromHelp}
+        />
 
         {/* Editor Modal Overlay */}
         {showVarEditor &&

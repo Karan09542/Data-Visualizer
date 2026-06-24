@@ -754,7 +754,14 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
               onChange={(e) => setInputValue(e.target.value)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-              onKeyDown={(e) => e.key === 'Enter' && executeSearch()}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')) {
+                  e.stopPropagation();
+                }
+                if (e.key === 'Enter') {
+                  executeSearch();
+                }
+              }}
               placeholder="Ask anything or search..."
               className="w-full bg-transparent border-none outline-none py-3.5 text-slate-900 dark:text-slate-100 text-[15px] placeholder:text-slate-500 font-medium"
             />
