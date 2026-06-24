@@ -169,6 +169,16 @@ interface MathFunction {
   transformRotate?: number; // radians
   transformScale?: [number, number]; // [sx, sy]
   transformPivot?: [number, number]; // [px, py]
+
+  // Individual Timeline Support
+  hasCustomTimeline?: boolean;
+  time?: number;
+  isPlaying?: boolean;
+  timeMin?: number;
+  timeMax?: number;
+  timeSpeed?: number;
+  timeMode?: "loop" | "bounce" | "continuous";
+  direction?: number;
 }
 
 interface MathVariable {
@@ -2532,6 +2542,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   >(null);
   const [libraryCollapsed, setLibraryCollapsed] = useState(false);
   const [copiedFormulaId, setCopiedFormulaId] = useState<number | null>(null);
+  const [copiedVarId, setCopiedVarId] = useState<string | null>(null);
   const [formulaSearchQuery, setFormulaSearchQuery] = useState("");
   const [editingFormulaFieldId, setEditingFormulaFieldId] = useState<
     number | null
@@ -3242,9 +3253,26 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     functions.some((f) => !("compiled" in f) && !("error" in f))
   ]); // Compile when expressions or variables change
 
+  // Create a serialized key to watch changes to individual function timeline settings without re-running on general expression edits
+  const functionsSerializedKey = functions
+    .map((f) =>
+      [
+        f.id,
+        !!f.hasCustomTimeline,
+        !!f.isPlaying,
+        f.timeSpeed !== undefined ? f.timeSpeed : 1,
+        f.timeMin !== undefined ? f.timeMin : 0,
+        f.timeMax !== undefined ? f.timeMax : 10,
+        f.timeMode || "loop",
+        f.direction !== undefined ? f.direction : 1,
+      ].join(",")
+    )
+    .join("|");
+
   // Animation loop
   useEffect(() => {
-    if (!isPlaying) {
+    const hasAnyAnimation = isPlaying || functions.some((f) => f.hasCustomTimeline && f.isPlaying);
+    if (!hasAnyAnimation) {
       if (reqRef.current) cancelAnimationFrame(reqRef.current);
       lastTimeRef.current = 0;
       return;
@@ -3255,27 +3283,73 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       const dt = (timestamp - lastTimeRef.current) / 1000;
       lastTimeRef.current = timestamp;
 
-      setTime((prevTime) => {
-        let newTime = prevTime + dt * timeBounds.speed * timeBounds.direction;
+      if (isPlaying) {
+        setTime((prevTime) => {
+          let newTime = prevTime + dt * timeBounds.speed * timeBounds.direction;
 
-        if (timeMode !== "continuous") {
-          if (newTime >= timeBounds.max) {
-            if (timeMode === "loop") newTime = timeBounds.min;
-            else if (timeMode === "bounce") {
-              newTime = timeBounds.max;
-              setTimeBounds((b) => ({ ...b, direction: -1 }));
-            }
-          } else if (newTime <= timeBounds.min) {
-            if (timeMode === "loop") newTime = timeBounds.max;
-            else if (timeMode === "bounce") {
-              newTime = timeBounds.min;
-              setTimeBounds((b) => ({ ...b, direction: 1 }));
+          if (timeMode !== "continuous") {
+            if (newTime >= timeBounds.max) {
+              if (timeMode === "loop") newTime = timeBounds.min;
+              else if (timeMode === "bounce") {
+                newTime = timeBounds.max;
+                setTimeBounds((b) => ({ ...b, direction: -1 }));
+              }
+            } else if (newTime <= timeBounds.min) {
+              if (timeMode === "loop") newTime = timeBounds.max;
+              else if (timeMode === "bounce") {
+                newTime = timeBounds.min;
+                setTimeBounds((b) => ({ ...b, direction: 1 }));
+              }
             }
           }
-        }
 
-        timeRef.current = newTime;
-        return newTime;
+          timeRef.current = newTime;
+          return newTime;
+        });
+      }
+
+      // Also update any individual custom timelines!
+      setFunctions((prevFunctions) => {
+        let changed = false;
+        const updated = prevFunctions.map((f) => {
+          if (f.hasCustomTimeline && f.isPlaying) {
+            changed = true;
+            const speed = f.timeSpeed !== undefined ? f.timeSpeed : 1;
+            const min = f.timeMin !== undefined ? f.timeMin : 0;
+            const max = f.timeMax !== undefined ? f.timeMax : 10;
+            const mode = f.timeMode || "loop";
+            const dir = f.direction !== undefined ? f.direction : 1;
+
+            let currentVal = f.time !== undefined ? f.time : 0;
+            let nextVal = currentVal + dt * speed * dir;
+            let nextDir = dir;
+
+            if (mode !== "continuous") {
+              if (nextVal >= max) {
+                if (mode === "loop") {
+                  nextVal = min;
+                } else if (mode === "bounce") {
+                  nextVal = max;
+                  nextDir = -1;
+                }
+              } else if (nextVal <= min) {
+                if (mode === "loop") {
+                  nextVal = max;
+                } else if (mode === "bounce") {
+                  nextVal = min;
+                  nextDir = 1;
+                }
+              }
+            }
+            return {
+              ...f,
+              time: nextVal,
+              direction: nextDir,
+            };
+          }
+          return f;
+        });
+        return changed ? updated : prevFunctions;
       });
 
       reqRef.current = requestAnimationFrame(loop);
@@ -3292,6 +3366,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     timeBounds.min,
     timeBounds.max,
     timeMode,
+    functionsSerializedKey,
   ]);
 
   const baseScope = variables.reduce(
@@ -3303,11 +3378,29 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   baseScope.ln = mathjs.log;
   baseScope.log10 = mathjs.log10;
 
+  // Expose individual timelines as pre-defined variables in the base scope (e.g., t_1, t_2, t_f)
+  functions.forEach((f, idx) => {
+    const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+    // By index
+    baseScope[`t_${idx + 1}`] = fTime;
+    
+    // By function name if available
+    if (f.name) {
+      const match = f.name.match(/^([a-zA-Z0-9_]+)/);
+      const fnId = match ? match[1] : f.name;
+      if (fnId && fnId !== "t" && fnId !== "time") {
+        baseScope[`t_${fnId}`] = fTime;
+      }
+    }
+  });
+
   // Pre-evaluate functions so definitions or matrices are available sequentially
   functions.forEach((f) => {
     if (f.compiled) {
       try {
-        const val = f.compiled.evaluate(baseScope);
+        const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+        const fScope = { ...baseScope, t: fTime, time: time };
+        const val = f.compiled.evaluate(fScope);
         const refName = f.label || f.name;
         if (refName) {
           baseScope[refName] = val;
@@ -4751,6 +4844,317 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     />
                                   </div>
                                 )}
+
+                                {/* Custom Timeline Settings */}
+                                <div className="flex flex-col gap-2.5 mt-1 pb-1.5 border-t border-slate-200 dark:border-slate-800/80 pt-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">
+                                      Individual Timeline
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-slate-600 dark:text-slate-300 font-medium select-none">
+                                        Enable
+                                      </span>
+                                      <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={!!f.hasCustomTimeline}
+                                        onClick={() => {
+                                          const checked = !f.hasCustomTimeline;
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? {
+                                                    ...fn,
+                                                    hasCustomTimeline: checked,
+                                                    time: checked ? (fn.time !== undefined ? fn.time : 0) : undefined,
+                                                    isPlaying: checked ? (fn.isPlaying !== undefined ? fn.isPlaying : true) : undefined,
+                                                    timeMin: checked ? (fn.timeMin !== undefined ? fn.timeMin : 0) : undefined,
+                                                    timeMax: checked ? (fn.timeMax !== undefined ? fn.timeMax : 10) : undefined,
+                                                    timeSpeed: checked ? (fn.timeSpeed !== undefined ? fn.timeSpeed : 1) : undefined,
+                                                    timeMode: checked ? (fn.timeMode || "loop") : undefined,
+                                                    direction: checked ? (fn.direction !== undefined ? fn.direction : 1) : undefined,
+                                                  }
+                                                : fn
+                                            )
+                                          );
+                                        }}
+                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                          f.hasCustomTimeline ? "bg-blue-500" : "bg-slate-200 dark:bg-slate-700"
+                                        }`}
+                                      >
+                                        <span
+                                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                                            f.hasCustomTimeline ? "translate-x-4" : "translate-x-0"
+                                          }`}
+                                        />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {f.hasCustomTimeline && (() => {
+                                    const fnIndex = functions.findIndex((fn) => fn.id === f.id) + 1;
+                                    const fnNameMatch = f.name?.match(/^([a-zA-Z0-9_]+)/);
+                                    const fnCleanName = fnNameMatch ? fnNameMatch[1] : null;
+
+                                    return (
+                                      <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-200 dark:border-slate-800 animate-fadeIn shadow-xs">
+                                        {/* Playback Controls & Time Display */}
+                                        <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-850 p-2 rounded-md border border-slate-200 dark:border-slate-750/50">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id
+                                                    ? { ...fn, isPlaying: !fn.isPlaying }
+                                                    : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`p-1.5 rounded text-white font-medium transition-all flex items-center justify-center active:scale-95 ${
+                                              f.isPlaying
+                                                ? "bg-amber-500 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
+                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-xs shadow-emerald-500/10"
+                                            }`}
+                                            title={f.isPlaying ? "Pause Timeline" : "Play Timeline"}
+                                          >
+                                            {f.isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+                                          </button>
+
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] font-medium">t =</span>
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              value={f.time !== undefined ? Number(f.time.toFixed(3)) : 0}
+                                              onChange={(e) => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id ? { ...fn, time: val } : fn
+                                                  )
+                                                );
+                                              }}
+                                              className="w-16 bg-slate-50 dark:bg-slate-800 text-center px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
+                                            />
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id
+                                                    ? { ...fn, time: fn.timeMin !== undefined ? fn.timeMin : 0, direction: 1 }
+                                                    : fn
+                                                )
+                                              );
+                                            }}
+                                            className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center justify-center"
+                                            title="Reset to Min"
+                                          >
+                                            <RotateCcw size={12} />
+                                          </button>
+                                        </div>
+
+                                        {/* Min & Max Limits */}
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                          <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Min</span>
+                                            <input
+                                              type="number"
+                                              step="0.1"
+                                              value={f.timeMin !== undefined ? f.timeMin : 0}
+                                              onChange={(e) => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id ? { ...fn, timeMin: val } : fn
+                                                  )
+                                                );
+                                              }}
+                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
+                                            />
+                                          </div>
+                                          <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Max</span>
+                                            <input
+                                              type="number"
+                                              step="0.1"
+                                              value={f.timeMax !== undefined ? f.timeMax : 10}
+                                              onChange={(e) => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id ? { ...fn, timeMax: val } : fn
+                                                  )
+                                                );
+                                              }}
+                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        {/* Speed & Mode */}
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                          <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Speed</span>
+                                            <input
+                                              type="number"
+                                              step="0.1"
+                                              value={f.timeSpeed !== undefined ? f.timeSpeed : 1}
+                                              onChange={(e) => {
+                                                const val = parseFloat(e.target.value) || 0;
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id ? { ...fn, timeSpeed: val } : fn
+                                                  )
+                                                );
+                                              }}
+                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
+                                            />
+                                          </div>
+                                          <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Mode</span>
+                                            <select
+                                              value={f.timeMode || "loop"}
+                                              onChange={(e) => {
+                                                const val = e.target.value as any;
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id ? { ...fn, timeMode: val } : fn
+                                                  )
+                                                );
+                                              }}
+                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
+                                            >
+                                              <option value="loop">Loop</option>
+                                              <option value="bounce">Bounce</option>
+                                              <option value="continuous">Continuous</option>
+                                            </select>
+                                          </div>
+                                        </div>
+
+                                        {/* Predefined Variables Copy Box */}
+                                        <div className="mt-1.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/80 dark:border-blue-900/40 p-2.5 rounded-lg flex flex-col gap-1.5">
+                                          <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                                            <Sparkles size={11} className="text-blue-500 dark:text-blue-400" /> Referencing this Timeline
+                                          </span>
+                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                            Type these variables into math formulas to read this specific timeline:
+                                          </p>
+                                          <div className="flex flex-col gap-1.5 mt-0.5">
+                                            {(() => {
+                                              const copyId = `${f.id}-t`;
+                                              const isCopied = copiedVarId === copyId;
+                                              return (
+                                                <div 
+                                                  className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
+                                                    isCopied 
+                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800" 
+                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                  }`}
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText("t");
+                                                    setCopiedVarId(copyId);
+                                                    setTimeout(() => setCopiedVarId(null), 1500);
+                                                  }}
+                                                  title="Click to copy 't'"
+                                                >
+                                                  <div className="flex items-center gap-1.5">
+                                                    <code className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
+                                                      isCopied 
+                                                        ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" 
+                                                        : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                    }`}>t</code>
+                                                    <span className="text-[9px] text-slate-500 dark:text-slate-400">Inside this function</span>
+                                                    {isCopied && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">Copied!</span>}
+                                                  </div>
+                                                  {isCopied ? (
+                                                    <Check size={11} className="text-emerald-500 dark:text-emerald-400" />
+                                                  ) : (
+                                                    <Copy size={10} className="text-blue-500 dark:text-blue-400" />
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
+
+                                            {(() => {
+                                              const copyId = `${f.id}-t_${fnIndex}`;
+                                              const isCopied = copiedVarId === copyId;
+                                              return (
+                                                <div 
+                                                  className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
+                                                    isCopied 
+                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800" 
+                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                  }`}
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText(`t_${fnIndex}`);
+                                                    setCopiedVarId(copyId);
+                                                    setTimeout(() => setCopiedVarId(null), 1500);
+                                                  }}
+                                                  title={`Click to copy 't_${fnIndex}'`}
+                                                >
+                                                  <div className="flex items-center gap-1.5">
+                                                    <code className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
+                                                      isCopied 
+                                                        ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" 
+                                                        : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                    }`}>{`t_${fnIndex}`}</code>
+                                                    <span className="text-[9px] text-slate-500 dark:text-slate-400">Any function in workspace</span>
+                                                    {isCopied && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">Copied!</span>}
+                                                  </div>
+                                                  {isCopied ? (
+                                                    <Check size={11} className="text-emerald-500 dark:text-emerald-400" />
+                                                  ) : (
+                                                    <Copy size={10} className="text-blue-500 dark:text-blue-400" />
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
+
+                                            {fnCleanName && fnCleanName !== "t" && fnCleanName !== "time" && (() => {
+                                              const copyId = `${f.id}-t_${fnCleanName}`;
+                                              const isCopied = copiedVarId === copyId;
+                                              return (
+                                                <div 
+                                                  className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
+                                                    isCopied 
+                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800" 
+                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                  }`}
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText(`t_${fnCleanName}`);
+                                                    setCopiedVarId(copyId);
+                                                    setTimeout(() => setCopiedVarId(null), 1500);
+                                                  }}
+                                                  title={`Click to copy 't_${fnCleanName}'`}
+                                                >
+                                                  <div className="flex items-center gap-1.5">
+                                                    <code className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
+                                                      isCopied 
+                                                        ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" 
+                                                        : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                    }`}>{`t_${fnCleanName}`}</code>
+                                                    <span className="text-[9px] text-slate-500 dark:text-slate-400">Any function in workspace</span>
+                                                    {isCopied && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">Copied!</span>}
+                                                  </div>
+                                                  {isCopied ? (
+                                                    <Check size={11} className="text-emerald-500 dark:text-emerald-400" />
+                                                  ) : (
+                                                    <Copy size={10} className="text-blue-500 dark:text-blue-400" />
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
 
                                 <div className="flex items-center justify-between mt-1 p-2 border border-blue-500/10 bg-blue-500/5 dark:bg-blue-500/5 rounded">
                                   <span className="text-slate-600 dark:text-slate-400 text-[10px] font-semibold tracking-wide">
@@ -7686,6 +8090,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                   return functions.filter((f) => f.visible).map((f) => {
                 if (f.compiled) {
+                  const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+                  const baseScope = { ...ctx.baseScope, t: fTime, time: time };
                   const tx = f.transformTranslate?.[0] || 0;
                   const ty = f.transformTranslate?.[1] || 0;
                   const rot = f.transformRotate || 0;
@@ -8734,11 +9140,14 @@ return (
                 {functions
                   .filter((f) => f.visible && f.compiled)
                   .map((f) => {
+                    const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+                    const fScope = { ...baseScope, t: fTime, time: time };
+                    const baseScopeShadow = fScope;
                     try {
                       if (f.type === "function") {
                         const val = f.compiled.evaluate({
-                          ...baseScope,
-                          x: (time % 10) - 5,
+                          ...baseScopeShadow,
+                          x: (fTime % 10) - 5,
                         });
                         if (
                           val == null ||
@@ -8751,7 +9160,7 @@ return (
                         return (
                           <div key={f.id} className="flex gap-2">
                             <span style={{ color: f.color }}>
-                              f({((time % 10) - 5).toFixed(1)})
+                              f({((fTime % 10) - 5).toFixed(1)})
                             </span>
                             : {y}
                           </div>
@@ -8760,10 +9169,10 @@ return (
                         f.type === "parametric" ||
                         f.type === "polar"
                       ) {
-                        const tVal = (time / 2) % (2 * Math.PI);
+                        const tVal = (fTime / 2) % (2 * Math.PI);
                         if (f.type === "polar") {
                           const useThetaAsAngle = /\btheta\b/.test(f.expr);
-                          const scope = { ...baseScope };
+                          const scope = { ...baseScopeShadow };
                           if (useThetaAsAngle) {
                             scope.theta = tVal;
                             scope.x = tVal;
@@ -8784,7 +9193,7 @@ return (
                           );
                         } else {
                           const res = f.compiled.evaluate({
-                            ...baseScope,
+                            ...baseScopeShadow,
                             t: tVal,
                           });
                           const arr = res && res.toArray ? res.toArray() : res;
@@ -8806,7 +9215,7 @@ return (
                           }
                         }
                       } else if (f.type === "point" || f.type === "vector") {
-                        const evaluated = f.compiled.evaluate(baseScope);
+                        const evaluated = f.compiled.evaluate(baseScopeShadow);
                         const data =
                           evaluated && evaluated.toArray
                             ? evaluated.toArray()
@@ -8842,11 +9251,15 @@ return (
         </div>
 
         {/* Help Modal Overlay */}
-        <MathHelpPopup
-          isOpen={showHelp}
-          onClose={() => setShowHelp(false)}
-          onInsertFormula={handleInsertFunctionFromHelp}
-        />
+        {showHelp &&
+          createPortal(
+            <MathHelpPopup
+              isOpen={showHelp}
+              onClose={() => setShowHelp(false)}
+              onInsertFormula={handleInsertFunctionFromHelp}
+            />,
+            document.body
+          )}
 
         {/* Editor Modal Overlay */}
         {showVarEditor &&

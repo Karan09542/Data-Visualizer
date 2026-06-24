@@ -179,7 +179,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
     );
   }, [searchQuery, searchIndex]);
 
-  const popupContent = (
+  return (
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center p-0 md:p-6" id="math-help-portal">
@@ -1068,9 +1068,6 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
       )}
     </AnimatePresence>
   );
-
-  if (typeof document === 'undefined') return null;
-  return createPortal(popupContent, document.body);
 };
 
 export default MathHelpPopup;
