@@ -153,6 +153,7 @@ interface MathFunction {
   patternThickness?: number;
   patternAngle?: number;
   lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
+  outlineWidth?: number;
 
   // Behaviors
   isDraggable?: boolean;
@@ -1567,6 +1568,114 @@ const SafeLabel = ({
   }
 };
 
+const CurvePatternDefs: React.FC<{
+  id: string;
+  color: string;
+  fillColor?: string;
+  fillOpacity?: number;
+  fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
+  patternSpacing?: number;
+  patternThickness?: number;
+  patternAngle?: number;
+}> = ({
+  id,
+  color,
+  fillColor,
+  fillOpacity = 0.3,
+  fillPattern = "hatch-diagonal",
+  patternSpacing,
+  patternThickness,
+  patternAngle,
+}) => {
+  const transform = useTransformContext();
+  let sx = 50;
+  let sy = 50;
+  if (transform && transform.viewTransform) {
+    sx = Math.abs(transform.viewTransform[0]);
+    sy = Math.abs(transform.viewTransform[3]);
+  }
+
+  const pColor = fillColor || color;
+  const pSpace = Math.max(5, patternSpacing || 15);
+  const pThick = Math.max(1, patternThickness || 2);
+
+  const PATTERN_BASE_SCALE = 50;
+  const currentScreenSpacing = (pSpace / PATTERN_BASE_SCALE) * sx;
+
+  let adaptiveFactor = 1;
+  if (currentScreenSpacing > 0) {
+    if (currentScreenSpacing < 6) {
+      while (currentScreenSpacing * adaptiveFactor < 12) adaptiveFactor *= 1.5;
+    } else if (currentScreenSpacing > 80) {
+      while (currentScreenSpacing * adaptiveFactor > 40) adaptiveFactor /= 1.5;
+    }
+  }
+
+  const finalScaleX = adaptiveFactor / PATTERN_BASE_SCALE;
+  const finalScaleY = adaptiveFactor / PATTERN_BASE_SCALE;
+
+  const targetScreenPixels = Math.max(0.5, pThick);
+  const strokeThick = targetScreenPixels / (finalScaleX * sx);
+  const pSize = pSpace;
+  const patternId = `curve-pattern-${id}`;
+
+  if (fillPattern === "solid") return null;
+
+  return (
+    <g style={{ display: "none" }}>
+      <defs>
+        <pattern
+          id={patternId}
+          width={pSize}
+          height={pSize}
+          patternUnits="userSpaceOnUse"
+          patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}
+        >
+          {fillPattern === "hatch-diagonal" && (
+            <React.Fragment>
+              <line x1={0} y1={pSize} x2={pSize} y2={0} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={-1} y1={1} x2={1} y2={-1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={pSize - 1} y1={pSize + 1} x2={pSize + 1} y2={pSize - 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+            </React.Fragment>
+          )}
+          {fillPattern === "hatch-reverse" && (
+            <React.Fragment>
+              <line x1={0} y1={0} x2={pSize} y2={pSize} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={-1} y1={pSize - 1} x2={1} y2={pSize + 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={pSize - 1} y1={-1} x2={pSize + 1} y2={1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+            </React.Fragment>
+          )}
+          {fillPattern === "hatch-cross" && (
+            <React.Fragment>
+              <line x1={0} y1={pSize} x2={pSize} y2={0} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={0} y1={0} x2={pSize} y2={pSize} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={-1} y1={1} x2={1} y2={-1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={pSize - 1} y1={pSize + 1} x2={pSize + 1} y2={pSize - 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={-1} y1={pSize - 1} x2={1} y2={pSize + 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={pSize - 1} y1={-1} x2={pSize + 1} y2={1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+            </React.Fragment>
+          )}
+          {fillPattern === "dotted" && (
+            <circle cx={pSize / 2} cy={pSize / 2} r={strokeThick} fill={pColor} fillOpacity={fillOpacity} />
+          )}
+          {fillPattern === "grid" && (
+            <React.Fragment>
+              <line x1={0} y1={0} x2={pSize} y2={0} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line x1={0} y1={0} x2={0} y2={pSize} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+            </React.Fragment>
+          )}
+          {fillPattern === "dashed" && (
+            <line x1={0} y1={pSize / 2} x2={pSize} y2={pSize / 2} strokeWidth={strokeThick} strokeOpacity={fillOpacity} strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`} style={{ stroke: pColor }} />
+          )}
+          {fillPattern === "math-region" && (
+            <line x1={0} y1={pSize} x2={pSize} y2={0} strokeWidth={Math.max(1, strokeThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} style={{ stroke: pColor }} />
+          )}
+        </pattern>
+      </defs>
+    </g>
+  );
+};
+
 const InequalityPlot: React.FC<{
   compiledLHS: any;
   compiledRHS: any;
@@ -1638,13 +1747,14 @@ const InequalityPlot: React.FC<{
         if (isNaN(val)) return false;
         if (operator === "<" || operator === "<=") return val < 0;
         if (operator === ">" || operator === ">=") return val > 0;
+        if (operator === "=") return val < 0;
         return val === 0;
     };
 
     let fillPath = "";
     // Evaluate horizontally
     const scope = { ...baseScope, x: 0, y: 0 };
-    if (operator && operator !== "=") {
+    if (operator && !(operator === "=" && fillColor === undefined)) {
     for (let j = 0; j <= GRID_SIZE; j++) {
         const y = yMin + j * dy;
         let xStart: number | null = null;
@@ -2418,6 +2528,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [editingFormulaExpr, setEditingFormulaExpr] = useState("");
 
   const geomCacheRef = useRef<Record<string, [number, number][]>>({});
+  const latestContextRef = useRef<any>(null);
+  const MathNodesLayerRef = useRef<any>(null);
   const [functions, setFunctions] = useState<MathFunction[]>(() => {
     if (typeof data.value === "string") {
       try {
@@ -5035,7 +5147,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                 {f.fillColor === undefined ? (
                                   <div className="text-[10px] text-slate-400 italic pl-1">
-                                    Using outline color for fill.
+                                    {["inequality", "polygon"].includes(f.type)
+                                      ? "Using outline color for fill."
+                                      : "Fill is disabled. Check 'Different Fill' to enable."}
                                   </div>
                                 ) : (
                                   <div className="flex flex-col gap-1.5 p-1.5 bg-slate-100/50 dark:bg-slate-900/30 rounded border border-slate-200 dark:border-slate-800">
@@ -5230,7 +5344,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               </div>
                               
                               {/* Pattern Style Selection (For Regions) */}
-                              {f.type === "inequality" && (
+                              {(f.type === "inequality" || f.type === "implicit" || f.type === "function" || f.type === "parametric" || f.type === "polar" || f.type === "polygon") && (
                                 <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/60">
                                   <span className="text-slate-550 dark:text-slate-400 font-semibold mb-0.5">
                                     Region Style
@@ -5458,6 +5572,44 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 </div>
                               </div>
                           )}
+
+                          {/* Outline Width Slider */}
+                          <div className="flex flex-col gap-1 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-550 dark:text-slate-400 font-semibold text-[11px]">
+                                Outline Width
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-450 dark:text-slate-500">
+                                {(f.outlineWidth !== undefined ? f.outlineWidth : 3.0).toFixed(1)} px
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
+                                1.0
+                              </span>
+                              <input
+                                type="range"
+                                min="1"
+                                max="10"
+                                step="0.5"
+                                value={f.outlineWidth !== undefined ? f.outlineWidth : 3}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  setFunctions((prev) =>
+                                    prev.map((fn) =>
+                                      fn.id === f.id
+                                        ? { ...fn, outlineWidth: val }
+                                        : fn
+                                    )
+                                  );
+                                }}
+                                className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 flex-1 outline-none text-blue-500 dark:text-blue-400"
+                              />
+                              <span className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
+                                10.0
+                              </span>
+                            </div>
+                          </div>
                             </div>
                           )}
                         </div>
@@ -7467,7 +7619,40 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             )}
 
             {(() => {
-  const renderMathNodes = (isInteractionLayer: boolean) => functions.filter((f) => f.visible).map((f) => {
+              latestContextRef.current = {
+                functions,
+                setFunctions,
+                baseScope,
+                activeGizmo,
+                handleGizmoMove,
+                hoveredVar,
+                isShiftPressed,
+                time,
+                geomCacheRef,
+                samplingDepth,
+              };
+
+              if (!MathNodesLayerRef.current) {
+                MathNodesLayerRef.current = ({ isInteractionLayer }: { isInteractionLayer: boolean }) => {
+                  const pane = usePaneContext();
+                  const xRange = (pane && pane.xPaneRange) ? pane.xPaneRange : [-10, 10];
+                  const yRange = (pane && pane.yPaneRange) ? pane.yPaneRange : [-10, 10];
+
+                  const ctx = latestContextRef.current!;
+                  const {
+                    functions,
+                    setFunctions,
+                    baseScope,
+                    activeGizmo,
+                    handleGizmoMove,
+                    hoveredVar,
+                    isShiftPressed,
+                    time,
+                    geomCacheRef,
+                    samplingDepth,
+                  } = ctx;
+
+                  return functions.filter((f) => f.visible).map((f) => {
                 if (f.compiled) {
                   const tx = f.transformTranslate?.[0] || 0;
                   const ty = f.transformTranslate?.[1] || 0;
@@ -7719,24 +7904,42 @@ return (
                                                 tail={[0, 0]}
                                                 tip={p}
                                                 color={f.color}
+                                                weight={f.outlineWidth !== undefined ? f.outlineWidth : 3}
                                               />
                                             ))}
                                           {!isInteractionLayer && f.type === "polygon" &&
                                             points.length > 2 && (
-                                              <Polygon
-                                                points={points}
-                                                color={f.color}
-                                                fillOpacity={
-                                                  f.fillOpacity !== undefined
-                                                    ? f.fillOpacity
-                                                    : 0.2
-                                                }
-                                                svgPolygonProps={{
-                                                  style: {
-                                                    strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                                  },
-                                                }}
-                                              />
+                                              <React.Fragment>
+                                                {f.fillColor !== undefined && (
+                                                  <CurvePatternDefs
+                                                    id={f.id}
+                                                    color={f.color}
+                                                    fillColor={f.fillColor}
+                                                    fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.2}
+                                                    fillPattern={f.fillPattern}
+                                                    patternSpacing={f.patternSpacing}
+                                                    patternThickness={f.patternThickness}
+                                                    patternAngle={f.patternAngle}
+                                                  />
+                                                )}
+                                                <Polygon
+                                                  points={points}
+                                                  color={f.fillColor !== undefined ? (f.fillColor || f.color) : f.color}
+                                                  fillOpacity={
+                                                    f.fillColor !== undefined
+                                                      ? (f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.2) : 1)
+                                                      : (f.fillOpacity !== undefined ? f.fillOpacity : 0.2)
+                                                  }
+                                                  svgPolygonProps={{
+                                                    style: {
+                                                      strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                                      strokeWidth: f.outlineWidth !== undefined ? f.outlineWidth : undefined,
+                                                      stroke: f.color,
+                                                      fill: f.fillColor !== undefined && f.fillPattern !== "solid" ? `url(#curve-pattern-${f.id})` : undefined,
+                                                    },
+                                                  }}
+                                                />
+                                              </React.Fragment>
                                             )}
                                           {!isInteractionLayer && f.type === "line" && points.length >= 2 && (
                                             <Line.Segment
@@ -7744,6 +7947,7 @@ return (
                                               point2={points[1]}
                                               color={f.color}
                                               style="solid"
+                                              weight={f.outlineWidth !== undefined ? f.outlineWidth : 3}
                                             />
                                           )}
                                         </Transform>
@@ -7756,55 +7960,103 @@ return (
                           )}
 
                           {!isInteractionLayer && !isPointBased && f.type === "parametric" && (
-                                        <Plot.Parametric
-                                          minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
-                                          maxSamplingDepth={Math.max(1, samplingDepth)}
-                                          xy={(t: number) => {
-                                            try {
-                                              const res = f.compiled.evaluate({
-                                                ...baseScope,
-                                                t,
-                                              });
-                                              const arr =
-                                                res && res.toArray ? res.toArray() : res;
-                                              if (Array.isArray(arr) && arr.length >= 2) {
-                                                return applyForwardTransform([
-                                                  Number(arr[0]),
-                                                  Number(arr[1]),
-                                                ]);
-                                              }
-                                              return [0, 0];
-                                            } catch {
-                                              return [0, 0];
-                                            }
-                                          }}
-                                          t={[0, 2 * Math.PI]}
-                                          color={f.color}
-                                          weight={
-                                            hoveredVar &&
-                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                              ? 6
-                                              : 3
-                                          }
-                                          opacity={
-                                            hoveredVar
-                                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                ? 1
-                                                : 0.3
-                                              : 1
-                                          }
-                                          style={
-                                            f.lineStyle && f.lineStyle !== "solid"
-                                              ? "dashed"
-                                              : "solid"
-                                          }
-                                          svgPathProps={{
-                                            style: {
-                                              strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                            },
-                                          }}
-                                        />
-                                      )}
+                            <React.Fragment>
+                              {f.fillColor !== undefined && (() => {
+                                const fillPoints: [number, number][] = [];
+                                const steps = 150;
+                                for (let i = 0; i <= steps; i++) {
+                                  const tVal = (2 * Math.PI * i) / steps;
+                                  try {
+                                    const res = f.compiled.evaluate({
+                                      ...baseScope,
+                                      t: tVal,
+                                    });
+                                    const arr = res && res.toArray ? res.toArray() : res;
+                                    if (Array.isArray(arr) && arr.length >= 2) {
+                                      fillPoints.push(applyForwardTransform([
+                                        Number(arr[0]),
+                                        Number(arr[1]),
+                                      ]));
+                                    }
+                                  } catch {}
+                                }
+                                if (fillPoints.length < 2) return null;
+                                return (
+                                  <React.Fragment>
+                                    <CurvePatternDefs
+                                      id={f.id}
+                                      color={f.color}
+                                      fillColor={f.fillColor}
+                                      fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
+                                      fillPattern={f.fillPattern}
+                                      patternSpacing={f.patternSpacing}
+                                      patternThickness={f.patternThickness}
+                                      patternAngle={f.patternAngle}
+                                    />
+                                    <Polygon
+                                      points={fillPoints}
+                                      color={f.fillColor || f.color}
+                                      fillOpacity={f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.3) : 1}
+                                      svgPolygonProps={{
+                                        style: {
+                                          fill: f.fillPattern === "solid" ? (f.fillColor || f.color) : `url(#curve-pattern-${f.id})`,
+                                          stroke: "none",
+                                        },
+                                      }}
+                                    />
+                                  </React.Fragment>
+                                );
+                              })()}
+                              <Plot.Parametric
+                                minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
+                                maxSamplingDepth={Math.max(1, samplingDepth)}
+                                xy={(t: number) => {
+                                  try {
+                                    const res = f.compiled.evaluate({
+                                      ...baseScope,
+                                      t,
+                                    });
+                                    const arr =
+                                      res && res.toArray ? res.toArray() : res;
+                                    if (Array.isArray(arr) && arr.length >= 2) {
+                                      return applyForwardTransform([
+                                        Number(arr[0]),
+                                        Number(arr[1]),
+                                      ]);
+                                    }
+                                    return [0, 0];
+                                  } catch {
+                                    return [0, 0];
+                                  }
+                                }}
+                                t={[0, 2 * Math.PI]}
+                                color={f.color}
+                                weight={
+                                  hoveredVar &&
+                                  new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                    ? 6
+                                    : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
+                                }
+                                opacity={
+                                  hoveredVar
+                                    ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                      ? 1
+                                      : 0.3
+                                    : 1
+                                }
+                                style={
+                                  f.lineStyle && f.lineStyle !== "solid"
+                                    ? "dashed"
+                                    : "solid"
+                                }
+                                svgPathProps={{
+                                  style: {
+                                    strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                  },
+                                }}
+                              />
+                            </React.Fragment>
+                          )}
 
                                       {!isInteractionLayer && !isPointBased && (f.type === "inequality" || f.type === "implicit") && (
                                         <InequalityPlot
@@ -7831,7 +8083,7 @@ return (
                                             hoveredVar &&
                                             new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
                                               ? 6
-                                              : 3
+                                              : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
                                           }
                                           id={f.id}
                                           samplingDepth={samplingDepth}
@@ -7839,103 +8091,205 @@ return (
                                       )}
 
                                       {!isInteractionLayer && !isPointBased && f.type === "polar" && (
-                                        <Plot.Parametric
-                                          minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
-                                          maxSamplingDepth={Math.max(1, samplingDepth)}
-                                          xy={(tVal: number) => {
-                                            try {
-                                              const useThetaAsAngle = /\btheta\b/.test(f.expr);
-                                              const scope = { ...baseScope };
-                                              if (useThetaAsAngle) {
-                                                scope.theta = tVal;
-                                                scope.x = tVal;
-                                              } else {
-                                                scope.t = tVal;
-                                                scope.x = tVal;
-                                                scope.theta = tVal;
-                                              }
-                                              const r = Number(f.compiled.evaluate(scope));
-                                              if (isNaN(r) || typeof r === "object")
-                                                return [0, 0];
-                                              return applyForwardTransform([
-                                                r * Math.cos(tVal),
-                                                r * Math.sin(tVal),
-                                              ]);
-                                            } catch {
-                                              return [0, 0];
+                                        <React.Fragment>
+                                          {f.fillColor !== undefined && (() => {
+                                            const fillPoints: [number, number][] = [];
+                                            const steps = 300;
+                                            const maxT = 2 * Math.PI * 5;
+                                            for (let i = 0; i <= steps; i++) {
+                                              const tVal = (maxT * i) / steps;
+                                              try {
+                                                const useThetaAsAngle = /\btheta\b/.test(f.expr);
+                                                const scope = { ...baseScope };
+                                                if (useThetaAsAngle) {
+                                                  scope.theta = tVal;
+                                                  scope.x = tVal;
+                                                } else {
+                                                  scope.t = tVal;
+                                                  scope.x = tVal;
+                                                  scope.theta = tVal;
+                                                }
+                                                const r = Number(f.compiled.evaluate(scope));
+                                                if (!isNaN(r) && typeof r !== "object" && isFinite(r)) {
+                                                  fillPoints.push(applyForwardTransform([
+                                                    r * Math.cos(tVal),
+                                                    r * Math.sin(tVal),
+                                                  ]));
+                                                }
+                                              } catch {}
                                             }
-                                          }}
-                                          t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
-                                          color={f.color}
-                                          weight={
-                                            hoveredVar &&
-                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                              ? 6
-                                              : 3
-                                          }
-                                          opacity={
-                                            hoveredVar
-                                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                ? 1
-                                                : 0.3
-                                              : 1
-                                          }
-                                          style={
-                                            f.lineStyle && f.lineStyle !== "solid"
-                                              ? "dashed"
-                                              : "solid"
-                                          }
-                                          svgPathProps={{
-                                            style: {
-                                              strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                            },
-                                          }}
-                                        />
+                                            if (fillPoints.length < 2) return null;
+                                            return (
+                                              <React.Fragment>
+                                                <CurvePatternDefs
+                                                  id={f.id}
+                                                  color={f.color}
+                                                  fillColor={f.fillColor}
+                                                  fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
+                                                  fillPattern={f.fillPattern}
+                                                  patternSpacing={f.patternSpacing}
+                                                  patternThickness={f.patternThickness}
+                                                  patternAngle={f.patternAngle}
+                                                />
+                                                <Polygon
+                                                  points={fillPoints}
+                                                  color={f.fillColor || f.color}
+                                                  fillOpacity={f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.3) : 1}
+                                                  svgPolygonProps={{
+                                                    style: {
+                                                      fill: f.fillPattern === "solid" ? (f.fillColor || f.color) : `url(#curve-pattern-${f.id})`,
+                                                      stroke: "none",
+                                                    },
+                                                  }}
+                                                />
+                                              </React.Fragment>
+                                            );
+                                          })()}
+                                          <Plot.Parametric
+                                            minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
+                                            maxSamplingDepth={Math.max(1, samplingDepth)}
+                                            xy={(tVal: number) => {
+                                              try {
+                                                const useThetaAsAngle = /\btheta\b/.test(f.expr);
+                                                const scope = { ...baseScope };
+                                                if (useThetaAsAngle) {
+                                                  scope.theta = tVal;
+                                                  scope.x = tVal;
+                                                } else {
+                                                  scope.t = tVal;
+                                                  scope.x = tVal;
+                                                  scope.theta = tVal;
+                                                }
+                                                const r = Number(f.compiled.evaluate(scope));
+                                                if (isNaN(r) || typeof r === "object")
+                                                  return [0, 0];
+                                                return applyForwardTransform([
+                                                  r * Math.cos(tVal),
+                                                  r * Math.sin(tVal),
+                                                ]);
+                                              } catch {
+                                                return [0, 0];
+                                              }
+                                            }}
+                                            t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
+                                            color={f.color}
+                                            weight={
+                                              hoveredVar &&
+                                              new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                ? 6
+                                                : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
+                                            }
+                                            opacity={
+                                              hoveredVar
+                                                ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                  ? 1
+                                                  : 0.3
+                                                : 1
+                                            }
+                                            style={
+                                              f.lineStyle && f.lineStyle !== "solid"
+                                                ? "dashed"
+                                                : "solid"
+                                            }
+                                            svgPathProps={{
+                                              style: {
+                                                strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                              },
+                                            }}
+                                          />
+                                        </React.Fragment>
                                       )}
 
                                       {!isInteractionLayer && !isPointBased && f.type === "function" && (
-                                        <Plot.Parametric
-                                          minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
-                                          maxSamplingDepth={Math.max(1, samplingDepth)}
-                                          t={[-50, 50]}
-                                          xy={(t) => {
-                                            try {
-                                              const res = f.compiled.evaluate({
-                                                ...baseScope,
-                                                x: t,
-                                              });
-                                              if (typeof res === "object" && res.im !== undefined)
-                                                return applyForwardTransform([t, NaN]);
-                                              return applyForwardTransform([t, Number(res)]);
-                                            } catch {
-                                              return [t, NaN];
+                                        <React.Fragment>
+                                          {f.fillColor !== undefined && (() => {
+                                            const fillPoints: [number, number][] = [];
+                                            const xMin = xRange[0] - 2;
+                                            const xMax = xRange[1] + 2;
+                                            const steps = 200;
+                                            for (let i = 0; i <= steps; i++) {
+                                              const xVal = xMin + ((xMax - xMin) * i) / steps;
+                                              try {
+                                                const res = f.compiled.evaluate({
+                                                  ...baseScope,
+                                                  x: xVal,
+                                                });
+                                                const y = Number(res);
+                                                if (!isNaN(y) && isFinite(y)) {
+                                                  fillPoints.push(applyForwardTransform([xVal, y]));
+                                                }
+                                              } catch {}
                                             }
-                                          }}
-                                          color={f.color}
-                                          weight={
-                                            hoveredVar &&
-                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                              ? 6
-                                              : 3
-                                          }
-                                          opacity={
-                                            hoveredVar
-                                              ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                ? 1
-                                                : 0.3
-                                              : 1
-                                          }
-                                          style={
-                                            f.lineStyle && f.lineStyle !== "solid"
-                                              ? "dashed"
-                                              : "solid"
-                                          }
-                                          svgPathProps={{
-                                            style: {
-                                              strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                            },
-                                          }}
-                                        />
+                                            if (fillPoints.length < 2) return null;
+                                            return (
+                                              <React.Fragment>
+                                                <CurvePatternDefs
+                                                  id={f.id}
+                                                  color={f.color}
+                                                  fillColor={f.fillColor}
+                                                  fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
+                                                  fillPattern={f.fillPattern}
+                                                  patternSpacing={f.patternSpacing}
+                                                  patternThickness={f.patternThickness}
+                                                  patternAngle={f.patternAngle}
+                                                />
+                                                <Polygon
+                                                  points={fillPoints}
+                                                  color={f.fillColor || f.color}
+                                                  fillOpacity={f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.3) : 1}
+                                                  svgPolygonProps={{
+                                                    style: {
+                                                      fill: f.fillPattern === "solid" ? (f.fillColor || f.color) : `url(#curve-pattern-${f.id})`,
+                                                      stroke: "none",
+                                                    },
+                                                  }}
+                                                />
+                                              </React.Fragment>
+                                            );
+                                          })()}
+                                          <Plot.Parametric
+                                            minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
+                                            maxSamplingDepth={Math.max(1, samplingDepth)}
+                                            t={[-50, 50]}
+                                            xy={(t) => {
+                                              try {
+                                                const res = f.compiled.evaluate({
+                                                  ...baseScope,
+                                                  x: t,
+                                                });
+                                                if (typeof res === "object" && res.im !== undefined)
+                                                  return applyForwardTransform([t, NaN]);
+                                                return applyForwardTransform([t, Number(res)]);
+                                              } catch {
+                                                return [t, NaN];
+                                              }
+                                            }}
+                                            color={f.color}
+                                            weight={
+                                              hoveredVar &&
+                                              new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                ? 6
+                                                : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
+                                            }
+                                            opacity={
+                                              hoveredVar
+                                                ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
+                                                  ? 1
+                                                  : 0.3
+                                                : 1
+                                            }
+                                            style={
+                                              f.lineStyle && f.lineStyle !== "solid"
+                                                ? "dashed"
+                                                : "solid"
+                                            }
+                                            svgPathProps={{
+                                              style: {
+                                                strokeDasharray: getStrokeDasharray(f.lineStyle),
+                                              },
+                                            }}
+                                          />
+                                        </React.Fragment>
                                       )}
 
                                       {!isInteractionLayer && !isPointBased && f.showLabel && f.label && (
@@ -8325,14 +8679,18 @@ return (
                   }
                   return null;
                 });
+              };
+            }
+
+            const MathNodesLayer = MathNodesLayerRef.current;
                 
-                return (
-                  <React.Fragment>
-                    <g className="math-geometry-layer">{renderMathNodes(false)}</g>
-                    <g className="math-interaction-layer">{renderMathNodes(true)}</g>
-                  </React.Fragment>
-                );
-              })()}
+            return (
+                <React.Fragment>
+                  <MathNodesLayer isInteractionLayer={false} />
+                  <MathNodesLayer isInteractionLayer={true} />
+                </React.Fragment>
+              );
+            })()}
           </Mafs>
 
           {isFullscreen && (
