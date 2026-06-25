@@ -1,5 +1,5 @@
 // Progressive Web App Service Worker with Synchronous STDIN/I/O sync bridge
-const CACHE_NAME = 'json-yaml-tree-visualizer-cache-v1';
+const CACHE_NAME = 'json-yaml-tree-visualizer-cache-v6';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -12,6 +12,7 @@ const pendingRequests = new Map();
 
 // 1. Install Event: Cache Core Static Shell
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[Service Worker] Pre-caching offline shell...', CACHE_NAME);
@@ -99,8 +100,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Bypass all cross-origin requests
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // Bypass non-stdin custom api endpoints
   if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Bypass media and range requests to fix audio playback
+  if (event.request.headers.has('range') || url.pathname.match(/\.(mp3|wav|ogg|mp4|mpeg|m4a|aac)$/i)) {
+    return;
+  }
+
+  // Bypass Vite dev server requests
+  if (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.endsWith('.ts') ||
+    url.pathname.endsWith('.tsx')
+  ) {
     return;
   }
 
@@ -110,10 +132,11 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request).then(response => {
         // Cache the newest index.html
         if (response && response.status === 200) {
-          const responseToCache = response.clone();
+          const responseToCache1 = response.clone();
+          const responseToCache2 = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put('/index.html', responseToCache);
-            cache.put('/', responseToCache.clone());
+            cache.put('/index.html', responseToCache1);
+            cache.put('/', responseToCache2);
           });
         }
         return response;

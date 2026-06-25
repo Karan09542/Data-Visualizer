@@ -36,6 +36,7 @@
     "dexie": "^4.4.2",
     "dexie-react-hooks": "^4.4.0",
     "fabric": "^7.4.0",
+    "howler": "^2.2.4",
     "js-yaml": "^4.1.1",
     "json5": "^2.2.3",
     "jsqr": "^1.4.0",
@@ -47,6 +48,7 @@
     "mafs": "^0.21.0",
     "mathjs": "^15.2.0",
     "motion": "^12.40.0",
+    "music-metadata": "^11.13.0",
     "papaparse": "^5.5.3",
     "pdfjs-dist": "^5.7.284",
     "prism-react-renderer": "^2.4.1",
@@ -81,6 +83,7 @@
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
+    "@types/howler": "^2.2.13",
     "@types/js-yaml": "^4.0.9",
     "@types/lodash.get": "^4.4.9",
     "@types/node": "^22.14.0",

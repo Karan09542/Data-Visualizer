@@ -793,6 +793,92 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                             </div>
                           ))}
                         </div>
+
+                        {/* Global vs. Individual Timeline Detailed Guide */}
+                        <div className="mt-6 border-t border-slate-200 dark:border-slate-800 pt-5 space-y-4">
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-bold text-slate-850 dark:text-slate-200 flex items-center gap-1.5">
+                              <Info size={14} className="text-indigo-500" />
+                              Global Timeline vs. Individual Timelines
+                            </h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                              Math Graph Studio supports two timeline scopes to control movement: a unified <b>Global Timeline</b> and independent <b>Individual Timelines</b>.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Global Timeline */}
+                            <div className="p-4 bg-indigo-50/40 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl space-y-2.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-indigo-700 dark:text-indigo-400">Global Master Timeline (time / t)</span>
+                                <span className="text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded">Default</span>
+                              </div>
+                              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                                The global timeline clock runs on a master schedule controlled by the playback panel at the bottom of the workspace. All items in the graph editor listen to this clock by default.
+                              </p>
+                              <ul className="space-y-1.5 pl-4 list-disc text-slate-500 dark:text-slate-400">
+                                <li>Reference using either <code className="font-mono bg-white dark:bg-slate-900 px-1 py-0.2 rounded font-bold text-indigo-500">t</code> or <code className="font-mono bg-white dark:bg-slate-900 px-1 py-0.2 rounded font-bold text-indigo-500">time</code>.</li>
+                                <li>Ideal for synchronizing multiple moving curves, phase shifts, and orbital motion.</li>
+                                <li>All bottom controls (play, speed slider, loops) modify this clock instantly.</li>
+                              </ul>
+                            </div>
+
+                            {/* Individual Timelines */}
+                            <div className="p-4 bg-blue-50/40 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 rounded-xl space-y-2.5 text-xs">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-blue-700 dark:text-blue-400">Individual Custom Timeline (t_1, t_name)</span>
+                                <span className="text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">Isolatable</span>
+                              </div>
+                              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                                Enable the <b>Individual Timeline</b> switch inside any item's expanded card to detach it from the master clock. This creates a dedicated clock with unique speed, bounds, and play state.
+                              </p>
+                              <ul className="space-y-1.5 pl-4 list-disc text-slate-500 dark:text-slate-400">
+                                <li><b>Local Scope:</b> Inside the formula of the owner item, <code className="font-mono bg-white dark:bg-slate-900 px-1 py-0.2 rounded font-bold text-blue-500">t</code> automatically evaluates to this isolated timeline.</li>
+                                <li><b>Global Reference (Auto-assigned):</b> Any other item in the workspace can read this specific clock value using:
+                                  <ul className="pl-4 list-disc mt-1 space-y-1 text-slate-600 dark:text-slate-300 font-medium">
+                                    <li><code className="font-mono text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 px-1 rounded">t_1</code>, <code className="font-mono text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 px-1 rounded">t_2</code>, etc. (auto-assigned by the item's stack index).</li>
+                                    <li><code className="font-mono text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 px-1 rounded">t_&#123;name&#125;</code> (by the item's variable name, e.g. <code className="font-mono text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-900 px-1 rounded">t_f</code> for function <code className="font-mono">f(x)</code>).</li>
+                                  </ul>
+                                </li>
+                                <li>Allows complex multi-speed orbits, phase comparisons, and delay effects.</li>
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* Quick Integration Example Code Box */}
+                          <div className="p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 rounded-lg text-xs space-y-1.5">
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-bold">
+                              <Sparkles size={13} className="text-amber-500" />
+                              Interactive Example Scenario
+                            </div>
+                            <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
+                              Suppose the first item (e.g. <code>f(x)</code>) has its <b>Individual Timeline</b> active and loops from 0 to 5.
+                              You can plot a separate dependent coordinate point <code>P</code> that follows <code>f(x)</code>'s local timeline, even while the rest of the canvas tracks the master global clock:
+                            </p>
+                            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800/80 rounded-lg">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Example Coordinate Point Formula</span>
+                                <code className="font-mono text-indigo-500 dark:text-indigo-400 font-semibold text-xs">[ t_1, sin(t_1) ]</code>
+                              </div>
+                              <button
+                                onClick={() => handleCopy("[t_1, sin(t_1)]", "copy-scenario-ex")}
+                                className="px-2.5 py-1.5 flex items-center gap-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-xs"
+                              >
+                                {copiedId === "copy-scenario-ex" ? (
+                                  <>
+                                    <Check size={11} className="text-emerald-500" />
+                                    <span>Copied!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy size={11} className="text-slate-400" />
+                                    <span>Copy Formula</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
 

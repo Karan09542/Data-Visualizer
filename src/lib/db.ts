@@ -141,6 +141,16 @@ export interface NodeSearchImageBookmark {
   timestamp: number;
 }
 
+export interface AudioTrack {
+  id: string;
+  title: string;
+  duration?: number;
+  source: string;
+  type: string;
+  thumbnail?: string;
+  createdAt: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -157,6 +167,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   nodeSearchCollections: EntityTable<NodeSearchCollection, 'id'>;
   nodeSearchSettings: EntityTable<NodeSearchSettings, 'storageKey'>;
   nodeSearchImageBookmarks: EntityTable<NodeSearchImageBookmark, 'id'>;
+  audio_tracks: EntityTable<AudioTrack, 'id'>;
 };
 
 db.version(8).stores({
@@ -188,6 +199,10 @@ db.version(11).stores({
   nodeSearchCollections: '++id, storageKey, name, timestamp',
   nodeSearchSettings: 'storageKey',
   nodeSearchImageBookmarks: '++id, storageKey, imageUrl, title, searchQuery, timestamp'
+});
+
+db.version(12).stores({
+  audio_tracks: 'id, title, source, type, createdAt'
 });
 
 export { db };

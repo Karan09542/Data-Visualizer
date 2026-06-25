@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore, CodeFormat } from '../store/useStore';
-import { Play, Copy, Check } from 'lucide-react';
+import { Play, Copy, Check, LayoutTemplate, ArrowRight } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
 
 const EXAMPLES: Array<{ title: string, description: string, format: CodeFormat, data: string }> = [
@@ -161,29 +161,46 @@ export default function Examples() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <h1 className="text-4xl font-bold tracking-tight mb-4 text-slate-900 dark:text-white">Interactive Examples</h1>
-      <p className="text-lg text-slate-600 dark:text-slate-400 mb-10 leading-relaxed">
-        Select from the templates below to quickly load sample files into the visual workspace.
-      </p>
+    <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Hero Section */}
+      <div className="text-center max-w-3xl mx-auto mb-16">
+        <div className="inline-flex items-center justify-center p-3 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl mb-6">
+          <LayoutTemplate className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-6">
+          Interactive <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500">Examples</span>
+        </h1>
+        <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-400 leading-relaxed">
+          Select from the templates below to quickly load sample files into the visual workspace and see the engine in action.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {EXAMPLES.map((example, idx) => (
-          <div key={idx} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col transition-shadow hover:shadow-md">
-            <div className="p-6 flex-1">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">{example.title}</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{example.description}</p>
+          <div key={idx} className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm flex flex-col transition-all hover:shadow-lg hover:border-indigo-300 dark:hover:border-indigo-700/50 group">
+            <div className="p-8 flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{example.title}</h2>
+                <div className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
+                  {example.format}
+                </div>
+              </div>
+              <p className="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">{example.description}</p>
               
-              <CodePreview code={example.data} format={example.format} appTheme={appTheme} />
+              <div className="rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-800/60 shadow-inner">
+                <CodePreview code={example.data} format={example.format} appTheme={appTheme} />
+              </div>
             </div>
             
-            <div className="bg-slate-50 dark:bg-[#0f141a] px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <div className="bg-slate-50 dark:bg-[#0f141a]/50 px-8 py-5 flex justify-between items-center border-t border-slate-100 dark:border-slate-800/60">
+              <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">Ready to explore</span>
               <button 
                 onClick={() => loadExample(example.data, example.format)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-5 rounded-lg shadow-sm transition-colors text-sm flex items-center gap-2"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-xl shadow-sm transition-all text-sm flex items-center gap-2 group-hover:scale-105 active:scale-95"
               >
                 <Play size={16} className="fill-white" />
-                View in Editor
+                View in Workspace
+                <ArrowRight size={16} className="ml-1 opacity-70" />
               </button>
             </div>
           </div>

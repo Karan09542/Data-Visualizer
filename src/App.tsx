@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
@@ -24,6 +24,10 @@ import { initDexieSync } from "./store/dexieSync";
 import { PyMissingPromptModal } from "./components/PyMissingPromptModal";
 import ProductivityLayer from "./components/ProductivityLayer";
 import { ServiceWorkerUpdater } from "./components/ServiceWorkerUpdater";
+import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcuts";
+
+const AudioPlayerModal = React.lazy(() => import("./audio/components/AudioPlayerModal"));
+const MiniPlayer = React.lazy(() => import("./audio/components/MiniPlayer"));
 
 function getValueByPath(parsedData: any, path: string): string {
   if (!parsedData || !path) return "";
@@ -89,6 +93,8 @@ export default function App() {
   const setIsSavedDocsOpen = useStore((state) => state.setIsSavedDocsOpen);
   const visualizerMode = useStore((state) => state.visualizerMode);
   const isFileProcessing = useStore((state) => state.isFileProcessing);
+
+  useKeyboardMediaShortcuts();
 
   // JS Node Workspace States
   const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
@@ -475,6 +481,11 @@ export default function App() {
       <MediaPreviewPopup />
       <PyMissingPromptModal />
       <ProductivityLayer />
+
+      <Suspense fallback={null}>
+        <AudioPlayerModal />
+        <MiniPlayer />
+      </Suspense>
 
       {isFileProcessing && (
         <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">

@@ -891,25 +891,37 @@ export default function AdvancedPanel() {
           </div>
 
           {/* Global Reset and Shortcuts */}
-        <div className="p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-[#0b1120] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] flex gap-2">
-          <button
-            onClick={() => setIsShortcutsOpen(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded-xl transition-colors text-sm font-medium border border-blue-500/10"
-          >
-            <Keyboard size={16} />
-            Shortcuts
-          </button>
-          <button
-            onClick={() => {
-              resetAllSettings();
-              resetPreferences();
-            }}
-            className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-xl transition-colors text-sm font-medium border border-slate-700/50"
-          >
-            <RotateCcw size={16} />
-            Reset All
-          </button>
-        </div>
+          <div className="flex flex-col gap-2 p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-[#0b1120] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <button
+              onClick={() => {
+                import('../audio/stores/audioStore').then(m => m.useAudioStore.getState().togglePlayer());
+                setIsAdvancedPanelOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors text-sm font-medium border border-indigo-500/10"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              Audio Player
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsShortcutsOpen(true)}
+                className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded-xl transition-colors text-sm font-medium border border-blue-500/10"
+              >
+                <Keyboard size={16} />
+                Shortcuts
+              </button>
+              <button
+                onClick={() => {
+                  resetAllSettings();
+                  resetPreferences();
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-xl transition-colors text-sm font-medium border border-slate-700/50"
+              >
+                <RotateCcw size={16} />
+                Reset All
+              </button>
+            </div>
+          </div>
       </div>
     </>
   );
