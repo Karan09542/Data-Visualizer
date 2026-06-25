@@ -41,7 +41,9 @@ import {
   Sparkles,
   Type,
   List,
+  Calculator,
 } from "lucide-react";
+import { MathKeyboard } from "./MathKeyboard";
 import {
   Mafs,
   Coordinates,
@@ -780,6 +782,10 @@ const EquationInput = ({
   onAddEnter,
   onBlur,
   globalTime = 1,
+  forceEditMode = false,
+  showKeyboard = false,
+  onToggleKeyboard,
+  onCloseKeyboard,
 }: any) => {
   const [isFocused, setIsFocused] = useState(false);
   const [cursorPos, setCursorPos] = useState(0);
@@ -912,6 +918,75 @@ const EquationInput = ({
       }
     } else if (e.key === "Enter" && !e.shiftKey && onAddEnter) {
       e.preventDefault();
+      onAddEnter();
+    }
+  };
+
+  const handleKeyboardInsert = (
+    insertStr: string,
+    isTemplate: boolean = false,
+  ) => {
+    const before = value.slice(0, cursorPos);
+    const after = value.slice(cursorPos);
+    let newExpr = before + insertStr + after;
+    let newPos = cursorPos + insertStr.length;
+
+    if (isTemplate) {
+      const parenIndex = insertStr.indexOf("(");
+      if (parenIndex !== -1) {
+        newPos = cursorPos + parenIndex + 1;
+      }
+    }
+
+    onChange(newExpr);
+    setCursorPos(newPos);
+
+    // Maintain focus and set cursor position after render
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.selectionStart = newPos;
+        inputRef.current.selectionEnd = newPos;
+      }
+    }, 0);
+  };
+
+  const handleKeyboardDelete = () => {
+    if (cursorPos > 0) {
+      const before = value.slice(0, cursorPos - 1);
+      const after = value.slice(cursorPos);
+      onChange(before + after);
+      const newPos = cursorPos - 1;
+      setCursorPos(newPos);
+
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.selectionStart = newPos;
+          inputRef.current.selectionEnd = newPos;
+        }
+      }, 0);
+    }
+  };
+
+  const handleKeyboardMoveCursor = (dir: "left" | "right") => {
+    let newPos = cursorPos;
+    if (dir === "left" && cursorPos > 0) newPos--;
+    if (dir === "right" && cursorPos < value.length) newPos++;
+    setCursorPos(newPos);
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.selectionStart = newPos;
+        inputRef.current.selectionEnd = newPos;
+      }
+    }, 0);
+  };
+
+  const handleKeyboardAction = (action: "enter" | "undo" | "redo" | "space") => {
+    if (action === "space") {
+      handleKeyboardInsert(" ");
+    } else if (action === "enter" && onAddEnter) {
       onAddEnter();
     }
   };
@@ -1129,14 +1204,14 @@ const EquationInput = ({
   return (
     <div className="relative flex-1 group/preview" ref={containerRef}>
       <div
-        className={`relative w-full rounded border group-hover/preview:border-slate-350 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
+        className={`relative w-full rounded border group-hover/preview:border-slate-350 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused || forceEditMode ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
         onClick={() => {
           if (!isFocused) setIsFocused(true);
           setTimeout(() => inputRef.current?.focus(), 10);
         }}
       >
         <div
-          className={`relative w-full ${isFocused || error || !renderedLatex ? "block" : "hidden"}`}
+          className={`relative w-full ${isFocused || forceEditMode || error || !renderedLatex ? "block" : "hidden"}`}
         >
           <div className="px-2 py-1.5 font-mono text-sm whitespace-pre-wrap break-all pointer-events-none opacity-0 select-none z-0 w-full min-h-[28px]">
             {value + "\n."}
@@ -1152,8 +1227,7 @@ const EquationInput = ({
               onChange(e.target.value);
               setCursorPos(e.target.selectionStart || 0);
             }}
-            onClick={(e) => setCursorPos(e.currentTarget.selectionStart || 0)}
-            onKeyUp={(e) => setCursorPos(e.currentTarget.selectionStart || 0)}
+            onSelect={(e) => setCursorPos(e.currentTarget.selectionStart || 0)}
             onFocus={() => setIsFocused(true)}
             onBlur={() => {
               setTimeout(() => setIsFocused(false), 200);
@@ -1166,9 +1240,32 @@ const EquationInput = ({
             autoComplete="off"
             style={{ overflow: "hidden" }}
           />
+
+          {(isFocused || forceEditMode) && onToggleKeyboard && (
+            <button
+              title="Visual Math Composer"
+              className={`absolute right-1 top-1/2 -translate-y-1/2 z-30 p-1.5 md:hidden rounded transition-colors shrink-0 flex items-center justify-center ${showKeyboard ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:text-slate-300 dark:hover:bg-slate-700 opacity-60 hover:opacity-100"}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleKeyboard();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleKeyboard();
+              }}
+            >
+              <Calculator size={14} />
+            </button>
+          )}
         </div>
 
-        {!isFocused && renderedLatex && !error && (
+        {!(isFocused || forceEditMode) && renderedLatex && !error && (
           <div className="w-full px-2 py-2 flex items-center overflow-x-auto custom-scrollbar relative pr-20 group/preview block">
             <div className="text-slate-805 dark:text-slate-200 text-[13px] [&_.katex]:text-[14px] [&_.katex-display]:m-0">
               {renderedLatex}
@@ -1226,6 +1323,34 @@ const EquationInput = ({
           </div>,
           document.body,
         )}
+
+      {showKeyboard && (
+        <>
+          <div className="hidden md:block mt-2 w-full animate-in fade-in slide-in-from-top-2 duration-200">
+            <MathKeyboard
+              onInsert={handleKeyboardInsert}
+              onDelete={handleKeyboardDelete}
+              onMoveCursor={handleKeyboardMoveCursor}
+              onAction={handleKeyboardAction}
+              onClose={onCloseKeyboard}
+              variables={variables}
+            />
+          </div>
+          {createPortal(
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-[100000] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] animate-in slide-in-from-bottom-2">
+              <MathKeyboard
+                onInsert={handleKeyboardInsert}
+                onDelete={handleKeyboardDelete}
+                onMoveCursor={handleKeyboardMoveCursor}
+                onAction={handleKeyboardAction}
+                onClose={onCloseKeyboard}
+                variables={variables}
+              />
+            </div>,
+            document.body,
+          )}
+        </>
+      )}
     </div>
   );
 };
@@ -2973,6 +3098,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(
     null,
   );
+  const [activeVisualEditorId, setActiveVisualEditorId] = useState<
+    string | null
+  >(null);
   const [activeExample, setActiveExample] = useState<string | null>(null);
   const [activeColorPickerFnId, setActiveColorPickerFnId] = useState<
     string | null
@@ -4582,15 +4710,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           </button>
           <button
             onClick={() => setShowHelp(true)}
-            className="px-1.5 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 rounded transition-all text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 text-xs"
+            className="p-1 sm:px-1.5 sm:py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 rounded transition-all text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 text-xs"
             title="Help & Documentation (F1 / Alt+H)"
           >
             <HelpCircle size={14} />
-            <span>Help</span>
+            <span className="hidden sm:inline">Help</span>
           </button>
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 shrink-0"
             title={isFullscreen ? "Minimize" : "Maximize Node"}
           >
             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -4734,7 +4862,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           }
                         }}
                         className={`flex flex-col md:flex-row md:items-center gap-2 bg-white dark:bg-slate-900/50 p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
-                      ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-30" : "z-10"}
+                      ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-[100]" : activeVisualEditorId === f.id ? "z-40" : "z-10"}
                     `}
                         style={{ borderLeftColor: f.color }}
                       >
@@ -4906,21 +5034,34 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                         {/* Equation Input / Desktop Right side */}
                         <div className="flex flex-col flex-1 min-w-0 w-full md:w-auto overflow-hidden relative">
-                          <div className="flex items-center font-mono text-sm w-full">
-                            <EquationInput
-                              value={f.expr}
-                              onChange={(val: string) =>
-                                handleUpdateExpr(f.id, val)
-                              }
-                              onBlur={() => saveImmediately()}
-                              variables={variables}
-                              hoveredVar={hoveredVar}
-                              setHoveredVar={setHoveredVar}
-                              error={f.error}
-                              onAddEnter={handleAddFunction}
-                              globalTime={time}
-                            />
+                          <div className="flex items-center font-mono text-sm w-full gap-1">
+                            <div className="flex-1 min-w-0">
+                              <EquationInput
+                                value={f.expr}
+                                onChange={(val: string) =>
+                                  handleUpdateExpr(f.id, val)
+                                }
+                                onBlur={() => saveImmediately()}
+                                variables={variables}
+                                hoveredVar={hoveredVar}
+                                setHoveredVar={setHoveredVar}
+                                error={f.error}
+                                onAddEnter={handleAddFunction}
+                                globalTime={time}
+                                forceEditMode={activeVisualEditorId === f.id}
+                                showKeyboard={activeVisualEditorId === f.id}
+                                onToggleKeyboard={() =>
+                                  setActiveVisualEditorId(
+                                    activeVisualEditorId === f.id ? null : f.id,
+                                  )
+                                }
+                                onCloseKeyboard={() =>
+                                  setActiveVisualEditorId(null)
+                                }
+                              />
+                            </div>
                           </div>
+
                           {savingFormulaFnId === f.id &&
                             createPortal(
                               <div className="fixed inset-0 z-[100000] bg-[#070b13]/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -7268,11 +7409,27 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           )}
                         </div>
                         {/* Action Buttons Block */}
-                        <div className="absolute right-2 top-2 nodrag shrink-0 z-20 flex flex-col md:flex-row items-end md:items-center">
+                        <div className="absolute right-2 top-2 nodrag shrink-0 z-[1000] flex flex-col md:flex-row items-end md:items-center">
                           {/* Desktop Inline Actions */}
                           <div
                             className={`hidden md:opacity-0 md:group-hover:opacity-100 md:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 transition-opacity`}
                           >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveVisualEditorId(
+                                  activeVisualEditorId === f.id ? null : f.id,
+                                );
+                              }}
+                              className={`p-1 rounded transition-all flex flex-col justify-center ${
+                                activeVisualEditorId === f.id
+                                  ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                  : "opacity-60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                              }`}
+                              title="Visual Math Composer"
+                            >
+                              <Calculator size={14} />
+                            </button>
                             <button
                               type="button"
                               onClick={() => {
@@ -7353,6 +7510,19 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               className="md:hidden mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  setActiveVisualEditorId(f.id);
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-650 dark:text-slate-200 text-xs font-semibold transition-colors"
+                              >
+                                <Calculator
+                                  size={14}
+                                  className="text-blue-500 dark:text-blue-400"
+                                />{" "}
+                                Visual Math Composer
+                              </button>
                               <button
                                 onClick={() => {
                                   setActiveActionMenuId(null);

@@ -160,7 +160,7 @@ def get_diagnostics(code, path="main.py"):
                 res.append({
                     "line": getattr(node, 'lineno', 1),
                     "column": getattr(node, 'col_offset', 0),
-                    "message": "Warning: This module contains top-level executable code. Importing it will execute the module. Consider moving it inside a function or 'if __name__ == \"__main__\":' block.",
+                    "message": 'Warning: This module contains top-level executable code. Importing it will execute the module. Consider moving it inside a function or if __name__ == "__main__": block.',
                     "type": "warning" # Changed to highlight in editor
                 })
         except Exception:
