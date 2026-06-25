@@ -86,7 +86,7 @@ export const getMediaType = (val: string) => {
     val.startsWith("model/")
   )
     return "3d-model";
-  
+
   if (val.startsWith("img_") || val.startsWith("thumb_")) {
     return "image";
   }
@@ -268,12 +268,16 @@ function NodeRenderer({
       useStore.getState().selectedNodeId != null);
 
   const strVal = data.value !== undefined ? String(data.value) : "";
-  
-  const actualAssetId = data.rawValue && typeof data.rawValue === "object"
-    ? (data.rawValue.assetId || data.rawValue.assetRef || (data.rawValue._type === "media" ? data.rawValue.assetId : null))
-    : (typeof data.value === "string" && (data.value.startsWith("img_") || data.value.startsWith("thumb_")))
-      ? data.value
-      : null;
+
+  const actualAssetId =
+    data.rawValue && typeof data.rawValue === "object"
+      ? data.rawValue.assetId ||
+        data.rawValue.assetRef ||
+        (data.rawValue._type === "media" ? data.rawValue.assetId : null)
+      : typeof data.value === "string" &&
+          (data.value.startsWith("img_") || data.value.startsWith("thumb_"))
+        ? data.value
+        : null;
 
   const [assetDetails, setAssetDetails] = React.useState<any>(null);
 
@@ -282,20 +286,25 @@ function NodeRenderer({
       setAssetDetails(null);
       return;
     }
-    
+
     let active = true;
     const subscription = liveQuery(async () => {
       let id = actualAssetId;
       if (id.startsWith("thumb_")) {
-        const original = await db.assets.where("thumbnailId").equals(id).first();
+        const original = await db.assets
+          .where("thumbnailId")
+          .equals(id)
+          .first();
         if (original) return original;
       }
       return await db.assets.get(id);
     }).subscribe({
       next: (result) => {
         if (!active) return;
-        setTimeout(() => { if (active) setAssetDetails(result); }, 0);
-      }
+        setTimeout(() => {
+          if (active) setAssetDetails(result);
+        }, 0);
+      },
     });
 
     return () => {
@@ -330,31 +339,72 @@ function NodeRenderer({
   const isPyCode = data.type === "py_code";
   const isPyTerminal = data.type === "py_terminal";
 
-  const isTodoNode = typeof data.name === "string" && (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
-  const isTransferNode = typeof data.name === "string" && (data.name.endsWith("_transfer_node") || data.name.endsWith(".transfer"));
-  const isMathNode = typeof data.name === "string" && (data.name.endsWith("_math_node") || data.name.endsWith(".math") || data.name.toLowerCase().endsWith("graph") || data.name.toLowerCase().endsWith("math"));
-  const isSearchNode = typeof data.name === "string" && (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
+  const isTodoNode =
+    typeof data.name === "string" &&
+    (data.name.endsWith("_todo_node") || data.name.endsWith(".todo"));
+  const isTransferNode =
+    typeof data.name === "string" &&
+    (data.name.endsWith("_transfer_node") || data.name.endsWith(".transfer"));
+  const isMathNode =
+    typeof data.name === "string" &&
+    (data.name.endsWith("_math_node") ||
+      data.name.endsWith(".math") ||
+      data.name.toLowerCase().endsWith("graph") ||
+      data.name.toLowerCase().endsWith("math"));
+  const isSearchNode =
+    typeof data.name === "string" &&
+    (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
-  const isSpecialNode = isApiNode || isJsCode || isJsTerminal || isTsCode || isTsTerminal || isJsNode || isTsNode || isPyCode || isPyTerminal || isPyNode || isTodoNode || isTransferNode || isMathNode || isSearchNode;
+  const isSpecialNode =
+    isApiNode ||
+    isJsCode ||
+    isJsTerminal ||
+    isTsCode ||
+    isTsTerminal ||
+    isJsNode ||
+    isTsNode ||
+    isPyCode ||
+    isPyTerminal ||
+    isPyNode ||
+    isTodoNode ||
+    isTransferNode ||
+    isMathNode ||
+    isSearchNode;
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]
       : showMediaPreview;
   const isKnownDataUrl = !!knownDataUrls[strVal];
 
-  const assetMimeType = assetDetails?.mimeType?.toLowerCase() || '';
-  const assetName = typeof data.rawValue === 'object' && (data.rawValue?.name || data.rawValue?.filename || data.rawValue?.url) ? String(data.rawValue.name || data.rawValue.filename || data.rawValue.url).toLowerCase() : '';
-  const fallbackStrVal = actualAssetId && (assetName || assetDetails?.filename) ? (assetName || assetDetails?.filename) : strVal;
+  const assetMimeType = assetDetails?.mimeType?.toLowerCase() || "";
+  const assetName =
+    typeof data.rawValue === "object" &&
+    (data.rawValue?.name || data.rawValue?.filename || data.rawValue?.url)
+      ? String(
+          data.rawValue.name || data.rawValue.filename || data.rawValue.url,
+        ).toLowerCase()
+      : "";
+  const fallbackStrVal =
+    actualAssetId && (assetName || assetDetails?.filename)
+      ? assetName || assetDetails?.filename
+      : strVal;
 
-  const mediaTypeByAsset =
-    assetMimeType.startsWith('image/') ? 'image' :
-    assetMimeType.startsWith('video/') ? 'video' :
-    assetMimeType.startsWith('audio/') ? 'audio' :
-    assetMimeType.startsWith('application/pdf') || assetMimeType === 'pdf' ? 'pdf' :
-    assetMimeType.startsWith('model/') ? '3d-model' :
-    null;
+  const mediaTypeByAsset = assetMimeType.startsWith("image/")
+    ? "image"
+    : assetMimeType.startsWith("video/")
+      ? "video"
+      : assetMimeType.startsWith("audio/")
+        ? "audio"
+        : assetMimeType.startsWith("application/pdf") || assetMimeType === "pdf"
+          ? "pdf"
+          : assetMimeType.startsWith("model/")
+            ? "3d-model"
+            : null;
 
-  const resolvedMediaType = mediaTypeByAsset || getMediaType(fallbackStrVal as string) || getMediaType(strVal);
+  const resolvedMediaType =
+    mediaTypeByAsset ||
+    getMediaType(fallbackStrVal as string) ||
+    getMediaType(strVal);
 
   const mediaType =
     isManuallyRendered &&
@@ -368,9 +418,10 @@ function NodeRenderer({
       : null;
   const isMedia = !!mediaType;
 
-  const mediaSrc = resolvedMediaType === 'image' 
-    ? (assetDetails?.thumbnailId || actualAssetId || strVal)
-    : (actualAssetId || strVal);
+  const mediaSrc =
+    resolvedMediaType === "image"
+      ? assetDetails?.thumbnailId || actualAssetId || strVal
+      : actualAssetId || strVal;
 
   useEffect(() => {
     const el = mediaContainerRef.current;
@@ -412,7 +463,7 @@ function NodeRenderer({
   const getThemeClasses = (theme: NodeTheme) => {
     switch (theme) {
       case "vscode":
-        return appTheme === "dark" 
+        return appTheme === "dark"
           ? "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md"
           : "bg-white border-slate-300 text-slate-800 shadow-sm";
       case "github":
@@ -902,43 +953,64 @@ function NodeRenderer({
 
   let fWidth = customSize
     ? customSize.width
-    : isApiNode ? 340 : isTodoNode ? 385 : isTransferNode ? 384 : isMathNode ? (isExpanded ? 520 : 320) : isSearchNode ? 340
-      : (isJsNode || isTsNode || isPyNode)
-        ? 440
-        : (isJsCode || isTsCode || isPyCode)
-          ? 420
-          : (isJsTerminal || isTsTerminal || isPyTerminal)
-            ? 420
-            : isMedia
-              ? 320
-              : nodeTheme === "peepal" || nodeTheme === "banyan"
-                ? 220
-                : 260;
+    : isApiNode
+      ? 340
+      : isTodoNode
+        ? 385
+        : isTransferNode
+          ? 384
+          : isMathNode
+            ? isExpanded
+              ? 520
+              : 320
+            : isSearchNode
+              ? 340
+              : isJsNode || isTsNode || isPyNode
+                ? 440
+                : isJsCode || isTsCode || isPyCode
+                  ? 420
+                  : isJsTerminal || isTsTerminal || isPyTerminal
+                    ? 420
+                    : isMedia
+                      ? 320
+                      : nodeTheme === "peepal" || nodeTheme === "banyan"
+                        ? 220
+                        : 260;
   let fHeight = customSize
     ? customSize.height
-    : isTodoNode ? (isExpanded ? 360 : 140)
-    : isTransferNode ? (isExpanded ? 360 : 320)
-    : isMathNode ? (isExpanded ? 350 : 250)
-    : isSearchNode ? 420
-    : isMedia
-      ? mediaType === "audio"
-        ? 140
-        : 240
-      : isApiNode
-        ? 140
-        : (isJsNode || isTsNode || isPyNode)
-          ? 380
-          : (isJsCode || isTsCode || isPyCode)
-            ? 260
-            : (isJsTerminal || isTsTerminal || isPyTerminal)
-              ? 200
-              : isExpanded
-                ? nodeTheme === "peepal" || nodeTheme === "banyan"
-                  ? 440
-                  : 300
-                : nodeTheme === "peepal" || nodeTheme === "banyan"
-                  ? 310
-                  : 120;
+    : isTodoNode
+      ? isExpanded
+        ? 360
+        : 140
+      : isTransferNode
+        ? isExpanded
+          ? 360
+          : 320
+        : isMathNode
+          ? isExpanded
+            ? 350
+            : 250
+          : isSearchNode
+            ? 420
+            : isMedia
+              ? mediaType === "audio"
+                ? 140
+                : 240
+              : isApiNode
+                ? 140
+                : isJsNode || isTsNode || isPyNode
+                  ? 380
+                  : isJsCode || isTsCode || isPyCode
+                    ? 260
+                    : isJsTerminal || isTsTerminal || isPyTerminal
+                      ? 200
+                      : isExpanded
+                        ? nodeTheme === "peepal" || nodeTheme === "banyan"
+                          ? 440
+                          : 300
+                        : nodeTheme === "peepal" || nodeTheme === "banyan"
+                          ? 310
+                          : 120;
 
   const isDefaultShape = nodeShape === "default";
 
@@ -1305,8 +1377,7 @@ function NodeRenderer({
             className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} ${!isSpecialNode ? "border" : ""} cursor-pointer ${!isSpecialNode ? "hover:brightness-125" : ""} transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
             style={{
               ...shapeStyle,
-              transform:
-                isSpecialNode ? undefined : `scale(${nodeSize})`,
+              transform: isSpecialNode ? undefined : `scale(${nodeSize})`,
               transformOrigin: "center",
               touchAction: "none",
             }}
@@ -1673,10 +1744,13 @@ function NodeRenderer({
               <div
                 className={`flex flex-col w-full max-w-full min-w-0 leading-tight h-full ${isSpecialNode ? "p-0" : "px-1 py-0.5 overflow-hidden"}`}
                 style={{
-                  ...((isCustom && !isSpecialNode) ? { color: nodeTextColor } : {}),
-                  ...((!isSpecialNode && (nodeTheme === "peepal" ||
-                  nodeTheme === "banyan" ||
-                  nodeTheme === "nature"))
+                  ...(isCustom && !isSpecialNode
+                    ? { color: nodeTextColor }
+                    : {}),
+                  ...(!isSpecialNode &&
+                  (nodeTheme === "peepal" ||
+                    nodeTheme === "banyan" ||
+                    nodeTheme === "nature")
                     ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                     : {}),
                 }}
@@ -1792,7 +1866,14 @@ function NodeRenderer({
                     nodeWidth={fWidth}
                   />
                 )}
-                {isJsNode && <JsNodeRenderer path={data.path} code={strVal} width={fWidth} height={fHeight} />}
+                {isJsNode && (
+                  <JsNodeRenderer
+                    path={data.path}
+                    code={strVal}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
                 {isJsCode && (
                   <JsNodeCodeRenderer
                     code={strVal}
@@ -1808,8 +1889,22 @@ function NodeRenderer({
                     height={fHeight}
                   />
                 )}
-                {isTsNode && <TsNodeRenderer path={data.path} code={strVal} width={fWidth} height={fHeight} />}
-                {isPyNode && <PyNodeRenderer path={data.path} code={strVal} width={fWidth} height={fHeight} />}
+                {isTsNode && (
+                  <TsNodeRenderer
+                    path={data.path}
+                    code={strVal}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
+                {isPyNode && (
+                  <PyNodeRenderer
+                    path={data.path}
+                    code={strVal}
+                    width={fWidth}
+                    height={fHeight}
+                  />
+                )}
                 {isTsCode && (
                   <TsNodeCodeRenderer
                     code={strVal}
@@ -1841,34 +1936,31 @@ function NodeRenderer({
                   />
                 )}
                 {isTodoNode && (
-                  <TodoNodeRenderer 
-                    nodeId={data.id} 
-                    data={data} 
+                  <TodoNodeRenderer
+                    nodeId={data.id}
+                    data={data}
                     isExpanded={isExpanded}
                   />
                 )}
                 {isTransferNode && (
-                  <TransferNodeRenderer 
-                    node={node}
-                    isSelected={isSelected}
-                  />
+                  <TransferNodeRenderer node={node} isSelected={isSelected} />
                 )}
                 {isMathNode && (
-                  <MathNodeRenderer 
+                  <MathNodeRenderer
                     key={data.path}
-                    nodeId={data.id} 
-                    data={data} 
+                    nodeId={data.id}
+                    data={data}
                     isExpanded={isExpanded}
                     width={fWidth}
                     height={fHeight}
                   />
                 )}
                 {isSearchNode && (
-                   <SearchNodeRenderer
-                      key={data.path}
-                      nodeId={data.id}
-                      data={data}
-                   />
+                  <SearchNodeRenderer
+                    key={data.path}
+                    nodeId={data.id}
+                    data={data}
+                  />
                 )}
                 {hasChildren && isCollapsed && (
                   <span
@@ -1883,15 +1975,17 @@ function NodeRenderer({
                 )}
               </div>
 
-              <div
-                className={`${isSpecialNode ? "absolute -top-4 -left-4 bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-white/20 w-10 h-10 ring-4 ring-black/5" : "ml-1 flex-shrink-0 p-1"} flex items-center justify-center md:hidden rounded-full hover:scale-110 active:scale-95 transition-all touch-manipulation z-[100]`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onContextMenu) onContextMenu(e, data);
-                }}
-              >
-                <MoreVertical size={isSpecialNode ? 20 : 14} className={isSpecialNode ? "text-indigo-500 dark:text-indigo-400" : mutedText} />
-              </div>
+              {!isSpecialNode && (
+                <div
+                  className="ml-1 flex-shrink-0 p-1 flex items-center justify-center md:hidden rounded-full hover:scale-110 active:scale-95 transition-all touch-manipulation z-[100]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onContextMenu) onContextMenu(e, data);
+                  }}
+                >
+                  <MoreVertical size={14} className={mutedText} />
+                </div>
+              )}
             </div>
 
             {isMedia && (
@@ -1973,19 +2067,37 @@ function NodeRenderer({
                 {assetDetails && (
                   <div className="mt-1.5 px-1.5 py-1 bg-slate-50 dark:bg-black/40 rounded border border-slate-200 dark:border-white/5 text-[9px] font-mono text-slate-500 dark:text-slate-400 space-y-0.5 select-none leading-normal font-sans">
                     <div className="flex justify-between gap-2 overflow-hidden">
-                      <span className="text-slate-400 dark:text-slate-500 font-sans shrink-0">Name:</span>
-                      <span className="text-slate-800 dark:text-white font-medium truncate shrink" title={assetDetails.filename}>{assetDetails.filename || 'Unnamed'}</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-sans shrink-0">
+                        Name:
+                      </span>
+                      <span
+                        className="text-slate-800 dark:text-white font-medium truncate shrink"
+                        title={assetDetails.filename}
+                      >
+                        {assetDetails.filename || "Unnamed"}
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400 dark:text-slate-500 font-sans">Size:</span>
-                      <span className="text-slate-700 dark:text-slate-300 font-medium">{(assetDetails.size / 1024).toFixed(1)} KB</span>
+                      <span className="text-slate-400 dark:text-slate-500 font-sans">
+                        Size:
+                      </span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                        {(assetDetails.size / 1024).toFixed(1)} KB
+                      </span>
                     </div>
-                    {typeof assetDetails.width === 'number' && typeof assetDetails.height === 'number' && assetDetails.width > 0 && assetDetails.height > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-400 dark:text-slate-500 font-sans">Dims:</span>
-                        <span className="text-slate-700 dark:text-slate-300 font-medium">{assetDetails.width} × {assetDetails.height} px</span>
-                      </div>
-                    )}
+                    {typeof assetDetails.width === "number" &&
+                      typeof assetDetails.height === "number" &&
+                      assetDetails.width > 0 &&
+                      assetDetails.height > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400 dark:text-slate-500 font-sans">
+                            Dims:
+                          </span>
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            {assetDetails.width} × {assetDetails.height} px
+                          </span>
+                        </div>
+                      )}
                   </div>
                 )}
 

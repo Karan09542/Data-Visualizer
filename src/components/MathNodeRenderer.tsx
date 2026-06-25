@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Maximize2,
@@ -149,7 +156,15 @@ interface MathFunction {
   labelPosition?: [number, number];
   fillColor?: string;
   fillOpacity?: number;
-  fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
+  fillPattern?:
+    | "solid"
+    | "hatch-diagonal"
+    | "hatch-reverse"
+    | "hatch-cross"
+    | "dotted"
+    | "grid"
+    | "dashed"
+    | "math-region";
   patternSpacing?: number;
   patternThickness?: number;
   patternAngle?: number;
@@ -993,7 +1008,13 @@ const EquationInput = ({
         latex = getLatexForExpr(value);
       } catch (parseError: any) {
         const eqIndex = value.indexOf("=");
-        if (eqIndex !== -1 && !value.includes("==") && !value.includes(">=") && !value.includes("<=") && !value.includes("!=")) {
+        if (
+          eqIndex !== -1 &&
+          !value.includes("==") &&
+          !value.includes(">=") &&
+          !value.includes("<=") &&
+          !value.includes("!=")
+        ) {
           const lhs = value.slice(0, eqIndex);
           const rhs = value.slice(eqIndex + 1);
           if (lhs.trim() && rhs.trim()) {
@@ -1047,11 +1068,19 @@ const EquationInput = ({
                   (evalResultLatex
                     ? ` \\mathbf{${evalResultLatex.replace(/ /g, "\\ ")}}`
                     : ""),
-                { throwOnError: true, displayMode: true, strict: "ignore", trust: true },
+                {
+                  throwOnError: true,
+                  displayMode: true,
+                  strict: "ignore",
+                  trust: true,
+                },
               ),
             }}
           />
-          <div className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded p-1 border border-slate-200 dark:border-slate-700 shadow-sm z-20 pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
+          <div
+            className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded p-1 border border-slate-200 dark:border-slate-700 shadow-sm z-20 pointer-events-auto"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             {resStrOutput && (
               <button
                 className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "result" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} font-mono text-[10px] md:text-[9px] font-bold cursor-pointer w-6 h-6 md:w-5 md:h-5 flex items-center justify-center`}
@@ -1073,7 +1102,11 @@ const EquationInput = ({
               title="Copy Expression"
               onClick={(e) => handleCopy("expr", value, e)}
             >
-              {copiedType === "expr" ? <Check size={13} /> : <Copy size={13} className="md:w-[12px] md:h-[12px]" />}
+              {copiedType === "expr" ? (
+                <Check size={13} />
+              ) : (
+                <Copy size={13} className="md:w-[12px] md:h-[12px]" />
+              )}
             </button>
           </div>
         </React.Fragment>
@@ -1082,12 +1115,12 @@ const EquationInput = ({
       // 2. Fallback to Markdown or plain text
       renderedLatex = (
         <div className="markdown-body p-2 font-sans w-full text-sm text-slate-800 dark:text-slate-200">
-           <Markdown
-             remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-             rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-           >
-             {value}
-           </Markdown>
+          <Markdown
+            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          >
+            {value}
+          </Markdown>
         </div>
       );
     }
@@ -1568,7 +1601,11 @@ const SafeLabel = ({
   }
 
   try {
-    katex.renderToString(finalTex, { throwOnError: true, strict: "ignore", trust: true });
+    katex.renderToString(finalTex, {
+      throwOnError: true,
+      strict: "ignore",
+      trust: true,
+    });
     return <LaTeX at={at} tex={finalTex} color={color} />;
   } catch (e) {
     return (
@@ -1584,7 +1621,15 @@ const CurvePatternDefs: React.FC<{
   color: string;
   fillColor?: string;
   fillOpacity?: number;
-  fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
+  fillPattern?:
+    | "solid"
+    | "hatch-diagonal"
+    | "hatch-reverse"
+    | "hatch-cross"
+    | "dotted"
+    | "grid"
+    | "dashed"
+    | "math-region";
   patternSpacing?: number;
   patternThickness?: number;
   patternAngle?: number;
@@ -1644,42 +1689,177 @@ const CurvePatternDefs: React.FC<{
         >
           {fillPattern === "hatch-diagonal" && (
             <React.Fragment>
-              <line x1={0} y1={pSize} x2={pSize} y2={0} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={-1} y1={1} x2={1} y2={-1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={pSize - 1} y1={pSize + 1} x2={pSize + 1} y2={pSize - 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line
+                x1={0}
+                y1={pSize}
+                x2={pSize}
+                y2={0}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={-1}
+                y1={1}
+                x2={1}
+                y2={-1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={pSize - 1}
+                y1={pSize + 1}
+                x2={pSize + 1}
+                y2={pSize - 1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
             </React.Fragment>
           )}
           {fillPattern === "hatch-reverse" && (
             <React.Fragment>
-              <line x1={0} y1={0} x2={pSize} y2={pSize} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={-1} y1={pSize - 1} x2={1} y2={pSize + 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={pSize - 1} y1={-1} x2={pSize + 1} y2={1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line
+                x1={0}
+                y1={0}
+                x2={pSize}
+                y2={pSize}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={-1}
+                y1={pSize - 1}
+                x2={1}
+                y2={pSize + 1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={pSize - 1}
+                y1={-1}
+                x2={pSize + 1}
+                y2={1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
             </React.Fragment>
           )}
           {fillPattern === "hatch-cross" && (
             <React.Fragment>
-              <line x1={0} y1={pSize} x2={pSize} y2={0} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={0} y1={0} x2={pSize} y2={pSize} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={-1} y1={1} x2={1} y2={-1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={pSize - 1} y1={pSize + 1} x2={pSize + 1} y2={pSize - 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={-1} y1={pSize - 1} x2={1} y2={pSize + 1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={pSize - 1} y1={-1} x2={pSize + 1} y2={1} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line
+                x1={0}
+                y1={pSize}
+                x2={pSize}
+                y2={0}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={0}
+                y1={0}
+                x2={pSize}
+                y2={pSize}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={-1}
+                y1={1}
+                x2={1}
+                y2={-1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={pSize - 1}
+                y1={pSize + 1}
+                x2={pSize + 1}
+                y2={pSize - 1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={-1}
+                y1={pSize - 1}
+                x2={1}
+                y2={pSize + 1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={pSize - 1}
+                y1={-1}
+                x2={pSize + 1}
+                y2={1}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
             </React.Fragment>
           )}
           {fillPattern === "dotted" && (
-            <circle cx={pSize / 2} cy={pSize / 2} r={strokeThick} fill={pColor} fillOpacity={fillOpacity} />
+            <circle
+              cx={pSize / 2}
+              cy={pSize / 2}
+              r={strokeThick}
+              fill={pColor}
+              fillOpacity={fillOpacity}
+            />
           )}
           {fillPattern === "grid" && (
             <React.Fragment>
-              <line x1={0} y1={0} x2={pSize} y2={0} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-              <line x1={0} y1={0} x2={0} y2={pSize} strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+              <line
+                x1={0}
+                y1={0}
+                x2={pSize}
+                y2={0}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
+              <line
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={pSize}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                style={{ stroke: pColor }}
+              />
             </React.Fragment>
           )}
           {fillPattern === "dashed" && (
-            <line x1={0} y1={pSize / 2} x2={pSize} y2={pSize / 2} strokeWidth={strokeThick} strokeOpacity={fillOpacity} strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`} style={{ stroke: pColor }} />
+            <line
+              x1={0}
+              y1={pSize / 2}
+              x2={pSize}
+              y2={pSize / 2}
+              strokeWidth={strokeThick}
+              strokeOpacity={fillOpacity}
+              strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
+              style={{ stroke: pColor }}
+            />
           )}
           {fillPattern === "math-region" && (
-            <line x1={0} y1={pSize} x2={pSize} y2={0} strokeWidth={Math.max(1, strokeThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} style={{ stroke: pColor }} />
+            <line
+              x1={0}
+              y1={pSize}
+              x2={pSize}
+              y2={0}
+              strokeWidth={Math.max(1, strokeThick * 0.5)}
+              strokeOpacity={Math.min(1, fillOpacity * 1.5)}
+              style={{ stroke: pColor }}
+            />
           )}
         </pattern>
       </defs>
@@ -1696,14 +1876,23 @@ const InequalityPlot: React.FC<{
   weight?: number;
   fillColor?: string;
   fillOpacity?: number;
-  fillPattern?: "solid" | "hatch-diagonal" | "hatch-reverse" | "hatch-cross" | "dotted" | "grid" | "dashed" | "math-region";
+  fillPattern?:
+    | "solid"
+    | "hatch-diagonal"
+    | "hatch-reverse"
+    | "hatch-cross"
+    | "dotted"
+    | "grid"
+    | "dashed"
+    | "math-region";
   patternSpacing?: number;
   patternThickness?: number;
   patternAngle?: number;
   tx?: number;
   ty?: number;
   rot?: number;
-  scaleX?: number; scaleY?: number;
+  scaleX?: number;
+  scaleY?: number;
   px?: number;
   py?: number;
   lineStyle?: string;
@@ -1724,7 +1913,10 @@ const InequalityPlot: React.FC<{
   patternAngle,
   tx = 0,
   ty = 0,
-  rot = 0, scaleX = 1, scaleY = 1, px = 0,
+  rot = 0,
+  scaleX = 1,
+  scaleY = 1,
+  px = 0,
   py = 0,
   lineStyle,
   samplingDepth = 14,
@@ -1750,75 +1942,129 @@ const InequalityPlot: React.FC<{
     const xMax = xRange[1];
     const yMin = yRange[0];
     const yMax = yRange[1];
-    
+
     const dx = (xMax - xMin) / GRID_SIZE;
     const dy = (yMax - yMin) / GRID_SIZE;
 
     const isInside = (val: number) => {
-        if (isNaN(val)) return false;
-        if (operator === "<" || operator === "<=") return val < 0;
-        if (operator === ">" || operator === ">=") return val > 0;
-        if (operator === "=") return val < 0;
-        return val === 0;
+      if (isNaN(val)) return false;
+      if (operator === "<" || operator === "<=") return val < 0;
+      if (operator === ">" || operator === ">=") return val > 0;
+      if (operator === "=") return val < 0;
+      return val === 0;
     };
 
     let fillPath = "";
     // Evaluate horizontally
     const scope = { ...baseScope, x: 0, y: 0 };
     if (operator && !(operator === "=" && fillColor === undefined)) {
-    for (let j = 0; j <= GRID_SIZE; j++) {
+      for (let j = 0; j <= GRID_SIZE; j++) {
         const y = yMin + j * dy;
         let xStart: number | null = null;
-        
-        for (let i = 0; i <= GRID_SIZE; i++) {
-            const x = xMin + i * dx;
-            
-            // Inverse Transform for Inequality
-            let lx = x - tx - px;
-            let ly = y - ty - py;
-            
-            const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
-            const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
-            
-            scope.x = (nx / scaleX) + px;
-            scope.y = (ny / scaleY) + py;
 
-            let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
-            if (l && (l.isMatrix || Array.isArray(l))) { try { l = mathjs.det(l); } catch { l = NaN; } }
-            let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
-            if (r && (r.isMatrix || Array.isArray(r))) { try { r = mathjs.det(r); } catch { r = NaN; } }
-            const val = Number(l) - Number(r);
-            const inside = isInside(val);
-            
-            if (inside && xStart === null) xStart = x;
-            else if (!inside && xStart !== null) {
-                fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${x - dx/2} ${y - dy/2} L ${x - dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
-                xStart = null;
+        for (let i = 0; i <= GRID_SIZE; i++) {
+          const x = xMin + i * dx;
+
+          // Inverse Transform for Inequality
+          let lx = x - tx - px;
+          let ly = y - ty - py;
+
+          const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
+          const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
+
+          scope.x = nx / scaleX + px;
+          scope.y = ny / scaleY + py;
+
+          let l;
+          try {
+            l = compiledLHS.evaluate(scope);
+          } catch {
+            l = NaN;
+          }
+          if (l && (l.isMatrix || Array.isArray(l))) {
+            try {
+              l = mathjs.det(l);
+            } catch {
+              l = NaN;
             }
-        }        if (xStart !== null) fillPath += `M ${xStart - dx/2} ${y - dy/2} L ${xMax + dx/2} ${y - dy/2} L ${xMax + dx/2} ${y + dy/2} L ${xStart - dx/2} ${y + dy/2} Z `;
-    }
+          }
+          let r;
+          if (compiledRHS) {
+            try {
+              r = compiledRHS.evaluate(scope);
+            } catch {
+              r = NaN;
+            }
+          } else {
+            r = 0;
+          }
+          if (r && (r.isMatrix || Array.isArray(r))) {
+            try {
+              r = mathjs.det(r);
+            } catch {
+              r = NaN;
+            }
+          }
+          const val = Number(l) - Number(r);
+          const inside = isInside(val);
+
+          if (inside && xStart === null) xStart = x;
+          else if (!inside && xStart !== null) {
+            fillPath += `M ${xStart - dx / 2} ${y - dy / 2} L ${x - dx / 2} ${y - dy / 2} L ${x - dx / 2} ${y + dy / 2} L ${xStart - dx / 2} ${y + dy / 2} Z `;
+            xStart = null;
+          }
+        }
+        if (xStart !== null)
+          fillPath += `M ${xStart - dx / 2} ${y - dy / 2} L ${xMax + dx / 2} ${y - dy / 2} L ${xMax + dx / 2} ${y + dy / 2} L ${xStart - dx / 2} ${y + dy / 2} Z `;
+      }
     }
 
     // Now extract boundary using marching squares (edges only)
     let boundaryPath = "";
     const grid = new Float32Array((GRID_SIZE + 1) * (GRID_SIZE + 1));
     for (let i = 0; i <= GRID_SIZE; i++) {
-        const x = xMin + i * dx;
-        for (let j = 0; j <= GRID_SIZE; j++) {
-            const y = yMin + j * dy;
-            let lx = x - tx - px;
-            let ly = y - ty - py;
-            const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
-            const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
-            scope.x = (nx / scaleX) + px;
-            scope.y = (ny / scaleY) + py;
+      const x = xMin + i * dx;
+      for (let j = 0; j <= GRID_SIZE; j++) {
+        const y = yMin + j * dy;
+        let lx = x - tx - px;
+        let ly = y - ty - py;
+        const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
+        const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
+        scope.x = nx / scaleX + px;
+        scope.y = ny / scaleY + py;
 
-            let l; try { l = compiledLHS.evaluate(scope); } catch { l = NaN; }
-            if (l && (l.isMatrix || Array.isArray(l))) { try { l = mathjs.det(l); } catch { l = NaN; } }
-            let r; if (compiledRHS) { try { r = compiledRHS.evaluate(scope); } catch { r = NaN; } } else { r = 0; }
-            if (r && (r.isMatrix || Array.isArray(r))) { try { r = mathjs.det(r); } catch { r = NaN; } }
-            grid[i * (GRID_SIZE + 1) + j] = Number(l) - Number(r);
+        let l;
+        try {
+          l = compiledLHS.evaluate(scope);
+        } catch {
+          l = NaN;
         }
+        if (l && (l.isMatrix || Array.isArray(l))) {
+          try {
+            l = mathjs.det(l);
+          } catch {
+            l = NaN;
+          }
+        }
+        let r;
+        if (compiledRHS) {
+          try {
+            r = compiledRHS.evaluate(scope);
+          } catch {
+            r = NaN;
+          }
+        } else {
+          r = 0;
+        }
+        if (r && (r.isMatrix || Array.isArray(r))) {
+          try {
+            r = mathjs.det(r);
+          } catch {
+            r = NaN;
+          }
+        }
+        grid[i * (GRID_SIZE + 1) + j] = Number(l) - Number(r);
+      }
     }
 
     const lerp = (p1: number[], p2: number[], val1: number, val2: number) => {
@@ -1826,7 +2072,10 @@ const InequalityPlot: React.FC<{
       if (Math.abs(val1 - val2) < 1e-9) return p1;
       const t = -val1 / (val2 - val1);
       const clampedT = Math.max(0, Math.min(1, t));
-      return [ p1[0] + clampedT * (p2[0] - p1[0]), p1[1] + clampedT * (p2[1] - p1[1]) ];
+      return [
+        p1[0] + clampedT * (p2[0] - p1[0]),
+        p1[1] + clampedT * (p2[1] - p1[1]),
+      ];
     };
 
     for (let i = 0; i < GRID_SIZE; i++) {
@@ -1863,29 +2112,77 @@ const InequalityPlot: React.FC<{
         const e2 = lerp(p01, p11, v01, v11);
         const e3 = lerp(p00, p01, v00, v01);
 
-        switch(index) {
-          case 1: boundaryPath += `M${e0[0]},${e0[1]} L${e3[0]},${e3[1]} `; break;
-          case 2: boundaryPath += `M${e1[0]},${e1[1]} L${e0[0]},${e0[1]} `; break;
-          case 3: boundaryPath += `M${e1[0]},${e1[1]} L${e3[0]},${e3[1]} `; break;
-          case 4: boundaryPath += `M${e2[0]},${e2[1]} L${e1[0]},${e1[1]} `; break;
-          case 5: boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `; break;
-          case 6: boundaryPath += `M${e2[0]},${e2[1]} L${e0[0]},${e0[1]} `; break;
-          case 7: boundaryPath += `M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `; break;
-          case 8: boundaryPath += `M${e3[0]},${e3[1]} L${e2[0]},${e2[1]} `; break;
-          case 9: boundaryPath += `M${e0[0]},${e0[1]} L${e2[0]},${e2[1]} `; break;
-          case 10: boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `; break;
-          case 11: boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} `; break;
-          case 12: boundaryPath += `M${e3[0]},${e3[1]} L${e1[0]},${e1[1]} `; break;
-          case 13: boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} `; break;
-          case 14: boundaryPath += `M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `; break;
+        switch (index) {
+          case 1:
+            boundaryPath += `M${e0[0]},${e0[1]} L${e3[0]},${e3[1]} `;
+            break;
+          case 2:
+            boundaryPath += `M${e1[0]},${e1[1]} L${e0[0]},${e0[1]} `;
+            break;
+          case 3:
+            boundaryPath += `M${e1[0]},${e1[1]} L${e3[0]},${e3[1]} `;
+            break;
+          case 4:
+            boundaryPath += `M${e2[0]},${e2[1]} L${e1[0]},${e1[1]} `;
+            break;
+          case 5:
+            boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `;
+            break;
+          case 6:
+            boundaryPath += `M${e2[0]},${e2[1]} L${e0[0]},${e0[1]} `;
+            break;
+          case 7:
+            boundaryPath += `M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `;
+            break;
+          case 8:
+            boundaryPath += `M${e3[0]},${e3[1]} L${e2[0]},${e2[1]} `;
+            break;
+          case 9:
+            boundaryPath += `M${e0[0]},${e0[1]} L${e2[0]},${e2[1]} `;
+            break;
+          case 10:
+            boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `;
+            break;
+          case 11:
+            boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} `;
+            break;
+          case 12:
+            boundaryPath += `M${e3[0]},${e3[1]} L${e1[0]},${e1[1]} `;
+            break;
+          case 13:
+            boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} `;
+            break;
+          case 14:
+            boundaryPath += `M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `;
+            break;
         }
       }
     }
 
     return { fill: fillPath, boundary: boundaryPath, dy };
-  }, [compiledLHS, compiledRHS, operator, baseScope, samplingDepth, xRange[0], xRange[1], yRange[0], yRange[1], tx, ty, px, py, rot, scaleX, scaleY]);
+  }, [
+    compiledLHS,
+    compiledRHS,
+    operator,
+    baseScope,
+    samplingDepth,
+    xRange[0],
+    xRange[1],
+    yRange[0],
+    yRange[1],
+    tx,
+    ty,
+    px,
+    py,
+    rot,
+    scaleX,
+    scaleY,
+  ]);
 
-  const customDashPattern = lineStyle && lineStyle !== "solid" ? getStrokeDasharray(lineStyle) : undefined;
+  const customDashPattern =
+    lineStyle && lineStyle !== "solid"
+      ? getStrokeDasharray(lineStyle)
+      : undefined;
   const isStrict = operator === "<" || operator === ">";
   const finalStrokeDash = customDashPattern || (isStrict ? "6,6" : "none");
 
@@ -1905,14 +2202,14 @@ const InequalityPlot: React.FC<{
     }
   } catch (e) {}
 
-  // Pattern coordinate system: 
+  // Pattern coordinate system:
   // We define the pattern in a sensible "pixel-like" coordinate system (e.g. 0 to 15).
   // Then we map it into the world space. We assume 50 pixels = 1 world unit natively.
-  const PATTERN_BASE_SCALE = 50; 
-  
+  const PATTERN_BASE_SCALE = 50;
+
   // Calculate how many screen pixels 1 pattern repetition currently occupies:
   const currentScreenSpacing = (pSpace / PATTERN_BASE_SCALE) * sx;
-  
+
   // Adaptive zoom factor:
   let adaptiveFactor = 1;
   if (currentScreenSpacing > 0) {
@@ -1930,11 +2227,12 @@ const InequalityPlot: React.FC<{
   // Because we want it to map correctly to both X and Y, we use sx/sy to correct non-square aspect ratios if any,
   // but wait - world is world! If sx != sy, the world cells are stretched. We should stretch the pattern to match?
   // Actually, patternTransform scales the pattern relative to world space.
-  // We just use uniform scale if world is uniform. If world was non-uniform scaled by mafs, 
+  // We just use uniform scale if world is uniform. If world was non-uniform scaled by mafs,
   // maybe we should maintain aspect ratio by applying `sx/sy`?
   // Usually, sx == sy in mafs graphs.
-  const ptScaleX = (1 / PATTERN_BASE_SCALE) * adaptiveFactor * (50 / sx) * (sx / 50); // simplified to just standard scale
-  
+  const ptScaleX =
+    (1 / PATTERN_BASE_SCALE) * adaptiveFactor * (50 / sx) * (sx / 50); // simplified to just standard scale
+
   // Actually, wait! The user wants the pattern spacing to "exist in graph/world coordinates".
   // This means if I have a grid, its lines should stay pinned to the same world values during zoom/pan!
   // If we just do `scale( adaptiveFactor / PATTERN_BASE_SCALE )`, it satisfies this perfectly!
@@ -1944,73 +2242,256 @@ const InequalityPlot: React.FC<{
   // Let's ensure thickness stays exactly exactly pThick target screen pixels.
   // The pattern gets scaled by finalScaleX relative to world, and then by sx for the screen.
   // We want: strokeWidth * finalScaleX * sx = target_screen_pixels
-  // So: strokeWidth = pThick / (finalScaleX * sx);  
+  // So: strokeWidth = pThick / (finalScaleX * sx);
   // We add a minor clamping to ensure it's not negative or zero.
   const targetScreenPixels = Math.max(0.5, pThick);
   const strokeThick = targetScreenPixels / (finalScaleX * sx);
 
   return (
-    <g style={{ transform: "var(--mafs-view-transform)", transformOrigin: "0 0" }}>
+    <g
+      style={{
+        transform: "var(--mafs-view-transform)",
+        transformOrigin: "0 0",
+      }}
+    >
       <defs>
-         <mask id={maskId} maskUnits="userSpaceOnUse" x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]}>
-          {paths.fill && <path d={paths.fill} fill="white" stroke="white" strokeWidth={paths.dy * 0.1} strokeLinejoin="round" />}
+        <mask
+          id={maskId}
+          maskUnits="userSpaceOnUse"
+          x={xRange[0]}
+          y={yRange[0]}
+          width={xRange[1] - xRange[0]}
+          height={yRange[1] - yRange[0]}
+        >
+          {paths.fill && (
+            <path
+              d={paths.fill}
+              fill="white"
+              stroke="white"
+              strokeWidth={paths.dy * 0.1}
+              strokeLinejoin="round"
+            />
+          )}
         </mask>
         {fillPattern !== "solid" && (
-          <pattern id={patternId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}>
+          <pattern
+            id={patternId}
+            width={pSize}
+            height={pSize}
+            patternUnits="userSpaceOnUse"
+            patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}
+          >
             {fillPattern === "hatch-diagonal" && (
               <React.Fragment>
-                <line x1={0} y1={pSize} x2={pSize} y2={0}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={-1} y1={1} x2={1} y2={-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line
+                  x1={0}
+                  y1={pSize}
+                  x2={pSize}
+                  y2={0}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={-1}
+                  y1={1}
+                  x2={1}
+                  y2={-1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={pSize - 1}
+                  y1={pSize + 1}
+                  x2={pSize + 1}
+                  y2={pSize - 1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
               </React.Fragment>
             )}
             {fillPattern === "hatch-reverse" && (
               <React.Fragment>
-                <line x1={0} y1={0} x2={pSize} y2={pSize}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line
+                  x1={0}
+                  y1={0}
+                  x2={pSize}
+                  y2={pSize}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={-1}
+                  y1={pSize - 1}
+                  x2={1}
+                  y2={pSize + 1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={pSize - 1}
+                  y1={-1}
+                  x2={pSize + 1}
+                  y2={1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
               </React.Fragment>
             )}
             {fillPattern === "hatch-cross" && (
               <React.Fragment>
-                <line x1={0} y1={pSize} x2={pSize} y2={0}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={0} y1={0} x2={pSize} y2={pSize}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={-1} y1={1} x2={1} y2={-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line
+                  x1={0}
+                  y1={pSize}
+                  x2={pSize}
+                  y2={0}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={0}
+                  y1={0}
+                  x2={pSize}
+                  y2={pSize}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={-1}
+                  y1={1}
+                  x2={1}
+                  y2={-1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={pSize - 1}
+                  y1={pSize + 1}
+                  x2={pSize + 1}
+                  y2={pSize - 1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={-1}
+                  y1={pSize - 1}
+                  x2={1}
+                  y2={pSize + 1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={pSize - 1}
+                  y1={-1}
+                  x2={pSize + 1}
+                  y2={1}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
               </React.Fragment>
             )}
             {fillPattern === "dotted" && (
-              <circle cx={pSize/2} cy={pSize/2} r={strokeThick} fill={pColor} fillOpacity={fillOpacity} />
+              <circle
+                cx={pSize / 2}
+                cy={pSize / 2}
+                r={strokeThick}
+                fill={pColor}
+                fillOpacity={fillOpacity}
+              />
             )}
             {fillPattern === "grid" && (
               <React.Fragment>
-                <line x1={0} y1={0} x2={pSize} y2={0}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
-                <line x1={0} y1={0} x2={0} y2={pSize}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} style={{ stroke: pColor }} />
+                <line
+                  x1={0}
+                  y1={0}
+                  x2={pSize}
+                  y2={0}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
+                <line
+                  x1={0}
+                  y1={0}
+                  x2={0}
+                  y2={pSize}
+                  strokeWidth={strokeThick}
+                  strokeOpacity={fillOpacity}
+                  style={{ stroke: pColor }}
+                />
               </React.Fragment>
             )}
             {fillPattern === "dashed" && (
-              <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2}  strokeWidth={strokeThick} strokeOpacity={fillOpacity} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} style={{ stroke: pColor }} />
+              <line
+                x1={0}
+                y1={pSize / 2}
+                x2={pSize}
+                y2={pSize / 2}
+                strokeWidth={strokeThick}
+                strokeOpacity={fillOpacity}
+                strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
+                style={{ stroke: pColor }}
+              />
             )}
             {fillPattern === "math-region" && (
-              <line x1={0} y1={pSize} x2={pSize} y2={0}  strokeWidth={Math.max(1, strokeThick * 0.5)} strokeOpacity={Math.min(1, fillOpacity * 1.5)} style={{ stroke: pColor }} />
+              <line
+                x1={0}
+                y1={pSize}
+                x2={pSize}
+                y2={0}
+                strokeWidth={Math.max(1, strokeThick * 0.5)}
+                strokeOpacity={Math.min(1, fillOpacity * 1.5)}
+                style={{ stroke: pColor }}
+              />
             )}
           </pattern>
         )}
       </defs>
 
-      {paths.fill && (
-        fillPattern === "solid" ? (
-          <rect x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]} fill={pColor} fillOpacity={fillOpacity} mask={`url(#${maskId})`} />
+      {paths.fill &&
+        (fillPattern === "solid" ? (
+          <rect
+            x={xRange[0]}
+            y={yRange[0]}
+            width={xRange[1] - xRange[0]}
+            height={yRange[1] - yRange[0]}
+            fill={pColor}
+            fillOpacity={fillOpacity}
+            mask={`url(#${maskId})`}
+          />
         ) : (
-          <rect x={xRange[0]} y={yRange[0]} width={xRange[1] - xRange[0]} height={yRange[1] - yRange[0]} fill={`url(#${patternId})`} mask={`url(#${maskId})`} />
-        )
+          <rect
+            x={xRange[0]}
+            y={yRange[0]}
+            width={xRange[1] - xRange[0]}
+            height={yRange[1] - yRange[0]}
+            fill={`url(#${patternId})`}
+            mask={`url(#${maskId})`}
+          />
+        ))}
+      {paths.boundary && (
+        <path
+          d={paths.boundary}
+          fill="none"
+          strokeWidth={weight}
+          strokeDasharray={finalStrokeDash}
+          style={{ stroke: color, vectorEffect: "non-scaling-stroke" }}
+        />
       )}
-      {paths.boundary && <path d={paths.boundary} fill="none" strokeWidth={weight} strokeDasharray={finalStrokeDash} style={{ stroke: color, vectorEffect: "non-scaling-stroke" }} />}
     </g>
   );
-}
+};
 
 const ImplicitPlot: React.FC<{
   compiledLHS: any;
@@ -2037,7 +2518,10 @@ const ImplicitPlot: React.FC<{
   opacity = 1,
   tx = 0,
   ty = 0,
-  rot = 0, scaleX = 1, scaleY = 1, px = 0,
+  rot = 0,
+  scaleX = 1,
+  scaleY = 1,
+  px = 0,
   py = 0,
   lineStyle,
   samplingDepth = 14,
@@ -2513,14 +2997,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   useEffect(() => {
     let active = true;
-    const subscription = liveQuery(() => db.customFormulas.toArray()).subscribe({
-      next: (result) => {
-        if (!active) return;
-        setTimeout(() => {
-          if (active) setSavedFormulas(result);
-        }, 0);
-      }
-    });
+    const subscription = liveQuery(() => db.customFormulas.toArray()).subscribe(
+      {
+        next: (result) => {
+          if (!active) return;
+          setTimeout(() => {
+            if (active) setSavedFormulas(result);
+          }, 0);
+        },
+      },
+    );
     return () => {
       active = false;
       subscription.unsubscribe();
@@ -2794,27 +3280,68 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           settings = parsed.gridSettings;
         }
       } catch (e) {}
-    } else if (data?.value && typeof data.value === "object" && data.value.gridSettings) {
+    } else if (
+      data?.value &&
+      typeof data.value === "object" &&
+      data.value.gridSettings
+    ) {
       settings = data.value.gridSettings;
     }
     return {
-      gridType: settings.gridType !== undefined ? settings.gridType : ("cartesian" as any),
-      axisFilter: settings.axisFilter !== undefined ? settings.axisFilter : ("numeric" as any),
-      axisStepStr: settings.axisStepStr !== undefined ? settings.axisStepStr : "1",
-      customAxisFilter: settings.customAxisFilter !== undefined ? settings.customAxisFilter : "n % 3 == 0",
-      customAxisMapping: settings.customAxisMapping !== undefined ? settings.customAxisMapping : "0: Origin\n1: Start\n2: A\n3: B\n4: End",
+      gridType:
+        settings.gridType !== undefined
+          ? settings.gridType
+          : ("cartesian" as any),
+      axisFilter:
+        settings.axisFilter !== undefined
+          ? settings.axisFilter
+          : ("numeric" as any),
+      axisStepStr:
+        settings.axisStepStr !== undefined ? settings.axisStepStr : "1",
+      customAxisFilter:
+        settings.customAxisFilter !== undefined
+          ? settings.customAxisFilter
+          : "n % 3 == 0",
+      customAxisMapping:
+        settings.customAxisMapping !== undefined
+          ? settings.customAxisMapping
+          : "0: Origin\n1: Start\n2: A\n3: B\n4: End",
       axisPrefix: settings.axisPrefix !== undefined ? settings.axisPrefix : "",
       axisSuffix: settings.axisSuffix !== undefined ? settings.axisSuffix : "",
-      axisDecimals: settings.axisDecimals !== undefined ? settings.axisDecimals : 2,
-      axisThousandsSep: settings.axisThousandsSep !== undefined ? settings.axisThousandsSep : false,
-      samplingDepth: settings.samplingDepth !== undefined ? settings.samplingDepth : 14,
-      gridSubdivisions: settings.gridSubdivisions !== undefined ? settings.gridSubdivisions : 4,
+      axisDecimals:
+        settings.axisDecimals !== undefined ? settings.axisDecimals : 2,
+      axisThousandsSep:
+        settings.axisThousandsSep !== undefined
+          ? settings.axisThousandsSep
+          : false,
+      samplingDepth:
+        settings.samplingDepth !== undefined ? settings.samplingDepth : 14,
+      gridSubdivisions:
+        settings.gridSubdivisions !== undefined ? settings.gridSubdivisions : 4,
     };
   }, []);
 
-  const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(initialGridSettings.gridType);
-  const [axisFilter, setAxisFilter] = useState<"all" | "even" | "odd" | "numeric" | "pi" | "euler" | "complex" | "degrees" | "radians" | "fractions" | "scientific" | "custom_mapping" | "custom">(initialGridSettings.axisFilter);
-  const [axisStepStr, setAxisStepStr] = useState<string>(initialGridSettings.axisStepStr);
+  const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
+    initialGridSettings.gridType,
+  );
+  const [axisFilter, setAxisFilter] = useState<
+    | "all"
+    | "even"
+    | "odd"
+    | "numeric"
+    | "pi"
+    | "euler"
+    | "complex"
+    | "degrees"
+    | "radians"
+    | "fractions"
+    | "scientific"
+    | "custom_mapping"
+    | "custom"
+  >(initialGridSettings.axisFilter);
+  const [axisStepStr, setAxisStepStr] = useState<string>(
+    initialGridSettings.axisStepStr,
+  );
   const parsedAxisStep = useMemo(() => {
     try {
       const val = mathjs.evaluate(axisStepStr);
@@ -2823,16 +3350,29 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       return 1;
     }
   }, [axisStepStr]);
-  const [customAxisFilter, setCustomAxisFilter] = useState(initialGridSettings.customAxisFilter);
-  const [customAxisMapping, setCustomAxisMapping] = useState(initialGridSettings.customAxisMapping);
+  const [customAxisFilter, setCustomAxisFilter] = useState(
+    initialGridSettings.customAxisFilter,
+  );
+  const [customAxisMapping, setCustomAxisMapping] = useState(
+    initialGridSettings.customAxisMapping,
+  );
   const [axisPrefix, setAxisPrefix] = useState(initialGridSettings.axisPrefix);
   const [axisSuffix, setAxisSuffix] = useState(initialGridSettings.axisSuffix);
-  const [axisDecimals, setAxisDecimals] = useState(initialGridSettings.axisDecimals);
-  const [axisThousandsSep, setAxisThousandsSep] = useState(initialGridSettings.axisThousandsSep);
-  const [showAdvancedAxisControls, setShowAdvancedAxisControls] = useState(false);
+  const [axisDecimals, setAxisDecimals] = useState(
+    initialGridSettings.axisDecimals,
+  );
+  const [axisThousandsSep, setAxisThousandsSep] = useState(
+    initialGridSettings.axisThousandsSep,
+  );
+  const [showAdvancedAxisControls, setShowAdvancedAxisControls] =
+    useState(false);
   const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
-  const [samplingDepth, setSamplingDepth] = useState(initialGridSettings.samplingDepth);
-  const [gridSubdivisions, setGridSubdivisions] = useState(initialGridSettings.gridSubdivisions);
+  const [samplingDepth, setSamplingDepth] = useState(
+    initialGridSettings.samplingDepth,
+  );
+  const [gridSubdivisions, setGridSubdivisions] = useState(
+    initialGridSettings.gridSubdivisions,
+  );
   const graphContainerRef = useRef<HTMLDivElement>(null);
   const appTheme = useStore((state) => state.appTheme);
   const updateNodeValue = useStore((state) => state.updateNodeValue);
@@ -2845,37 +3385,79 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const variablesRef = useRef(variables);
   const groupsRef = useRef(groups);
   const gridSettingsRef = useRef({
-    gridType, axisFilter, axisStepStr, customAxisFilter, customAxisMapping, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions
+    gridType,
+    axisFilter,
+    axisStepStr,
+    customAxisFilter,
+    customAxisMapping,
+    axisPrefix,
+    axisSuffix,
+    axisDecimals,
+    axisThousandsSep,
+    samplingDepth,
+    gridSubdivisions,
   });
 
-  useEffect(() => { functionsRef.current = functions; }, [functions]);
-  useEffect(() => { variablesRef.current = variables; }, [variables]);
-  useEffect(() => { groupsRef.current = groups; }, [groups]);
-  useEffect(() => { 
-    gridSettingsRef.current = { gridType, axisFilter, axisStepStr, customAxisFilter, customAxisMapping, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions }; 
-  }, [gridType, axisFilter, axisStepStr, customAxisFilter, customAxisMapping, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions]);
-
+  useEffect(() => {
+    functionsRef.current = functions;
+  }, [functions]);
+  useEffect(() => {
+    variablesRef.current = variables;
+  }, [variables]);
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
+  useEffect(() => {
+    gridSettingsRef.current = {
+      gridType,
+      axisFilter,
+      axisStepStr,
+      customAxisFilter,
+      customAxisMapping,
+      axisPrefix,
+      axisSuffix,
+      axisDecimals,
+      axisThousandsSep,
+      samplingDepth,
+      gridSubdivisions,
+    };
+  }, [
+    gridType,
+    axisFilter,
+    axisStepStr,
+    customAxisFilter,
+    customAxisMapping,
+    axisPrefix,
+    axisSuffix,
+    axisDecimals,
+    axisThousandsSep,
+    samplingDepth,
+    gridSubdivisions,
+  ]);
 
   const stripFunctions = (fns: MathFunction[]) =>
     fns.map(({ compiled, compiled2, error, ...f }) => f);
 
-  const saveImmediately = useCallback((
-    fns = functionsRef.current,
-    vars = variablesRef.current,
-    grps = groupsRef.current,
-    gridSettings = gridSettingsRef.current,
-  ) => {
-    if (!data || !data.path) return;
-    const stateToSave = {
-      functions: stripFunctions(fns),
-      variables: vars,
-      groups: grps,
-      gridSettings: gridSettings
-    };
-    const newVal = JSON.stringify(stateToSave, null, 2);
-    lastSavedValue.current = newVal;
-    updateNodeValue(data.path, newVal);
-  }, [data, updateNodeValue]);
+  const saveImmediately = useCallback(
+    (
+      fns = functionsRef.current,
+      vars = variablesRef.current,
+      grps = groupsRef.current,
+      gridSettings = gridSettingsRef.current,
+    ) => {
+      if (!data || !data.path) return;
+      const stateToSave = {
+        functions: stripFunctions(fns),
+        variables: vars,
+        groups: grps,
+        gridSettings: gridSettings,
+      };
+      const newVal = JSON.stringify(stateToSave, null, 2);
+      lastSavedValue.current = newVal;
+      updateNodeValue(data.path, newVal);
+    },
+    [data, updateNodeValue],
+  );
 
   const serializedValue =
     typeof data?.value === "object" && data?.value !== null
@@ -2909,17 +3491,28 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             if (Array.isArray(parsed.variables)) setVariables(parsed.variables);
             if (Array.isArray(parsed.groups)) setGroups(parsed.groups);
             if (parsed.gridSettings) {
-              if (parsed.gridSettings.gridType !== undefined) setGridType(parsed.gridSettings.gridType);
-              if (parsed.gridSettings.axisFilter !== undefined) setAxisFilter(parsed.gridSettings.axisFilter);
-              if (parsed.gridSettings.axisStepStr !== undefined) setAxisStepStr(parsed.gridSettings.axisStepStr);
-              if (parsed.gridSettings.customAxisMapping !== undefined) setCustomAxisMapping(parsed.gridSettings.customAxisMapping);
-              if (parsed.gridSettings.customAxisFilter !== undefined) setCustomAxisFilter(parsed.gridSettings.customAxisFilter);
-              if (parsed.gridSettings.axisPrefix !== undefined) setAxisPrefix(parsed.gridSettings.axisPrefix);
-              if (parsed.gridSettings.axisSuffix !== undefined) setAxisSuffix(parsed.gridSettings.axisSuffix);
-              if (parsed.gridSettings.axisDecimals !== undefined) setAxisDecimals(parsed.gridSettings.axisDecimals);
-              if (parsed.gridSettings.axisThousandsSep !== undefined) setAxisThousandsSep(parsed.gridSettings.axisThousandsSep);
-              if (parsed.gridSettings.samplingDepth !== undefined) setSamplingDepth(parsed.gridSettings.samplingDepth);
-              if (parsed.gridSettings.gridSubdivisions !== undefined) setGridSubdivisions(parsed.gridSettings.gridSubdivisions);
+              if (parsed.gridSettings.gridType !== undefined)
+                setGridType(parsed.gridSettings.gridType);
+              if (parsed.gridSettings.axisFilter !== undefined)
+                setAxisFilter(parsed.gridSettings.axisFilter);
+              if (parsed.gridSettings.axisStepStr !== undefined)
+                setAxisStepStr(parsed.gridSettings.axisStepStr);
+              if (parsed.gridSettings.customAxisMapping !== undefined)
+                setCustomAxisMapping(parsed.gridSettings.customAxisMapping);
+              if (parsed.gridSettings.customAxisFilter !== undefined)
+                setCustomAxisFilter(parsed.gridSettings.customAxisFilter);
+              if (parsed.gridSettings.axisPrefix !== undefined)
+                setAxisPrefix(parsed.gridSettings.axisPrefix);
+              if (parsed.gridSettings.axisSuffix !== undefined)
+                setAxisSuffix(parsed.gridSettings.axisSuffix);
+              if (parsed.gridSettings.axisDecimals !== undefined)
+                setAxisDecimals(parsed.gridSettings.axisDecimals);
+              if (parsed.gridSettings.axisThousandsSep !== undefined)
+                setAxisThousandsSep(parsed.gridSettings.axisThousandsSep);
+              if (parsed.gridSettings.samplingDepth !== undefined)
+                setSamplingDepth(parsed.gridSettings.samplingDepth);
+              if (parsed.gridSettings.gridSubdivisions !== undefined)
+                setGridSubdivisions(parsed.gridSettings.gridSubdivisions);
             }
           }
         }
@@ -2947,7 +3540,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         axisThousandsSep,
         samplingDepth,
         gridSubdivisions,
-      }
+      },
     };
 
     const newVal = JSON.stringify(stateToSave, null, 2);
@@ -2968,7 +3561,24 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         clearTimeout(timeoutId);
       };
     }
-  }, [functions, variables, groups, data.path, updateNodeValue, gridType, axisFilter, axisStepStr, customAxisMapping, customAxisFilter, axisPrefix, axisSuffix, axisDecimals, axisThousandsSep, samplingDepth, gridSubdivisions]);
+  }, [
+    functions,
+    variables,
+    groups,
+    data.path,
+    updateNodeValue,
+    gridType,
+    axisFilter,
+    axisStepStr,
+    customAxisMapping,
+    customAxisFilter,
+    axisPrefix,
+    axisSuffix,
+    axisDecimals,
+    axisThousandsSep,
+    samplingDepth,
+    gridSubdivisions,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -2982,7 +3592,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         functions: stripFunctions(latestFns),
         variables: latestVars,
         groups: latestGrps,
-        gridSettings: latestGridSettings
+        gridSettings: latestGridSettings,
       };
       const newValStr = JSON.stringify(stateToSave, null, 2);
       if (newValStr !== lastSavedValue.current) {
@@ -3005,11 +3615,19 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               let part = parts[i];
               if (part.startsWith("[")) {
                 part = part.slice(1, -1);
-                if ((part.startsWith('"') && part.endsWith('"')) || (part.startsWith("'") && part.endsWith("'"))) {
+                if (
+                  (part.startsWith('"') && part.endsWith('"')) ||
+                  (part.startsWith("'") && part.endsWith("'"))
+                ) {
                   part = part.slice(1, -1);
                 }
               }
-              if (current === null || current === undefined || typeof current !== "object" || !(part in current)) {
+              if (
+                current === null ||
+                current === undefined ||
+                typeof current !== "object" ||
+                !(part in current)
+              ) {
                 exists = false;
                 break;
               }
@@ -3019,7 +3637,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             if (exists) {
               useStore.getState().updateNodeValue(data.path, newValStr);
             } else {
-              console.log("MathNodeRenderer: Path", data.path, "no longer exists in store parsedData. Skipping unmount auto-save.");
+              console.log(
+                "MathNodeRenderer: Path",
+                data.path,
+                "no longer exists in store parsedData. Skipping unmount auto-save.",
+              );
             }
           }
         }, 0);
@@ -3028,7 +3650,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   }, [data?.path]);
 
   const getAxisLabel = (n: number) => {
-    if (n === 0 && axisFilter !== "custom_mapping" && axisFilter !== "custom") return 0;
+    if (n === 0 && axisFilter !== "custom_mapping" && axisFilter !== "custom")
+      return 0;
 
     let baseLabel: React.ReactNode = "";
 
@@ -3049,7 +3672,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       const linesStr = customAxisMapping.split("\n");
       for (const line of linesStr) {
         // Use either ':' or '->' or '→' as delimiter
-        const delimiter = line.includes('→') ? '→' : line.includes('->') ? '->' : ':';
+        const delimiter = line.includes("→")
+          ? "→"
+          : line.includes("->")
+            ? "->"
+            : ":";
         const [k, ...vParts] = line.split(delimiter);
         if (vParts.length > 0 && parseFloat(k.trim()) === n) {
           baseLabel = vParts.join(delimiter).trim();
@@ -3065,15 +3692,28 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       else baseLabel = `${rounded}π`;
     } else if (axisFilter === "euler") {
       const superscriptMap: Record<string, string> = {
-        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻'
+        "0": "⁰",
+        "1": "¹",
+        "2": "²",
+        "3": "³",
+        "4": "⁴",
+        "5": "⁵",
+        "6": "⁶",
+        "7": "⁷",
+        "8": "⁸",
+        "9": "⁹",
+        "-": "⁻",
       };
       if (n === 0) baseLabel = "0";
       else if (n === 1) baseLabel = "e";
       else if (n === -1) baseLabel = "e⁻¹";
       else {
-         const supN = n.toString().split('').map(c => superscriptMap[c] || c).join('');
-         baseLabel = `e${supN}`;
+        const supN = n
+          .toString()
+          .split("")
+          .map((c) => superscriptMap[c] || c)
+          .join("");
+        baseLabel = `e${supN}`;
       }
     } else if (axisFilter === "complex") {
       if (n === 0) baseLabel = "0";
@@ -3087,38 +3727,61 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     } else if (axisFilter === "scientific") {
       if (n === 0) baseLabel = "0";
       else {
-        const [m, eStr] = n.toExponential(axisDecimals).split('e');
-        const exponent = eStr.replace('+', '');
+        const [m, eStr] = n.toExponential(axisDecimals).split("e");
+        const exponent = eStr.replace("+", "");
         const superscriptMap: Record<string, string> = {
-          '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-          '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻'
+          "0": "⁰",
+          "1": "¹",
+          "2": "²",
+          "3": "³",
+          "4": "⁴",
+          "5": "⁵",
+          "6": "⁶",
+          "7": "⁷",
+          "8": "⁸",
+          "9": "⁹",
+          "-": "⁻",
         };
-        const supExp = exponent.split('').map(c => superscriptMap[c] || c).join('');
+        const supExp = exponent
+          .split("")
+          .map((c) => superscriptMap[c] || c)
+          .join("");
         baseLabel = `${m} × 10${supExp}`;
       }
     } else if (axisFilter === "fractions") {
-       if (n % 1 === 0) baseLabel = n.toString();
-       else {
-          const precision = 1000000;
-          const numerator = Math.round(n * precision);
-          const denominator = precision;
-          const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
-          const d = gcd(Math.abs(numerator), denominator);
-          baseLabel = `${numerator/d}/${denominator/d}`;
-       }
-    } else { // "numeric"
-      const rounded = +(Math.round(Number(n + "e+" + axisDecimals)) + "e-" + axisDecimals);
+      if (n % 1 === 0) baseLabel = n.toString();
+      else {
+        const precision = 1000000;
+        const numerator = Math.round(n * precision);
+        const denominator = precision;
+        const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+        const d = gcd(Math.abs(numerator), denominator);
+        baseLabel = `${numerator / d}/${denominator / d}`;
+      }
+    } else {
+      // "numeric"
+      const rounded = +(
+        Math.round(Number(n + "e+" + axisDecimals)) +
+        "e-" +
+        axisDecimals
+      );
       baseLabel = axisThousandsSep ? rounded.toLocaleString() : rounded;
     }
 
     if (baseLabel === "") return "";
-    
+
     // React supports strings in Mafs labels if not using foreignObject
     if (typeof baseLabel === "string" || typeof baseLabel === "number") {
       return `${axisPrefix}${baseLabel}${axisSuffix}`;
     }
-    
-    return <React.Fragment>{axisPrefix}{baseLabel}{axisSuffix}</React.Fragment>;
+
+    return (
+      <React.Fragment>
+        {axisPrefix}
+        {baseLabel}
+        {axisSuffix}
+      </React.Fragment>
+    );
   };
 
   useEffect(() => {
@@ -3150,7 +3813,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         if (f.type === "implicit" || f.type === "inequality") {
           let op = "=";
           let parts = f.expr.split("=");
-          
+
           if (f.type === "inequality") {
             const match = f.expr.match(/(<=|>=|<|>)/);
             if (match) {
@@ -3158,7 +3821,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               parts = f.expr.split(op);
             }
           }
-          
+
           const lhsStr = parts[0].trim();
           const rhsStr = parts[1] ? parts[1].trim() : "0";
 
@@ -3250,7 +3913,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   }, [
     functions.map((f) => f.expr).join(","),
     variables.map((v) => v.name).join(","),
-    functions.some((f) => !("compiled" in f) && !("error" in f))
+    functions.some((f) => !("compiled" in f) && !("error" in f)),
   ]); // Compile when expressions or variables change
 
   // Create a serialized key to watch changes to individual function timeline settings without re-running on general expression edits
@@ -3265,13 +3928,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         f.timeMax !== undefined ? f.timeMax : 10,
         f.timeMode || "loop",
         f.direction !== undefined ? f.direction : 1,
-      ].join(",")
+      ].join(","),
     )
     .join("|");
 
   // Animation loop
   useEffect(() => {
-    const hasAnyAnimation = isPlaying || functions.some((f) => f.hasCustomTimeline && f.isPlaying);
+    const hasAnyAnimation =
+      isPlaying || functions.some((f) => f.hasCustomTimeline && f.isPlaying);
     if (!hasAnyAnimation) {
       if (reqRef.current) cancelAnimationFrame(reqRef.current);
       lastTimeRef.current = 0;
@@ -3380,10 +4044,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   // Expose individual timelines as pre-defined variables in the base scope (e.g., t_1, t_2, t_f)
   functions.forEach((f, idx) => {
-    const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+    const fTime = f.hasCustomTimeline
+      ? f.time !== undefined
+        ? f.time
+        : 0
+      : time;
     // By index
     baseScope[`t_${idx + 1}`] = fTime;
-    
+
     // By function name if available
     if (f.name) {
       const match = f.name.match(/^([a-zA-Z0-9_]+)/);
@@ -3398,7 +4066,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   functions.forEach((f) => {
     if (f.compiled) {
       try {
-        const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+        const fTime = f.hasCustomTimeline
+          ? f.time !== undefined
+            ? f.time
+            : 0
+          : time;
         const fScope = { ...baseScope, t: fTime, time: time };
         const val = f.compiled.evaluate(fScope);
         const refName = f.label || f.name;
@@ -3455,7 +4127,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   };
 
   const handleInsertFunctionFromHelp = (formula: {
-    type: "function" | "parametric" | "point" | "implicit" | "polar" | "vector" | "polygon" | "inequality" | "line";
+    type:
+      | "function"
+      | "parametric"
+      | "point"
+      | "implicit"
+      | "polar"
+      | "vector"
+      | "polygon"
+      | "inequality"
+      | "line";
     expr: string;
     expr2?: string;
     name?: string;
@@ -3857,7 +4538,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 cursor-move drag-handle">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => {
               if (window.innerWidth < 768) {
@@ -3867,25 +4548,25 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                 setIsPanelVisible((prev) => !prev);
               }
             }}
-            className={`p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center`}
+            className={`p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center shrink-0`}
             title="Toggle Function Input Panel"
           >
             <Menu size={16} />
           </button>
           <Layers
             size={16}
-            className="hidden md:block text-blue-500 dark:text-blue-400"
+            className="hidden md:block shrink-0 text-blue-500 dark:text-blue-400"
           />
           <span className="font-semibold text-sm text-slate-800 dark:text-slate-300 truncate">
             Advanced Math Graph
           </span>
         </div>
-        <div className="flex items-center gap-1 nodrag">
+        <div className="flex items-center gap-1 nodrag shrink-0">
           <button
             onClick={() => setShowGridControls((prev) => !prev)}
             className={`p-1 rounded transition-colors md:hidden ${
-              showGridControls 
-                ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" 
+              showGridControls
+                ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
                 : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
             title="Grid & Axis Settings"
@@ -3934,7 +4615,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             <div
               ref={sidebarRef}
               className={`bg-slate-50 dark:bg-slate-800 flex flex-col border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative transition-transform duration-300 md:translate-x-0 w-full sm:w-[85vw] md:w-[var(--sidebar-width)] md:max-w-none ${isMobileSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}
-              style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+              style={
+                {
+                  "--sidebar-width": `${sidebarWidth}px`,
+                } as React.CSSProperties
+              }
               onClick={() => setActiveActionMenuId(null)}
             >
               <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 custom-scrollbar">
@@ -3967,7 +4652,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
                         Curve Resolution (Depth Sampling)
                         <span className="text-[10px] normal-case font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
-                          {samplingDepth <= 8 ? "⚡ Fast" : samplingDepth <= 14 ? "⚡ Balanced" : samplingDepth <= 20 ? "⚡ High Quality" : "⚡ Ultra Detail"}
+                          {samplingDepth <= 8
+                            ? "⚡ Fast"
+                            : samplingDepth <= 14
+                              ? "⚡ Balanced"
+                              : samplingDepth <= 20
+                                ? "⚡ High Quality"
+                                : "⚡ Ultra Detail"}
                         </span>
                       </label>
                       <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
@@ -4000,7 +4691,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       max={20}
                       step={1}
                       value={gridSubdivisions}
-                      onChange={(e) => setGridSubdivisions(Number(e.target.value))}
+                      onChange={(e) =>
+                        setGridSubdivisions(Number(e.target.value))
+                      }
                       className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
                     />
                   </div>
@@ -4056,7 +4749,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               }`}
                             />
                           )}
-                        
+
                         {/* Mobile Header Row / Desktop Left Elements */}
                         <div className="flex items-center gap-2 w-full md:w-auto flex-shrink-0">
                           {/* Grip Handle */}
@@ -4089,121 +4782,126 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             }
                           />
                           <select
-                              value={f.type}
-                              onChange={(e) =>
-                                setFunctions((prev) =>
-                                  prev.map((fn) =>
-                                    fn.id === f.id
-                                      ? { ...fn, type: e.target.value as any }
-                                      : fn,
-                                  ),
-                                )
-                              }
-                              className="bg-slate-100 dark:bg-transparent text-slate-550 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 border border-slate-200 dark:border-slate-700/50 rounded outline-none p-1 mr-2 text-xs font-semibold cursor-pointer appearance-none text-center"
-                              style={{
-                                WebkitAppearance: "none",
-                                MozAppearance: "none",
-                              }}
-                              title={
-                                f.type === "function"
-                                  ? "Function (y = f(x))"
-                                  : f.type === "polar"
-                                    ? "Polar equation (r = f(t))"
-                                    : f.type === "parametric"
-                                      ? "Parametric equation ([x(t), y(t)])"
-                                      : f.type === "implicit"
-                                        ? "Implicit equation (f(x,y) = 0)"
-                                        : f.type === "vector"
-                                          ? "Vector"
-                                          : f.type === "point"
-                                            ? "Point"
-                                            : f.type === "line"
-                                              ? "Line Segment"
-                                              : f.type === "inequality"
-                                                ? "Inequality"
+                            value={f.type}
+                            onChange={(e) =>
+                              setFunctions((prev) =>
+                                prev.map((fn) =>
+                                  fn.id === f.id
+                                    ? { ...fn, type: e.target.value as any }
+                                    : fn,
+                                ),
+                              )
+                            }
+                            className="bg-slate-100 dark:bg-transparent text-slate-550 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 border border-slate-200 dark:border-slate-700/50 rounded outline-none p-1 mr-2 text-xs font-semibold cursor-pointer appearance-none text-center"
+                            style={{
+                              WebkitAppearance: "none",
+                              MozAppearance: "none",
+                            }}
+                            title={
+                              f.type === "function"
+                                ? "Function (y = f(x))"
+                                : f.type === "polar"
+                                  ? "Polar equation (r = f(t))"
+                                  : f.type === "parametric"
+                                    ? "Parametric equation ([x(t), y(t)])"
+                                    : f.type === "implicit"
+                                      ? "Implicit equation (f(x,y) = 0)"
+                                      : f.type === "vector"
+                                        ? "Vector"
+                                        : f.type === "point"
+                                          ? "Point"
+                                          : f.type === "line"
+                                            ? "Line Segment"
+                                            : f.type === "inequality"
+                                              ? "Inequality"
                                               : f.type === "polygon"
                                                 ? "Polygon"
                                                 : "Select function type"
-                              }
+                            }
+                          >
+                            <option
+                              value="function"
+                              title="Function"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                             >
-                              <option
-                                value="function"
-                                title="Function"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                y =
-                              </option>
-                              <option
-                                value="polar"
-                                title="Polar equation"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                r =
-                              </option>
-                              <option
-                                value="parametric"
-                                title="Parametric equation"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                [x,y] =
-                              </option>
-                              <option
-                                value="implicit"
-                                title="Implicit equation"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                XY =
-                              </option>
-                              <option
-                                value="vector"
-                                title="Vector"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                V =
-                              </option>
-                              <option
-                                value="point"
-                                title="Point"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                P =
-                              </option>
-                              <option
-                                value="line"
-                                title="Line Segment"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                Line =
-                              </option>
-                              <option
-                                value="inequality"
-                                title="Inequality Region"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                Ineq =
-                              </option>
-                              <option
-                                value="polygon"
-                                title="Polygon"
-                                className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                              >
-                                Poly =
-                              </option>
-                            </select>
+                              y =
+                            </option>
+                            <option
+                              value="polar"
+                              title="Polar equation"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              r =
+                            </option>
+                            <option
+                              value="parametric"
+                              title="Parametric equation"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              [x,y] =
+                            </option>
+                            <option
+                              value="implicit"
+                              title="Implicit equation"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              XY =
+                            </option>
+                            <option
+                              value="vector"
+                              title="Vector"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              V =
+                            </option>
+                            <option
+                              value="point"
+                              title="Point"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              P =
+                            </option>
+                            <option
+                              value="line"
+                              title="Line Segment"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              Line =
+                            </option>
+                            <option
+                              value="inequality"
+                              title="Inequality Region"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              Ineq =
+                            </option>
+                            <option
+                              value="polygon"
+                              title="Polygon"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              Poly =
+                            </option>
+                          </select>
 
-                            <div className="flex-1 md:hidden"></div>
-                            {/* Mobile Toggle Button inside Header Row */}
-                            <div className="md:hidden flex items-center shrink-0 nodrag cursor-default" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  className={`p-1.5 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all ${activeActionMenuId === f.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveActionMenuId(activeActionMenuId === f.id ? null : f.id);
-                                  }}
-                                >
-                                  <MoreVertical size={16} />
-                                </button>
-                            </div>
+                          <div className="flex-1 md:hidden"></div>
+                          {/* Mobile Toggle Button inside Header Row */}
+                          <div
+                            className="md:hidden flex items-center shrink-0 nodrag cursor-default"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              className={`p-1.5 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all ${activeActionMenuId === f.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveActionMenuId(
+                                  activeActionMenuId === f.id ? null : f.id,
+                                );
+                              }}
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Equation Input / Desktop Right side */}
@@ -4374,7 +5072,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               (() => {
                                                 try {
                                                   let fullTex = "";
-                                                  const eqIndex = f.expr.indexOf("=");
+                                                  const eqIndex =
+                                                    f.expr.indexOf("=");
                                                   if (
                                                     eqIndex !== -1 &&
                                                     !f.expr.includes("==") &&
@@ -4382,14 +5081,25 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     !f.expr.includes("<=") &&
                                                     !f.expr.includes("!=")
                                                   ) {
-                                                    const lhs = f.expr.slice(0, eqIndex).trim();
-                                                    const rhs = f.expr.slice(eqIndex + 1).trim();
-                                                    const lhsTex = mathjs.parse(lhs).toTex();
-                                                    const rhsTex = mathjs.parse(rhs).toTex();
+                                                    const lhs = f.expr
+                                                      .slice(0, eqIndex)
+                                                      .trim();
+                                                    const rhs = f.expr
+                                                      .slice(eqIndex + 1)
+                                                      .trim();
+                                                    const lhsTex = mathjs
+                                                      .parse(lhs)
+                                                      .toTex();
+                                                    const rhsTex = mathjs
+                                                      .parse(rhs)
+                                                      .toTex();
                                                     fullTex = `${lhsTex} = ${rhsTex}`;
                                                   } else {
-                                                    const parsed = mathjs.parse(f.expr);
-                                                    const texStr = parsed.toTex();
+                                                    const parsed = mathjs.parse(
+                                                      f.expr,
+                                                    );
+                                                    const texStr =
+                                                      parsed.toTex();
                                                     let prefix = "";
                                                     if (f.type === "polar")
                                                       prefix = "r = ";
@@ -4397,7 +5107,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       f.type === "parametric"
                                                     )
                                                       prefix = "[x,y] = ";
-                                                    else if (f.type === "implicit")
+                                                    else if (
+                                                      f.type === "implicit"
+                                                    )
                                                       prefix = "";
                                                     else prefix = "y = ";
 
@@ -4867,293 +5579,504 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 ? {
                                                     ...fn,
                                                     hasCustomTimeline: checked,
-                                                    time: checked ? (fn.time !== undefined ? fn.time : 0) : undefined,
-                                                    isPlaying: checked ? (fn.isPlaying !== undefined ? fn.isPlaying : true) : undefined,
-                                                    timeMin: checked ? (fn.timeMin !== undefined ? fn.timeMin : 0) : undefined,
-                                                    timeMax: checked ? (fn.timeMax !== undefined ? fn.timeMax : 10) : undefined,
-                                                    timeSpeed: checked ? (fn.timeSpeed !== undefined ? fn.timeSpeed : 1) : undefined,
-                                                    timeMode: checked ? (fn.timeMode || "loop") : undefined,
-                                                    direction: checked ? (fn.direction !== undefined ? fn.direction : 1) : undefined,
+                                                    time: checked
+                                                      ? fn.time !== undefined
+                                                        ? fn.time
+                                                        : 0
+                                                      : undefined,
+                                                    isPlaying: checked
+                                                      ? fn.isPlaying !==
+                                                        undefined
+                                                        ? fn.isPlaying
+                                                        : true
+                                                      : undefined,
+                                                    timeMin: checked
+                                                      ? fn.timeMin !== undefined
+                                                        ? fn.timeMin
+                                                        : 0
+                                                      : undefined,
+                                                    timeMax: checked
+                                                      ? fn.timeMax !== undefined
+                                                        ? fn.timeMax
+                                                        : 10
+                                                      : undefined,
+                                                    timeSpeed: checked
+                                                      ? fn.timeSpeed !==
+                                                        undefined
+                                                        ? fn.timeSpeed
+                                                        : 1
+                                                      : undefined,
+                                                    timeMode: checked
+                                                      ? fn.timeMode || "loop"
+                                                      : undefined,
+                                                    direction: checked
+                                                      ? fn.direction !==
+                                                        undefined
+                                                        ? fn.direction
+                                                        : 1
+                                                      : undefined,
                                                   }
-                                                : fn
-                                            )
+                                                : fn,
+                                            ),
                                           );
                                         }}
                                         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                          f.hasCustomTimeline ? "bg-blue-500" : "bg-slate-200 dark:bg-slate-700"
+                                          f.hasCustomTimeline
+                                            ? "bg-blue-500"
+                                            : "bg-slate-200 dark:bg-slate-700"
                                         }`}
                                       >
                                         <span
                                           className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                                            f.hasCustomTimeline ? "translate-x-4" : "translate-x-0"
+                                            f.hasCustomTimeline
+                                              ? "translate-x-4"
+                                              : "translate-x-0"
                                           }`}
                                         />
                                       </button>
                                     </div>
                                   </div>
 
-                                  {f.hasCustomTimeline && (() => {
-                                    const fnIndex = functions.findIndex((fn) => fn.id === f.id) + 1;
-                                    const fnNameMatch = f.name?.match(/^([a-zA-Z0-9_]+)/);
-                                    const fnCleanName = fnNameMatch ? fnNameMatch[1] : null;
+                                  {f.hasCustomTimeline &&
+                                    (() => {
+                                      const fnIndex =
+                                        functions.findIndex(
+                                          (fn) => fn.id === f.id,
+                                        ) + 1;
+                                      const fnNameMatch =
+                                        f.name?.match(/^([a-zA-Z0-9_]+)/);
+                                      const fnCleanName = fnNameMatch
+                                        ? fnNameMatch[1]
+                                        : null;
 
-                                    return (
-                                      <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-200 dark:border-slate-800 animate-fadeIn shadow-xs">
-                                        {/* Playback Controls & Time Display */}
-                                        <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-850 p-2 rounded-md border border-slate-200 dark:border-slate-750/50">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id
-                                                    ? { ...fn, isPlaying: !fn.isPlaying }
-                                                    : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`p-1.5 rounded text-white font-medium transition-all flex items-center justify-center active:scale-95 ${
-                                              f.isPlaying
-                                                ? "bg-amber-500 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
-                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-xs shadow-emerald-500/10"
-                                            }`}
-                                            title={f.isPlaying ? "Pause Timeline" : "Play Timeline"}
-                                          >
-                                            {f.isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
-                                          </button>
-
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] font-medium">t =</span>
-                                            <input
-                                              type="number"
-                                              step="0.01"
-                                              value={f.time !== undefined ? Number(f.time.toFixed(3)) : 0}
-                                              onChange={(e) => {
-                                                const val = parseFloat(e.target.value) || 0;
+                                      return (
+                                        <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-200 dark:border-slate-800 animate-fadeIn shadow-xs">
+                                          {/* Playback Controls & Time Display */}
+                                          <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-850 p-2 rounded-md border border-slate-200 dark:border-slate-750/50">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
                                                 setFunctions((prev) =>
                                                   prev.map((fn) =>
-                                                    fn.id === f.id ? { ...fn, time: val } : fn
-                                                  )
+                                                    fn.id === f.id
+                                                      ? {
+                                                          ...fn,
+                                                          isPlaying:
+                                                            !fn.isPlaying,
+                                                        }
+                                                      : fn,
+                                                  ),
                                                 );
                                               }}
-                                              className="w-16 bg-slate-50 dark:bg-slate-800 text-center px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
-                                            />
-                                          </div>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id
-                                                    ? { ...fn, time: fn.timeMin !== undefined ? fn.timeMin : 0, direction: 1 }
-                                                    : fn
-                                                )
-                                              );
-                                            }}
-                                            className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center justify-center"
-                                            title="Reset to Min"
-                                          >
-                                            <RotateCcw size={12} />
-                                          </button>
-                                        </div>
-
-                                        {/* Min & Max Limits */}
-                                        <div className="grid grid-cols-2 gap-2.5">
-                                          <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Min</span>
-                                            <input
-                                              type="number"
-                                              step="0.1"
-                                              value={f.timeMin !== undefined ? f.timeMin : 0}
-                                              onChange={(e) => {
-                                                const val = parseFloat(e.target.value) || 0;
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id ? { ...fn, timeMin: val } : fn
-                                                  )
-                                                );
-                                              }}
-                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
-                                            />
-                                          </div>
-                                          <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Max</span>
-                                            <input
-                                              type="number"
-                                              step="0.1"
-                                              value={f.timeMax !== undefined ? f.timeMax : 10}
-                                              onChange={(e) => {
-                                                const val = parseFloat(e.target.value) || 0;
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id ? { ...fn, timeMax: val } : fn
-                                                  )
-                                                );
-                                              }}
-                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
-                                            />
-                                          </div>
-                                        </div>
-
-                                        {/* Speed & Mode */}
-                                        <div className="grid grid-cols-2 gap-2.5">
-                                          <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Speed</span>
-                                            <input
-                                              type="number"
-                                              step="0.1"
-                                              value={f.timeSpeed !== undefined ? f.timeSpeed : 1}
-                                              onChange={(e) => {
-                                                const val = parseFloat(e.target.value) || 0;
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id ? { ...fn, timeSpeed: val } : fn
-                                                  )
-                                                );
-                                              }}
-                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
-                                            />
-                                          </div>
-                                          <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Mode</span>
-                                            <select
-                                              value={f.timeMode || "loop"}
-                                              onChange={(e) => {
-                                                const val = e.target.value as any;
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id ? { ...fn, timeMode: val } : fn
-                                                  )
-                                                );
-                                              }}
-                                              className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
+                                              className={`p-1.5 rounded text-white font-medium transition-all flex items-center justify-center active:scale-95 ${
+                                                f.isPlaying
+                                                  ? "bg-amber-500 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
+                                                  : "bg-emerald-500 hover:bg-emerald-600 shadow-xs shadow-emerald-500/10"
+                                              }`}
+                                              title={
+                                                f.isPlaying
+                                                  ? "Pause Timeline"
+                                                  : "Play Timeline"
+                                              }
                                             >
-                                              <option value="loop">Loop</option>
-                                              <option value="bounce">Bounce</option>
-                                              <option value="continuous">Continuous</option>
-                                            </select>
+                                              {f.isPlaying ? (
+                                                <Pause
+                                                  size={12}
+                                                  fill="currentColor"
+                                                />
+                                              ) : (
+                                                <Play
+                                                  size={12}
+                                                  fill="currentColor"
+                                                />
+                                              )}
+                                            </button>
+
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] font-medium">
+                                                t =
+                                              </span>
+                                              <input
+                                                type="number"
+                                                step="0.01"
+                                                value={
+                                                  f.time !== undefined
+                                                    ? Number(f.time.toFixed(3))
+                                                    : 0
+                                                }
+                                                onChange={(e) => {
+                                                  const val =
+                                                    parseFloat(
+                                                      e.target.value,
+                                                    ) || 0;
+                                                  setFunctions((prev) =>
+                                                    prev.map((fn) =>
+                                                      fn.id === f.id
+                                                        ? { ...fn, time: val }
+                                                        : fn,
+                                                    ),
+                                                  );
+                                                }}
+                                                className="w-16 bg-slate-50 dark:bg-slate-800 text-center px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
+                                              />
+                                            </div>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id
+                                                      ? {
+                                                          ...fn,
+                                                          time:
+                                                            fn.timeMin !==
+                                                            undefined
+                                                              ? fn.timeMin
+                                                              : 0,
+                                                          direction: 1,
+                                                        }
+                                                      : fn,
+                                                  ),
+                                                );
+                                              }}
+                                              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center justify-center"
+                                              title="Reset to Min"
+                                            >
+                                              <RotateCcw size={12} />
+                                            </button>
+                                          </div>
+
+                                          {/* Min & Max Limits */}
+                                          <div className="grid grid-cols-2 gap-2.5">
+                                            <div className="flex flex-col gap-1">
+                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                Min
+                                              </span>
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={
+                                                  f.timeMin !== undefined
+                                                    ? f.timeMin
+                                                    : 0
+                                                }
+                                                onChange={(e) => {
+                                                  const val =
+                                                    parseFloat(
+                                                      e.target.value,
+                                                    ) || 0;
+                                                  setFunctions((prev) =>
+                                                    prev.map((fn) =>
+                                                      fn.id === f.id
+                                                        ? {
+                                                            ...fn,
+                                                            timeMin: val,
+                                                          }
+                                                        : fn,
+                                                    ),
+                                                  );
+                                                }}
+                                                className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
+                                              />
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                Max
+                                              </span>
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={
+                                                  f.timeMax !== undefined
+                                                    ? f.timeMax
+                                                    : 10
+                                                }
+                                                onChange={(e) => {
+                                                  const val =
+                                                    parseFloat(
+                                                      e.target.value,
+                                                    ) || 0;
+                                                  setFunctions((prev) =>
+                                                    prev.map((fn) =>
+                                                      fn.id === f.id
+                                                        ? {
+                                                            ...fn,
+                                                            timeMax: val,
+                                                          }
+                                                        : fn,
+                                                    ),
+                                                  );
+                                                }}
+                                                className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Speed & Mode */}
+                                          <div className="grid grid-cols-2 gap-2.5">
+                                            <div className="flex flex-col gap-1">
+                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                Speed
+                                              </span>
+                                              <input
+                                                type="number"
+                                                step="0.1"
+                                                value={
+                                                  f.timeSpeed !== undefined
+                                                    ? f.timeSpeed
+                                                    : 1
+                                                }
+                                                onChange={(e) => {
+                                                  const val =
+                                                    parseFloat(
+                                                      e.target.value,
+                                                    ) || 0;
+                                                  setFunctions((prev) =>
+                                                    prev.map((fn) =>
+                                                      fn.id === f.id
+                                                        ? {
+                                                            ...fn,
+                                                            timeSpeed: val,
+                                                          }
+                                                        : fn,
+                                                    ),
+                                                  );
+                                                }}
+                                                className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500"
+                                              />
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                Mode
+                                              </span>
+                                              <select
+                                                value={f.timeMode || "loop"}
+                                                onChange={(e) => {
+                                                  const val = e.target
+                                                    .value as any;
+                                                  setFunctions((prev) =>
+                                                    prev.map((fn) =>
+                                                      fn.id === f.id
+                                                        ? {
+                                                            ...fn,
+                                                            timeMode: val,
+                                                          }
+                                                        : fn,
+                                                    ),
+                                                  );
+                                                }}
+                                                className="w-full bg-white dark:bg-slate-800 text-center px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-xs text-slate-850 dark:text-slate-100 outline-none focus:border-blue-500 cursor-pointer"
+                                              >
+                                                <option value="loop">
+                                                  Loop
+                                                </option>
+                                                <option value="bounce">
+                                                  Bounce
+                                                </option>
+                                                <option value="continuous">
+                                                  Continuous
+                                                </option>
+                                              </select>
+                                            </div>
+                                          </div>
+
+                                          {/* Predefined Variables Copy Box */}
+                                          <div className="mt-1.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/80 dark:border-blue-900/40 p-2.5 rounded-lg flex flex-col gap-1.5">
+                                            <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                                              <Sparkles
+                                                size={11}
+                                                className="text-blue-500 dark:text-blue-400"
+                                              />{" "}
+                                              Referencing this Timeline
+                                            </span>
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                              Type these variables into math
+                                              formulas to read this specific
+                                              timeline:
+                                            </p>
+                                            <div className="flex flex-col gap-1.5 mt-0.5">
+                                              {(() => {
+                                                const copyId = `${f.id}-t`;
+                                                const isCopied =
+                                                  copiedVarId === copyId;
+                                                return (
+                                                  <div
+                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
+                                                      isCopied
+                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                                                        : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                    }`}
+                                                    onClick={() => {
+                                                      navigator.clipboard.writeText(
+                                                        "t",
+                                                      );
+                                                      setCopiedVarId(copyId);
+                                                      setTimeout(
+                                                        () =>
+                                                          setCopiedVarId(null),
+                                                        1500,
+                                                      );
+                                                    }}
+                                                    title="Click to copy 't'"
+                                                  >
+                                                    <div className="flex items-center gap-1.5">
+                                                      <code
+                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
+                                                          isCopied
+                                                            ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
+                                                            : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                        }`}
+                                                      >
+                                                        t
+                                                      </code>
+                                                      <span className="text-[9px] text-slate-500 dark:text-slate-400">
+                                                        Inside this function
+                                                      </span>
+                                                      {isCopied && (
+                                                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">
+                                                          Copied!
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    {isCopied ? (
+                                                      <Check
+                                                        size={11}
+                                                        className="text-emerald-500 dark:text-emerald-400"
+                                                      />
+                                                    ) : (
+                                                      <Copy
+                                                        size={10}
+                                                        className="text-blue-500 dark:text-blue-400"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                );
+                                              })()}
+
+                                              {(() => {
+                                                const copyId = `${f.id}-t_${fnIndex}`;
+                                                const isCopied =
+                                                  copiedVarId === copyId;
+                                                return (
+                                                  <div
+                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
+                                                      isCopied
+                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                                                        : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                    }`}
+                                                    onClick={() => {
+                                                      navigator.clipboard.writeText(
+                                                        `t_${fnIndex}`,
+                                                      );
+                                                      setCopiedVarId(copyId);
+                                                      setTimeout(
+                                                        () =>
+                                                          setCopiedVarId(null),
+                                                        1500,
+                                                      );
+                                                    }}
+                                                    title={`Click to copy 't_${fnIndex}'`}
+                                                  >
+                                                    <div className="flex items-center gap-1.5">
+                                                      <code
+                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
+                                                          isCopied
+                                                            ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
+                                                            : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                        }`}
+                                                      >{`t_${fnIndex}`}</code>
+                                                      <span className="text-[9px] text-slate-500 dark:text-slate-400">
+                                                        Any function in
+                                                        workspace
+                                                      </span>
+                                                      {isCopied && (
+                                                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">
+                                                          Copied!
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    {isCopied ? (
+                                                      <Check
+                                                        size={11}
+                                                        className="text-emerald-500 dark:text-emerald-400"
+                                                      />
+                                                    ) : (
+                                                      <Copy
+                                                        size={10}
+                                                        className="text-blue-500 dark:text-blue-400"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                );
+                                              })()}
+
+                                              {fnCleanName &&
+                                                fnCleanName !== "t" &&
+                                                fnCleanName !== "time" &&
+                                                (() => {
+                                                  const copyId = `${f.id}-t_${fnCleanName}`;
+                                                  const isCopied =
+                                                    copiedVarId === copyId;
+                                                  return (
+                                                    <div
+                                                      className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
+                                                        isCopied
+                                                          ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                                                          : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                      }`}
+                                                      onClick={() => {
+                                                        navigator.clipboard.writeText(
+                                                          `t_${fnCleanName}`,
+                                                        );
+                                                        setCopiedVarId(copyId);
+                                                        setTimeout(
+                                                          () =>
+                                                            setCopiedVarId(
+                                                              null,
+                                                            ),
+                                                          1500,
+                                                        );
+                                                      }}
+                                                      title={`Click to copy 't_${fnCleanName}'`}
+                                                    >
+                                                      <div className="flex items-center gap-1.5">
+                                                        <code
+                                                          className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
+                                                            isCopied
+                                                              ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
+                                                              : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                          }`}
+                                                        >{`t_${fnCleanName}`}</code>
+                                                        <span className="text-[9px] text-slate-500 dark:text-slate-400">
+                                                          Any function in
+                                                          workspace
+                                                        </span>
+                                                        {isCopied && (
+                                                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">
+                                                            Copied!
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      {isCopied ? (
+                                                        <Check
+                                                          size={11}
+                                                          className="text-emerald-500 dark:text-emerald-400"
+                                                        />
+                                                      ) : (
+                                                        <Copy
+                                                          size={10}
+                                                          className="text-blue-500 dark:text-blue-400"
+                                                        />
+                                                      )}
+                                                    </div>
+                                                  );
+                                                })()}
+                                            </div>
                                           </div>
                                         </div>
-
-                                        {/* Predefined Variables Copy Box */}
-                                        <div className="mt-1.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/80 dark:border-blue-900/40 p-2.5 rounded-lg flex flex-col gap-1.5">
-                                          <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1">
-                                            <Sparkles size={11} className="text-blue-500 dark:text-blue-400" /> Referencing this Timeline
-                                          </span>
-                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                            Type these variables into math formulas to read this specific timeline:
-                                          </p>
-                                          <div className="flex flex-col gap-1.5 mt-0.5">
-                                            {(() => {
-                                              const copyId = `${f.id}-t`;
-                                              const isCopied = copiedVarId === copyId;
-                                              return (
-                                                <div 
-                                                  className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
-                                                    isCopied 
-                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800" 
-                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                  }`}
-                                                  onClick={() => {
-                                                    navigator.clipboard.writeText("t");
-                                                    setCopiedVarId(copyId);
-                                                    setTimeout(() => setCopiedVarId(null), 1500);
-                                                  }}
-                                                  title="Click to copy 't'"
-                                                >
-                                                  <div className="flex items-center gap-1.5">
-                                                    <code className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
-                                                      isCopied 
-                                                        ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" 
-                                                        : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                    }`}>t</code>
-                                                    <span className="text-[9px] text-slate-500 dark:text-slate-400">Inside this function</span>
-                                                    {isCopied && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">Copied!</span>}
-                                                  </div>
-                                                  {isCopied ? (
-                                                    <Check size={11} className="text-emerald-500 dark:text-emerald-400" />
-                                                  ) : (
-                                                    <Copy size={10} className="text-blue-500 dark:text-blue-400" />
-                                                  )}
-                                                </div>
-                                              );
-                                            })()}
-
-                                            {(() => {
-                                              const copyId = `${f.id}-t_${fnIndex}`;
-                                              const isCopied = copiedVarId === copyId;
-                                              return (
-                                                <div 
-                                                  className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
-                                                    isCopied 
-                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800" 
-                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                  }`}
-                                                  onClick={() => {
-                                                    navigator.clipboard.writeText(`t_${fnIndex}`);
-                                                    setCopiedVarId(copyId);
-                                                    setTimeout(() => setCopiedVarId(null), 1500);
-                                                  }}
-                                                  title={`Click to copy 't_${fnIndex}'`}
-                                                >
-                                                  <div className="flex items-center gap-1.5">
-                                                    <code className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
-                                                      isCopied 
-                                                        ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" 
-                                                        : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                    }`}>{`t_${fnIndex}`}</code>
-                                                    <span className="text-[9px] text-slate-500 dark:text-slate-400">Any function in workspace</span>
-                                                    {isCopied && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">Copied!</span>}
-                                                  </div>
-                                                  {isCopied ? (
-                                                    <Check size={11} className="text-emerald-500 dark:text-emerald-400" />
-                                                  ) : (
-                                                    <Copy size={10} className="text-blue-500 dark:text-blue-400" />
-                                                  )}
-                                                </div>
-                                              );
-                                            })()}
-
-                                            {fnCleanName && fnCleanName !== "t" && fnCleanName !== "time" && (() => {
-                                              const copyId = `${f.id}-t_${fnCleanName}`;
-                                              const isCopied = copiedVarId === copyId;
-                                              return (
-                                                <div 
-                                                  className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
-                                                    isCopied 
-                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800" 
-                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                  }`}
-                                                  onClick={() => {
-                                                    navigator.clipboard.writeText(`t_${fnCleanName}`);
-                                                    setCopiedVarId(copyId);
-                                                    setTimeout(() => setCopiedVarId(null), 1500);
-                                                  }}
-                                                  title={`Click to copy 't_${fnCleanName}'`}
-                                                >
-                                                  <div className="flex items-center gap-1.5">
-                                                    <code className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
-                                                      isCopied 
-                                                        ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400" 
-                                                        : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                    }`}>{`t_${fnCleanName}`}</code>
-                                                    <span className="text-[9px] text-slate-500 dark:text-slate-400">Any function in workspace</span>
-                                                    {isCopied && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">Copied!</span>}
-                                                  </div>
-                                                  {isCopied ? (
-                                                    <Check size={11} className="text-emerald-500 dark:text-emerald-400" />
-                                                  ) : (
-                                                    <Copy size={10} className="text-blue-500 dark:text-blue-400" />
-                                                  )}
-                                                </div>
-                                              );
-                                            })()}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
+                                      );
+                                    })()}
                                 </div>
 
                                 <div className="flex items-center justify-between mt-1 p-2 border border-blue-500/10 bg-blue-500/5 dark:bg-blue-500/5 rounded">
@@ -5394,17 +6317,28 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           let currentOp = f.expr2 || "<=";
                                           let newExpr = f.expr;
                                           if (f.expr.includes(currentOp)) {
-                                            const parts = f.expr.split(currentOp);
+                                            const parts =
+                                              f.expr.split(currentOp);
                                             newExpr = parts.join(op);
-                                          } else if (f.expr.match(/(<=|>=|<|>)/)) {
-                                            newExpr = f.expr.replace(/(<=|>=|<|>)/, op);
+                                          } else if (
+                                            f.expr.match(/(<=|>=|<|>)/)
+                                          ) {
+                                            newExpr = f.expr.replace(
+                                              /(<=|>=|<|>)/,
+                                              op,
+                                            );
                                           }
                                           setFunctions((prev) =>
                                             prev.map((fn) =>
                                               fn.id === f.id
-                                                ? { ...fn, expr: newExpr, expr2: op, operator: op }
-                                                : fn
-                                            )
+                                                ? {
+                                                    ...fn,
+                                                    expr: newExpr,
+                                                    expr2: op,
+                                                    operator: op,
+                                                  }
+                                                : fn,
+                                            ),
                                           );
                                         }}
                                         className={`flex-1 py-1 px-2 font-mono text-[11px] font-bold transition-colors ${
@@ -5517,109 +6451,55 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                   {/* Is Custom Fill Active */}
                                   <div className="flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-slate-500 dark:text-slate-400 font-semibold font-semibold">
-                                    Fill Customization
-                                  </span>
-                                  <label className="flex items-center gap-1.5 cursor-pointer group/cb">
-                                    <div
-                                      className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.fillColor !== undefined ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
-                                    >
-                                      {f.fillColor !== undefined && (
-                                        <svg
-                                          className="w-2.5 h-2.5"
-                                          fill="none"
-                                          viewBox="0 0 24 24"
-                                          stroke="currentColor"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={3}
-                                            d="M5 13l4 4L19 7"
-                                          />
-                                        </svg>
-                                      )}
-                                    </div>
-                                    <input
-                                      type="checkbox"
-                                      checked={f.fillColor !== undefined}
-                                      onChange={(e) => {
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? {
-                                                  ...fn,
-                                                  fillColor: e.target.checked
-                                                    ? getHexWithAlpha(
-                                                        f.color,
-                                                        f.fillOpacity !==
-                                                          undefined
-                                                          ? f.fillOpacity
-                                                          : 0.3,
-                                                      )
-                                                    : undefined,
-                                                }
-                                              : fn,
-                                          ),
-                                        );
-                                        if (
-                                          !e.target.checked &&
-                                          activeColorPickerFnId === f.id &&
-                                          activeColorPickerType === "fill"
-                                        ) {
-                                          setActiveColorPickerFnId(null);
-                                          setActiveColorPickerType(null);
-                                          setActiveColorPickerTriggerEl(null);
-                                        }
-                                      }}
-                                      className="hidden"
-                                    />
-                                    <span className="text-slate-550 dark:text-slate-400 pl-1 group-hover/cb:text-blue-500 dark:group-hover/cb:text-blue-400 select-none font-medium">
-                                      Different Fill
-                                    </span>
-                                  </label>
-                                </div>
-
-                                {f.fillColor === undefined ? (
-                                  <div className="text-[10px] text-slate-400 italic pl-1">
-                                    {["inequality", "polygon"].includes(f.type)
-                                      ? "Using outline color for fill."
-                                      : "Fill is disabled. Check 'Different Fill' to enable."}
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col gap-1.5 p-1.5 bg-slate-100/50 dark:bg-slate-900/30 rounded border border-slate-200 dark:border-slate-800">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-slate-400 font-medium">
-                                        Fill Color Palette:
+                                      <span className="text-slate-500 dark:text-slate-400 font-semibold font-semibold">
+                                        Fill Customization
                                       </span>
-                                      <ReadableColorBadge
-                                        color={f.fillColor || f.color}
-                                      />
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5 items-center">
-                                      {COLORS.map((c) => (
-                                        <button
-                                          key={c}
-                                          type="button"
-                                          onClick={() => {
-                                            const currentAlpha =
-                                              f.fillOpacity !== undefined
-                                                ? f.fillOpacity
-                                                : 0.3;
-                                            const colorWithAlpha =
-                                              getHexWithAlpha(c, currentAlpha);
+                                      <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                        <div
+                                          className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.fillColor !== undefined ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
+                                        >
+                                          {f.fillColor !== undefined && (
+                                            <svg
+                                              className="w-2.5 h-2.5"
+                                              fill="none"
+                                              viewBox="0 0 24 24"
+                                              stroke="currentColor"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={3}
+                                                d="M5 13l4 4L19 7"
+                                              />
+                                            </svg>
+                                          )}
+                                        </div>
+                                        <input
+                                          type="checkbox"
+                                          checked={f.fillColor !== undefined}
+                                          onChange={(e) => {
                                             setFunctions((prev) =>
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
                                                       ...fn,
-                                                      fillColor: colorWithAlpha,
+                                                      fillColor: e.target
+                                                        .checked
+                                                        ? getHexWithAlpha(
+                                                            f.color,
+                                                            f.fillOpacity !==
+                                                              undefined
+                                                              ? f.fillOpacity
+                                                              : 0.3,
+                                                          )
+                                                        : undefined,
                                                     }
                                                   : fn,
                                               ),
                                             );
                                             if (
+                                              !e.target.checked &&
                                               activeColorPickerFnId === f.id &&
                                               activeColorPickerType === "fill"
                                             ) {
@@ -5630,422 +6510,760 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               );
                                             }
                                           }}
-                                          className={`w-3.5 h-3.5 rounded-full border transition-transform ${f.fillColor === c ? "scale-125 border-slate-700 dark:border-white shadow-sm" : "border-transparent hover:scale-110"}`}
-                                          style={{ backgroundColor: c }}
-                                          title={c}
+                                          className="hidden"
                                         />
-                                      ))}
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          if (
+                                        <span className="text-slate-550 dark:text-slate-400 pl-1 group-hover/cb:text-blue-500 dark:group-hover/cb:text-blue-400 select-none font-medium">
+                                          Different Fill
+                                        </span>
+                                      </label>
+                                    </div>
+
+                                    {f.fillColor === undefined ? (
+                                      <div className="text-[10px] text-slate-400 italic pl-1">
+                                        {["inequality", "polygon"].includes(
+                                          f.type,
+                                        )
+                                          ? "Using outline color for fill."
+                                          : "Fill is disabled. Check 'Different Fill' to enable."}
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-col gap-1.5 p-1.5 bg-slate-100/50 dark:bg-slate-900/30 rounded border border-slate-200 dark:border-slate-800">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-slate-400 font-medium">
+                                            Fill Color Palette:
+                                          </span>
+                                          <ReadableColorBadge
+                                            color={f.fillColor || f.color}
+                                          />
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5 items-center">
+                                          {COLORS.map((c) => (
+                                            <button
+                                              key={c}
+                                              type="button"
+                                              onClick={() => {
+                                                const currentAlpha =
+                                                  f.fillOpacity !== undefined
+                                                    ? f.fillOpacity
+                                                    : 0.3;
+                                                const colorWithAlpha =
+                                                  getHexWithAlpha(
+                                                    c,
+                                                    currentAlpha,
+                                                  );
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id
+                                                      ? {
+                                                          ...fn,
+                                                          fillColor:
+                                                            colorWithAlpha,
+                                                        }
+                                                      : fn,
+                                                  ),
+                                                );
+                                                if (
+                                                  activeColorPickerFnId ===
+                                                    f.id &&
+                                                  activeColorPickerType ===
+                                                    "fill"
+                                                ) {
+                                                  setActiveColorPickerFnId(
+                                                    null,
+                                                  );
+                                                  setActiveColorPickerType(
+                                                    null,
+                                                  );
+                                                  setActiveColorPickerTriggerEl(
+                                                    null,
+                                                  );
+                                                }
+                                              }}
+                                              className={`w-3.5 h-3.5 rounded-full border transition-transform ${f.fillColor === c ? "scale-125 border-slate-700 dark:border-white shadow-sm" : "border-transparent hover:scale-110"}`}
+                                              style={{ backgroundColor: c }}
+                                              title={c}
+                                            />
+                                          ))}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              if (
+                                                activeColorPickerFnId ===
+                                                  f.id &&
+                                                activeColorPickerType === "fill"
+                                              ) {
+                                                setActiveColorPickerFnId(null);
+                                                setActiveColorPickerType(null);
+                                                setActiveColorPickerTriggerEl(
+                                                  null,
+                                                );
+                                              } else {
+                                                setActiveColorPickerFnId(f.id);
+                                                setActiveColorPickerType(
+                                                  "fill",
+                                                );
+                                                setActiveColorPickerTriggerEl(
+                                                  e.currentTarget,
+                                                );
+                                              }
+                                            }}
+                                            className={`w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer transition-all duration-200 ${
+                                              activeColorPickerFnId === f.id &&
+                                              activeColorPickerType === "fill"
+                                                ? "ring-2 ring-blue-500 scale-115"
+                                                : "hover:scale-110"
+                                            }`}
+                                            style={{
+                                              background:
+                                                "linear-gradient(45deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ec4899)",
+                                            }}
+                                            title="Spectrum Fill Picker"
+                                          />
+                                        </div>
+
+                                        <PortalColorPicker
+                                          isOpen={
                                             activeColorPickerFnId === f.id &&
                                             activeColorPickerType === "fill"
-                                          ) {
+                                          }
+                                          onClose={() => {
                                             setActiveColorPickerFnId(null);
                                             setActiveColorPickerType(null);
                                             setActiveColorPickerTriggerEl(null);
-                                          } else {
-                                            setActiveColorPickerFnId(f.id);
-                                            setActiveColorPickerType("fill");
-                                            setActiveColorPickerTriggerEl(
-                                              e.currentTarget,
+                                          }}
+                                          color={getHexWithAlpha(
+                                            f.fillColor || f.color,
+                                            f.fillOpacity !== undefined
+                                              ? f.fillOpacity
+                                              : 0.3,
+                                          )}
+                                          onChange={(newColor) => {
+                                            let parsedAlpha =
+                                              f.fillOpacity !== undefined
+                                                ? f.fillOpacity
+                                                : 0.3;
+                                            if (
+                                              newColor.startsWith("#") &&
+                                              newColor.length === 9
+                                            ) {
+                                              const alphaHex = newColor.slice(
+                                                7,
+                                                9,
+                                              );
+                                              parsedAlpha =
+                                                Math.round(
+                                                  (parseInt(alphaHex, 16) /
+                                                    255) *
+                                                    100,
+                                                ) / 100;
+                                            } else if (
+                                              newColor.startsWith("#") &&
+                                              newColor.length === 7
+                                            ) {
+                                              parsedAlpha = 1.0;
+                                            }
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? {
+                                                      ...fn,
+                                                      fillColor: newColor,
+                                                      fillOpacity: parsedAlpha,
+                                                    }
+                                                  : fn,
+                                              ),
                                             );
-                                          }
-                                        }}
-                                        className={`w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer transition-all duration-200 ${
-                                          activeColorPickerFnId === f.id &&
-                                          activeColorPickerType === "fill"
-                                            ? "ring-2 ring-blue-500 scale-115"
-                                            : "hover:scale-110"
-                                        }`}
-                                        style={{
-                                          background:
-                                            "linear-gradient(45deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ec4899)",
-                                        }}
-                                        title="Spectrum Fill Picker"
-                                      />
-                                    </div>
+                                          }}
+                                          title="Custom Fill Color"
+                                          triggerEl={activeColorPickerTriggerEl}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
 
-                                    <PortalColorPicker
-                                      isOpen={
-                                        activeColorPickerFnId === f.id &&
-                                        activeColorPickerType === "fill"
-                                      }
-                                      onClose={() => {
-                                        setActiveColorPickerFnId(null);
-                                        setActiveColorPickerType(null);
-                                        setActiveColorPickerTriggerEl(null);
-                                      }}
-                                      color={getHexWithAlpha(
-                                        f.fillColor || f.color,
-                                        f.fillOpacity !== undefined
-                                          ? f.fillOpacity
-                                          : 0.3,
-                                      )}
-                                      onChange={(newColor) => {
-                                        let parsedAlpha =
+                                  {/* Fill Opacity Slider */}
+                                  <div className="flex flex-col gap-1 mt-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500 dark:text-slate-400 font-semibold">
+                                        Fill Alpha (Transparency)
+                                      </span>
+                                      <span className="font-mono text-slate-500 dark:text-slate-400 text-[10px] font-semibold">
+                                        {Math.round(
+                                          (f.fillOpacity !== undefined
+                                            ? f.fillOpacity
+                                            : 0.3) * 100,
+                                        )}
+                                        %
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[9px] text-slate-400 font-mono">
+                                        0.0
+                                      </span>
+                                      <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.05"
+                                        value={
                                           f.fillOpacity !== undefined
                                             ? f.fillOpacity
-                                            : 0.3;
-                                        if (
-                                          newColor.startsWith("#") &&
-                                          newColor.length === 9
-                                        ) {
-                                          const alphaHex = newColor.slice(7, 9);
-                                          parsedAlpha =
-                                            Math.round(
-                                              (parseInt(alphaHex, 16) / 255) *
-                                                100,
-                                            ) / 100;
-                                        } else if (
-                                          newColor.startsWith("#") &&
-                                          newColor.length === 7
-                                        ) {
-                                          parsedAlpha = 1.0;
+                                            : 0.3
                                         }
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? {
+                                        onChange={(e) => {
+                                          const val = parseFloat(
+                                            e.target.value,
+                                          );
+                                          setFunctions((prev) =>
+                                            prev.map((fn) => {
+                                              if (fn.id === f.id) {
+                                                const baseColor =
+                                                  fn.fillColor || fn.color;
+                                                const updatedColor =
+                                                  getHexWithAlpha(
+                                                    baseColor,
+                                                    val,
+                                                  );
+                                                return {
                                                   ...fn,
-                                                  fillColor: newColor,
-                                                  fillOpacity: parsedAlpha,
-                                                }
-                                              : fn,
-                                          ),
-                                        );
-                                      }}
-                                      title="Custom Fill Color"
-                                      triggerEl={activeColorPickerTriggerEl}
-                                    />
+                                                  fillOpacity: val,
+                                                  fillColor: updatedColor,
+                                                };
+                                              }
+                                              return fn;
+                                            }),
+                                          );
+                                        }}
+                                        className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 flex-1 outline-none text-blue-500 dark:text-blue-400"
+                                      />
+                                      <span className="text-[9px] text-slate-400 font-mono">
+                                        1.0
+                                      </span>
+                                    </div>
                                   </div>
-                                )}
-                              </div>
 
-                              {/* Fill Opacity Slider */}
-                              <div className="flex flex-col gap-1 mt-0.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-slate-500 dark:text-slate-400 font-semibold">
-                                    Fill Alpha (Transparency)
+                                  {/* Pattern Style Selection (For Regions) */}
+                                  {(f.type === "inequality" ||
+                                    f.type === "implicit" ||
+                                    f.type === "function" ||
+                                    f.type === "parametric" ||
+                                    f.type === "polar" ||
+                                    f.type === "polygon") && (
+                                    <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/60">
+                                      <span className="text-slate-550 dark:text-slate-400 font-semibold mb-0.5">
+                                        Region Style
+                                      </span>
+                                      <div className="grid grid-cols-4 gap-1.5">
+                                        {(
+                                          [
+                                            { value: "solid", label: "Solid" },
+                                            {
+                                              value: "hatch-diagonal",
+                                              label: "Diagonal",
+                                            },
+                                            {
+                                              value: "hatch-reverse",
+                                              label: "Reverse",
+                                            },
+                                            {
+                                              value: "hatch-cross",
+                                              label: "Cross",
+                                            },
+                                            {
+                                              value: "dotted",
+                                              label: "Dotted",
+                                            },
+                                            { value: "grid", label: "Grid" },
+                                            {
+                                              value: "dashed",
+                                              label: "Dashed",
+                                            },
+                                            {
+                                              value: "math-region",
+                                              label: "Math",
+                                            },
+                                          ] as const
+                                        ).map((style) => {
+                                          const isSelected =
+                                            (f.fillPattern ||
+                                              "hatch-diagonal") === style.value;
+                                          const pCol =
+                                            f.fillColor || f.color || "#3b82f6";
+                                          const op = f.fillOpacity ?? 0.65;
+                                          const pId = `preview-${f.id}-${style.value}`;
+                                          const pt = f.patternThickness || 2;
+                                          const ps = f.patternSpacing || 15;
+
+                                          // Scale down the preview pattern to fit nicely in the button
+                                          // Default pSize is 15. We can render standard 15 size and let it tile in the 24x24 box.
+                                          const previewScale =
+                                            style.value === "math-region"
+                                              ? 0.75
+                                              : 0.6;
+                                          const pSize = ps;
+
+                                          return (
+                                            <button
+                                              key={style.value}
+                                              type="button"
+                                              onClick={() => {
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id
+                                                      ? {
+                                                          ...fn,
+                                                          fillPattern:
+                                                            style.value,
+                                                        }
+                                                      : fn,
+                                                  ),
+                                                );
+                                              }}
+                                              className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded transition-all select-none border ${
+                                                isSelected
+                                                  ? "bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400"
+                                                  : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-400/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+                                              }`}
+                                              title={style.label}
+                                            >
+                                              <div className="h-6 w-10 mt-0.5 mb-1 rounded-[3px] border border-slate-200/50 dark:border-slate-700/50 overflow-hidden flex items-center justify-center bg-white dark:bg-slate-900/50">
+                                                <svg
+                                                  width="100%"
+                                                  height="100%"
+                                                  xmlns="http://www.w3.org/2000/svg"
+                                                >
+                                                  <defs>
+                                                    {style.value !==
+                                                      "solid" && (
+                                                      <pattern
+                                                        id={pId}
+                                                        width={pSize}
+                                                        height={pSize}
+                                                        patternUnits="userSpaceOnUse"
+                                                        patternTransform={`scale(${previewScale})`}
+                                                      >
+                                                        {style.value ===
+                                                          "hatch-diagonal" && (
+                                                          <React.Fragment>
+                                                            <line
+                                                              x1={0}
+                                                              y1={pSize}
+                                                              x2={pSize}
+                                                              y2={0}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={-1}
+                                                              y1={1}
+                                                              x2={1}
+                                                              y2={-1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={pSize - 1}
+                                                              y1={pSize + 1}
+                                                              x2={pSize + 1}
+                                                              y2={pSize - 1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                          </React.Fragment>
+                                                        )}
+                                                        {style.value ===
+                                                          "hatch-reverse" && (
+                                                          <React.Fragment>
+                                                            <line
+                                                              x1={0}
+                                                              y1={0}
+                                                              x2={pSize}
+                                                              y2={pSize}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={-1}
+                                                              y1={pSize - 1}
+                                                              x2={1}
+                                                              y2={pSize + 1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={pSize - 1}
+                                                              y1={-1}
+                                                              x2={pSize + 1}
+                                                              y2={1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                          </React.Fragment>
+                                                        )}
+                                                        {style.value ===
+                                                          "hatch-cross" && (
+                                                          <React.Fragment>
+                                                            <line
+                                                              x1={0}
+                                                              y1={pSize}
+                                                              x2={pSize}
+                                                              y2={0}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={0}
+                                                              y1={0}
+                                                              x2={pSize}
+                                                              y2={pSize}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={-1}
+                                                              y1={1}
+                                                              x2={1}
+                                                              y2={-1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={pSize - 1}
+                                                              y1={pSize + 1}
+                                                              x2={pSize + 1}
+                                                              y2={pSize - 1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={-1}
+                                                              y1={pSize - 1}
+                                                              x2={1}
+                                                              y2={pSize + 1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={pSize - 1}
+                                                              y1={-1}
+                                                              x2={pSize + 1}
+                                                              y2={1}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                          </React.Fragment>
+                                                        )}
+                                                        {style.value ===
+                                                          "dotted" && (
+                                                          <circle
+                                                            cx={pSize / 2}
+                                                            cy={pSize / 2}
+                                                            r={pt}
+                                                            fill={pCol}
+                                                            fillOpacity={op}
+                                                          />
+                                                        )}
+                                                        {style.value ===
+                                                          "grid" && (
+                                                          <React.Fragment>
+                                                            <line
+                                                              x1={0}
+                                                              y1={0}
+                                                              x2={pSize}
+                                                              y2={0}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                            <line
+                                                              x1={0}
+                                                              y1={0}
+                                                              x2={0}
+                                                              y2={pSize}
+                                                              stroke={pCol}
+                                                              strokeWidth={pt}
+                                                              strokeOpacity={op}
+                                                            />
+                                                          </React.Fragment>
+                                                        )}
+                                                        {style.value ===
+                                                          "dashed" && (
+                                                          <line
+                                                            x1={0}
+                                                            y1={pSize / 2}
+                                                            x2={pSize}
+                                                            y2={pSize / 2}
+                                                            stroke={pCol}
+                                                            strokeWidth={pt}
+                                                            strokeOpacity={op}
+                                                            strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
+                                                          />
+                                                        )}
+                                                        {style.value ===
+                                                          "math-region" && (
+                                                          <line
+                                                            x1={0}
+                                                            y1={pSize}
+                                                            x2={pSize}
+                                                            y2={0}
+                                                            stroke={pCol}
+                                                            strokeWidth={Math.max(
+                                                              1,
+                                                              pt * 0.5,
+                                                            )}
+                                                            strokeOpacity={Math.min(
+                                                              1,
+                                                              op * 1.5,
+                                                            )}
+                                                          />
+                                                        )}
+                                                      </pattern>
+                                                    )}
+                                                  </defs>
+
+                                                  {style.value === "solid" ? (
+                                                    <rect
+                                                      width="100%"
+                                                      height="100%"
+                                                      fill={pCol}
+                                                      fillOpacity={op}
+                                                    />
+                                                  ) : (
+                                                    <rect
+                                                      width="100%"
+                                                      height="100%"
+                                                      fill={`url(#${pId})`}
+                                                    />
+                                                  )}
+                                                </svg>
+                                              </div>
+                                              <div className="text-[9px] font-semibold opacity-90">
+                                                {style.label}
+                                              </div>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {/* Pattern Advanced Controls */}
+                                      {(f.fillPattern || "hatch-diagonal") !==
+                                        "solid" && (
+                                        <div className="grid grid-cols-2 gap-3 mt-1.5 p-2 bg-slate-50 dark:bg-slate-900/40 rounded border border-slate-200 dark:border-slate-800">
+                                          {/* Spacing */}
+                                          <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between items-center text-[10px]">
+                                              <span className="text-slate-500 dark:text-slate-400">
+                                                Spacing
+                                              </span>
+                                              <span className="font-mono text-slate-400">
+                                                {f.patternSpacing || 15}
+                                              </span>
+                                            </div>
+                                            <input
+                                              type="range"
+                                              min="4"
+                                              max="40"
+                                              step="1"
+                                              value={f.patternSpacing || 15}
+                                              onChange={(e) =>
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id
+                                                      ? {
+                                                          ...fn,
+                                                          patternSpacing:
+                                                            parseInt(
+                                                              e.target.value,
+                                                            ),
+                                                        }
+                                                      : fn,
+                                                  ),
+                                                )
+                                              }
+                                              className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+                                            />
+                                          </div>
+                                          {/* Thickness */}
+                                          <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between items-center text-[10px]">
+                                              <span className="text-slate-500 dark:text-slate-400">
+                                                Thickness
+                                              </span>
+                                              <span className="font-mono text-slate-400">
+                                                {f.patternThickness || 2}
+                                              </span>
+                                            </div>
+                                            <input
+                                              type="range"
+                                              min="1"
+                                              max="10"
+                                              step="0.5"
+                                              value={f.patternThickness || 2}
+                                              onChange={(e) =>
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id
+                                                      ? {
+                                                          ...fn,
+                                                          patternThickness:
+                                                            parseFloat(
+                                                              e.target.value,
+                                                            ),
+                                                        }
+                                                      : fn,
+                                                  ),
+                                                )
+                                              }
+                                              className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </React.Fragment>
+                              )}
+
+                              {/* Line Style Selection */}
+                              {f.type !== "point" && (
+                                <div className="flex flex-col gap-1 mt-1 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                                  <span className="text-slate-550 dark:text-slate-400 font-semibold mb-1">
+                                    Line Style
                                   </span>
-                                  <span className="font-mono text-slate-500 dark:text-slate-400 text-[10px] font-semibold">
-                                    {Math.round(
-                                      (f.fillOpacity !== undefined
-                                        ? f.fillOpacity
-                                        : 0.3) * 100,
-                                    )}
-                                    %
+                                  <div className="grid grid-cols-4 gap-1.5 mt-0.5">
+                                    {(
+                                      [
+                                        {
+                                          value: "solid",
+                                          label: "Solid",
+                                          dash: "none",
+                                        },
+                                        {
+                                          value: "dashed",
+                                          label: "Dashed",
+                                          dash: "5,3",
+                                        },
+                                        {
+                                          value: "dotted",
+                                          label: "Dotted",
+                                          dash: "1,2",
+                                        },
+                                        {
+                                          value: "dashdot",
+                                          label: "Dash-Dot",
+                                          dash: "8,3,1,3",
+                                        },
+                                      ] as const
+                                    ).map((style) => (
+                                      <button
+                                        key={style.value}
+                                        type="button"
+                                        onClick={() => {
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? {
+                                                    ...fn,
+                                                    lineStyle: style.value,
+                                                  }
+                                                : fn,
+                                            ),
+                                          );
+                                        }}
+                                        className={`px-1 rounded-md h-9 flex flex-col items-center justify-center gap-1 transition-all w-full select-none cursor-pointer border ${
+                                          (f.lineStyle || "solid") ===
+                                          style.value
+                                            ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-sm"
+                                            : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-50/50 dark:bg-slate-900/30"
+                                        }`}
+                                      >
+                                        <span className="text-[10px] truncate leading-none">
+                                          {style.label}
+                                        </span>
+                                        {/* Visual Line pattern representation */}
+                                        <svg
+                                          width="24"
+                                          height="4"
+                                          className="text-current opacity-85 overflow-visible"
+                                        >
+                                          <line
+                                            x1="0"
+                                            y1="2"
+                                            x2="24"
+                                            y2="2"
+                                            stroke="currentColor"
+                                            strokeWidth="1.5"
+                                            strokeDasharray={
+                                              style.dash === "none"
+                                                ? undefined
+                                                : style.dash
+                                            }
+                                            strokeLinecap="round"
+                                          />
+                                        </svg>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Outline Width Slider */}
+                              <div className="flex flex-col gap-1 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-550 dark:text-slate-400 font-semibold text-[11px]">
+                                    Outline Width
+                                  </span>
+                                  <span className="font-mono text-[10px] text-slate-450 dark:text-slate-500">
+                                    {(f.outlineWidth !== undefined
+                                      ? f.outlineWidth
+                                      : 3.0
+                                    ).toFixed(1)}{" "}
+                                    px
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[9px] text-slate-400 font-mono">
-                                    0.0
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
+                                    1.0
                                   </span>
                                   <input
                                     type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.05"
+                                    min="1"
+                                    max="10"
+                                    step="0.5"
                                     value={
-                                      f.fillOpacity !== undefined
-                                        ? f.fillOpacity
-                                        : 0.3
+                                      f.outlineWidth !== undefined
+                                        ? f.outlineWidth
+                                        : 3
                                     }
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value);
                                       setFunctions((prev) =>
-                                        prev.map((fn) => {
-                                          if (fn.id === f.id) {
-                                            const baseColor =
-                                              fn.fillColor || fn.color;
-                                            const updatedColor =
-                                              getHexWithAlpha(baseColor, val);
-                                            return {
-                                              ...fn,
-                                              fillOpacity: val,
-                                              fillColor: updatedColor,
-                                            };
-                                          }
-                                          return fn;
-                                        }),
+                                        prev.map((fn) =>
+                                          fn.id === f.id
+                                            ? { ...fn, outlineWidth: val }
+                                            : fn,
+                                        ),
                                       );
                                     }}
                                     className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 flex-1 outline-none text-blue-500 dark:text-blue-400"
                                   />
-                                  <span className="text-[9px] text-slate-400 font-mono">
-                                    1.0
+                                  <span className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
+                                    10.0
                                   </span>
                                 </div>
                               </div>
-                              
-                              {/* Pattern Style Selection (For Regions) */}
-                              {(f.type === "inequality" || f.type === "implicit" || f.type === "function" || f.type === "parametric" || f.type === "polar" || f.type === "polygon") && (
-                                <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/60">
-                                  <span className="text-slate-550 dark:text-slate-400 font-semibold mb-0.5">
-                                    Region Style
-                                  </span>
-                                  <div className="grid grid-cols-4 gap-1.5">
-                                    {(
-                                      [
-                                        { value: "solid", label: "Solid" },
-                                        { value: "hatch-diagonal", label: "Diagonal" },
-                                        { value: "hatch-reverse", label: "Reverse" },
-                                        { value: "hatch-cross", label: "Cross" },
-                                        { value: "dotted", label: "Dotted" },
-                                        { value: "grid", label: "Grid" },
-                                        { value: "dashed", label: "Dashed" },
-                                        { value: "math-region", label: "Math" },
-                                      ] as const
-                                    ).map((style) => {
-                                      const isSelected = (f.fillPattern || "hatch-diagonal") === style.value;
-                                      const pCol = f.fillColor || f.color || "#3b82f6";
-                                      const op = f.fillOpacity ?? 0.65;
-                                      const pId = `preview-${f.id}-${style.value}`;
-                                      const pt = f.patternThickness || 2;
-                                      const ps = f.patternSpacing || 15;
-                                      
-                                      // Scale down the preview pattern to fit nicely in the button
-                                      // Default pSize is 15. We can render standard 15 size and let it tile in the 24x24 box.
-                                      const previewScale = style.value === 'math-region' ? 0.75 : 0.6;
-                                      const pSize = ps;
-                                      
-                                      return (
-                                        <button
-                                          key={style.value}
-                                          type="button"
-                                          onClick={() => {
-                                            setFunctions((prev) =>
-                                              prev.map((fn) =>
-                                                fn.id === f.id
-                                                  ? { ...fn, fillPattern: style.value }
-                                                  : fn
-                                              )
-                                            );
-                                          }}
-                                          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded transition-all select-none border ${
-                                            isSelected
-                                              ? "bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-400/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
-                                          }`}
-                                          title={style.label}
-                                        >
-                                          <div className="h-6 w-10 mt-0.5 mb-1 rounded-[3px] border border-slate-200/50 dark:border-slate-700/50 overflow-hidden flex items-center justify-center bg-white dark:bg-slate-900/50">
-                                            <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-                                              <defs>
-                                                {style.value !== "solid" && (
-                                                  <pattern id={pId} width={pSize} height={pSize} patternUnits="userSpaceOnUse" patternTransform={`scale(${previewScale})`}>
-                                                    {style.value === "hatch-diagonal" && (
-                                                      <React.Fragment>
-                                                        <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={-1} y1={1} x2={1} y2={-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </React.Fragment>
-                                                    )}
-                                                    {style.value === "hatch-reverse" && (
-                                                      <React.Fragment>
-                                                        <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </React.Fragment>
-                                                    )}
-                                                    {style.value === "hatch-cross" && (
-                                                      <React.Fragment>
-                                                        <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={0} y1={0} x2={pSize} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={-1} y1={1} x2={1} y2={-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={pSize-1} y1={pSize+1} x2={pSize+1} y2={pSize-1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={-1} y1={pSize-1} x2={1} y2={pSize+1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={pSize-1} y1={-1} x2={pSize+1} y2={1} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </React.Fragment>
-                                                    )}
-                                                    {style.value === "dotted" && (
-                                                      <circle cx={pSize/2} cy={pSize/2} r={pt} fill={pCol} fillOpacity={op} />
-                                                    )}
-                                                    {style.value === "grid" && (
-                                                      <React.Fragment>
-                                                        <line x1={0} y1={0} x2={pSize} y2={0} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                        <line x1={0} y1={0} x2={0} y2={pSize} stroke={pCol} strokeWidth={pt} strokeOpacity={op} />
-                                                      </React.Fragment>
-                                                    )}
-                                                    {style.value === "dashed" && (
-                                                      <line x1={0} y1={pSize/2} x2={pSize} y2={pSize/2} stroke={pCol} strokeWidth={pt} strokeOpacity={op} strokeDasharray={`${Math.max(1, pSize/2)},${Math.max(1, pSize/2)}`} />
-                                                    )}
-                                                    {style.value === "math-region" && (
-                                                      <line x1={0} y1={pSize} x2={pSize} y2={0} stroke={pCol} strokeWidth={Math.max(1, pt * 0.5)} strokeOpacity={Math.min(1, op * 1.5)} />
-                                                    )}
-                                                  </pattern>
-                                                )}
-                                              </defs>
-                                              
-                                              {style.value === "solid" ? (
-                                                <rect width="100%" height="100%" fill={pCol} fillOpacity={op} />
-                                              ) : (
-                                                <rect width="100%" height="100%" fill={`url(#${pId})`} />
-                                              )}
-                                            </svg>
-                                          </div>
-                                          <div className="text-[9px] font-semibold opacity-90">{style.label}</div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                  
-                                  {/* Pattern Advanced Controls */}
-                                  {(f.fillPattern || "hatch-diagonal") !== "solid" && (
-                                    <div className="grid grid-cols-2 gap-3 mt-1.5 p-2 bg-slate-50 dark:bg-slate-900/40 rounded border border-slate-200 dark:border-slate-800">
-                                      {/* Spacing */}
-                                      <div className="flex flex-col gap-1">
-                                        <div className="flex justify-between items-center text-[10px]">
-                                          <span className="text-slate-500 dark:text-slate-400">Spacing</span>
-                                          <span className="font-mono text-slate-400">{f.patternSpacing || 15}</span>
-                                        </div>
-                                        <input
-                                          type="range" min="4" max="40" step="1"
-                                          value={f.patternSpacing || 15}
-                                          onChange={(e) => setFunctions(prev => prev.map(fn => fn.id === f.id ? { ...fn, patternSpacing: parseInt(e.target.value) } : fn))}
-                                          className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
-                                        />
-                                      </div>
-                                      {/* Thickness */}
-                                      <div className="flex flex-col gap-1">
-                                        <div className="flex justify-between items-center text-[10px]">
-                                          <span className="text-slate-500 dark:text-slate-400">Thickness</span>
-                                          <span className="font-mono text-slate-400">{f.patternThickness || 2}</span>
-                                        </div>
-                                        <input
-                                          type="range" min="1" max="10" step="0.5"
-                                          value={f.patternThickness || 2}
-                                          onChange={(e) => setFunctions(prev => prev.map(fn => fn.id === f.id ? { ...fn, patternThickness: parseFloat(e.target.value) } : fn))}
-                                          className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
-                                        />
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </React.Fragment>
-                          )}
-
-                          {/* Line Style Selection */}
-                          {f.type !== "point" && (
-                              <div className="flex flex-col gap-1 mt-1 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
-                                <span className="text-slate-550 dark:text-slate-400 font-semibold mb-1">
-                                  Line Style
-                                </span>
-                                <div className="grid grid-cols-4 gap-1.5 mt-0.5">
-                                  {(
-                                    [
-                                      {
-                                        value: "solid",
-                                        label: "Solid",
-                                        dash: "none",
-                                      },
-                                      {
-                                        value: "dashed",
-                                        label: "Dashed",
-                                        dash: "5,3",
-                                      },
-                                      {
-                                        value: "dotted",
-                                        label: "Dotted",
-                                        dash: "1,2",
-                                      },
-                                      {
-                                        value: "dashdot",
-                                        label: "Dash-Dot",
-                                        dash: "8,3,1,3",
-                                      },
-                                    ] as const
-                                  ).map((style) => (
-                                    <button
-                                      key={style.value}
-                                      type="button"
-                                      onClick={() => {
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? {
-                                                  ...fn,
-                                                  lineStyle: style.value,
-                                                }
-                                              : fn,
-                                          ),
-                                        );
-                                      }}
-                                      className={`px-1 rounded-md h-9 flex flex-col items-center justify-center gap-1 transition-all w-full select-none cursor-pointer border ${
-                                        (f.lineStyle || "solid") === style.value
-                                          ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-sm"
-                                          : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-50/50 dark:bg-slate-900/30"
-                                      }`}
-                                    >
-                                      <span className="text-[10px] truncate leading-none">
-                                        {style.label}
-                                      </span>
-                                      {/* Visual Line pattern representation */}
-                                      <svg
-                                        width="24"
-                                        height="4"
-                                        className="text-current opacity-85 overflow-visible"
-                                      >
-                                        <line
-                                          x1="0"
-                                          y1="2"
-                                          x2="24"
-                                          y2="2"
-                                          stroke="currentColor"
-                                          strokeWidth="1.5"
-                                          strokeDasharray={
-                                            style.dash === "none"
-                                              ? undefined
-                                              : style.dash
-                                          }
-                                          strokeLinecap="round"
-                                        />
-                                      </svg>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                          )}
-
-                          {/* Outline Width Slider */}
-                          <div className="flex flex-col gap-1 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-550 dark:text-slate-400 font-semibold text-[11px]">
-                                Outline Width
-                              </span>
-                              <span className="font-mono text-[10px] text-slate-450 dark:text-slate-500">
-                                {(f.outlineWidth !== undefined ? f.outlineWidth : 3.0).toFixed(1)} px
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
-                                1.0
-                              </span>
-                              <input
-                                type="range"
-                                min="1"
-                                max="10"
-                                step="0.5"
-                                value={f.outlineWidth !== undefined ? f.outlineWidth : 3}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value);
-                                  setFunctions((prev) =>
-                                    prev.map((fn) =>
-                                      fn.id === f.id
-                                        ? { ...fn, outlineWidth: val }
-                                        : fn
-                                    )
-                                  );
-                                }}
-                                className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 flex-1 outline-none text-blue-500 dark:text-blue-400"
-                              />
-                              <span className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
-                                10.0
-                              </span>
-                            </div>
-                          </div>
                             </div>
                           )}
                         </div>
@@ -6100,7 +7318,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               onClick={() => {
                                 setFormulaName(f.name || "");
                                 setFormulaDesc("");
-                                setSavingFormulaFnId(savingFormulaFnId === f.id ? null : f.id);
+                                setSavingFormulaFnId(
+                                  savingFormulaFnId === f.id ? null : f.id,
+                                );
                               }}
                               className={`p-1 rounded transition-all flex items-center justify-center ${
                                 savingFormulaFnId === f.id
@@ -6111,7 +7331,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             >
                               <Bookmark
                                 size={14}
-                                fill={savingFormulaFnId === f.id ? "currentColor" : "none"}
+                                fill={
+                                  savingFormulaFnId === f.id
+                                    ? "currentColor"
+                                    : "none"
+                                }
                               />
                             </button>
                             <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity"></div>
@@ -6123,81 +7347,173 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               <Trash2 size={14} />
                             </button>
                           </div>
-                                                   {/* Mobile Dropdown Actions Block */}
+                          {/* Mobile Dropdown Actions Block */}
                           {activeActionMenuId === f.id && (
-                            <div className="md:hidden mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
-                              <button onClick={() => { 
-                                 setActiveActionMenuId(null); 
-                                 setExpandedSettingsFnId(expandedSettingsFnId === f.id ? null : f.id);
-                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-650 dark:text-slate-200 text-xs font-semibold transition-colors">
-                                 <Settings size={14} className="text-blue-500 dark:text-blue-400"/> Settings & Properties
+                            <div
+                              className="md:hidden mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  setExpandedSettingsFnId(
+                                    expandedSettingsFnId === f.id ? null : f.id,
+                                  );
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-650 dark:text-slate-200 text-xs font-semibold transition-colors"
+                              >
+                                <Settings
+                                  size={14}
+                                  className="text-blue-500 dark:text-blue-400"
+                                />{" "}
+                                Settings & Properties
                               </button>
-                              <button onClick={() => { 
-                                 setActiveActionMenuId(null); 
-                                 handleAddFunctionAt(f.id, "above");
-                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
-                                 <ChevronUp size={14} className="text-slate-500"/> Insert above
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  handleAddFunctionAt(f.id, "above");
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
+                              >
+                                <ChevronUp
+                                  size={14}
+                                  className="text-slate-500"
+                                />{" "}
+                                Insert above
                               </button>
-                              <button onClick={() => { 
-                                 setActiveActionMenuId(null); 
-                                 handleAddFunctionAt(f.id, "below");
-                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
-                                 <ChevronDown size={14} className="text-slate-500"/> Insert below
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  handleAddFunctionAt(f.id, "below");
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
+                              >
+                                <ChevronDown
+                                  size={14}
+                                  className="text-slate-500"
+                                />{" "}
+                                Insert below
                               </button>
-                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1"/>
-                              <button onClick={() => { 
-                                 setActiveActionMenuId(null); 
-                                 try {
-                                   const node = mathjs.parse(f.expr);
-                                   const scope: any = { x: 1, y: 1, t: time, time: time, theta: 1 };
-                                   variables.forEach(v => scope[v.name] = v.value);
-                                   const res = node.evaluate(scope);
-                                   navigator.clipboard.writeText(mathjs.format(res, {precision: 5}));
-                                 } catch(e) {}
-                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
-                                 <Check size={14} className="text-slate-500"/> Copy Result
+                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1" />
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  try {
+                                    const node = mathjs.parse(f.expr);
+                                    const scope: any = {
+                                      x: 1,
+                                      y: 1,
+                                      t: time,
+                                      time: time,
+                                      theta: 1,
+                                    };
+                                    variables.forEach(
+                                      (v) => (scope[v.name] = v.value),
+                                    );
+                                    const res = node.evaluate(scope);
+                                    navigator.clipboard.writeText(
+                                      mathjs.format(res, { precision: 5 }),
+                                    );
+                                  } catch (e) {}
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
+                              >
+                                <Check size={14} className="text-slate-500" />{" "}
+                                Copy Result
                               </button>
-                              <button onClick={() => { 
-                                 setActiveActionMenuId(null); 
-                                 try {
-                                   let finalTex = "";
-                                   const eqIndex = f.expr.indexOf("=");
-                                   if (
-                                     eqIndex !== -1 &&
-                                     !f.expr.includes("==") &&
-                                     !f.expr.includes(">=") &&
-                                     !f.expr.includes("<=") &&
-                                     !f.expr.includes("!=")
-                                   ) {
-                                     const lhs = f.expr.slice(0, eqIndex).trim();
-                                     const rhs = f.expr.slice(eqIndex + 1).trim();
-                                     const lhsTex = mathjs.parse(lhs).toTex();
-                                     const rhsTex = mathjs.parse(rhs).toTex();
-                                     finalTex = `${lhsTex} = ${rhsTex}`;
-                                   } else {
-                                     const node = mathjs.parse(f.expr);
-                                     finalTex = node.toTex({});
-                                   }
-                                   navigator.clipboard.writeText(finalTex);
-                                 } catch(e) {}
-                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
-                                 <svg className="w-3.5 h-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 22h20L12 2z"/></svg> Copy LaTeX
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  try {
+                                    let finalTex = "";
+                                    const eqIndex = f.expr.indexOf("=");
+                                    if (
+                                      eqIndex !== -1 &&
+                                      !f.expr.includes("==") &&
+                                      !f.expr.includes(">=") &&
+                                      !f.expr.includes("<=") &&
+                                      !f.expr.includes("!=")
+                                    ) {
+                                      const lhs = f.expr
+                                        .slice(0, eqIndex)
+                                        .trim();
+                                      const rhs = f.expr
+                                        .slice(eqIndex + 1)
+                                        .trim();
+                                      const lhsTex = mathjs.parse(lhs).toTex();
+                                      const rhsTex = mathjs.parse(rhs).toTex();
+                                      finalTex = `${lhsTex} = ${rhsTex}`;
+                                    } else {
+                                      const node = mathjs.parse(f.expr);
+                                      finalTex = node.toTex({});
+                                    }
+                                    navigator.clipboard.writeText(finalTex);
+                                  } catch (e) {}
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5 text-slate-500"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <path d="M12 2L2 22h20L12 2z" />
+                                </svg>{" "}
+                                Copy LaTeX
                               </button>
-                              <button onClick={() => { 
-                                 setActiveActionMenuId(null); 
-                                 navigator.clipboard.writeText(f.expr); 
-                              }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors">
-                                 <Copy size={14} className="text-slate-500"/> Copy Formula
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  navigator.clipboard.writeText(f.expr);
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
+                              >
+                                <Copy size={14} className="text-slate-500" />{" "}
+                                Copy Formula
                               </button>
-                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1"/>
-                              <button onClick={() => { setActiveActionMenuId(null); handleDuplicateFunction(f.id); }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors">
-                                 <CopyPlus size={14} className="text-slate-500"/> Duplicate
+                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1" />
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  handleDuplicateFunction(f.id);
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors"
+                              >
+                                <CopyPlus
+                                  size={14}
+                                  className="text-slate-500"
+                                />{" "}
+                                Duplicate
                               </button>
-                              <button onClick={() => { setActiveActionMenuId(null); setSavingFormulaFnId(f.id); setFormulaName(f.name || ""); setFormulaDesc(""); }} className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors">
-                                 <Bookmark size={14} className="text-amber-500"/> Save Formula
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  setSavingFormulaFnId(f.id);
+                                  setFormulaName(f.name || "");
+                                  setFormulaDesc("");
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors"
+                              >
+                                <Bookmark
+                                  size={14}
+                                  className="text-amber-500"
+                                />{" "}
+                                Save Formula
                               </button>
-                              <button onClick={() => { setActiveActionMenuId(null); handleRemoveFunction(f.id); }} className="w-full flex items-center gap-2.5 p-2 hover:bg-red-500/10 rounded text-red-500 dark:text-red-400 text-xs transition-colors group">
-                                 <Trash2 size={14} className="group-hover:stroke-red-500"/> Remove
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  handleRemoveFunction(f.id);
+                                }}
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-red-500/10 rounded text-red-500 dark:text-red-400 text-xs transition-colors group"
+                              >
+                                <Trash2
+                                  size={14}
+                                  className="group-hover:stroke-red-500"
+                                />{" "}
+                                Remove
                               </button>
                             </div>
                           )}
@@ -7850,11 +9166,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         >
           {/* Graph Controls */}
           {(isExpanded || isFullscreen) && (
-            <div className={`absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-auto z-40 flex flex-wrap md:flex-nowrap items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl transition-all duration-300 ${
-              showGridControls 
-                ? "opacity-100 translate-y-0" 
-                : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
-            }`}>
+            <div
+              className={`absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-auto z-40 flex flex-wrap md:flex-nowrap items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl transition-all duration-300 ${
+                showGridControls
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
+              }`}
+            >
               <button
                 onClick={() => setGridType("none")}
                 className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors ${gridType === "none" ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
@@ -7879,7 +9197,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               <div className="hidden md:block w-px bg-slate-700 my-1 mx-1 h-4"></div>
               <div className="relative flex items-center">
                 <button
-                  onClick={() => setShowAdvancedAxisControls(!showAdvancedAxisControls)}
+                  onClick={() =>
+                    setShowAdvancedAxisControls(!showAdvancedAxisControls)
+                  }
                   className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors flex items-center gap-1.5 ${showAdvancedAxisControls ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
                   title="Axis Labels Setup"
                 >
@@ -7889,20 +9209,29 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                 </button>
 
                 {showAdvancedAxisControls && (
-                  <div className="absolute top-[calc(100%+8px)] right-0 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-5 z-[100] w-[340px] flex flex-col gap-5 overflow-visible cursor-default" onClick={e => e.stopPropagation()}>
+                  <div
+                    className="absolute top-[calc(100%+8px)] right-0 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-5 z-[100] w-[340px] flex flex-col gap-5 overflow-visible cursor-default"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                       <h3 className="text-sm font-medium text-slate-200 flex items-center gap-2 tracking-wide">
-                        <Type size={16} className="text-blue-500" /> Axis Labels Setup
+                        <Type size={16} className="text-blue-500" /> Axis Labels
+                        Setup
                       </h3>
-                      <button onClick={() => setShowAdvancedAxisControls(false)} className="text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-md hover:bg-slate-800">
+                      <button
+                        onClick={() => setShowAdvancedAxisControls(false)}
+                        className="text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-md hover:bg-slate-800"
+                      >
                         <X size={14} />
                       </button>
                     </div>
 
                     <div className="grid grid-cols-2 gap-x-3 gap-y-4">
                       <div className="flex flex-col gap-2 col-span-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Label Mode</label>
-                        <select 
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                          Label Mode
+                        </label>
+                        <select
                           value={axisFilter}
                           onChange={(e) => setAxisFilter(e.target.value as any)}
                           className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 hover:border-slate-700 transition-colors"
@@ -7923,14 +9252,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             <option value="scientific">Scientific</option>
                           </optgroup>
                           <optgroup label="Custom">
-                            <option value="custom_mapping">Custom Mapping</option>
-                            <option value="custom">Logic Rule (e.g. n%2==0)</option>
+                            <option value="custom_mapping">
+                              Custom Mapping
+                            </option>
+                            <option value="custom">
+                              Logic Rule (e.g. n%2==0)
+                            </option>
                           </optgroup>
                         </select>
                       </div>
 
                       <div className="flex flex-col gap-2 col-span-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Axis Step Size (lines)</label>
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                          Axis Step Size (lines)
+                        </label>
                         <input
                           type="text"
                           value={axisStepStr}
@@ -7939,13 +9274,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           placeholder="e.g. 1, 0.5, pi/2"
                         />
                       </div>
-                      
+
                       {axisFilter === "custom_mapping" && (
                         <div className="flex flex-col gap-2 col-span-2">
-                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Value → Label Map</label>
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                            Value → Label Map
+                          </label>
                           <textarea
                             value={customAxisMapping}
-                            onChange={(e) => setCustomAxisMapping(e.target.value)}
+                            onChange={(e) =>
+                              setCustomAxisMapping(e.target.value)
+                            }
                             className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 h-28 whitespace-pre custom-scrollbar resize-none placeholder:text-slate-600"
                             placeholder="0 → Origin&#10;1 → Start&#10;2 → End"
                           />
@@ -7954,11 +9293,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                       {axisFilter === "custom" && (
                         <div className="flex flex-col gap-2 col-span-2">
-                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Logic Rule (Returns Boolean)</label>
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                            Logic Rule (Returns Boolean)
+                          </label>
                           <input
                             type="text"
                             value={customAxisFilter}
-                            onChange={(e) => setCustomAxisFilter(e.target.value)}
+                            onChange={(e) =>
+                              setCustomAxisFilter(e.target.value)
+                            }
                             className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
                             placeholder="e.g. abs(n) > 2"
                           />
@@ -7968,13 +9311,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       {["numeric", "scientific"].includes(axisFilter) && (
                         <React.Fragment>
                           <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
-                            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Decimals</label>
+                            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                              Decimals
+                            </label>
                             <input
                               type="number"
                               min="0"
                               max="10"
                               value={axisDecimals}
-                              onChange={(e) => setAxisDecimals(Number(e.target.value))}
+                              onChange={(e) =>
+                                setAxisDecimals(Number(e.target.value))
+                              }
                               className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50"
                             />
                           </div>
@@ -7983,16 +9330,25 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               type="checkbox"
                               id="thousandsSep"
                               checked={axisThousandsSep}
-                              onChange={(e) => setAxisThousandsSep(e.target.checked)}
+                              onChange={(e) =>
+                                setAxisThousandsSep(e.target.checked)
+                              }
                               className="rounded border-slate-700 bg-slate-950 focus:ring-blue-500/50 focus:ring-offset-slate-900 focus:border-slate-600 size-4 cursor-pointer"
                             />
-                            <label htmlFor="thousandsSep" className="text-xs text-slate-300 select-none cursor-pointer">Thousands Separator</label>
+                            <label
+                              htmlFor="thousandsSep"
+                              className="text-xs text-slate-300 select-none cursor-pointer"
+                            >
+                              Thousands Separator
+                            </label>
                           </div>
                         </React.Fragment>
                       )}
 
                       <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Prefix</label>
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                          Prefix
+                        </label>
                         <input
                           type="text"
                           value={axisPrefix}
@@ -8002,7 +9358,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         />
                       </div>
                       <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">Suffix</label>
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
+                          Suffix
+                        </label>
                         <input
                           type="text"
                           value={axisSuffix}
@@ -8013,20 +9371,32 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       </div>
 
                       <div className="col-span-2 mt-2 bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 text-slate-300 flex flex-col gap-3 relative">
-                        <h4 className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Live Preview</h4>
+                        <h4 className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                          Live Preview
+                        </h4>
                         <div className="flex items-center font-mono text-xs overflow-x-auto custom-scrollbar pb-1 text-slate-200">
-                          {[0, parsedAxisStep, parsedAxisStep * 2, parsedAxisStep * 3].map((val, idx) => {
-                              const lbl = getAxisLabel(val);
-                              return (
-                                <React.Fragment key={val}>
-                                  {idx > 0 && <span className="text-slate-700 font-sans mx-3">|</span>}
-                                  <span className="shrink-0">{lbl === "" ? "—" : lbl}</span>
-                                </React.Fragment>
-                              );
+                          {[
+                            0,
+                            parsedAxisStep,
+                            parsedAxisStep * 2,
+                            parsedAxisStep * 3,
+                          ].map((val, idx) => {
+                            const lbl = getAxisLabel(val);
+                            return (
+                              <React.Fragment key={val}>
+                                {idx > 0 && (
+                                  <span className="text-slate-700 font-sans mx-3">
+                                    |
+                                  </span>
+                                )}
+                                <span className="shrink-0">
+                                  {lbl === "" ? "—" : lbl}
+                                </span>
+                              </React.Fragment>
+                            );
                           })}
                         </div>
                       </div>
-
                     </div>
                   </div>
                 )}
@@ -8051,7 +9421,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               />
             )}
             {gridType === "polar" && (
-              <Coordinates.Polar lines={parsedAxisStep} subdivisions={gridSubdivisions} />
+              <Coordinates.Polar
+                lines={parsedAxisStep}
+                subdivisions={gridSubdivisions}
+              />
             )}
 
             {(() => {
@@ -8069,10 +9442,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               };
 
               if (!MathNodesLayerRef.current) {
-                MathNodesLayerRef.current = ({ isInteractionLayer }: { isInteractionLayer: boolean }) => {
+                MathNodesLayerRef.current = ({
+                  isInteractionLayer,
+                }: {
+                  isInteractionLayer: boolean;
+                }) => {
                   const pane = usePaneContext();
-                  const xRange = (pane && pane.xPaneRange) ? pane.xPaneRange : [-10, 10];
-                  const yRange = (pane && pane.yPaneRange) ? pane.yPaneRange : [-10, 10];
+                  const xRange =
+                    pane && pane.xPaneRange ? pane.xPaneRange : [-10, 10];
+                  const yRange =
+                    pane && pane.yPaneRange ? pane.yPaneRange : [-10, 10];
 
                   const ctx = latestContextRef.current!;
                   const {
@@ -8088,878 +9467,1125 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                     samplingDepth,
                   } = ctx;
 
-                  return functions.filter((f) => f.visible).map((f) => {
-                if (f.compiled) {
-                  const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
-                  const baseScope = { ...ctx.baseScope, t: fTime, time: time };
-                  const tx = f.transformTranslate?.[0] || 0;
-                  const ty = f.transformTranslate?.[1] || 0;
-                  const rot = f.transformRotate || 0;
-                  const sx = f.transformScale?.[0] || 1;
-                  const sy = f.transformScale?.[1] || 1;
+                  return functions
+                    .filter((f) => f.visible)
+                    .map((f) => {
+                      if (f.compiled) {
+                        const fTime = f.hasCustomTimeline
+                          ? f.time !== undefined
+                            ? f.time
+                            : 0
+                          : time;
+                        const baseScope = {
+                          ...ctx.baseScope,
+                          t: fTime,
+                          time: time,
+                        };
+                        const tx = f.transformTranslate?.[0] || 0;
+                        const ty = f.transformTranslate?.[1] || 0;
+                        const rot = f.transformRotate || 0;
+                        const sx = f.transformScale?.[0] || 1;
+                        const sy = f.transformScale?.[1] || 1;
 
-                  const isPointBased = f.type === "point" || f.type === "vector" || f.type === "polygon" || f.type === "line";
-                  let points: [number, number][] = [];
+                        const isPointBased =
+                          f.type === "point" ||
+                          f.type === "vector" ||
+                          f.type === "polygon" ||
+                          f.type === "line";
+                        let points: [number, number][] = [];
 
-                  if (isPointBased) {
-                    try {
-                      const evaluated = f.compiled.evaluate(baseScope);
+                        if (isPointBased) {
+                          try {
+                            const evaluated = f.compiled.evaluate(baseScope);
 
-                      // Handle mathjs Matrix or JS Array
-                      const data =
-                        evaluated && evaluated.toArray
-                          ? evaluated.toArray()
-                          : evaluated;
+                            // Handle mathjs Matrix or JS Array
+                            const data =
+                              evaluated && evaluated.toArray
+                                ? evaluated.toArray()
+                                : evaluated;
 
-                      if (Array.isArray(data)) {
-                        if (data.length === 2 && typeof data[0] === "number") {
-                          points = [[Number(data[0]), Number(data[1])]];
-                        } else if (data.length > 0 && Array.isArray(data[0])) {
-                          points = data.map((p) => [
-                            (p as any)[0] || 0,
-                            (p as any)[1] || 0,
-                          ]);
-                        }
-                      }
+                            if (Array.isArray(data)) {
+                              if (
+                                data.length === 2 &&
+                                typeof data[0] === "number"
+                              ) {
+                                points = [[Number(data[0]), Number(data[1])]];
+                              } else if (
+                                data.length > 0 &&
+                                Array.isArray(data[0])
+                              ) {
+                                points = data.map((p) => [
+                                  (p as any)[0] || 0,
+                                  (p as any)[1] || 0,
+                                ]);
+                              }
+                            }
 
-                      // Filter out valid numbers only to prevent SVG crashes
-                      points = points.filter(
-                        (p) =>
-                          !isNaN(p[0]) &&
-                          !isNaN(p[1]) &&
-                          isFinite(p[0]) &&
-                          isFinite(p[1]),
-                      );
+                            // Filter out valid numbers only to prevent SVG crashes
+                            points = points.filter(
+                              (p) =>
+                                !isNaN(p[0]) &&
+                                !isNaN(p[1]) &&
+                                isFinite(p[0]) &&
+                                isFinite(p[1]),
+                            );
 
-                      if (points.length === 0) return null;
-                    } catch {
-                      return null;
-                    }
-                  } else if (f.isDraggable || f.isTransformable) {
-                    const cacheId = f.id + f.expr;
-                    if (geomCacheRef.current[cacheId]) {
-                      points = geomCacheRef.current[cacheId];
-                    } else {
-                      let pt: [number, number] = [0, 0];
-                      if (f.type === "function") {
-                        for (let x of [0, 1, -1, 2, -2, 3, -3]) {
-                          try { let y = Number(f.compiled.evaluate({...baseScope, x})); if (isFinite(y)) { pt = [x, y]; break; } } catch{}
-                        }
-                      } else if (f.type === "parametric") {
-                        for (let t of [0, Math.PI/4, Math.PI/2, Math.PI]) {
-                          try { let res = f.compiled.evaluate({...baseScope, t, x: t, theta: t}); let arr = res.toArray ? res.toArray() : res; pt = [Number(arr[0]), Number(arr[1])]; break; } catch{}
-                        }
-                      } else if (f.type === "polar") {
-                        for (let t of [0, Math.PI/4, Math.PI/2, Math.PI]) {
-                          try { let r = Number(f.compiled.evaluate({...baseScope, theta: t, x: t, t})); if (isFinite(r)) { pt = [r*Math.cos(t), r*Math.sin(t)]; break; } } catch{}
-                        }
-                      } else if (f.type === "implicit" || f.type === "inequality") {
-                        let found = false;
-                        for (let i=-3; i<=3 && !found; i+=0.5) {
-                          for (let j=-3; j<=3 && !found; j+=0.5) {
-                            try {
-                              let l = f.compiled.evaluate({...baseScope, x: i, y: j});
-                              if (l && (l.isMatrix || Array.isArray(l))) { try { l = mathjs.det(l); } catch { l = NaN; } }
-                              let r = f.compiled2 ? f.compiled2.evaluate({...baseScope, x: i, y: j}) : 0;
-                              if (r && (r.isMatrix || Array.isArray(r))) { try { r = mathjs.det(r); } catch { r = NaN; } }
-                              if (f.type === "implicit" && Math.abs(Number(l)-Number(r)) < 2) { pt = [i, j]; found = true; }
-                              else if (f.type === "inequality" && Number(l)-Number(r) <= 0) { pt = [i, j]; found = true; }
-                            } catch{}
+                            if (points.length === 0) return null;
+                          } catch {
+                            return null;
+                          }
+                        } else if (f.isDraggable || f.isTransformable) {
+                          const cacheId = f.id + f.expr;
+                          if (geomCacheRef.current[cacheId]) {
+                            points = geomCacheRef.current[cacheId];
+                          } else {
+                            let pt: [number, number] = [0, 0];
+                            if (f.type === "function") {
+                              for (let x of [0, 1, -1, 2, -2, 3, -3]) {
+                                try {
+                                  let y = Number(
+                                    f.compiled.evaluate({ ...baseScope, x }),
+                                  );
+                                  if (isFinite(y)) {
+                                    pt = [x, y];
+                                    break;
+                                  }
+                                } catch {}
+                              }
+                            } else if (f.type === "parametric") {
+                              for (let t of [
+                                0,
+                                Math.PI / 4,
+                                Math.PI / 2,
+                                Math.PI,
+                              ]) {
+                                try {
+                                  let res = f.compiled.evaluate({
+                                    ...baseScope,
+                                    t,
+                                    x: t,
+                                    theta: t,
+                                  });
+                                  let arr = res.toArray ? res.toArray() : res;
+                                  pt = [Number(arr[0]), Number(arr[1])];
+                                  break;
+                                } catch {}
+                              }
+                            } else if (f.type === "polar") {
+                              for (let t of [
+                                0,
+                                Math.PI / 4,
+                                Math.PI / 2,
+                                Math.PI,
+                              ]) {
+                                try {
+                                  let r = Number(
+                                    f.compiled.evaluate({
+                                      ...baseScope,
+                                      theta: t,
+                                      x: t,
+                                      t,
+                                    }),
+                                  );
+                                  if (isFinite(r)) {
+                                    pt = [r * Math.cos(t), r * Math.sin(t)];
+                                    break;
+                                  }
+                                } catch {}
+                              }
+                            } else if (
+                              f.type === "implicit" ||
+                              f.type === "inequality"
+                            ) {
+                              let found = false;
+                              for (let i = -3; i <= 3 && !found; i += 0.5) {
+                                for (let j = -3; j <= 3 && !found; j += 0.5) {
+                                  try {
+                                    let l = f.compiled.evaluate({
+                                      ...baseScope,
+                                      x: i,
+                                      y: j,
+                                    });
+                                    if (l && (l.isMatrix || Array.isArray(l))) {
+                                      try {
+                                        l = mathjs.det(l);
+                                      } catch {
+                                        l = NaN;
+                                      }
+                                    }
+                                    let r = f.compiled2
+                                      ? f.compiled2.evaluate({
+                                          ...baseScope,
+                                          x: i,
+                                          y: j,
+                                        })
+                                      : 0;
+                                    if (r && (r.isMatrix || Array.isArray(r))) {
+                                      try {
+                                        r = mathjs.det(r);
+                                      } catch {
+                                        r = NaN;
+                                      }
+                                    }
+                                    if (
+                                      f.type === "implicit" &&
+                                      Math.abs(Number(l) - Number(r)) < 2
+                                    ) {
+                                      pt = [i, j];
+                                      found = true;
+                                    } else if (
+                                      f.type === "inequality" &&
+                                      Number(l) - Number(r) <= 0
+                                    ) {
+                                      pt = [i, j];
+                                      found = true;
+                                    }
+                                  } catch {}
+                                }
+                              }
+                            }
+                            points = pt ? [pt] : [];
+                            geomCacheRef.current[cacheId] = points;
                           }
                         }
-                      }
-                      points = pt ? [pt] : [];
-                      geomCacheRef.current[cacheId] = points;
-                    }
-                  }
 
-                  try {
-                    let cx = 0,
-                      cy = 0;
-                      if (points.length > 0) {
-                        cx =
-                          points.reduce((s, p) => s + p[0], 0) / points.length;
-                        cy =
-                          points.reduce((s, p) => s + p[1], 0) / points.length;
-                      }
+                        try {
+                          let cx = 0,
+                            cy = 0;
+                          if (points.length > 0) {
+                            cx =
+                              points.reduce((s, p) => s + p[0], 0) /
+                              points.length;
+                            cy =
+                              points.reduce((s, p) => s + p[1], 0) /
+                              points.length;
+                          }
 
-                      const isBasicPointDraggable =
-                        f.type === "point" &&
-                        points.length === 1 &&
-                        f.isDraggable &&
-                        !f.isTransformable;
+                          const isBasicPointDraggable =
+                            f.type === "point" &&
+                            points.length === 1 &&
+                            f.isDraggable &&
+                            !f.isTransformable;
 
-                      // Use PCA to compute natural axes for resizing
-                      const pca = computePCA(points);
-                      // Let pca angle be the base orientaion of the shape when rotation is 0
-                      const baseAngle = !f.isTransformable ? 0 : Math.atan2(pca.u[1], pca.u[0]);
+                          // Use PCA to compute natural axes for resizing
+                          const pca = computePCA(points);
+                          // Let pca angle be the base orientaion of the shape when rotation is 0
+                          const baseAngle = !f.isTransformable
+                            ? 0
+                            : Math.atan2(pca.u[1], pca.u[0]);
 
-                      const px = !f.isTransformable ? 0 : (
-                        f.isPivotEnabled && f.transformPivot
-                          ? f.transformPivot[0]
-                          : pca.center[0]
-                      );
-                      const py = !f.isTransformable ? 0 : (
-                        f.isPivotEnabled && f.transformPivot
-                          ? f.transformPivot[1]
-                          : pca.center[1]
-                      );
+                          const px = !f.isTransformable
+                            ? 0
+                            : f.isPivotEnabled && f.transformPivot
+                              ? f.transformPivot[0]
+                              : pca.center[0];
+                          const py = !f.isTransformable
+                            ? 0
+                            : f.isPivotEnabled && f.transformPivot
+                              ? f.transformPivot[1]
+                              : pca.center[1];
 
-                      // Determine handle radius based on shape size
-                      let baseRadius = 2.0;
-                      if (points.length > 0) {
-                        let maxDist = 0;
-                        for (let p of points) {
-                          let dx = p[0] - px;
-                          let dy = p[1] - py;
-                          maxDist = Math.max(
-                            maxDist,
-                            Math.sqrt(dx * dx + dy * dy),
-                          );
-                        }
-                        baseRadius = Math.max(2.0, maxDist + 0.5);
-                      }
+                          // Determine handle radius based on shape size
+                          let baseRadius = 2.0;
+                          if (points.length > 0) {
+                            let maxDist = 0;
+                            for (let p of points) {
+                              let dx = p[0] - px;
+                              let dy = p[1] - py;
+                              maxDist = Math.max(
+                                maxDist,
+                                Math.sqrt(dx * dx + dy * dy),
+                              );
+                            }
+                            baseRadius = Math.max(2.0, maxDist + 0.5);
+                          }
 
-                      // Combine PCA rotation with user transformation
-                      const totalRot = rot;
+                          // Combine PCA rotation with user transformation
+                          const totalRot = rot;
 
-                      // Helper for handles (from local relative geometry to global)
-                      const localToGlobal = (lx: number, ly: number) => {
-                        const x1 = lx - px;
-                        const y1 = ly - py;
+                          // Helper for handles (from local relative geometry to global)
+                          const localToGlobal = (lx: number, ly: number) => {
+                            const x1 = lx - px;
+                            const y1 = ly - py;
 
-                        // Rotate by -baseAngle to align with local PCA axes
-                        const cB = Math.cos(-baseAngle);
-                        const sB = Math.sin(-baseAngle);
-                        const x2 = x1 * cB - y1 * sB;
-                        const y2 = x1 * sB + y1 * cB;
+                            // Rotate by -baseAngle to align with local PCA axes
+                            const cB = Math.cos(-baseAngle);
+                            const sB = Math.sin(-baseAngle);
+                            const x2 = x1 * cB - y1 * sB;
+                            const y2 = x1 * sB + y1 * cB;
 
-                        // Scale along local PCA axes
-                        const x3 = x2 * sx;
-                        const y3 = y2 * sy;
+                            // Scale along local PCA axes
+                            const x3 = x2 * sx;
+                            const y3 = y2 * sy;
 
-                        // Rotate back by baseAngle, then apply user rotation (combined into baseAngle + rot)
-                        const cR = Math.cos(baseAngle + rot);
-                        const sR = Math.sin(baseAngle + rot);
-                        const x4 = x3 * cR - y3 * sR;
-                        const y4 = x3 * sR + y3 * cR;
+                            // Rotate back by baseAngle, then apply user rotation (combined into baseAngle + rot)
+                            const cR = Math.cos(baseAngle + rot);
+                            const sR = Math.sin(baseAngle + rot);
+                            const x4 = x3 * cR - y3 * sR;
+                            const y4 = x3 * sR + y3 * cR;
 
-                        return [x4 + px + tx, y4 + py + ty] as [number, number];
-                      };
+                            return [x4 + px + tx, y4 + py + ty] as [
+                              number,
+                              number,
+                            ];
+                          };
 
-                      
-                      const applyForwardTransform = (pt: [number, number]): [number, number] => {
-                        if (isNaN(pt[0]) || isNaN(pt[1])) return pt;
-                        let lx = pt[0] - px;
-                        let ly = pt[1] - py;
-                        
-                        let x1 = lx * Math.cos(-baseAngle) - ly * Math.sin(-baseAngle);
-                        let y1 = lx * Math.sin(-baseAngle) + ly * Math.cos(-baseAngle);
-                        
-                        x1 *= sx;
-                        y1 *= sy;
-                        
-                        let x2 = x1 * Math.cos(rot + baseAngle) - y1 * Math.sin(rot + baseAngle);
-                        let y2 = x1 * Math.sin(rot + baseAngle) + y1 * Math.cos(rot + baseAngle);
-                        
-                        return [x2 + px + tx, y2 + py + ty];
-                      };
+                          const applyForwardTransform = (
+                            pt: [number, number],
+                          ): [number, number] => {
+                            if (isNaN(pt[0]) || isNaN(pt[1])) return pt;
+                            let lx = pt[0] - px;
+                            let ly = pt[1] - py;
 
-return (
-<React.Fragment key={f.id}>
+                            let x1 =
+                              lx * Math.cos(-baseAngle) -
+                              ly * Math.sin(-baseAngle);
+                            let y1 =
+                              lx * Math.sin(-baseAngle) +
+                              ly * Math.cos(-baseAngle);
 
-                                      
-                          {isPointBased && (
-                            <Transform translate={[tx, ty]}>
-                              <Transform translate={[px, py]}>
-                                <Transform rotate={rot}>
-                                  <Transform rotate={baseAngle}>
-                                    <Transform scale={[sx, sy]}>
-                                      <Transform rotate={-baseAngle}>
-                                        <Transform translate={[-px, -py]}>
-                                          {f.type === "point" &&
-                                            points.map((p, i) => {
-                                              const showLabel =
-                                                f.showLabel && f.label;
-                                              return (
-                                                <React.Fragment key={i}>
-                                                  {f.showPoint !== false && (
-                                                    isBasicPointDraggable ? ( isInteractionLayer ? (
-                                                      <MovablePoint
-                                                        point={(() => {
-                                                          const m = f.expr.match(/\[([-\d.]+),\s*([-\d.]+)\]/);
-                                                          if (m && !isNaN(Number(m[1])) && !isNaN(Number(m[2]))) {
-                                                            return [Number(m[1]), Number(m[2])];
-                                                          }
-                                                          const m2 = f.expr.match(/\(([-\d.]+),\s*([-\d.]+)\)/);
-                                                          if (m2 && !isNaN(Number(m2[1])) && !isNaN(Number(m2[2]))) {
-                                                            return [Number(m2[1]), Number(m2[2])];
-                                                          }
-                                                          return [p[0], p[1]];
-                                                        })()}
-                                                        color={f.color}
-                                                        onMove={(newPt) => {
-                                                          let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
-                                                          const match =
-                                                            f.expr.match(
-                                                              /^([^=]+=\s*)/,
-                                                            );
-                                                          if (match) {
-                                                            newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
-                                                          }
-                                                          setFunctions((prev) =>
-                                                            prev.map((fn) =>
-                                                              fn.id === f.id
-                                                                ? {
-                                                                    ...fn,
-                                                                    expr: newExpr,
-                                                                  }
-                                                                : fn,
-                                                            ),
-                                                          );
-                                                        }}
-                                                      />
-                                                    ) : null ) : ( !isInteractionLayer ? (
-                                                      <Point x={p[0]} y={p[1]} color={f.color} /> ) : null )
-                                                  )}
-                                                  {showLabel && !isInteractionLayer && (
-                                                    <SafeLabel
-                                                      at={[
-                                                        p[0] + (f.labelPosition?.[0] ?? 0.3),
-                                                        p[1] + (f.labelPosition?.[1] ?? 0.3),
-                                                      ]}
-                                                      tex={f.label}
-                                                      color={f.color}
-                                                    />
-                                                  )}
-                                                </React.Fragment>
-                                              );
-                                            })}
-                                          {!isInteractionLayer && f.type === "vector" &&
-                                            points.map((p, i) => (
-                                              <Vector
-                                                key={i}
-                                                tail={[0, 0]}
-                                                tip={p}
-                                                color={f.color}
-                                                weight={f.outlineWidth !== undefined ? f.outlineWidth : 3}
-                                              />
-                                            ))}
-                                          {!isInteractionLayer && f.type === "polygon" &&
-                                            points.length > 2 && (
-                                              <React.Fragment>
-                                                {f.fillColor !== undefined && (
-                                                  <CurvePatternDefs
-                                                    id={f.id}
+                            x1 *= sx;
+                            y1 *= sy;
+
+                            let x2 =
+                              x1 * Math.cos(rot + baseAngle) -
+                              y1 * Math.sin(rot + baseAngle);
+                            let y2 =
+                              x1 * Math.sin(rot + baseAngle) +
+                              y1 * Math.cos(rot + baseAngle);
+
+                            return [x2 + px + tx, y2 + py + ty];
+                          };
+
+                          return (
+                            <React.Fragment key={f.id}>
+                              {isPointBased && (
+                                <Transform translate={[tx, ty]}>
+                                  <Transform translate={[px, py]}>
+                                    <Transform rotate={rot}>
+                                      <Transform rotate={baseAngle}>
+                                        <Transform scale={[sx, sy]}>
+                                          <Transform rotate={-baseAngle}>
+                                            <Transform translate={[-px, -py]}>
+                                              {f.type === "point" &&
+                                                points.map((p, i) => {
+                                                  const showLabel =
+                                                    f.showLabel && f.label;
+                                                  return (
+                                                    <React.Fragment key={i}>
+                                                      {f.showPoint !== false &&
+                                                        (isBasicPointDraggable ? (
+                                                          isInteractionLayer ? (
+                                                            <MovablePoint
+                                                              point={(() => {
+                                                                const m =
+                                                                  f.expr.match(
+                                                                    /\[([-\d.]+),\s*([-\d.]+)\]/,
+                                                                  );
+                                                                if (
+                                                                  m &&
+                                                                  !isNaN(
+                                                                    Number(
+                                                                      m[1],
+                                                                    ),
+                                                                  ) &&
+                                                                  !isNaN(
+                                                                    Number(
+                                                                      m[2],
+                                                                    ),
+                                                                  )
+                                                                ) {
+                                                                  return [
+                                                                    Number(
+                                                                      m[1],
+                                                                    ),
+                                                                    Number(
+                                                                      m[2],
+                                                                    ),
+                                                                  ];
+                                                                }
+                                                                const m2 =
+                                                                  f.expr.match(
+                                                                    /\(([-\d.]+),\s*([-\d.]+)\)/,
+                                                                  );
+                                                                if (
+                                                                  m2 &&
+                                                                  !isNaN(
+                                                                    Number(
+                                                                      m2[1],
+                                                                    ),
+                                                                  ) &&
+                                                                  !isNaN(
+                                                                    Number(
+                                                                      m2[2],
+                                                                    ),
+                                                                  )
+                                                                ) {
+                                                                  return [
+                                                                    Number(
+                                                                      m2[1],
+                                                                    ),
+                                                                    Number(
+                                                                      m2[2],
+                                                                    ),
+                                                                  ];
+                                                                }
+                                                                return [
+                                                                  p[0],
+                                                                  p[1],
+                                                                ];
+                                                              })()}
+                                                              color={f.color}
+                                                              onMove={(
+                                                                newPt,
+                                                              ) => {
+                                                                let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                                const match =
+                                                                  f.expr.match(
+                                                                    /^([^=]+=\s*)/,
+                                                                  );
+                                                                if (match) {
+                                                                  newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
+                                                                }
+                                                                setFunctions(
+                                                                  (prev) =>
+                                                                    prev.map(
+                                                                      (fn) =>
+                                                                        fn.id ===
+                                                                        f.id
+                                                                          ? {
+                                                                              ...fn,
+                                                                              expr: newExpr,
+                                                                            }
+                                                                          : fn,
+                                                                    ),
+                                                                );
+                                                              }}
+                                                            />
+                                                          ) : null
+                                                        ) : !isInteractionLayer ? (
+                                                          <Point
+                                                            x={p[0]}
+                                                            y={p[1]}
+                                                            color={f.color}
+                                                          />
+                                                        ) : null)}
+                                                      {showLabel &&
+                                                        !isInteractionLayer && (
+                                                          <SafeLabel
+                                                            at={[
+                                                              p[0] +
+                                                                (f
+                                                                  .labelPosition?.[0] ??
+                                                                  0.3),
+                                                              p[1] +
+                                                                (f
+                                                                  .labelPosition?.[1] ??
+                                                                  0.3),
+                                                            ]}
+                                                            tex={f.label}
+                                                            color={f.color}
+                                                          />
+                                                        )}
+                                                    </React.Fragment>
+                                                  );
+                                                })}
+                                              {!isInteractionLayer &&
+                                                f.type === "vector" &&
+                                                points.map((p, i) => (
+                                                  <Vector
+                                                    key={i}
+                                                    tail={[0, 0]}
+                                                    tip={p}
                                                     color={f.color}
-                                                    fillColor={f.fillColor}
-                                                    fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.2}
-                                                    fillPattern={f.fillPattern}
-                                                    patternSpacing={f.patternSpacing}
-                                                    patternThickness={f.patternThickness}
-                                                    patternAngle={f.patternAngle}
+                                                    weight={
+                                                      f.outlineWidth !==
+                                                      undefined
+                                                        ? f.outlineWidth
+                                                        : 3
+                                                    }
+                                                  />
+                                                ))}
+                                              {!isInteractionLayer &&
+                                                f.type === "polygon" &&
+                                                points.length > 2 && (
+                                                  <React.Fragment>
+                                                    {f.fillColor !==
+                                                      undefined && (
+                                                      <CurvePatternDefs
+                                                        id={f.id}
+                                                        color={f.color}
+                                                        fillColor={f.fillColor}
+                                                        fillOpacity={
+                                                          f.fillOpacity !==
+                                                          undefined
+                                                            ? f.fillOpacity
+                                                            : 0.2
+                                                        }
+                                                        fillPattern={
+                                                          f.fillPattern
+                                                        }
+                                                        patternSpacing={
+                                                          f.patternSpacing
+                                                        }
+                                                        patternThickness={
+                                                          f.patternThickness
+                                                        }
+                                                        patternAngle={
+                                                          f.patternAngle
+                                                        }
+                                                      />
+                                                    )}
+                                                    <Polygon
+                                                      points={points}
+                                                      color={
+                                                        f.fillColor !==
+                                                        undefined
+                                                          ? f.fillColor ||
+                                                            f.color
+                                                          : f.color
+                                                      }
+                                                      fillOpacity={
+                                                        f.fillColor !==
+                                                        undefined
+                                                          ? f.fillPattern ===
+                                                            "solid"
+                                                            ? f.fillOpacity !==
+                                                              undefined
+                                                              ? f.fillOpacity
+                                                              : 0.2
+                                                            : 1
+                                                          : f.fillOpacity !==
+                                                              undefined
+                                                            ? f.fillOpacity
+                                                            : 0.2
+                                                      }
+                                                      svgPolygonProps={{
+                                                        style: {
+                                                          strokeDasharray:
+                                                            getStrokeDasharray(
+                                                              f.lineStyle,
+                                                            ),
+                                                          strokeWidth:
+                                                            f.outlineWidth !==
+                                                            undefined
+                                                              ? f.outlineWidth
+                                                              : undefined,
+                                                          stroke: f.color,
+                                                          fill:
+                                                            f.fillColor !==
+                                                              undefined &&
+                                                            f.fillPattern !==
+                                                              "solid"
+                                                              ? `url(#curve-pattern-${f.id})`
+                                                              : undefined,
+                                                        },
+                                                      }}
+                                                    />
+                                                  </React.Fragment>
+                                                )}
+                                              {!isInteractionLayer &&
+                                                f.type === "line" &&
+                                                points.length >= 2 && (
+                                                  <Line.Segment
+                                                    point1={points[0]}
+                                                    point2={points[1]}
+                                                    color={f.color}
+                                                    style="solid"
+                                                    weight={
+                                                      f.outlineWidth !==
+                                                      undefined
+                                                        ? f.outlineWidth
+                                                        : 3
+                                                    }
                                                   />
                                                 )}
-                                                <Polygon
-                                                  points={points}
-                                                  color={f.fillColor !== undefined ? (f.fillColor || f.color) : f.color}
-                                                  fillOpacity={
-                                                    f.fillColor !== undefined
-                                                      ? (f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.2) : 1)
-                                                      : (f.fillOpacity !== undefined ? f.fillOpacity : 0.2)
-                                                  }
-                                                  svgPolygonProps={{
-                                                    style: {
-                                                      strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                                      strokeWidth: f.outlineWidth !== undefined ? f.outlineWidth : undefined,
-                                                      stroke: f.color,
-                                                      fill: f.fillColor !== undefined && f.fillPattern !== "solid" ? `url(#curve-pattern-${f.id})` : undefined,
-                                                    },
-                                                  }}
-                                                />
-                                              </React.Fragment>
-                                            )}
-                                          {!isInteractionLayer && f.type === "line" && points.length >= 2 && (
-                                            <Line.Segment
-                                              point1={points[0]}
-                                              point2={points[1]}
-                                              color={f.color}
-                                              style="solid"
-                                              weight={f.outlineWidth !== undefined ? f.outlineWidth : 3}
-                                            />
-                                          )}
+                                            </Transform>
+                                          </Transform>
                                         </Transform>
                                       </Transform>
                                     </Transform>
                                   </Transform>
                                 </Transform>
-                              </Transform>
-                            </Transform>
-                          )}
+                              )}
 
-                          {!isInteractionLayer && !isPointBased && f.type === "parametric" && (
-                            <React.Fragment>
-                              {f.fillColor !== undefined && (() => {
-                                const fillPoints: [number, number][] = [];
-                                const steps = 150;
-                                for (let i = 0; i <= steps; i++) {
-                                  const tVal = (2 * Math.PI * i) / steps;
-                                  try {
-                                    const res = f.compiled.evaluate({
-                                      ...baseScope,
-                                      t: tVal,
-                                    });
-                                    const arr = res && res.toArray ? res.toArray() : res;
-                                    if (Array.isArray(arr) && arr.length >= 2) {
-                                      fillPoints.push(applyForwardTransform([
-                                        Number(arr[0]),
-                                        Number(arr[1]),
-                                      ]));
-                                    }
-                                  } catch {}
-                                }
-                                if (fillPoints.length < 2) return null;
-                                return (
+                              {!isInteractionLayer &&
+                                !isPointBased &&
+                                f.type === "parametric" && (
                                   <React.Fragment>
-                                    <CurvePatternDefs
-                                      id={f.id}
+                                    {f.fillColor !== undefined &&
+                                      (() => {
+                                        const fillPoints: [number, number][] =
+                                          [];
+                                        const steps = 150;
+                                        for (let i = 0; i <= steps; i++) {
+                                          const tVal =
+                                            (2 * Math.PI * i) / steps;
+                                          try {
+                                            const res = f.compiled.evaluate({
+                                              ...baseScope,
+                                              t: tVal,
+                                            });
+                                            const arr =
+                                              res && res.toArray
+                                                ? res.toArray()
+                                                : res;
+                                            if (
+                                              Array.isArray(arr) &&
+                                              arr.length >= 2
+                                            ) {
+                                              fillPoints.push(
+                                                applyForwardTransform([
+                                                  Number(arr[0]),
+                                                  Number(arr[1]),
+                                                ]),
+                                              );
+                                            }
+                                          } catch {}
+                                        }
+                                        if (fillPoints.length < 2) return null;
+                                        return (
+                                          <React.Fragment>
+                                            <CurvePatternDefs
+                                              id={f.id}
+                                              color={f.color}
+                                              fillColor={f.fillColor}
+                                              fillOpacity={
+                                                f.fillOpacity !== undefined
+                                                  ? f.fillOpacity
+                                                  : 0.3
+                                              }
+                                              fillPattern={f.fillPattern}
+                                              patternSpacing={f.patternSpacing}
+                                              patternThickness={
+                                                f.patternThickness
+                                              }
+                                              patternAngle={f.patternAngle}
+                                            />
+                                            <Polygon
+                                              points={fillPoints}
+                                              color={f.fillColor || f.color}
+                                              fillOpacity={
+                                                f.fillPattern === "solid"
+                                                  ? f.fillOpacity !== undefined
+                                                    ? f.fillOpacity
+                                                    : 0.3
+                                                  : 1
+                                              }
+                                              svgPolygonProps={{
+                                                style: {
+                                                  fill:
+                                                    f.fillPattern === "solid"
+                                                      ? f.fillColor || f.color
+                                                      : `url(#curve-pattern-${f.id})`,
+                                                  stroke: "none",
+                                                },
+                                              }}
+                                            />
+                                          </React.Fragment>
+                                        );
+                                      })()}
+                                    <Plot.Parametric
+                                      minSamplingDepth={Math.max(
+                                        1,
+                                        Math.min(8, samplingDepth),
+                                      )}
+                                      maxSamplingDepth={Math.max(
+                                        1,
+                                        samplingDepth,
+                                      )}
+                                      xy={(t: number) => {
+                                        try {
+                                          const res = f.compiled.evaluate({
+                                            ...baseScope,
+                                            t,
+                                          });
+                                          const arr =
+                                            res && res.toArray
+                                              ? res.toArray()
+                                              : res;
+                                          if (
+                                            Array.isArray(arr) &&
+                                            arr.length >= 2
+                                          ) {
+                                            return applyForwardTransform([
+                                              Number(arr[0]),
+                                              Number(arr[1]),
+                                            ]);
+                                          }
+                                          return [0, 0];
+                                        } catch {
+                                          return [0, 0];
+                                        }
+                                      }}
+                                      t={[0, 2 * Math.PI]}
                                       color={f.color}
-                                      fillColor={f.fillColor}
-                                      fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
-                                      fillPattern={f.fillPattern}
-                                      patternSpacing={f.patternSpacing}
-                                      patternThickness={f.patternThickness}
-                                      patternAngle={f.patternAngle}
-                                    />
-                                    <Polygon
-                                      points={fillPoints}
-                                      color={f.fillColor || f.color}
-                                      fillOpacity={f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.3) : 1}
-                                      svgPolygonProps={{
+                                      weight={
+                                        hoveredVar &&
+                                        new RegExp(`\\b${hoveredVar}\\b`).test(
+                                          f.expr,
+                                        )
+                                          ? 6
+                                          : f.outlineWidth !== undefined
+                                            ? f.outlineWidth
+                                            : 3
+                                      }
+                                      opacity={
+                                        hoveredVar
+                                          ? new RegExp(
+                                              `\\b${hoveredVar}\\b`,
+                                            ).test(f.expr)
+                                            ? 1
+                                            : 0.3
+                                          : 1
+                                      }
+                                      style={
+                                        f.lineStyle && f.lineStyle !== "solid"
+                                          ? "dashed"
+                                          : "solid"
+                                      }
+                                      svgPathProps={{
                                         style: {
-                                          fill: f.fillPattern === "solid" ? (f.fillColor || f.color) : `url(#curve-pattern-${f.id})`,
-                                          stroke: "none",
+                                          strokeDasharray: getStrokeDasharray(
+                                            f.lineStyle,
+                                          ),
                                         },
                                       }}
                                     />
                                   </React.Fragment>
-                                );
-                              })()}
-                              <Plot.Parametric
-                                minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
-                                maxSamplingDepth={Math.max(1, samplingDepth)}
-                                xy={(t: number) => {
-                                  try {
-                                    const res = f.compiled.evaluate({
-                                      ...baseScope,
-                                      t,
-                                    });
-                                    const arr =
-                                      res && res.toArray ? res.toArray() : res;
-                                    if (Array.isArray(arr) && arr.length >= 2) {
-                                      return applyForwardTransform([
-                                        Number(arr[0]),
-                                        Number(arr[1]),
-                                      ]);
+                                )}
+
+                              {!isInteractionLayer &&
+                                !isPointBased &&
+                                (f.type === "inequality" ||
+                                  f.type === "implicit") && (
+                                  <InequalityPlot
+                                    compiledLHS={f.compiled}
+                                    compiledRHS={f.compiled2}
+                                    operator={
+                                      f.operator ||
+                                      f.expr2 ||
+                                      (f.type === "implicit" ? "=" : "<")
                                     }
-                                    return [0, 0];
-                                  } catch {
-                                    return [0, 0];
-                                  }
-                                }}
-                                t={[0, 2 * Math.PI]}
-                                color={f.color}
-                                weight={
-                                  hoveredVar &&
-                                  new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                    ? 6
-                                    : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
-                                }
-                                opacity={
-                                  hoveredVar
-                                    ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                      ? 1
-                                      : 0.3
-                                    : 1
-                                }
-                                style={
-                                  f.lineStyle && f.lineStyle !== "solid"
-                                    ? "dashed"
-                                    : "solid"
-                                }
-                                svgPathProps={{
-                                  style: {
-                                    strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                  },
-                                }}
-                              />
-                            </React.Fragment>
-                          )}
+                                    baseScope={baseScope}
+                                    color={f.color}
+                                    fillColor={f.fillColor}
+                                    fillOpacity={
+                                      f.fillOpacity !== undefined
+                                        ? f.fillOpacity
+                                        : 0.3
+                                    }
+                                    fillPattern={f.fillPattern}
+                                    patternSpacing={f.patternSpacing}
+                                    patternThickness={f.patternThickness}
+                                    patternAngle={f.patternAngle}
+                                    tx={tx}
+                                    ty={ty}
+                                    rot={rot}
+                                    scaleX={sx}
+                                    scaleY={sy}
+                                    px={px}
+                                    py={py}
+                                    lineStyle={f.lineStyle}
+                                    weight={
+                                      hoveredVar &&
+                                      new RegExp(`\\b${hoveredVar}\\b`).test(
+                                        f.expr,
+                                      )
+                                        ? 6
+                                        : f.outlineWidth !== undefined
+                                          ? f.outlineWidth
+                                          : 3
+                                    }
+                                    id={f.id}
+                                    samplingDepth={samplingDepth}
+                                  />
+                                )}
 
-                                      {!isInteractionLayer && !isPointBased && (f.type === "inequality" || f.type === "implicit") && (
-                                        <InequalityPlot
-                                          compiledLHS={f.compiled}
-                                          compiledRHS={f.compiled2}
-                                          operator={f.operator || f.expr2 || (f.type === "implicit" ? "=" : "<")}
-                                          baseScope={baseScope}
-                                          color={f.color}
-                                          fillColor={f.fillColor}
-                                          fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
-                                          fillPattern={f.fillPattern}
-                                          patternSpacing={f.patternSpacing}
-                                          patternThickness={f.patternThickness}
-                                          patternAngle={f.patternAngle}
-                                          tx={tx}
-                                          ty={ty}
-                                          rot={rot}
-                                          scaleX={sx}
-                                          scaleY={sy}
-                                          px={px}
-                                          py={py}
-                                          lineStyle={f.lineStyle}
-                                          weight={
-                                            hoveredVar &&
-                                            new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                              ? 6
-                                              : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
-                                          }
-                                          id={f.id}
-                                          samplingDepth={samplingDepth}
-                                        />
-                                      )}
-
-                                      {!isInteractionLayer && !isPointBased && f.type === "polar" && (
-                                        <React.Fragment>
-                                          {f.fillColor !== undefined && (() => {
-                                            const fillPoints: [number, number][] = [];
-                                            const steps = 300;
-                                            const maxT = 2 * Math.PI * 5;
-                                            for (let i = 0; i <= steps; i++) {
-                                              const tVal = (maxT * i) / steps;
-                                              try {
-                                                const useThetaAsAngle = /\btheta\b/.test(f.expr);
-                                                const scope = { ...baseScope };
-                                                if (useThetaAsAngle) {
-                                                  scope.theta = tVal;
-                                                  scope.x = tVal;
-                                                } else {
-                                                  scope.t = tVal;
-                                                  scope.x = tVal;
-                                                  scope.theta = tVal;
-                                                }
-                                                const r = Number(f.compiled.evaluate(scope));
-                                                if (!isNaN(r) && typeof r !== "object" && isFinite(r)) {
-                                                  fillPoints.push(applyForwardTransform([
-                                                    r * Math.cos(tVal),
-                                                    r * Math.sin(tVal),
-                                                  ]));
-                                                }
-                                              } catch {}
+                              {!isInteractionLayer &&
+                                !isPointBased &&
+                                f.type === "polar" && (
+                                  <React.Fragment>
+                                    {f.fillColor !== undefined &&
+                                      (() => {
+                                        const fillPoints: [number, number][] =
+                                          [];
+                                        const steps = 300;
+                                        const maxT = 2 * Math.PI * 5;
+                                        for (let i = 0; i <= steps; i++) {
+                                          const tVal = (maxT * i) / steps;
+                                          try {
+                                            const useThetaAsAngle =
+                                              /\btheta\b/.test(f.expr);
+                                            const scope = { ...baseScope };
+                                            if (useThetaAsAngle) {
+                                              scope.theta = tVal;
+                                              scope.x = tVal;
+                                            } else {
+                                              scope.t = tVal;
+                                              scope.x = tVal;
+                                              scope.theta = tVal;
                                             }
-                                            if (fillPoints.length < 2) return null;
-                                            return (
-                                              <React.Fragment>
-                                                <CurvePatternDefs
-                                                  id={f.id}
-                                                  color={f.color}
-                                                  fillColor={f.fillColor}
-                                                  fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
-                                                  fillPattern={f.fillPattern}
-                                                  patternSpacing={f.patternSpacing}
-                                                  patternThickness={f.patternThickness}
-                                                  patternAngle={f.patternAngle}
-                                                />
-                                                <Polygon
-                                                  points={fillPoints}
-                                                  color={f.fillColor || f.color}
-                                                  fillOpacity={f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.3) : 1}
-                                                  svgPolygonProps={{
-                                                    style: {
-                                                      fill: f.fillPattern === "solid" ? (f.fillColor || f.color) : `url(#curve-pattern-${f.id})`,
-                                                      stroke: "none",
-                                                    },
-                                                  }}
-                                                />
-                                              </React.Fragment>
+                                            const r = Number(
+                                              f.compiled.evaluate(scope),
                                             );
-                                          })()}
-                                          <Plot.Parametric
-                                            minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
-                                            maxSamplingDepth={Math.max(1, samplingDepth)}
-                                            xy={(tVal: number) => {
-                                              try {
-                                                const useThetaAsAngle = /\btheta\b/.test(f.expr);
-                                                const scope = { ...baseScope };
-                                                if (useThetaAsAngle) {
-                                                  scope.theta = tVal;
-                                                  scope.x = tVal;
-                                                } else {
-                                                  scope.t = tVal;
-                                                  scope.x = tVal;
-                                                  scope.theta = tVal;
-                                                }
-                                                const r = Number(f.compiled.evaluate(scope));
-                                                if (isNaN(r) || typeof r === "object")
-                                                  return [0, 0];
-                                                return applyForwardTransform([
+                                            if (
+                                              !isNaN(r) &&
+                                              typeof r !== "object" &&
+                                              isFinite(r)
+                                            ) {
+                                              fillPoints.push(
+                                                applyForwardTransform([
                                                   r * Math.cos(tVal),
                                                   r * Math.sin(tVal),
-                                                ]);
-                                              } catch {
-                                                return [0, 0];
-                                              }
-                                            }}
-                                            t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
-                                            color={f.color}
-                                            weight={
-                                              hoveredVar &&
-                                              new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                ? 6
-                                                : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
+                                                ]),
+                                              );
                                             }
-                                            opacity={
-                                              hoveredVar
-                                                ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                  ? 1
+                                          } catch {}
+                                        }
+                                        if (fillPoints.length < 2) return null;
+                                        return (
+                                          <React.Fragment>
+                                            <CurvePatternDefs
+                                              id={f.id}
+                                              color={f.color}
+                                              fillColor={f.fillColor}
+                                              fillOpacity={
+                                                f.fillOpacity !== undefined
+                                                  ? f.fillOpacity
                                                   : 0.3
-                                                : 1
-                                            }
-                                            style={
-                                              f.lineStyle && f.lineStyle !== "solid"
-                                                ? "dashed"
-                                                : "solid"
-                                            }
-                                            svgPathProps={{
-                                              style: {
-                                                strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                              },
-                                            }}
-                                          />
-                                        </React.Fragment>
-                                      )}
-
-                                      {!isInteractionLayer && !isPointBased && f.type === "function" && (
-                                        <React.Fragment>
-                                          {f.fillColor !== undefined && (() => {
-                                            const fillPoints: [number, number][] = [];
-                                            const xMin = xRange[0] - 2;
-                                            const xMax = xRange[1] + 2;
-                                            const steps = 200;
-                                            for (let i = 0; i <= steps; i++) {
-                                              const xVal = xMin + ((xMax - xMin) * i) / steps;
-                                              try {
-                                                const res = f.compiled.evaluate({
-                                                  ...baseScope,
-                                                  x: xVal,
-                                                });
-                                                const y = Number(res);
-                                                if (!isNaN(y) && isFinite(y)) {
-                                                  fillPoints.push(applyForwardTransform([xVal, y]));
-                                                }
-                                              } catch {}
-                                            }
-                                            if (fillPoints.length < 2) return null;
-                                            return (
-                                              <React.Fragment>
-                                                <CurvePatternDefs
-                                                  id={f.id}
-                                                  color={f.color}
-                                                  fillColor={f.fillColor}
-                                                  fillOpacity={f.fillOpacity !== undefined ? f.fillOpacity : 0.3}
-                                                  fillPattern={f.fillPattern}
-                                                  patternSpacing={f.patternSpacing}
-                                                  patternThickness={f.patternThickness}
-                                                  patternAngle={f.patternAngle}
-                                                />
-                                                <Polygon
-                                                  points={fillPoints}
-                                                  color={f.fillColor || f.color}
-                                                  fillOpacity={f.fillPattern === "solid" ? (f.fillOpacity !== undefined ? f.fillOpacity : 0.3) : 1}
-                                                  svgPolygonProps={{
-                                                    style: {
-                                                      fill: f.fillPattern === "solid" ? (f.fillColor || f.color) : `url(#curve-pattern-${f.id})`,
-                                                      stroke: "none",
-                                                    },
-                                                  }}
-                                                />
-                                              </React.Fragment>
-                                            );
-                                          })()}
-                                          <Plot.Parametric
-                                            minSamplingDepth={Math.max(1, Math.min(8, samplingDepth))}
-                                            maxSamplingDepth={Math.max(1, samplingDepth)}
-                                            t={[-50, 50]}
-                                            xy={(t) => {
-                                              try {
-                                                const res = f.compiled.evaluate({
-                                                  ...baseScope,
-                                                  x: t,
-                                                });
-                                                if (typeof res === "object" && res.im !== undefined)
-                                                  return applyForwardTransform([t, NaN]);
-                                                return applyForwardTransform([t, Number(res)]);
-                                              } catch {
-                                                return [t, NaN];
                                               }
-                                            }}
-                                            color={f.color}
-                                            weight={
-                                              hoveredVar &&
-                                              new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                ? 6
-                                                : (f.outlineWidth !== undefined ? f.outlineWidth : 3)
-                                            }
-                                            opacity={
-                                              hoveredVar
-                                                ? new RegExp(`\\b${hoveredVar}\\b`).test(f.expr)
-                                                  ? 1
-                                                  : 0.3
-                                                : 1
-                                            }
-                                            style={
-                                              f.lineStyle && f.lineStyle !== "solid"
-                                                ? "dashed"
-                                                : "solid"
-                                            }
-                                            svgPathProps={{
-                                              style: {
-                                                strokeDasharray: getStrokeDasharray(f.lineStyle),
-                                              },
-                                            }}
-                                          />
-                                        </React.Fragment>
-                                      )}
-
-                                      {!isInteractionLayer && !isPointBased && f.showLabel && f.label && (
-                                        <SafeLabel
-                                          at={applyForwardTransform([px + (f.labelPosition?.[0] ?? 0.3), py + (f.labelPosition?.[1] ?? 0.3)])}
-                                          tex={f.label}
-                                          color={f.color}
-                                        />
-                                      )}
-
-{/* Advanced Transformation Gizmos over the transformed geometry */}
-
-                          {/* General Draggable handle for shapes, lines, or multiple points */}
-                          {isInteractionLayer && f.isDraggable &&
-                            !isBasicPointDraggable &&
-                            (!activeGizmo ||
-                              activeGizmo.id !== f.id ||
-                              activeGizmo.type === "drag") && (
-                              <React.Fragment>
-<MovablePoint
-                                  point={localToGlobal(
-                                    pca.center[0],
-                                    pca.center[1],
-                                  )}
-                                  color={f.color}
-                                  onMove={(pt) => {
-                                    handleGizmoMove(f.id, "drag");
-                                    const cGlobal = localToGlobal(
-                                      pca.center[0],
-                                      pca.center[1],
-                                    );
-                                    const dX = pt[0] - cGlobal[0];
-                                    const dY = pt[1] - cGlobal[1];
-
-                                    if (f.type === "line" || f.type === "point") {
-                                      const match = f.expr.match(/^([^=]+=\s*)/);
-                                      const prefix = match ? match[1] : "";
-                                      
-                                      const ptStrs = points
-                                        .map((p: any) => {
-                                          const gPt = localToGlobal(p[0], p[1]);
-                                          return `[${(gPt[0] + dX).toFixed(2)}, ${(gPt[1] + dY).toFixed(2)}]`;
-                                        })
-                                        .join(", ");
-                                        
-                                      // If it was a single point that somehow ended up here, preserve brackets.
-                                      const isSingle = points.length === 1 && f.expr.includes("[[");
-                                      
-                                      let newExpr = "";
-                                      if (isSingle) {
-                                        const gPt = localToGlobal(points[0][0], points[0][1]);
-                                        newExpr = `${prefix}[[${(gPt[0] + dX).toFixed(2)}], [${(gPt[1] + dY).toFixed(2)}]]`;
-                                      } else {
-                                        newExpr = `${prefix}[${ptStrs}]`;
-                                      }
-
-                                      setFunctions((prev) =>
-                                        prev.map((fn) =>
-                                          fn.id === f.id
-                                            ? {
-                                                ...fn,
-                                                expr: newExpr,
-                                                transformTranslate: undefined,
-                                                transformRotate: undefined,
-                                                transformScale: undefined,
-                                                transformPivot: undefined,
+                                              fillPattern={f.fillPattern}
+                                              patternSpacing={f.patternSpacing}
+                                              patternThickness={
+                                                f.patternThickness
                                               }
-                                            : fn,
-                                        ),
-                                      );
-                                      return;
-                                    }
-
-                                    const { newExpr } = decoupleGeometry(
-                                      f,
-                                      baseScope,
-                                    );
-
-                                    setFunctions((prev) =>
-                                      prev.map((fn) =>
-                                        fn.id === f.id
-                                          ? {
-                                              ...fn,
-                                              expr: newExpr,
-                                              transformTranslate: [
-                                                (fn.transformTranslate?.[0] ||
-                                                  0) + dX,
-                                                (fn.transformTranslate?.[1] ||
-                                                  0) + dY,
-                                              ],
-                                            }
-                                          : fn,
-                                      ),
-                                    );
-                                  }}
-                                />
-                                {activeGizmo?.id === f.id &&
-                                  activeGizmo.type === "drag" && (
-                                    <Text
-                                      x={tx + px}
-                                      y={ty + py + baseRadius + 1}
-                                      size={14}
+                                              patternAngle={f.patternAngle}
+                                            />
+                                            <Polygon
+                                              points={fillPoints}
+                                              color={f.fillColor || f.color}
+                                              fillOpacity={
+                                                f.fillPattern === "solid"
+                                                  ? f.fillOpacity !== undefined
+                                                    ? f.fillOpacity
+                                                    : 0.3
+                                                  : 1
+                                              }
+                                              svgPolygonProps={{
+                                                style: {
+                                                  fill:
+                                                    f.fillPattern === "solid"
+                                                      ? f.fillColor || f.color
+                                                      : `url(#curve-pattern-${f.id})`,
+                                                  stroke: "none",
+                                                },
+                                              }}
+                                            />
+                                          </React.Fragment>
+                                        );
+                                      })()}
+                                    <Plot.Parametric
+                                      minSamplingDepth={Math.max(
+                                        1,
+                                        Math.min(8, samplingDepth),
+                                      )}
+                                      maxSamplingDepth={Math.max(
+                                        1,
+                                        samplingDepth,
+                                      )}
+                                      xy={(tVal: number) => {
+                                        try {
+                                          const useThetaAsAngle =
+                                            /\btheta\b/.test(f.expr);
+                                          const scope = { ...baseScope };
+                                          if (useThetaAsAngle) {
+                                            scope.theta = tVal;
+                                            scope.x = tVal;
+                                          } else {
+                                            scope.t = tVal;
+                                            scope.x = tVal;
+                                            scope.theta = tVal;
+                                          }
+                                          const r = Number(
+                                            f.compiled.evaluate(scope),
+                                          );
+                                          if (isNaN(r) || typeof r === "object")
+                                            return [0, 0];
+                                          return applyForwardTransform([
+                                            r * Math.cos(tVal),
+                                            r * Math.sin(tVal),
+                                          ]);
+                                        } catch {
+                                          return [0, 0];
+                                        }
+                                      }}
+                                      t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
                                       color={f.color}
-                                    >
-                                      {`X: ${tx.toFixed(1)} Y: ${ty.toFixed(1)}`}
-                                    </Text>
-                                  )}
-                              </React.Fragment>
-                            )}
-
-                          {isInteractionLayer && f.isTransformable && (
-                            <React.Fragment>
-                              {/* Rotation Handle (Yellowish) - placed along rotated bounding box right edge */}
-                              {f.isRotatable &&
-                                (!activeGizmo ||
-                                  activeGizmo.id !== f.id ||
-                                  activeGizmo.type === "rotate") && (
-                                  <React.Fragment>
-<MovablePoint
-                                      point={localToGlobal(
-                                        px + Math.cos(baseAngle) * baseRadius,
-                                        py + Math.sin(baseAngle) * baseRadius,
-                                      )}
-                                      color="#eab308"
-                                      onMove={(pt) => {
-                                        handleGizmoMove(f.id, "rotate");
-                                        const globalPivotX = px + tx;
-                                        const globalPivotY = py + ty;
-                                        const dragAngle = Math.atan2(
-                                          pt[1] - globalPivotY,
-                                          pt[0] - globalPivotX,
-                                        );
-                                        const newRot = dragAngle - baseAngle;
-
-                                        const { newExpr } = decoupleGeometry(
-                                          f,
-                                          baseScope,
-                                        );
-
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? {
-                                                  ...fn,
-                                                  expr: newExpr,
-                                                  transformRotate: newRot,
-                                                }
-                                              : fn,
+                                      weight={
+                                        hoveredVar &&
+                                        new RegExp(`\\b${hoveredVar}\\b`).test(
+                                          f.expr,
+                                        )
+                                          ? 6
+                                          : f.outlineWidth !== undefined
+                                            ? f.outlineWidth
+                                            : 3
+                                      }
+                                      opacity={
+                                        hoveredVar
+                                          ? new RegExp(
+                                              `\\b${hoveredVar}\\b`,
+                                            ).test(f.expr)
+                                            ? 1
+                                            : 0.3
+                                          : 1
+                                      }
+                                      style={
+                                        f.lineStyle && f.lineStyle !== "solid"
+                                          ? "dashed"
+                                          : "solid"
+                                      }
+                                      svgPathProps={{
+                                        style: {
+                                          strokeDasharray: getStrokeDasharray(
+                                            f.lineStyle,
                                           ),
-                                        );
+                                        },
                                       }}
                                     />
-                                    {activeGizmo?.id === f.id &&
-                                      activeGizmo.type === "rotate" && (
-                                        <Text
-                                          x={tx + px}
-                                          y={ty + py + baseRadius + 1}
-                                          size={14}
-                                          color="#eab308"
-                                        >
-                                          {`Angle: ${((rot * 180) / Math.PI).toFixed(0)}°`}
-                                        </Text>
-                                      )}
                                   </React.Fragment>
                                 )}
 
-                              {/* Resizable/Scale Handle (Greenish) - placed at rotated bounding box corner */}
-                              {f.isResizable &&
+                              {!isInteractionLayer &&
+                                !isPointBased &&
+                                f.type === "function" && (
+                                  <React.Fragment>
+                                    {f.fillColor !== undefined &&
+                                      (() => {
+                                        const fillPoints: [number, number][] =
+                                          [];
+                                        const xMin = xRange[0] - 2;
+                                        const xMax = xRange[1] + 2;
+                                        const steps = 200;
+                                        for (let i = 0; i <= steps; i++) {
+                                          const xVal =
+                                            xMin + ((xMax - xMin) * i) / steps;
+                                          try {
+                                            const res = f.compiled.evaluate({
+                                              ...baseScope,
+                                              x: xVal,
+                                            });
+                                            const y = Number(res);
+                                            if (!isNaN(y) && isFinite(y)) {
+                                              fillPoints.push(
+                                                applyForwardTransform([
+                                                  xVal,
+                                                  y,
+                                                ]),
+                                              );
+                                            }
+                                          } catch {}
+                                        }
+                                        if (fillPoints.length < 2) return null;
+                                        return (
+                                          <React.Fragment>
+                                            <CurvePatternDefs
+                                              id={f.id}
+                                              color={f.color}
+                                              fillColor={f.fillColor}
+                                              fillOpacity={
+                                                f.fillOpacity !== undefined
+                                                  ? f.fillOpacity
+                                                  : 0.3
+                                              }
+                                              fillPattern={f.fillPattern}
+                                              patternSpacing={f.patternSpacing}
+                                              patternThickness={
+                                                f.patternThickness
+                                              }
+                                              patternAngle={f.patternAngle}
+                                            />
+                                            <Polygon
+                                              points={fillPoints}
+                                              color={f.fillColor || f.color}
+                                              fillOpacity={
+                                                f.fillPattern === "solid"
+                                                  ? f.fillOpacity !== undefined
+                                                    ? f.fillOpacity
+                                                    : 0.3
+                                                  : 1
+                                              }
+                                              svgPolygonProps={{
+                                                style: {
+                                                  fill:
+                                                    f.fillPattern === "solid"
+                                                      ? f.fillColor || f.color
+                                                      : `url(#curve-pattern-${f.id})`,
+                                                  stroke: "none",
+                                                },
+                                              }}
+                                            />
+                                          </React.Fragment>
+                                        );
+                                      })()}
+                                    <Plot.Parametric
+                                      minSamplingDepth={Math.max(
+                                        1,
+                                        Math.min(8, samplingDepth),
+                                      )}
+                                      maxSamplingDepth={Math.max(
+                                        1,
+                                        samplingDepth,
+                                      )}
+                                      t={[-50, 50]}
+                                      xy={(t) => {
+                                        try {
+                                          const res = f.compiled.evaluate({
+                                            ...baseScope,
+                                            x: t,
+                                          });
+                                          if (
+                                            typeof res === "object" &&
+                                            res.im !== undefined
+                                          )
+                                            return applyForwardTransform([
+                                              t,
+                                              NaN,
+                                            ]);
+                                          return applyForwardTransform([
+                                            t,
+                                            Number(res),
+                                          ]);
+                                        } catch {
+                                          return [t, NaN];
+                                        }
+                                      }}
+                                      color={f.color}
+                                      weight={
+                                        hoveredVar &&
+                                        new RegExp(`\\b${hoveredVar}\\b`).test(
+                                          f.expr,
+                                        )
+                                          ? 6
+                                          : f.outlineWidth !== undefined
+                                            ? f.outlineWidth
+                                            : 3
+                                      }
+                                      opacity={
+                                        hoveredVar
+                                          ? new RegExp(
+                                              `\\b${hoveredVar}\\b`,
+                                            ).test(f.expr)
+                                            ? 1
+                                            : 0.3
+                                          : 1
+                                      }
+                                      style={
+                                        f.lineStyle && f.lineStyle !== "solid"
+                                          ? "dashed"
+                                          : "solid"
+                                      }
+                                      svgPathProps={{
+                                        style: {
+                                          strokeDasharray: getStrokeDasharray(
+                                            f.lineStyle,
+                                          ),
+                                        },
+                                      }}
+                                    />
+                                  </React.Fragment>
+                                )}
+
+                              {!isInteractionLayer &&
+                                !isPointBased &&
+                                f.showLabel &&
+                                f.label && (
+                                  <SafeLabel
+                                    at={applyForwardTransform([
+                                      px + (f.labelPosition?.[0] ?? 0.3),
+                                      py + (f.labelPosition?.[1] ?? 0.3),
+                                    ])}
+                                    tex={f.label}
+                                    color={f.color}
+                                  />
+                                )}
+
+                              {/* Advanced Transformation Gizmos over the transformed geometry */}
+
+                              {/* General Draggable handle for shapes, lines, or multiple points */}
+                              {isInteractionLayer &&
+                                f.isDraggable &&
+                                !isBasicPointDraggable &&
                                 (!activeGizmo ||
                                   activeGizmo.id !== f.id ||
-                                  activeGizmo.type === "scale") && (
+                                  activeGizmo.type === "drag") && (
                                   <React.Fragment>
-<MovablePoint
+                                    <MovablePoint
                                       point={localToGlobal(
-                                        px +
-                                          Math.cos(baseAngle - Math.PI / 4) *
-                                            baseRadius *
-                                            1.2,
-                                        py +
-                                          Math.sin(baseAngle - Math.PI / 4) *
-                                            baseRadius *
-                                            1.2,
+                                        pca.center[0],
+                                        pca.center[1],
                                       )}
-                                      color="#10b981"
+                                      color={f.color}
                                       onMove={(pt) => {
-                                        handleGizmoMove(f.id, "scale");
-                                        const globalPivotX = px + tx;
-                                        const globalPivotY = py + ty;
-                                        const dxHandle = pt[0] - globalPivotX;
-                                        const dyHandle = pt[1] - globalPivotY;
-
-                                        const startDxHandle =
-                                          Math.cos(baseAngle - Math.PI / 4) *
-                                          baseRadius *
-                                          1.2;
-                                        const startDyHandle =
-                                          Math.sin(baseAngle - Math.PI / 4) *
-                                          baseRadius *
-                                          1.2;
-
-                                        let localDx =
-                                          dxHandle * Math.cos(-rot) -
-                                          dyHandle * Math.sin(-rot);
-                                        let localDy =
-                                          dxHandle * Math.sin(-rot) +
-                                          dyHandle * Math.cos(-rot);
-
-                                        let scaleX = Math.max(
-                                          0.01,
-                                          Math.abs(
-                                            localDx / (startDxHandle || 0.001),
-                                          ),
+                                        handleGizmoMove(f.id, "drag");
+                                        const cGlobal = localToGlobal(
+                                          pca.center[0],
+                                          pca.center[1],
                                         );
-                                        let scaleY = Math.max(
-                                          0.01,
-                                          Math.abs(
-                                            localDy / (startDyHandle || 0.001),
-                                          ),
-                                        );
+                                        const dX = pt[0] - cGlobal[0];
+                                        const dY = pt[1] - cGlobal[1];
 
-                                        if (isShiftPressed) {
-                                          const dist = Math.sqrt(
-                                            dxHandle * dxHandle +
-                                              dyHandle * dyHandle,
+                                        if (
+                                          f.type === "line" ||
+                                          f.type === "point"
+                                        ) {
+                                          const match =
+                                            f.expr.match(/^([^=]+=\s*)/);
+                                          const prefix = match ? match[1] : "";
+
+                                          const ptStrs = points
+                                            .map((p: any) => {
+                                              const gPt = localToGlobal(
+                                                p[0],
+                                                p[1],
+                                              );
+                                              return `[${(gPt[0] + dX).toFixed(2)}, ${(gPt[1] + dY).toFixed(2)}]`;
+                                            })
+                                            .join(", ");
+
+                                          // If it was a single point that somehow ended up here, preserve brackets.
+                                          const isSingle =
+                                            points.length === 1 &&
+                                            f.expr.includes("[[");
+
+                                          let newExpr = "";
+                                          if (isSingle) {
+                                            const gPt = localToGlobal(
+                                              points[0][0],
+                                              points[0][1],
+                                            );
+                                            newExpr = `${prefix}[[${(gPt[0] + dX).toFixed(2)}], [${(gPt[1] + dY).toFixed(2)}]]`;
+                                          } else {
+                                            newExpr = `${prefix}[${ptStrs}]`;
+                                          }
+
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? {
+                                                    ...fn,
+                                                    expr: newExpr,
+                                                    transformTranslate:
+                                                      undefined,
+                                                    transformRotate: undefined,
+                                                    transformScale: undefined,
+                                                    transformPivot: undefined,
+                                                  }
+                                                : fn,
+                                            ),
                                           );
-                                          const startDist = baseRadius * 1.2;
-                                          const uniform = Math.max(
-                                            0.01,
-                                            dist / startDist,
-                                          );
-                                          scaleX = uniform;
-                                          scaleY = uniform;
+                                          return;
                                         }
 
                                         const { newExpr } = decoupleGeometry(
@@ -8973,9 +10599,13 @@ return (
                                               ? {
                                                   ...fn,
                                                   expr: newExpr,
-                                                  transformScale: [
-                                                    scaleX,
-                                                    scaleY,
+                                                  transformTranslate: [
+                                                    (fn
+                                                      .transformTranslate?.[0] ||
+                                                      0) + dX,
+                                                    (fn
+                                                      .transformTranslate?.[1] ||
+                                                      0) + dY,
                                                   ],
                                                 }
                                               : fn,
@@ -8984,145 +10614,335 @@ return (
                                       }}
                                     />
                                     {activeGizmo?.id === f.id &&
-                                      activeGizmo.type === "scale" && (
+                                      activeGizmo.type === "drag" && (
                                         <Text
                                           x={tx + px}
                                           y={ty + py + baseRadius + 1}
                                           size={14}
-                                          color="#10b981"
+                                          color={f.color}
                                         >
-                                          {isShiftPressed
-                                            ? `Scale: ${sx.toFixed(2)}x`
-                                            : `Sx: ${sx.toFixed(2)} Sy: ${sy.toFixed(2)}`}
+                                          {`X: ${tx.toFixed(1)} Y: ${ty.toFixed(1)}`}
                                         </Text>
                                       )}
                                   </React.Fragment>
                                 )}
 
-                              {/* Label Position Handle */}
-                              {f.showLabel && f.label && f.isDraggable &&
-                                (!activeGizmo ||
-                                  activeGizmo.id !== f.id ||
-                                  activeGizmo.type === "label") && (
-                                  <MovablePoint
-                                    point={localToGlobal(
-                                      px + (f.labelPosition?.[0] ?? 0.3),
-                                      py + (f.labelPosition?.[1] ?? 0.3)
+                              {isInteractionLayer && f.isTransformable && (
+                                <React.Fragment>
+                                  {/* Rotation Handle (Yellowish) - placed along rotated bounding box right edge */}
+                                  {f.isRotatable &&
+                                    (!activeGizmo ||
+                                      activeGizmo.id !== f.id ||
+                                      activeGizmo.type === "rotate") && (
+                                      <React.Fragment>
+                                        <MovablePoint
+                                          point={localToGlobal(
+                                            px +
+                                              Math.cos(baseAngle) * baseRadius,
+                                            py +
+                                              Math.sin(baseAngle) * baseRadius,
+                                          )}
+                                          color="#eab308"
+                                          onMove={(pt) => {
+                                            handleGizmoMove(f.id, "rotate");
+                                            const globalPivotX = px + tx;
+                                            const globalPivotY = py + ty;
+                                            const dragAngle = Math.atan2(
+                                              pt[1] - globalPivotY,
+                                              pt[0] - globalPivotX,
+                                            );
+                                            const newRot =
+                                              dragAngle - baseAngle;
+
+                                            const { newExpr } =
+                                              decoupleGeometry(f, baseScope);
+
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? {
+                                                      ...fn,
+                                                      expr: newExpr,
+                                                      transformRotate: newRot,
+                                                    }
+                                                  : fn,
+                                              ),
+                                            );
+                                          }}
+                                        />
+                                        {activeGizmo?.id === f.id &&
+                                          activeGizmo.type === "rotate" && (
+                                            <Text
+                                              x={tx + px}
+                                              y={ty + py + baseRadius + 1}
+                                              size={14}
+                                              color="#eab308"
+                                            >
+                                              {`Angle: ${((rot * 180) / Math.PI).toFixed(0)}°`}
+                                            </Text>
+                                          )}
+                                      </React.Fragment>
                                     )}
-                                    color="rgba(150, 150, 150, 0.5)"
-                                    onMove={(pt) => {
-                                      handleGizmoMove(f.id, "label");
-                                      const baseGlobal = localToGlobal(px, py);
-                                      const dX = pt[0] - baseGlobal[0];
-                                      const dY = pt[1] - baseGlobal[1];
-                                      
-                                      // We need to un-rotate and un-scale to get local offset.
-                                      // Actually, the label follows transforms, but we just store its local offset.
-                                      // If the graph is scaled or rotated, the offset visually scales!
-                                      // Let's compute local offset:
-                                      const cos = Math.cos(-(rot));
-                                      const sin = Math.sin(-(rot));
-                                      
-                                      let localDx = dX * cos - dY * sin;
-                                      let localDy = dX * sin + dY * cos;
-                                      
-                                      const scaleX = sx || 1;
-                                      const scaleY = sy || 1;
-                                      localDx /= scaleX;
-                                      localDy /= scaleY;
-                                      
-                                      setFunctions((prev) =>
-                                        prev.map((fn) =>
-                                          fn.id === f.id
-                                            ? {
-                                                ...fn,
-                                                labelPosition: [localDx, localDy],
-                                              }
-                                            : fn,
-                                        ),
-                                      );
-                                    }}
-                                  />
-                                )}
 
-                              {/* Pivot Editor/Handle (Blueish) */}
-                              {f.isPivotEnabled &&
-                                (!activeGizmo ||
-                                  activeGizmo.id !== f.id ||
-                                  activeGizmo.type === "pivot") && (
-                                  <MovablePoint
-                                    point={[px + tx, py + ty]}
-                                    color="#3b82f6"
-                                    onMove={(pt) => {
-                                      handleGizmoMove(f.id, "pivot");
-                                      
-                                      // Math for keeping the object physically stationary:
-                                      // old pivot global = px + tx
-                                      const ptOld = [px + tx, py + ty];
-                                      const dGlobal = [pt[0] - ptOld[0], pt[1] - ptOld[1]];
-                                      
-                                      // A = R(rot) * R(base) * S(sx,sy) * R(-base)
-                                      const c1 = Math.cos(rot + baseAngle);
-                                      const s1 = Math.sin(rot + baseAngle);
-                                      const c2 = Math.cos(-baseAngle);
-                                      const s2 = Math.sin(-baseAngle);
-                                      
-                                      // For A^-1, we invert them backwards: R(base) * S(1/sx, 1/sy) * R(-base - rot)
-                                      const invRot = -rot - baseAngle;
-                                      const ic1 = Math.cos(invRot);
-                                      const is1 = Math.sin(invRot);
-                                      
-                                      let vX = dGlobal[0] * ic1 - dGlobal[1] * is1;
-                                      let vY = dGlobal[0] * is1 + dGlobal[1] * ic1;
-                                      
-                                      vX /= (sx || 1);
-                                      vY /= (sy || 1);
-                                      
-                                      const bc1 = Math.cos(baseAngle);
-                                      const bs1 = Math.sin(baseAngle);
-                                      
-                                      const dLocalX = vX * bc1 - vY * bs1;
-                                      const dLocalY = vX * bs1 + vY * bc1;
-                                      
-                                      const pNewX = px + dLocalX;
-                                      const pNewY = py + dLocalY;
-                                      
-                                      const tNewX = pt[0] - pNewX;
-                                      const tNewY = pt[1] - pNewY;
+                                  {/* Resizable/Scale Handle (Greenish) - placed at rotated bounding box corner */}
+                                  {f.isResizable &&
+                                    (!activeGizmo ||
+                                      activeGizmo.id !== f.id ||
+                                      activeGizmo.type === "scale") && (
+                                      <React.Fragment>
+                                        <MovablePoint
+                                          point={localToGlobal(
+                                            px +
+                                              Math.cos(
+                                                baseAngle - Math.PI / 4,
+                                              ) *
+                                                baseRadius *
+                                                1.2,
+                                            py +
+                                              Math.sin(
+                                                baseAngle - Math.PI / 4,
+                                              ) *
+                                                baseRadius *
+                                                1.2,
+                                          )}
+                                          color="#10b981"
+                                          onMove={(pt) => {
+                                            handleGizmoMove(f.id, "scale");
+                                            const globalPivotX = px + tx;
+                                            const globalPivotY = py + ty;
+                                            const dxHandle =
+                                              pt[0] - globalPivotX;
+                                            const dyHandle =
+                                              pt[1] - globalPivotY;
 
-                                      setFunctions((prev) =>
-                                        prev.map((fn) =>
-                                          fn.id === f.id
-                                            ? {
-                                                ...fn,
-                                                transformPivot: [pNewX, pNewY],
-                                                transformTranslate: [tNewX, tNewY]
-                                              }
-                                            : fn,
-                                        ),
-                                      );
-                                    }}
-                                  />
-                                )}
-                           </React.Fragment>
-                            )}
-                        </React.Fragment>
-                      );
-                    } catch {
+                                            const startDxHandle =
+                                              Math.cos(
+                                                baseAngle - Math.PI / 4,
+                                              ) *
+                                              baseRadius *
+                                              1.2;
+                                            const startDyHandle =
+                                              Math.sin(
+                                                baseAngle - Math.PI / 4,
+                                              ) *
+                                              baseRadius *
+                                              1.2;
+
+                                            let localDx =
+                                              dxHandle * Math.cos(-rot) -
+                                              dyHandle * Math.sin(-rot);
+                                            let localDy =
+                                              dxHandle * Math.sin(-rot) +
+                                              dyHandle * Math.cos(-rot);
+
+                                            let scaleX = Math.max(
+                                              0.01,
+                                              Math.abs(
+                                                localDx /
+                                                  (startDxHandle || 0.001),
+                                              ),
+                                            );
+                                            let scaleY = Math.max(
+                                              0.01,
+                                              Math.abs(
+                                                localDy /
+                                                  (startDyHandle || 0.001),
+                                              ),
+                                            );
+
+                                            if (isShiftPressed) {
+                                              const dist = Math.sqrt(
+                                                dxHandle * dxHandle +
+                                                  dyHandle * dyHandle,
+                                              );
+                                              const startDist =
+                                                baseRadius * 1.2;
+                                              const uniform = Math.max(
+                                                0.01,
+                                                dist / startDist,
+                                              );
+                                              scaleX = uniform;
+                                              scaleY = uniform;
+                                            }
+
+                                            const { newExpr } =
+                                              decoupleGeometry(f, baseScope);
+
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? {
+                                                      ...fn,
+                                                      expr: newExpr,
+                                                      transformScale: [
+                                                        scaleX,
+                                                        scaleY,
+                                                      ],
+                                                    }
+                                                  : fn,
+                                              ),
+                                            );
+                                          }}
+                                        />
+                                        {activeGizmo?.id === f.id &&
+                                          activeGizmo.type === "scale" && (
+                                            <Text
+                                              x={tx + px}
+                                              y={ty + py + baseRadius + 1}
+                                              size={14}
+                                              color="#10b981"
+                                            >
+                                              {isShiftPressed
+                                                ? `Scale: ${sx.toFixed(2)}x`
+                                                : `Sx: ${sx.toFixed(2)} Sy: ${sy.toFixed(2)}`}
+                                            </Text>
+                                          )}
+                                      </React.Fragment>
+                                    )}
+
+                                  {/* Label Position Handle */}
+                                  {f.showLabel &&
+                                    f.label &&
+                                    f.isDraggable &&
+                                    (!activeGizmo ||
+                                      activeGizmo.id !== f.id ||
+                                      activeGizmo.type === "label") && (
+                                      <MovablePoint
+                                        point={localToGlobal(
+                                          px + (f.labelPosition?.[0] ?? 0.3),
+                                          py + (f.labelPosition?.[1] ?? 0.3),
+                                        )}
+                                        color="rgba(150, 150, 150, 0.5)"
+                                        onMove={(pt) => {
+                                          handleGizmoMove(f.id, "label");
+                                          const baseGlobal = localToGlobal(
+                                            px,
+                                            py,
+                                          );
+                                          const dX = pt[0] - baseGlobal[0];
+                                          const dY = pt[1] - baseGlobal[1];
+
+                                          // We need to un-rotate and un-scale to get local offset.
+                                          // Actually, the label follows transforms, but we just store its local offset.
+                                          // If the graph is scaled or rotated, the offset visually scales!
+                                          // Let's compute local offset:
+                                          const cos = Math.cos(-rot);
+                                          const sin = Math.sin(-rot);
+
+                                          let localDx = dX * cos - dY * sin;
+                                          let localDy = dX * sin + dY * cos;
+
+                                          const scaleX = sx || 1;
+                                          const scaleY = sy || 1;
+                                          localDx /= scaleX;
+                                          localDy /= scaleY;
+
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? {
+                                                    ...fn,
+                                                    labelPosition: [
+                                                      localDx,
+                                                      localDy,
+                                                    ],
+                                                  }
+                                                : fn,
+                                            ),
+                                          );
+                                        }}
+                                      />
+                                    )}
+
+                                  {/* Pivot Editor/Handle (Blueish) */}
+                                  {f.isPivotEnabled &&
+                                    (!activeGizmo ||
+                                      activeGizmo.id !== f.id ||
+                                      activeGizmo.type === "pivot") && (
+                                      <MovablePoint
+                                        point={[px + tx, py + ty]}
+                                        color="#3b82f6"
+                                        onMove={(pt) => {
+                                          handleGizmoMove(f.id, "pivot");
+
+                                          // Math for keeping the object physically stationary:
+                                          // old pivot global = px + tx
+                                          const ptOld = [px + tx, py + ty];
+                                          const dGlobal = [
+                                            pt[0] - ptOld[0],
+                                            pt[1] - ptOld[1],
+                                          ];
+
+                                          // A = R(rot) * R(base) * S(sx,sy) * R(-base)
+                                          const c1 = Math.cos(rot + baseAngle);
+                                          const s1 = Math.sin(rot + baseAngle);
+                                          const c2 = Math.cos(-baseAngle);
+                                          const s2 = Math.sin(-baseAngle);
+
+                                          // For A^-1, we invert them backwards: R(base) * S(1/sx, 1/sy) * R(-base - rot)
+                                          const invRot = -rot - baseAngle;
+                                          const ic1 = Math.cos(invRot);
+                                          const is1 = Math.sin(invRot);
+
+                                          let vX =
+                                            dGlobal[0] * ic1 - dGlobal[1] * is1;
+                                          let vY =
+                                            dGlobal[0] * is1 + dGlobal[1] * ic1;
+
+                                          vX /= sx || 1;
+                                          vY /= sy || 1;
+
+                                          const bc1 = Math.cos(baseAngle);
+                                          const bs1 = Math.sin(baseAngle);
+
+                                          const dLocalX = vX * bc1 - vY * bs1;
+                                          const dLocalY = vX * bs1 + vY * bc1;
+
+                                          const pNewX = px + dLocalX;
+                                          const pNewY = py + dLocalY;
+
+                                          const tNewX = pt[0] - pNewX;
+                                          const tNewY = pt[1] - pNewY;
+
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? {
+                                                    ...fn,
+                                                    transformPivot: [
+                                                      pNewX,
+                                                      pNewY,
+                                                    ],
+                                                    transformTranslate: [
+                                                      tNewX,
+                                                      tNewY,
+                                                    ],
+                                                  }
+                                                : fn,
+                                            ),
+                                          );
+                                        }}
+                                      />
+                                    )}
+                                </React.Fragment>
+                              )}
+                            </React.Fragment>
+                          );
+                        } catch {
+                          return null;
+                        }
+
+                        // Handled under <Transform> blocks
+                        return null;
+                      }
                       return null;
-                    }
+                    });
+                };
+              }
 
-                    // Handled under <Transform> blocks
-                    return null;
-                  }
-                  return null;
-                });
-              };
-            }
+              const MathNodesLayer = MathNodesLayerRef.current;
 
-            const MathNodesLayer = MathNodesLayerRef.current;
-                
-            return (
+              return (
                 <React.Fragment>
                   <MathNodesLayer isInteractionLayer={false} />
                   <MathNodesLayer isInteractionLayer={true} />
@@ -9140,7 +10960,11 @@ return (
                 {functions
                   .filter((f) => f.visible && f.compiled)
                   .map((f) => {
-                    const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : time;
+                    const fTime = f.hasCustomTimeline
+                      ? f.time !== undefined
+                        ? f.time
+                        : 0
+                      : time;
                     const fScope = { ...baseScope, t: fTime, time: time };
                     const baseScopeShadow = fScope;
                     try {
@@ -9258,7 +11082,7 @@ return (
               onClose={() => setShowHelp(false)}
               onInsertFormula={handleInsertFunctionFromHelp}
             />,
-            document.body
+            document.body,
           )}
 
         {/* Editor Modal Overlay */}

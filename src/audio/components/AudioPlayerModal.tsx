@@ -99,10 +99,10 @@ const AudioPlayerModal: React.FC = () => {
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
           {/* Left Column: Player & Current Track Details */}
-          <div className="w-full md:w-[45%] border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col sm:overflow-hidden custom-scrollbar">
+          <div className="flex-1 w-full md:w-[45%] border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col sm:overflow-hidden custom-scrollbar">
             {/* Album Art / Visualizer Area */}
             <div className="flex-1 flex items-center justify-center p-4 sm:p-8 min-h-[200px] sm:min-h-[280px]">
-              <div className="relative w-full max-w-[180px] sm:max-w-[280px] aspect-square mx-auto">
+              <div className="relative w-full max-w-[240px] sm:max-w-[320px] lg:max-w-[400px] aspect-square mx-auto">
                 {currentTrack ? (
                   <div className="w-full h-full rounded-2xl shadow-xl overflow-hidden bg-slate-200 dark:bg-slate-800 relative group flex items-center justify-center ring-4 ring-white dark:ring-slate-800/50 transition-transform duration-500 hover:scale-[1.02]">
                     {currentTrack.thumbnail ? (

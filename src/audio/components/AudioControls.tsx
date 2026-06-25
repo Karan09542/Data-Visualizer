@@ -57,12 +57,14 @@ export const AudioControls: React.FC = () => {
         <div className="flex items-center gap-2">
           <button 
             onClick={toggleShuffle} 
+            title="Shuffle"
             className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
           >
             <Shuffle size={18} />
           </button>
           <button 
             onClick={toggleLoop} 
+            title="Repeat"
             className={`p-2 rounded-full transition-colors ${isLooping ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
           >
             <Repeat size={18} />
@@ -73,18 +75,21 @@ export const AudioControls: React.FC = () => {
         <div className="flex items-center gap-4">
           <button 
             onClick={previous}
+            title="Previous"
             className="p-2 text-slate-700 dark:text-slate-200 hover:text-indigo-500 transition-colors"
           >
             <SkipBack size={24} fill="currentColor" />
           </button>
           <button 
             onClick={togglePlay}
+            title={isPlaying ? "Pause" : "Play"}
             className="p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition-transform hover:scale-105 active:scale-95 shadow-md"
           >
             {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
           </button>
           <button 
             onClick={next}
+            title="Next"
             className="p-2 text-slate-700 dark:text-slate-200 hover:text-indigo-500 transition-colors"
           >
             <SkipForward size={24} fill="currentColor" />
@@ -95,6 +100,7 @@ export const AudioControls: React.FC = () => {
         <div className="flex items-center gap-2 w-28">
           <button 
             onClick={toggleMute}
+            title={isMuted || volume === 0 ? "Unmute" : "Mute"}
             className="p-2 text-slate-500 hover:text-indigo-500 transition-colors"
           >
             {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
