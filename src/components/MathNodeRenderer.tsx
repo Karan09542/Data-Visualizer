@@ -59,6 +59,7 @@ import {
   LaTeX,
   usePaneContext,
   useTransformContext,
+  vec,
 } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
@@ -157,6 +158,11 @@ interface MathFunction {
   showLabel?: boolean;
   label?: string;
   labelPosition?: [number, number];
+  labelRotation?: number; // degrees
+  labelScale?: number; // scale factor
+  labelFlipX?: boolean;
+  labelFlipY?: boolean;
+  labelAlignment?: "center" | "above" | "below" | "left" | "right" | "custom";
   fillColor?: string;
   fillOpacity?: number;
   fillPattern?:
@@ -1686,11 +1692,22 @@ const SafeLabel = ({
   at,
   tex,
   color,
+  rotation = 0,
+  scale = 1,
+  flipX = false,
+  flipY = false,
 }: {
   at: [number, number];
   tex: string;
   color: string;
+  rotation?: number;
+  scale?: number;
+  flipX?: boolean;
+  flipY?: boolean;
 }) => {
+  const { viewTransform, userTransform } = useTransformContext();
+  const ref = React.useRef<HTMLSpanElement>(null);
+
   if (!tex) return null;
 
   let finalTex = tex;
@@ -1716,20 +1733,50 @@ const SafeLabel = ({
     // Stick to raw tex
   }
 
-  try {
-    katex.renderToString(finalTex, {
-      throwOnError: true,
-      strict: "ignore",
-      trust: true,
-    });
-    return <LaTeX at={at} tex={finalTex} color={color} />;
-  } catch (e) {
-    return (
-      <Text x={at[0]} y={at[1]} color={color} attach="ne">
-        {tex}
-      </Text>
-    );
-  }
+  React.useEffect(() => {
+    if (!ref.current) return;
+    try {
+      katex.render(finalTex, ref.current, {
+        throwOnError: true,
+        strict: "ignore",
+        trust: true,
+      });
+    } catch (e) {
+      ref.current.innerText = finalTex;
+    }
+  }, [finalTex]);
+
+  const combinedTransform = vec.matrixMult(viewTransform, userTransform);
+  const width = 99999;
+  const height = 99999;
+  const pixelCenter = vec.add(vec.transform(at, combinedTransform), [-width / 2, -height / 2]);
+
+  const sx = flipX ? -scale : scale;
+  const sy = flipY ? -scale : scale;
+
+  return (
+    <foreignObject
+      x={pixelCenter[0]}
+      y={pixelCenter[1]}
+      width={width}
+      height={height}
+      style={{ pointerEvents: "none", overflow: "visible" }}
+    >
+      <span
+        ref={ref}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+          height: "100%",
+          color: color || "var(--mafs-fg)",
+          transform: `rotate(${rotation}deg) scale(${sx}, ${sy})`,
+          transformOrigin: "center",
+        }}
+      />
+    </foreignObject>
+  );
 };
 
 const CurvePatternDefs: React.FC<{
@@ -6054,21 +6101,287 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 </div>
 
                                 {f.showLabel && (
-                                  <div className="flex w-full mt-2 mb-1">
-                                    <LabelInput
-                                      value={f.label || ""}
-                                      onChange={(val) =>
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? { ...fn, label: val }
-                                              : fn,
-                                          ),
-                                        )
-                                      }
-                                      placeholder="Text or LaTeX (e.g. A_1)"
-                                    />
-                                  </div>
+                                  <>
+                                    <div className="flex w-full mt-2 mb-1">
+                                      <LabelInput
+                                        value={f.label || ""}
+                                        onChange={(val) =>
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id
+                                                ? { ...fn, label: val }
+                                                : fn,
+                                            ),
+                                          )
+                                        }
+                                        placeholder="Text or LaTeX (e.g. A_1)"
+                                      />
+                                    </div>
+
+                                    {/* Label Settings Panel */}
+                                    <div className="flex flex-col gap-2 mt-2 p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80">
+                                      <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500 mb-0.5">
+                                        Label Settings
+                                      </div>
+
+                                      {/* Rotation Slider */}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Rotation: {f.labelRotation ?? 0}°</span>
+                                        <div className="flex items-center gap-1.5 flex-1 max-w-[130px]">
+                                          <input
+                                            type="range"
+                                            min="0"
+                                            max="360"
+                                            value={f.labelRotation ?? 0}
+                                            onChange={(e) => {
+                                              const r = parseInt(e.target.value, 10);
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelRotation: r } : fn
+                                                )
+                                              );
+                                            }}
+                                            className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Scale Slider */}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Scale: {(f.labelScale ?? 1.0).toFixed(1)}x</span>
+                                        <div className="flex items-center gap-1.5 flex-1 max-w-[130px]">
+                                          <input
+                                            type="range"
+                                            min="0.5"
+                                            max="3.0"
+                                            step="0.1"
+                                            value={f.labelScale ?? 1.0}
+                                            onChange={(e) => {
+                                              const s = parseFloat(e.target.value);
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelScale: s } : fn
+                                                )
+                                              );
+                                            }}
+                                            className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Flips */}
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Flip:</span>
+                                        <div className="flex gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelFlipX: !fn.labelFlipX } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
+                                              f.labelFlipX
+                                                ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            Flip X
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelFlipY: !fn.labelFlipY } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
+                                              f.labelFlipY
+                                                ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            Flip Y
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Quick Presets */}
+                                      <div className="flex flex-col gap-1 mt-1 pt-1.5 border-t border-slate-200/50 dark:border-slate-700/50">
+                                        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mb-0.5">Quick Presets</span>
+                                        
+                                        <div className="flex flex-wrap gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id
+                                                    ? {
+                                                        ...fn,
+                                                        labelRotation: 0,
+                                                        labelScale: 1.0,
+                                                        labelFlipX: false,
+                                                        labelFlipY: false,
+                                                        labelPosition: [0.3, 0.3],
+                                                        labelAlignment: undefined,
+                                                      }
+                                                    : fn
+                                                )
+                                              );
+                                            }}
+                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 dark:hover:bg-red-950/20 dark:hover:text-red-400 transition-colors"
+                                            title="Reset label settings and position"
+                                          >
+                                            Reset
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelRotation: 90 } : fn
+                                                )
+                                              );
+                                            }}
+                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                          >
+                                            90°
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelRotation: 180 } : fn
+                                                )
+                                              );
+                                            }}
+                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                          >
+                                            180°
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelRotation: 270 } : fn
+                                                )
+                                              );
+                                            }}
+                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                          >
+                                            270°
+                                          </button>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelAlignment: "center" } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+                                              f.labelAlignment === "center"
+                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                            }`}
+                                            title="Center label exactly on shape"
+                                          >
+                                            Center
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelAlignment: "above" } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+                                              f.labelAlignment === "above"
+                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                            }`}
+                                            title="Snap label above shape"
+                                          >
+                                            Above
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelAlignment: "below" } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+                                              f.labelAlignment === "below"
+                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                            }`}
+                                            title="Snap label below shape"
+                                          >
+                                            Below
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelAlignment: "left" } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+                                              f.labelAlignment === "left"
+                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                            }`}
+                                            title="Snap label to left"
+                                          >
+                                            Left
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, labelAlignment: "right" } : fn
+                                                )
+                                              );
+                                            }}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+                                              f.labelAlignment === "right"
+                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                            }`}
+                                            title="Snap label to right"
+                                          >
+                                            Right
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
                                 )}
 
                                 {/* Custom Timeline Settings */}
@@ -10323,22 +10636,29 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                           />
                                                         ) : null)}
                                                       {showLabel &&
-                                                        !isInteractionLayer && (
-                                                          <SafeLabel
-                                                            at={[
-                                                              p[0] +
-                                                                (f
-                                                                  .labelPosition?.[0] ??
-                                                                  0.3),
-                                                              p[1] +
-                                                                (f
-                                                                  .labelPosition?.[1] ??
-                                                                  0.3),
-                                                            ]}
-                                                            tex={f.label}
-                                                            color={f.color}
-                                                          />
-                                                        )}
+                                                        !isInteractionLayer && (() => {
+                                                          let dx = f.labelPosition?.[0] ?? 0.3;
+                                                          let dy = f.labelPosition?.[1] ?? 0.3;
+                                                          if (f.labelAlignment && f.labelAlignment !== "custom") {
+                                                              const r = 0.5;
+                                                              if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                                              else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                                              else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                                              else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                                              else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                                          }
+                                                          return (
+                                                            <SafeLabel
+                                                              at={[p[0] + dx, p[1] + dy]}
+                                                              tex={f.label}
+                                                              color={f.color}
+                                                              rotation={f.labelRotation}
+                                                              scale={f.labelScale}
+                                                              flipX={f.labelFlipX}
+                                                              flipY={f.labelFlipY}
+                                                            />
+                                                          );
+                                                        })()}
                                                     </React.Fragment>
                                                   );
                                                 })}
@@ -10995,18 +11315,47 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 )}
 
                               {!isInteractionLayer &&
-                                !isPointBased &&
                                 f.showLabel &&
-                                f.label && (
-                                  <SafeLabel
-                                    at={applyForwardTransform([
-                                      px + (f.labelPosition?.[0] ?? 0.3),
-                                      py + (f.labelPosition?.[1] ?? 0.3),
-                                    ])}
-                                    tex={f.label}
-                                    color={f.color}
-                                  />
-                                )}
+                                f.label &&
+                                f.type !== "point" && (() => {
+                                  let bx = px;
+                                  let by = py;
+                                  if (f.type === "vector" && points && points.length > 0) {
+                                    bx = points[0][0] / 2;
+                                    by = points[0][1] / 2;
+                                  } else if ((f.type === "line" || f.type === "polygon") && pca?.center) {
+                                    bx = pca.center[0];
+                                    by = pca.center[1];
+                                  }
+                                  
+                                  let dx = f.labelPosition?.[0] ?? 0.3;
+                                  let dy = f.labelPosition?.[1] ?? 0.3;
+                                  if (f.labelAlignment && f.labelAlignment !== "custom") {
+                                      const r = Math.max(1.0, baseRadius * 0.8 + 0.3);
+                                      if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                      else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                      else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                      else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                      else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                  }
+
+                                  const labelPosLocal = [
+                                    bx + dx,
+                                    by + dy
+                                  ] as [number, number];
+
+                                  return (
+                                    <SafeLabel
+                                      at={applyForwardTransform(labelPosLocal)}
+                                      tex={f.label}
+                                      color={f.color}
+                                      rotation={f.labelRotation}
+                                      scale={f.labelScale}
+                                      flipX={f.labelFlipX}
+                                      flipY={f.labelFlipY}
+                                    />
+                                  );
+                                })()}
 
                               {/* Advanced Transformation Gizmos over the transformed geometry */}
 
@@ -11297,60 +11646,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       </React.Fragment>
                                     )}
 
-                                  {/* Label Position Handle */}
-                                  {f.showLabel &&
-                                    f.label &&
-                                    f.isDraggable &&
-                                    (!activeGizmo ||
-                                      activeGizmo.id !== f.id ||
-                                      activeGizmo.type === "label") && (
-                                      <MovablePoint
-                                        point={localToGlobal(
-                                          px + (f.labelPosition?.[0] ?? 0.3),
-                                          py + (f.labelPosition?.[1] ?? 0.3),
-                                        )}
-                                        color="rgba(150, 150, 150, 0.5)"
-                                        onMove={(pt) => {
-                                          handleGizmoMove(f.id, "label");
-                                          const baseGlobal = localToGlobal(
-                                            px,
-                                            py,
-                                          );
-                                          const dX = pt[0] - baseGlobal[0];
-                                          const dY = pt[1] - baseGlobal[1];
-
-                                          // We need to un-rotate and un-scale to get local offset.
-                                          // Actually, the label follows transforms, but we just store its local offset.
-                                          // If the graph is scaled or rotated, the offset visually scales!
-                                          // Let's compute local offset:
-                                          const cos = Math.cos(-rot);
-                                          const sin = Math.sin(-rot);
-
-                                          let localDx = dX * cos - dY * sin;
-                                          let localDy = dX * sin + dY * cos;
-
-                                          const scaleX = sx || 1;
-                                          const scaleY = sy || 1;
-                                          localDx /= scaleX;
-                                          localDy /= scaleY;
-
-                                          setFunctions((prev) =>
-                                            prev.map((fn) =>
-                                              fn.id === f.id
-                                                ? {
-                                                    ...fn,
-                                                    labelPosition: [
-                                                      localDx,
-                                                      localDy,
-                                                    ],
-                                                  }
-                                                : fn,
-                                            ),
-                                          );
-                                        }}
-                                      />
-                                    )}
-
                                   {/* Pivot Editor/Handle (Blueish) */}
                                   {f.isPivotEnabled &&
                                     (!activeGizmo ||
@@ -11421,6 +11716,151 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         }}
                                       />
                                     )}
+                                </React.Fragment>
+                              )}
+
+                              {isInteractionLayer && f.showLabel && f.label && (
+                                <React.Fragment>
+                                  {/* Label Position Handle */}
+                                  {f.type !== "point" &&
+                                    (!activeGizmo ||
+                                      activeGizmo.id !== f.id ||
+                                      activeGizmo.type === "label") && (() => {
+                                      let bx = px;
+                                      let by = py;
+                                      if (f.type === "vector" && points && points.length > 0) {
+                                        bx = points[0][0] / 2;
+                                        by = points[0][1] / 2;
+                                      } else if ((f.type === "line" || f.type === "polygon") && pca?.center) {
+                                        bx = pca.center[0];
+                                        by = pca.center[1];
+                                      }
+
+                                      let dx = f.labelPosition?.[0] ?? 0.3;
+                                      let dy = f.labelPosition?.[1] ?? 0.3;
+                                      if (f.labelAlignment && f.labelAlignment !== "custom") {
+                                          const r = Math.max(1.0, baseRadius * 0.8 + 0.3);
+                                          if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                          else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                          else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                          else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                          else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                      }
+
+                                      const handlePt = localToGlobal(
+                                        bx + dx,
+                                        by + dy,
+                                      );
+
+                                      return (
+                                        <MovablePoint
+                                          point={handlePt}
+                                          color="#a855f7" // Purple color for Label Handle
+                                          onMove={(pt) => {
+                                            handleGizmoMove(f.id, "label");
+                                            const baseGlobal = localToGlobal(bx, by);
+                                            const dGlobalX = pt[0] - baseGlobal[0];
+                                            const dGlobalY = pt[1] - baseGlobal[1];
+
+                                            // Invert: local to global
+                                            const theta1 = -(baseAngle + rot);
+                                            const cos1 = Math.cos(theta1);
+                                            const sin1 = Math.sin(theta1);
+                                            let x1 = dGlobalX * cos1 - dGlobalY * sin1;
+                                            let y1 = dGlobalX * sin1 + dGlobalY * cos1;
+
+                                            x1 /= sx || 1;
+                                            y1 /= sy || 1;
+
+                                            const theta2 = baseAngle;
+                                            const cos2 = Math.cos(theta2);
+                                            const sin2 = Math.sin(theta2);
+                                            const localDx = x1 * cos2 - y1 * sin2;
+                                            const localDy = x1 * sin2 + y1 * cos2;
+
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? {
+                                                      ...fn,
+                                                      labelPosition: [
+                                                        localDx,
+                                                        localDy,
+                                                      ],
+                                                      labelAlignment: "custom",
+                                                    }
+                                                  : fn,
+                                              ),
+                                            );
+                                          }}
+                                        />
+                                      );
+                                    })()}
+
+                                  {f.type === "point" &&
+                                    (!activeGizmo ||
+                                      activeGizmo.id !== f.id ||
+                                      activeGizmo.type === "label") &&
+                                    points.map((p, i) => {
+                                      let dx = f.labelPosition?.[0] ?? 0.3;
+                                      let dy = f.labelPosition?.[1] ?? 0.3;
+                                      if (f.labelAlignment && f.labelAlignment !== "custom") {
+                                          const r = 0.5;
+                                          if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                          else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                          else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                          else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                          else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                      }
+
+                                      const handlePt = localToGlobal(
+                                        p[0] + dx,
+                                        p[1] + dy,
+                                      );
+                                      return (
+                                        <MovablePoint
+                                          key={`lbl-point-${i}`}
+                                          point={handlePt}
+                                          color="#a855f7"
+                                          onMove={(pt) => {
+                                            handleGizmoMove(f.id, "label");
+                                            const baseGlobal = localToGlobal(p[0], p[1]);
+                                            const dGlobalX = pt[0] - baseGlobal[0];
+                                            const dGlobalY = pt[1] - baseGlobal[1];
+
+                                            const theta1 = -(baseAngle + rot);
+                                            const cos1 = Math.cos(theta1);
+                                            const sin1 = Math.sin(theta1);
+                                            let x1 = dGlobalX * cos1 - dGlobalY * sin1;
+                                            let y1 = dGlobalX * sin1 + dGlobalY * cos1;
+
+                                            x1 /= sx || 1;
+                                            y1 /= sy || 1;
+
+                                            const theta2 = baseAngle;
+                                            const cos2 = Math.cos(theta2);
+                                            const sin2 = Math.sin(theta2);
+                                            const localDx = x1 * cos2 - y1 * sin2;
+                                            const localDy = x1 * sin2 + y1 * cos2;
+
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? {
+                                                      ...fn,
+                                                      labelPosition: [
+                                                        localDx,
+                                                        localDy,
+                                                      ],
+                                                      labelAlignment: "custom",
+                                                    }
+                                                  : fn,
+                                              ),
+                                            );
+                                          }}
+                                        />
+                                      );
+                                    })}
                                 </React.Fragment>
                               )}
                             </React.Fragment>
