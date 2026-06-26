@@ -1,6 +1,9 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import MonacoEditor, { EditorProps } from "@monaco-editor/react";
-import { registerPyIntelliSense, runDiagnostics } from "../utils/pyIntelliSense";
+import {
+  registerPyIntelliSense,
+  runDiagnostics,
+} from "../utils/pyIntelliSense";
 
 class EditorErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode; resetTrigger?: any },
@@ -135,16 +138,6 @@ function SafeEditor(props: EditorProps) {
 
   const handleOnMount = (editor: any, monaco: any) => {
     const model = editor.getModel();
-    if (model && lang) {
-      try {
-        if (model.getLanguageId() === lang) {
-          monaco.editor.setModelLanguage(model, "plaintext");
-        }
-        monaco.editor.setModelLanguage(model, lang);
-      } catch (err) {
-        console.warn("Error setting model language on mount", err);
-      }
-    }
     if (lang === "python") {
       try {
         registerPyIntelliSense(monaco);

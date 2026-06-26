@@ -43,6 +43,7 @@ import { TodoWorkspace } from "./TodoWorkspace";
 import ImageWorkspace from "./ImageWorkspace";
 import { SearchNodeWorkspace } from "./SearchNodeWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
+import { useAssistantStore } from "../programming-assistant/stores/useAssistantStore";
 import {
   generateTypeScriptSchema,
   executeTsNode,
@@ -50,7 +51,11 @@ import {
 } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
-import { registerWorkspaceIntelliSense, syncWorkspaceModelsToMonaco } from "../utils/workspaceIntelliSense";
+import {
+  registerWorkspaceIntelliSense,
+  syncWorkspaceModelsToMonaco,
+} from "../utils/workspaceIntelliSense";
+import { ProgrammingKeyboard } from "../programming-assistant/components/ProgrammingKeyboard";
 import { getMediaType } from "./NodeRenderer";
 import FileExplorerPanel from "./FileExplorerPanel";
 import {
@@ -154,8 +159,11 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     setAppTheme,
     uploadedMediaMetadata,
   } = useStore();
+  const isAssistantEnabled = useAssistantStore((s) => s.isEnabled);
+  const setIsAssistantEnabled = useAssistantStore((s) => s.setIsEnabled);
   const [copied, setCopied] = useState(false);
   const [monaco, setMonaco] = useState<any>(null);
+  const [editorInstance, setEditorInstance] = useState<any>(null);
 
   // Active open file in the workspace
   const currentFilePath = activeExplorerFile || path;
@@ -1569,6 +1577,16 @@ declare const console: {
                       )}
                     </button>
 
+                    <button
+                      onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
+                    >
+                      <span>Programming Keyboard</span>
+                      {isAssistantEnabled && (
+                        <Check size={12} className="text-blue-500" />
+                      )}
+                    </button>
+
                     <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
                     <div className="px-3 py-1.5 font-bold text-[10px] uppercase text-slate-500 select-none">
                       Appearance
@@ -1947,6 +1965,7 @@ declare const console: {
                     beforeMount={handleEditorWillMount}
                     onMount={(editor, m) => {
                       editorRef.current = editor;
+                      setEditorInstance(editor);
                       registerWorkspaceIntelliSense(m, editor);
                       try {
                         editor.addCommand(
@@ -2160,6 +2179,15 @@ declare const console: {
                       });
                     }}
                   />
+                )}
+                {/* Programming Keyboard */}
+                {editorLanguage && (
+                  <div className="absolute bottom-0 left-0 right-0 z-50">
+                    <ProgrammingKeyboard
+                      editor={editorInstance}
+                      language={editorLanguage}
+                    />
+                  </div>
                 )}
               </div>
             </div>
