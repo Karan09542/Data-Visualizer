@@ -8,9 +8,7 @@ import {
   History,
   Star,
   Calculator,
-  Settings,
 } from "lucide-react";
-import { useInputMode, InputMode } from "./math-input/stores/useInputMode";
 
 interface MathKeyboardProps {
   onInsert: (insertStr: string, isTemplate?: boolean) => void;
@@ -171,8 +169,6 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
   variables = [],
 }) => {
   const [activeTab, setActiveTab] = useState(CATEGORIES[0].id);
-  const [showSettings, setShowSettings] = useState(false);
-  const { inputMode, setInputMode } = useInputMode();
   const [recent, setRecent] = useState<
     {
       label: React.ReactNode;
@@ -272,52 +268,12 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-1.5 rounded-md transition-colors ${showSettings ? "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-            title="Keyboard Settings"
-          >
-            <Settings size={16} />
-          </button>
-          <button
             onClick={onClose}
             className="p-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
           >
             <X size={16} />
           </button>
         </div>
-
-        {showSettings && (
-          <div className="absolute right-2 top-[calc(100%+4px)] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-2 z-[100001] w-48 text-sm text-slate-800 dark:text-slate-200 flex flex-col gap-2">
-            <div className="font-semibold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1 border-b border-slate-100 dark:border-slate-700 pb-1 mb-1">
-              Virtual Input Mode
-            </div>
-            {(["auto", "virtual", "native"] as InputMode[]).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => {
-                  setInputMode(mode);
-                  setShowSettings(false);
-                }}
-                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded text-left"
-              >
-                <div
-                  className={`w-3 h-3 rounded-full border border-slate-300 dark:border-slate-500 flex items-center justify-center ${inputMode === mode ? "border-blue-500" : ""}`}
-                >
-                  {inputMode === mode && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                  )}
-                </div>
-                <span className="capitalize">
-                  {mode === "auto"
-                    ? "Automatic (Touch)"
-                    : mode === "virtual"
-                      ? "Always On (Virtual)"
-                      : "Always Off (Native)"}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Keyboard Grid */}

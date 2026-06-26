@@ -44,7 +44,6 @@ import {
   Calculator,
 } from "lucide-react";
 import { MathKeyboard } from "./MathKeyboard";
-import { useInputMode } from "./math-input/stores/useInputMode";
 import { CaretOverlay } from "./math-input/components/CaretOverlay";
 import {
   Mafs,
@@ -798,16 +797,15 @@ const EquationInput = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const appTheme = useStore((state) => state.appTheme);
   const [copiedType, setCopiedType] = useState<string | null>(null);
-  const { inputMode, isTouchDevice } = useInputMode();
-  const effectiveMode =
-    inputMode === "auto" ? (isTouchDevice ? "virtual" : "native") : inputMode;
+
+  const effectiveMode = showKeyboard ? "virtual" : "native";
 
   useEffect(() => {
-    // Basic touch device detection
-    if (typeof window !== "undefined" && "ontouchstart" in window) {
-      useInputMode.getState().setIsTouchDevice(true);
+    // Keep focus when switching between native and virtual modes
+    if (isFocused && inputRef.current) {
+      inputRef.current.focus();
     }
-  }, []);
+  }, [effectiveMode, isFocused, inputRef]);
 
   const handleCopy = (type: string, text: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1286,16 +1284,7 @@ const EquationInput = ({
             <button
               title="Visual Math Composer"
               className={`absolute right-1 top-1/2 -translate-y-1/2 z-30 p-1.5 md:hidden rounded transition-colors shrink-0 flex items-center justify-center ${showKeyboard ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:text-slate-300 dark:hover:bg-slate-700 opacity-60 hover:opacity-100"}`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onToggleKeyboard();
-              }}
-              onClick={(e) => {
+              onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 onToggleKeyboard();
