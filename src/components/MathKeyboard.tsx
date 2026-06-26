@@ -8,7 +8,9 @@ import {
   History,
   Star,
   Calculator,
+  Settings,
 } from "lucide-react";
+import { useInputMode, InputMode } from "./math-input/stores/useInputMode";
 
 interface MathKeyboardProps {
   onInsert: (insertStr: string, isTemplate?: boolean) => void;
@@ -105,9 +107,24 @@ const SYMBOLS: Record<
     { label: "atan", insert: "atan()", template: true, variant: "function" },
   ],
   calculus: [
-    { label: "d/dx", insert: "derivative(, x)", template: true, variant: "function" },
-    { label: "∫", insert: "integral(, x)", template: true, variant: "function" },
-    { label: "lim", insert: "limit(, x, )", template: true, variant: "function" },
+    {
+      label: "d/dx",
+      insert: "derivative(, x)",
+      template: true,
+      variant: "function",
+    },
+    {
+      label: "∫",
+      insert: "integral(, x)",
+      template: true,
+      variant: "function",
+    },
+    {
+      label: "lim",
+      insert: "limit(, x, )",
+      template: true,
+      variant: "function",
+    },
     { label: "Σ", insert: "sum(, )", template: true, variant: "function" },
     { label: "Π", insert: "prod(, )", template: true, variant: "function" },
     { label: "det", insert: "det()", template: true, variant: "function" },
@@ -154,7 +171,16 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
   variables = [],
 }) => {
   const [activeTab, setActiveTab] = useState(CATEGORIES[0].id);
-  const [recent, setRecent] = useState<{ label: React.ReactNode; insert: string; template?: boolean; variant?: string }[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const { inputMode, setInputMode } = useInputMode();
+  const [recent, setRecent] = useState<
+    {
+      label: React.ReactNode;
+      insert: string;
+      template?: boolean;
+      variant?: string;
+    }[]
+  >([]);
 
   useEffect(() => {
     try {
@@ -169,7 +195,7 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
 
   const handleInsert = (sym: any) => {
     onInsert(sym.insert, sym.template);
-    
+
     // Add to recent
     setRecent((prev) => {
       const filtered = prev.filter((r) => r.insert !== sym.insert);
@@ -187,9 +213,8 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
     variant: "variable",
   }));
 
-  const activeSymbols = activeTab === "common" 
-    ? [...SYMBOLS.common]
-    : SYMBOLS[activeTab] || [];
+  const activeSymbols =
+    activeTab === "common" ? [...SYMBOLS.common] : SYMBOLS[activeTab] || [];
 
   return (
     <div
@@ -200,7 +225,9 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
       {/* Quick Variables Bar (if any) */}
       {dynamicVariables.length > 0 && (
         <div className="flex items-center px-2 py-1 gap-1.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/50 overflow-x-auto custom-scrollbar shrink-0">
-          <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider pr-1 shrink-0">Vars</span>
+          <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider pr-1 shrink-0">
+            Vars
+          </span>
           {dynamicVariables.map((v, i) => (
             <button
               key={i}
@@ -214,7 +241,7 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
       )}
 
       {/* Header / Tabs */}
-      <div className="flex items-center justify-between p-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b1120] shrink-0">
+      <div className="flex items-center justify-between p-1.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b1120] shrink-0 relative">
         <div className="flex flex-1 overflow-x-auto custom-scrollbar gap-1 mr-2 px-1">
           {CATEGORIES.map((cat) => {
             const Icon = cat.icon;
@@ -228,29 +255,81 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
                     : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
-                {Icon && <Icon size={14} className={activeTab === cat.id ? "text-blue-600 dark:text-blue-400" : "opacity-60"} />}
+                {Icon && (
+                  <Icon
+                    size={14}
+                    className={
+                      activeTab === cat.id
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "opacity-60"
+                    }
+                  />
+                )}
                 {cat.label}
               </button>
             );
           })}
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors shrink-0"
-        >
-          <X size={16} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-1.5 rounded-md transition-colors ${showSettings ? "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200" : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+            title="Keyboard Settings"
+          >
+            <Settings size={16} />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {showSettings && (
+          <div className="absolute right-2 top-[calc(100%+4px)] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-2 z-[100001] w-48 text-sm text-slate-800 dark:text-slate-200 flex flex-col gap-2">
+            <div className="font-semibold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1 border-b border-slate-100 dark:border-slate-700 pb-1 mb-1">
+              Virtual Input Mode
+            </div>
+            {(["auto", "virtual", "native"] as InputMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setInputMode(mode);
+                  setShowSettings(false);
+                }}
+                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700/50 rounded text-left"
+              >
+                <div
+                  className={`w-3 h-3 rounded-full border border-slate-300 dark:border-slate-500 flex items-center justify-center ${inputMode === mode ? "border-blue-500" : ""}`}
+                >
+                  {inputMode === mode && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  )}
+                </div>
+                <span className="capitalize">
+                  {mode === "auto"
+                    ? "Automatic (Touch)"
+                    : mode === "virtual"
+                      ? "Always On (Virtual)"
+                      : "Always Off (Native)"}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Keyboard Grid */}
       <div className="p-1 md:p-1.5 bg-slate-100/50 dark:bg-[#161b22]/50 flex-1 overflow-y-auto min-h-[150px]">
-        
         {/* Recent Section */}
         {recent.length > 0 && activeTab === "common" && (
           <div className="mb-2">
             <div className="flex items-center gap-1.5 mb-1.5 px-1 opacity-60">
               <History size={12} className="text-slate-500" />
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">Recent</span>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
+                Recent
+              </span>
             </div>
             <div className="flex gap-1.5 overflow-x-auto custom-scrollbar pb-1">
               {recent.map((sym, idx) => (
@@ -266,7 +345,9 @@ export const MathKeyboard: React.FC<MathKeyboardProps> = ({
           </div>
         )}
 
-        <div className={`grid gap-1 md:gap-1.5 ${activeTab === 'common' ? 'grid-cols-5' : 'grid-cols-4 md:grid-cols-6'}`}>
+        <div
+          className={`grid gap-1 md:gap-1.5 ${activeTab === "common" ? "grid-cols-5" : "grid-cols-4 md:grid-cols-6"}`}
+        >
           {activeSymbols.map((sym, idx) => (
             <button
               key={idx}

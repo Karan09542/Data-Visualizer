@@ -44,6 +44,8 @@ import {
   Calculator,
 } from "lucide-react";
 import { MathKeyboard } from "./MathKeyboard";
+import { useInputMode } from "./math-input/stores/useInputMode";
+import { CaretOverlay } from "./math-input/components/CaretOverlay";
 import {
   Mafs,
   Coordinates,
@@ -796,6 +798,16 @@ const EquationInput = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const appTheme = useStore((state) => state.appTheme);
   const [copiedType, setCopiedType] = useState<string | null>(null);
+  const { inputMode, isTouchDevice } = useInputMode();
+  const effectiveMode =
+    inputMode === "auto" ? (isTouchDevice ? "virtual" : "native") : inputMode;
+
+  useEffect(() => {
+    // Basic touch device detection
+    if (typeof window !== "undefined" && "ontouchstart" in window) {
+      useInputMode.getState().setIsTouchDevice(true);
+    }
+  }, []);
 
   const handleCopy = (type: string, text: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -983,7 +995,9 @@ const EquationInput = ({
     }, 0);
   };
 
-  const handleKeyboardAction = (action: "enter" | "undo" | "redo" | "space") => {
+  const handleKeyboardAction = (
+    action: "enter" | "undo" | "redo" | "space",
+  ) => {
     if (action === "space") {
       handleKeyboardInsert(" ");
     } else if (action === "enter" && onAddEnter) {
@@ -1220,26 +1234,53 @@ const EquationInput = ({
           <div className="absolute inset-0 px-2 py-1.5 pointer-events-none font-mono text-sm whitespace-pre-wrap break-all z-0">
             {getColoredText()}
           </div>
-          <textarea
-            ref={inputRef}
-            value={value}
-            onChange={(e) => {
-              onChange(e.target.value);
-              setCursorPos(e.target.selectionStart || 0);
-            }}
-            onSelect={(e) => setCursorPos(e.currentTarget.selectionStart || 0)}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => {
-              setTimeout(() => setIsFocused(false), 200);
-              if (onBlur) onBlur();
-            }}
-            onKeyDown={handleKeyDown}
-            className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
-            placeholder={isFocused ? "e.g. a * sin(b*x + c)" : ""}
-            spellCheck={false}
-            autoComplete="off"
-            style={{ overflow: "hidden" }}
-          />
+
+          {effectiveMode === "virtual" && (
+            <CaretOverlay
+              value={value}
+              cursorPos={cursorPos}
+              isFocused={isFocused}
+              getColoredText={getColoredText}
+            />
+          )}
+
+          {effectiveMode === "native" ? (
+            <textarea
+              ref={inputRef}
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value);
+                setCursorPos(e.target.selectionStart || 0);
+              }}
+              onSelect={(e) =>
+                setCursorPos(e.currentTarget.selectionStart || 0)
+              }
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => {
+                setTimeout(() => setIsFocused(false), 200);
+                if (onBlur) onBlur();
+              }}
+              onKeyDown={handleKeyDown}
+              className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
+              placeholder={isFocused ? "e.g. a * sin(b*x + c)" : ""}
+              spellCheck={false}
+              autoComplete="off"
+              style={{ overflow: "hidden" }}
+            />
+          ) : (
+            <div
+              ref={inputRef as any}
+              tabIndex={0}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => {
+                setTimeout(() => setIsFocused(false), 200);
+                if (onBlur) onBlur();
+              }}
+              onKeyDown={handleKeyDown}
+              className="absolute inset-0 w-full h-full bg-transparent outline-none caret-transparent font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
+              style={{ overflow: "hidden" }}
+            />
+          )}
 
           {(isFocused || forceEditMode) && onToggleKeyboard && (
             <button
