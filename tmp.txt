@@ -1,19 +1,85 @@
-50:  usePaneContext,
-766:  useEffect(() => {
-1287:  useLayoutEffect(() => {
-1344:  useEffect(() => {
-1995:  useEffect(() => {
-2025:    useState<HTMLElement | null>(null);
-2039:  useEffect(() => {
-2264:  useEffect(() => {
-2372:  useEffect(() => { fnsRefUpdate: { functionsRef.current = functions; } }, [functions]);
-2373:  useEffect(() => { varsRefUpdate: { variablesRef.current = variables; } }, [variables]);
-2374:  useEffect(() => { grpsRefUpdate: { groupsRef.current = groups; } }, [groups]);
-2375:  useEffect(() => { 
-2405:  useEffect(() => {
-2450:  useEffect(() => {
-2493:  useEffect(() => {
-2513:            useStore.getState().updateNodeValue(data.path, newValStr);
-2614:  useEffect(() => {
-2634:  useEffect(() => {
-2734:  useEffect(() => {
+2:  useState,
+230:  const [formData, setFormData] = useState<MathVariable>(() => {
+249:  const [groupMode, setGroupMode] = useState<"select" | "new">("select");
+250:  const [newGroupName, setNewGroupName] = useState("");
+251:  const [error, setError] = useState("");
+791:  const [isFocused, setIsFocused] = useState(false);
+792:  const [cursorPos, setCursorPos] = useState(0);
+793:  const [suggestions, setSuggestions] = useState<any[]>([]);
+794:  const [selIndex, setSelIndex] = useState(0);
+795:  const [inputRect, setInputRect] = useState<DOMRect | null>(null);
+1397:  const [copied, setCopied] = useState(false);
+1452:  const [coords, setCoords] = useState<{ top: number; left: number }>({
+1601:  const [isFocused, setIsFocused] = useState(false);
+3039:  const [isFullscreen, setIsFullscreen] = useState(false);
+3040:  const [isPanelVisible, setIsPanelVisible] = useState(true);
+3041:  const [isShiftPressed, setIsShiftPressed] = useState(false);
+3043:  const [activeGizmo, setActiveGizmo] = useState<{
+3085:  const [viewResetKey, setViewResetKey] = useState(0);
+3086:  const [showGridControls, setShowGridControls] = useState(false);
+3087:  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+3088:  const [showHelp, setShowHelp] = useState(false);
+3089:  const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(
+3092:  const [activeVisualEditorId, setActiveVisualEditorId] = useState<
+3095:  const [activeExample, setActiveExample] = useState<string | null>(null);
+3096:  const [activeColorPickerFnId, setActiveColorPickerFnId] = useState<
+3099:  const [activeColorPickerType, setActiveColorPickerType] = useState<
+3103:    useState<HTMLElement | null>(null);
+3104:  const [expandedSettingsFnId, setExpandedSettingsFnId] = useState<
+3108:  const [savingFormulaFnId, setSavingFormulaFnId] = useState<string | null>(
+3111:  const [formulaName, setFormulaName] = useState("");
+3112:  const [formulaDesc, setFormulaDesc] = useState("");
+3113:  const [previewCopied, setPreviewCopied] = useState(false);
+3114:  const [showPreviewLatex, setShowPreviewLatex] = useState(true);
+3115:  const [savedFormulas, setSavedFormulas] = useState<any[]>([]);
+3134:  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+3135:  const [draggedGroup, setDraggedGroup] = useState<
+3138:  const [dragEnabledFormulaId, setDragEnabledFormulaId] = useState<
+3141:  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+3142:  const [hoveredGroup, setHoveredGroup] = useState<
+3145:  const [dragOverPosition, setDragOverPosition] = useState<
+3148:  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
+3149:  const [copiedFormulaId, setCopiedFormulaId] = useState<number | null>(null);
+3150:  const [copiedAction, setCopiedAction] = useState<{
+3154:  const [copiedVarId, setCopiedVarId] = useState<string | null>(null);
+3155:  const [formulaSearchQuery, setFormulaSearchQuery] = useState("");
+3156:  const [editingFormulaFieldId, setEditingFormulaFieldId] = useState<
+3159:  const [editingFormulaExpr, setEditingFormulaExpr] = useState("");
+3164:  const [functions, setFunctions] = useState<MathFunction[]>(() => {
+3195:  const [variables, setVariables] = useState<MathVariable[]>(() => {
+3248:  const [groups, setGroups] = useState<VariableGroup[]>(() => {
+3266:  const [searchVar, setSearchVar] = useState("");
+3267:  const [showSearch, setShowSearch] = useState(false);
+3268:  const [hoveredVar, setHoveredVar] = useState<string | null>(null);
+3269:  const [editingVar, setEditingVar] = useState<MathVariable | null>(null);
+3270:  const [showVarEditor, setShowVarEditor] = useState(false);
+3271:  const [missingVars, setMissingVars] = useState<string[]>([]);
+3274:  const [draggedFunctionId, setDraggedFunctionId] = useState<string | null>(
+3277:  const [dragOverFunctionId, setDragOverFunctionId] = useState<string | null>(
+3280:  const [dragOverFunctionPosition, setDragOverFunctionPosition] = useState<
+3283:  const [canDragFunctionId, setCanDragFunctionId] = useState<string | null>(
+3287:  const [draggedVariableId, setDraggedVariableId] = useState<string | null>(
+3290:  const [dragOverVariableId, setDragOverVariableId] = useState<string | null>(
+3293:  const [dragOverVariablePosition, setDragOverVariablePosition] = useState<
+3296:  const [canDragVariableId, setCanDragVariableId] = useState<string | null>(
+3348:  const [sidebarWidth, setSidebarWidth] = useState(320);
+3349:  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+3384:  const [time, setTime] = useState(0);
+3385:  const [isPlaying, setIsPlaying] = useState(true);
+3386:  const [timeMode, setTimeMode] = useState<"loop" | "bounce" | "continuous">(
+3389:  const [timeBounds, setTimeBounds] = useState({
+3395:  const [showTimeSettings, setShowTimeSettings] = useState(false);
+3396:  const [tracePoints, setTracePoints] = useState(false);
+3447:  const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
+3450:  const [axisFilter, setAxisFilter] = useState<
+3465:  const [axisStepStr, setAxisStepStr] = useState<string>(
+3476:  const [customAxisFilter, setCustomAxisFilter] = useState(
+3479:  const [customAxisMapping, setCustomAxisMapping] = useState(
+3482:  const [axisPrefix, setAxisPrefix] = useState(initialGridSettings.axisPrefix);
+3483:  const [axisSuffix, setAxisSuffix] = useState(initialGridSettings.axisSuffix);
+3484:  const [axisDecimals, setAxisDecimals] = useState(
+3487:  const [axisThousandsSep, setAxisThousandsSep] = useState(
+3491:    useState(false);
+3492:  const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
+3493:  const [samplingDepth, setSamplingDepth] = useState(
+3496:  const [gridSubdivisions, setGridSubdivisions] = useState(

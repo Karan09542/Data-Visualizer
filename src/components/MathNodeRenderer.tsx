@@ -3019,6 +3019,137 @@ const decoupleGeometry = (f: MathFunction, baseScope: any) => {
   return { newExpr, changed };
 };
 
+const parseAndAdjustForCompile = (exprStr: string): any => {
+  const node = mathjs.parse(exprStr);
+  const transformNode = (n: any): any => {
+    const mapped = n.map(transformNode);
+    if (mapped.type === "AccessorNode" || mapped.isAccessorNode) {
+      return new (mathjs as any).FunctionNode("indexHelper", [
+        mapped.object,
+        ...mapped.index.dimensions,
+      ]);
+    }
+    return mapped;
+  };
+  return transformNode(node);
+};
+
+const resolveNestedValue = (val: any): any => {
+  if (!val) return val;
+  if (typeof val.toArray === "function") {
+    val = val.toArray();
+  }
+  if (Array.isArray(val)) {
+    return val.map((item) => resolveNestedValue(item));
+  }
+  return val;
+};
+
+const indexHelper = (obj: any, ...indices: any[]) => {
+  let current = obj;
+  if (current && typeof current.toArray === "function") {
+    current = current.toArray();
+  }
+  current = resolveNestedValue(current);
+
+  for (let idx of indices) {
+    if (idx && typeof idx.toArray === "function") {
+      idx = idx.toArray();
+    }
+    if (Array.isArray(current)) {
+      const numIdx = Number(idx);
+      if (!isNaN(numIdx)) {
+        current = current[numIdx];
+      } else {
+        return undefined;
+      }
+    } else if (current && typeof current === "object") {
+      current = current[idx];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+};
+
+const extractPointsFromValue = (val: any): [number, number][] => {
+  if (val == null) return [];
+
+  // If it is a coordinate point [x, y]
+  if (Array.isArray(val) && val.length === 2 && typeof val[0] === "number" && typeof val[1] === "number") {
+    return [[Number(val[0]), Number(val[1])]];
+  }
+
+  // If it's an array of elements (which could be points, lines, polygons, etc.)
+  if (Array.isArray(val)) {
+    const points: [number, number][] = [];
+    for (const item of val) {
+      points.push(...extractPointsFromValue(item));
+    }
+    return points;
+  }
+
+  return [];
+};
+
+const deduplicatePoints = (pts: [number, number][]): [number, number][] => {
+  const result: [number, number][] = [];
+  for (const p of pts) {
+    if (result.length === 0) {
+      result.push(p);
+    } else {
+      const last = result[result.length - 1];
+      const isDuplicate = Math.abs(last[0] - p[0]) < 1e-5 && Math.abs(last[1] - p[1]) < 1e-5;
+      if (!isDuplicate) {
+        result.push(p);
+      }
+    }
+  }
+  if (result.length > 2) {
+    const first = result[0];
+    const last = result[result.length - 1];
+    if (Math.abs(first[0] - last[0]) < 1e-5 && Math.abs(first[1] - last[1]) < 1e-5) {
+      result.pop();
+    }
+  }
+  return result;
+};
+
+const formatMathError = (errMessage: string): string => {
+  if (!errMessage) return errMessage;
+  const match = errMessage.match(/Undefined symbol\s+([a-zA-Z0-9_]+)/i) || 
+                errMessage.match(/Symbol\s+([a-zA-Z0-9_]+)\s+is undefined/i);
+  if (match) {
+    return `Unknown geometry reference "${match[1]}".`;
+  }
+  return errMessage;
+};
+
+const resolveGeometryPoints = (
+  f: MathFunction,
+  baseScope: any,
+): { points: [number, number][]; error?: string } => {
+  if (!f.compiled) {
+    return { points: [], error: f.error };
+  }
+
+  try {
+    const evaluated = f.compiled.evaluate(baseScope);
+    const rawData = resolveNestedValue(evaluated);
+    const points = extractPointsFromValue(rawData);
+    const cleanedPoints = deduplicatePoints(points);
+
+    if (cleanedPoints.length === 0) {
+      return { points: [], error: "No valid geometry coordinates found." };
+    }
+
+    return { points: cleanedPoints };
+  } catch (e: any) {
+    const formattedError = formatMathError(e.message || String(e));
+    return { points: [], error: formattedError };
+  }
+};
+
 const COLORS = [
   "#3b82f6",
   "#ef4444",
@@ -3931,6 +4062,23 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     const varsToAdd = new Set<string>();
     const assignedVars = new Set<string>();
 
+    const tempBaseScope = variables.reduce(
+      (acc, v) => ({ ...acc, [v.name]: v.value }),
+      {} as any,
+    );
+    tempBaseScope.t = time;
+    tempBaseScope.time = time;
+    tempBaseScope.ln = mathjs.log;
+    tempBaseScope.log10 = mathjs.log10;
+    tempBaseScope.theta = 0;
+    tempBaseScope.indexHelper = indexHelper;
+
+    // Register our special functions
+    tempBaseScope.Line = (...args: any[]) => args;
+    tempBaseScope.Vector = (...args: any[]) => args;
+    tempBaseScope.Polygon = (...args: any[]) => args;
+    tempBaseScope.Point = (...args: any[]) => args;
+
     const newFunctions = functions.map((f) => {
       try {
         if (f.type === "implicit" || f.type === "inequality") {
@@ -3948,8 +4096,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           const lhsStr = parts[0].trim();
           const rhsStr = parts[1] ? parts[1].trim() : "0";
 
-          const lhsNode = mathjs.parse(lhsStr);
-          const rhsNode = mathjs.parse(rhsStr);
+          const lhsNode = parseAndAdjustForCompile(lhsStr);
+          const rhsNode = parseAndAdjustForCompile(rhsStr);
           const compiledLHS = lhsNode.compile();
           const compiledRHS = rhsNode.compile();
 
@@ -3961,7 +4109,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             node.traverse((n: any) => {
               if (
                 n.isSymbolNode &&
-                !["x", "y", "t", "time", "theta", "ln", "log10"].includes(
+                !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point"].includes(
                   n.name,
                 ) &&
                 !mathjs[n.name as keyof typeof mathjs] &&
@@ -3974,6 +4122,25 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           extractSymbols(lhsNode);
           extractSymbols(rhsNode);
 
+          // Verify if there are evaluation errors (e.g. undefined references)
+          try {
+            const fScope = Object.create(tempBaseScope);
+            fScope.x = 0;
+            fScope.y = 0;
+            compiledLHS.evaluate(fScope);
+            compiledRHS.evaluate(fScope);
+          } catch (evalErr: any) {
+            const formattedError = formatMathError(evalErr.message || String(evalErr));
+            return {
+              ...f,
+              compiled: compiledLHS,
+              compiled2: compiledRHS,
+              expr2: op,
+              operator: op,
+              error: formattedError,
+            };
+          }
+
           return {
             ...f,
             compiled: compiledLHS,
@@ -3984,7 +4151,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           };
         }
 
-        const node = mathjs.parse(f.expr);
+        const node = parseAndAdjustForCompile(f.expr);
         const compiled = node.compile();
 
         // Add object label/name to assigned variables to prevent missing var prompts
@@ -4010,7 +4177,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         node.traverse((n: any) => {
           if (
             n.isSymbolNode &&
-            !["x", "y", "t", "time", "theta", "ln", "log10"].includes(n.name) &&
+            !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point"].includes(n.name) &&
             !mathjs[n.name as keyof typeof mathjs] &&
             !assignedVars.has(n.name)
           ) {
@@ -4018,9 +4185,40 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           }
         });
 
-        return { ...f, compiled, error: undefined };
+        // Test evaluate sequentially to detect any errors and accumulate references
+        let error: string | undefined = undefined;
+        try {
+          const fTime = f.hasCustomTimeline
+            ? f.time !== undefined
+              ? f.time
+              : 0
+            : time;
+          const fScope = Object.create(tempBaseScope);
+          fScope.t = fTime;
+          fScope.time = time;
+          fScope.x = 0;
+          fScope.y = 0;
+
+          const val = compiled.evaluate(fScope);
+
+          // Propagate variables back to tempBaseScope
+          for (const key of Object.keys(fScope)) {
+            if (key !== "t" && key !== "time" && key !== "x" && key !== "y") {
+              tempBaseScope[key] = fScope[key];
+            }
+          }
+
+          const refName = f.label || f.name;
+          if (refName) {
+            tempBaseScope[refName] = val;
+          }
+        } catch (evalErr: any) {
+          error = formatMathError(evalErr.message || String(evalErr));
+        }
+
+        return { ...f, compiled, error };
       } catch (e: any) {
-        return { ...f, compiled: undefined, error: e.message };
+        return { ...f, compiled: undefined, error: formatMathError(e.message || String(e)) };
       }
     });
 
@@ -4164,6 +4362,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   baseScope.time = time;
   baseScope.ln = mathjs.log;
   baseScope.log10 = mathjs.log10;
+  baseScope.theta = 0;
+  baseScope.indexHelper = indexHelper;
+
+  // Expose geometry functions in baseScope
+  baseScope.Line = (...args: any[]) => args;
+  baseScope.Vector = (...args: any[]) => args;
+  baseScope.Polygon = (...args: any[]) => args;
+  baseScope.Point = (...args: any[]) => args;
 
   // Expose individual timelines as pre-defined variables in the base scope (e.g., t_1, t_2, t_f)
   functions.forEach((f, idx) => {
@@ -4194,8 +4400,19 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             ? f.time
             : 0
           : time;
-        const fScope = { ...baseScope, t: fTime, time: time };
+        const fScope = Object.create(baseScope);
+        fScope.t = fTime;
+        fScope.time = time;
+        
         const val = f.compiled.evaluate(fScope);
+        
+        // Propagate variables defined in fScope to baseScope
+        for (const key of Object.keys(fScope)) {
+          if (key !== "t" && key !== "time" && key !== "x" && key !== "y") {
+            baseScope[key] = fScope[key];
+          }
+        }
+
         const refName = f.label || f.name;
         if (refName) {
           baseScope[refName] = val;
@@ -9727,45 +9944,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         let points: [number, number][] = [];
 
                         if (isPointBased) {
-                          try {
-                            const evaluated = f.compiled.evaluate(baseScope);
-
-                            // Handle mathjs Matrix or JS Array
-                            const data =
-                              evaluated && evaluated.toArray
-                                ? evaluated.toArray()
-                                : evaluated;
-
-                            if (Array.isArray(data)) {
-                              if (
-                                data.length === 2 &&
-                                typeof data[0] === "number"
-                              ) {
-                                points = [[Number(data[0]), Number(data[1])]];
-                              } else if (
-                                data.length > 0 &&
-                                Array.isArray(data[0])
-                              ) {
-                                points = data.map((p) => [
-                                  (p as any)[0] || 0,
-                                  (p as any)[1] || 0,
-                                ]);
-                              }
-                            }
-
-                            // Filter out valid numbers only to prevent SVG crashes
-                            points = points.filter(
-                              (p) =>
-                                !isNaN(p[0]) &&
-                                !isNaN(p[1]) &&
-                                isFinite(p[0]) &&
-                                isFinite(p[1]),
-                            );
-
-                            if (points.length === 0) return null;
-                          } catch {
-                            return null;
-                          }
+                          const res = resolveGeometryPoints(f, baseScope);
+                          points = res.points.filter(
+                            (p) =>
+                              !isNaN(p[0]) &&
+                              !isNaN(p[1]) &&
+                              isFinite(p[0]) &&
+                              isFinite(p[1]),
+                          );
+                          if (points.length === 0) return null;
                         } else if (f.isDraggable || f.isTransformable) {
                           const cacheId = f.id + f.expr;
                           if (geomCacheRef.current[cacheId]) {
@@ -9965,9 +10152,29 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           const applyForwardTransform = (
                             pt: [number, number],
                           ): [number, number] => {
-                            if (isNaN(pt[0]) || isNaN(pt[1])) return pt;
-                            let lx = pt[0] - px;
-                            let ly = pt[1] - py;
+                            const xRangeWidth = xRange[1] - xRange[0];
+                            const yRangeHeight = yRange[1] - yRange[0];
+
+                            const safeMinX = xRange[0] - Math.max(100, xRangeWidth * 10);
+                            const safeMaxX = xRange[1] + Math.max(100, xRangeWidth * 10);
+                            const safeMinY = yRange[0] - Math.max(100, yRangeHeight * 10);
+                            const safeMaxY = yRange[1] + Math.max(100, yRangeHeight * 10);
+
+                            let inX = pt[0];
+                            let inY = pt[1];
+
+                            if (!Number.isFinite(inX) || isNaN(inX)) {
+                              inX = safeMinX;
+                            }
+                            if (!Number.isFinite(inY) || isNaN(inY)) {
+                              inY = safeMinY;
+                            }
+
+                            inX = Math.max(safeMinX, Math.min(safeMaxX, inX));
+                            inY = Math.max(safeMinY, Math.min(safeMaxY, inY));
+
+                            let lx = inX - px;
+                            let ly = inY - py;
 
                             let x1 =
                               lx * Math.cos(-baseAngle) -
@@ -9986,7 +10193,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                               x1 * Math.sin(rot + baseAngle) +
                               y1 * Math.cos(rot + baseAngle);
 
-                            return [x2 + px + tx, y2 + py + ty];
+                            let outX = x2 + px + tx;
+                            let outY = y2 + py + ty;
+
+                            if (!Number.isFinite(outX) || isNaN(outX)) {
+                              outX = safeMinX;
+                            }
+                            if (!Number.isFinite(outY) || isNaN(outY)) {
+                              outY = safeMinY;
+                            }
+
+                            outX = Math.max(safeMinX, Math.min(safeMaxX, outX));
+                            outY = Math.max(safeMinY, Math.min(safeMaxY, outY));
+
+                            return [outX, outY];
                           };
 
                           return (
@@ -10124,20 +10344,39 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 })}
                                               {!isInteractionLayer &&
                                                 f.type === "vector" &&
-                                                points.map((p, i) => (
-                                                  <Vector
-                                                    key={i}
-                                                    tail={[0, 0]}
-                                                    tip={p}
-                                                    color={f.color}
-                                                    weight={
-                                                      f.outlineWidth !==
-                                                      undefined
-                                                        ? f.outlineWidth
-                                                        : 3
-                                                    }
-                                                  />
-                                                ))}
+                                                points.map((p, i) => {
+                                                  const customDash = getStrokeDasharray(f.lineStyle);
+                                                  const isDashed = f.lineStyle && f.lineStyle !== "solid";
+                                                  const vectorEl = (
+                                                    <Vector
+                                                      key={i}
+                                                      tail={[0, 0]}
+                                                      tip={p}
+                                                      color={f.color}
+                                                      style={isDashed ? "dashed" : "solid"}
+                                                      weight={
+                                                        f.outlineWidth !==
+                                                        undefined
+                                                          ? f.outlineWidth
+                                                          : 3
+                                                      }
+                                                    />
+                                                  );
+                                                  return isDashed ? (
+                                                    <g
+                                                      key={i}
+                                                      style={
+                                                        {
+                                                          "--mafs-line-stroke-dash-style": customDash,
+                                                        } as React.CSSProperties
+                                                      }
+                                                    >
+                                                      {vectorEl}
+                                                    </g>
+                                                  ) : (
+                                                    vectorEl
+                                                  );
+                                                })}
                                               {!isInteractionLayer &&
                                                 f.type === "polygon" &&
                                                 points.length > 2 && (
@@ -10205,12 +10444,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                               : undefined,
                                                           stroke: f.color,
                                                           fill:
-                                                            f.fillColor !==
-                                                              undefined &&
-                                                            f.fillPattern !==
-                                                              "solid"
-                                                              ? `url(#curve-pattern-${f.id})`
-                                                              : undefined,
+                                                            f.fillPattern === "solid"
+                                                              ? (f.fillColor || f.color)
+                                                              : `url(#curve-pattern-${f.id})`,
                                                         },
                                                       }}
                                                     />
@@ -10218,20 +10454,37 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )}
                                               {!isInteractionLayer &&
                                                 f.type === "line" &&
-                                                points.length >= 2 && (
-                                                  <Line.Segment
-                                                    point1={points[0]}
-                                                    point2={points[1]}
-                                                    color={f.color}
-                                                    style="solid"
-                                                    weight={
-                                                      f.outlineWidth !==
-                                                      undefined
-                                                        ? f.outlineWidth
-                                                        : 3
-                                                    }
-                                                  />
-                                                )}
+                                                points.length >= 2 && (() => {
+                                                  const customDash = getStrokeDasharray(f.lineStyle);
+                                                  const isDashed = f.lineStyle && f.lineStyle !== "solid";
+                                                  const lineEl = (
+                                                    <Line.Segment
+                                                      point1={points[0]}
+                                                      point2={points[1]}
+                                                      color={f.color}
+                                                      style={isDashed ? "dashed" : "solid"}
+                                                      weight={
+                                                        f.outlineWidth !==
+                                                        undefined
+                                                          ? f.outlineWidth
+                                                          : 3
+                                                      }
+                                                    />
+                                                  );
+                                                  return isDashed ? (
+                                                    <g
+                                                      style={
+                                                        {
+                                                          "--mafs-line-stroke-dash-style": customDash,
+                                                        } as React.CSSProperties
+                                                      }
+                                                    >
+                                                      {lineEl}
+                                                    </g>
+                                                  ) : (
+                                                    lineEl
+                                                  );
+                                                })()}
                                             </Transform>
                                           </Transform>
                                         </Transform>
@@ -10670,7 +10923,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         1,
                                         samplingDepth,
                                       )}
-                                      t={[-50, 50]}
+                                      t={[
+                                        xRange[0] - Math.max(50, (xRange[1] - xRange[0]) * 2),
+                                        xRange[1] + Math.max(50, (xRange[1] - xRange[0]) * 2),
+                                      ]}
                                       xy={(t) => {
                                         try {
                                           const res = f.compiled.evaluate({
@@ -10678,13 +10934,22 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             x: t,
                                           });
                                           if (
+                                            res &&
                                             typeof res === "object" &&
                                             res.im !== undefined
-                                          )
-                                            return applyForwardTransform([
-                                              t,
-                                              NaN,
-                                            ]);
+                                          ) {
+                                            if (Math.abs(res.im) < 1e-9) {
+                                              return applyForwardTransform([
+                                                t,
+                                                Number(res.re),
+                                              ]);
+                                            } else {
+                                              return applyForwardTransform([
+                                                t,
+                                                NaN,
+                                              ]);
+                                            }
+                                          }
                                           return applyForwardTransform([
                                             t,
                                             Number(res),
@@ -11271,29 +11536,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           }
                         }
                       } else if (f.type === "point" || f.type === "vector") {
-                        const evaluated = f.compiled.evaluate(baseScopeShadow);
-                        const data =
-                          evaluated && evaluated.toArray
-                            ? evaluated.toArray()
-                            : evaluated;
-                        if (Array.isArray(data)) {
-                          // Handle nested array or flat array
-                          const pt = Array.isArray(data[0]) ? data[0] : data;
-                          if (
-                            pt.length >= 2 &&
-                            !isNaN(Number(pt[0])) &&
-                            !isNaN(Number(pt[1]))
-                          ) {
-                            return (
-                              <div key={f.id} className="flex gap-2">
-                                <span style={{ color: f.color }}>
-                                  {f.type === "point" ? "P" : "V"}
-                                </span>
-                                : [{Number(pt[0]).toFixed(2)},{" "}
-                                {Number(pt[1]).toFixed(2)}]
-                              </div>
-                            );
-                          }
+                        const res = resolveGeometryPoints(f, baseScopeShadow);
+                        if (res.points && res.points.length > 0) {
+                          const pt = res.points[0];
+                          return (
+                            <div key={f.id} className="flex gap-2">
+                              <span style={{ color: f.color }}>
+                                {f.type === "point" ? "P" : "V"}
+                              </span>
+                              : [{pt[0].toFixed(2)}, {pt[1].toFixed(2)}]
+                            </div>
+                          );
                         }
                       }
                       return null;
