@@ -796,7 +796,6 @@ const EquationInput = ({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const appTheme = useStore((state) => state.appTheme);
-  const [copiedType, setCopiedType] = useState<string | null>(null);
 
   const effectiveMode = showKeyboard ? "virtual" : "native";
 
@@ -806,14 +805,6 @@ const EquationInput = ({
       inputRef.current.focus();
     }
   }, [effectiveMode, isFocused, inputRef]);
-
-  const handleCopy = (type: string, text: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    navigator.clipboard.writeText(text);
-    setCopiedType(type);
-    setTimeout(() => setCopiedType(null), 1500);
-  };
 
   useEffect(() => {
     if (!isFocused) {
@@ -857,7 +848,9 @@ const EquationInput = ({
     }
   }, [value, cursorPos, isFocused, variables]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement | HTMLDivElement>,
+  ) => {
     const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
     const search = match ? match[0].toLowerCase() : "";
 
@@ -1164,38 +1157,6 @@ const EquationInput = ({
               ),
             }}
           />
-          <div
-            className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover/preview:opacity-100 transition-opacity bg-white/90 dark:bg-slate-800/90 backdrop-blur rounded p-1 border border-slate-200 dark:border-slate-700 shadow-sm z-20 pointer-events-auto"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {resStrOutput && (
-              <button
-                className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "result" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} font-mono text-[10px] md:text-[9px] font-bold cursor-pointer w-6 h-6 md:w-5 md:h-5 flex items-center justify-center`}
-                title="Copy Result"
-                onClick={(e) => handleCopy("result", resStrOutput, e)}
-              >
-                {copiedType === "result" ? <Check size={12} /> : "="}
-              </button>
-            )}
-            <button
-              className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "latex" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} font-serif text-[11px] md:text-[10px] font-bold px-2 md:px-1.5 cursor-pointer h-6 md:h-5 flex items-center justify-center`}
-              title="Copy LaTeX"
-              onClick={(e) => handleCopy("latex", rawLatexOutput, e)}
-            >
-              {copiedType === "latex" ? <Check size={13} /> : "TeX"}
-            </button>
-            <button
-              className={`p-1.5 md:p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors ${copiedType === "expr" ? "text-green-500" : "text-slate-500 dark:text-slate-400"} cursor-pointer w-6 h-6 md:w-5 md:h-5 flex items-center justify-center`}
-              title="Copy Expression"
-              onClick={(e) => handleCopy("expr", value, e)}
-            >
-              {copiedType === "expr" ? (
-                <Check size={13} />
-              ) : (
-                <Copy size={13} className="md:w-[12px] md:h-[12px]" />
-              )}
-            </button>
-          </div>
         </React.Fragment>
       );
     } catch (e) {
@@ -3186,6 +3147,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   >(null);
   const [libraryCollapsed, setLibraryCollapsed] = useState(false);
   const [copiedFormulaId, setCopiedFormulaId] = useState<number | null>(null);
+  const [copiedAction, setCopiedAction] = useState<{
+    id: string;
+    type: string;
+  } | null>(null);
   const [copiedVarId, setCopiedVarId] = useState<string | null>(null);
   const [formulaSearchQuery, setFormulaSearchQuery] = useState("");
   const [editingFormulaFieldId, setEditingFormulaFieldId] = useState<
@@ -5063,8 +5028,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         </div>
 
                         {/* Equation Input / Desktop Right side */}
-                        <div className="flex flex-col flex-1 min-w-0 w-full md:w-auto overflow-hidden relative">
-                          <div className="flex items-center font-mono text-sm w-full gap-1">
+                        <div className="flex flex-col flex-1 min-w-0 w-full md:w-auto relative">
+                          <div className="flex items-center font-mono text-sm w-full gap-1 relative group/input">
                             <div className="flex-1 min-w-0">
                               <EquationInput
                                 value={f.expr}
@@ -5089,6 +5054,167 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   setActiveVisualEditorId(null)
                                 }
                               />
+                            </div>
+
+                            {/* Desktop Inline Actions */}
+                            <div
+                              className={`absolute right-2 top-5 -translate-y-1/2 hidden md:opacity-0 md:group-hover/input:opacity-100 md:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 transition-opacity z-[1000] hover:opacity-100`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveVisualEditorId(
+                                    activeVisualEditorId === f.id ? null : f.id,
+                                  );
+                                }}
+                                className={`p-1 rounded transition-all flex flex-col justify-center ${
+                                  activeVisualEditorId === f.id
+                                    ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                    : "opacity-60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                }`}
+                                title="Visual Math Composer"
+                              >
+                                <Calculator size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  setExpandedSettingsFnId((prev) =>
+                                    prev === f.id ? null : f.id,
+                                  );
+                                }}
+                                className={`p-1 rounded transition-all hover:bg-slate-100 dark:hover:bg-slate-700 flex flex-col justify-center ${
+                                  expandedSettingsFnId === f.id
+                                    ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                    : "opacity-60 text-slate-500 dark:text-slate-400"
+                                }`}
+                                title="Settings"
+                              >
+                                <Settings
+                                  size={14}
+                                  className={`transform transition-transform duration-300 ${expandedSettingsFnId === f.id ? "rotate-90 text-blue-500 dark:text-blue-400" : "hover:rotate-45"}`}
+                                />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleAddFunctionAt(f.id, "above")
+                                }
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
+                                title="Insert Function Above"
+                              >
+                                <InsertAboveIcon size={14} />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleAddFunctionAt(f.id, "below")
+                                }
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
+                                title="Insert Function Below"
+                              >
+                                <InsertBelowIcon size={14} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  try {
+                                    let finalTex = "";
+                                    const eqIndex = f.expr.indexOf("=");
+                                    if (
+                                      eqIndex !== -1 &&
+                                      !f.expr.includes("==") &&
+                                      !f.expr.includes(">=") &&
+                                      !f.expr.includes("<=") &&
+                                      !f.expr.includes("!=")
+                                    ) {
+                                      const lhs = f.expr
+                                        .slice(0, eqIndex)
+                                        .trim();
+                                      const rhs = f.expr
+                                        .slice(eqIndex + 1)
+                                        .trim();
+                                      const lhsTex = mathjs.parse(lhs).toTex();
+                                      const rhsTex = mathjs.parse(rhs).toTex();
+                                      finalTex = `${lhsTex} = ${rhsTex}`;
+                                    } else {
+                                      const node = mathjs.parse(f.expr);
+                                      finalTex = node.toTex({});
+                                    }
+                                    navigator.clipboard.writeText(finalTex);
+                                    setCopiedAction({
+                                      id: f.id,
+                                      type: "latex",
+                                    });
+                                    setTimeout(
+                                      () => setCopiedAction(null),
+                                      2000,
+                                    );
+                                  } catch (e) {}
+                                }}
+                                className={`p-1 font-serif text-[11px] font-bold rounded transition-all flex items-center justify-center ${
+                                  copiedAction?.id === f.id &&
+                                  copiedAction?.type === "latex"
+                                    ? "bg-green-500/10 text-green-500"
+                                    : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400"
+                                }`}
+                                title="Copy LaTeX"
+                              >
+                                TeX
+                              </button>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(f.expr);
+                                  setCopiedAction({ id: f.id, type: "expr" });
+                                  setTimeout(() => setCopiedAction(null), 2000);
+                                }}
+                                className={`p-1 rounded transition-all flex items-center justify-center ${
+                                  copiedAction?.id === f.id &&
+                                  copiedAction?.type === "expr"
+                                    ? "bg-green-500/10 text-green-500"
+                                    : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400"
+                                }`}
+                                title="Copy Formula"
+                              >
+                                <Copy size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDuplicateFunction(f.id)}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
+                                title="Duplicate Function"
+                              >
+                                <CopyPlus size={14} strokeWidth={2} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setFormulaName(f.name || "");
+                                  setFormulaDesc("");
+                                  setSavingFormulaFnId(
+                                    savingFormulaFnId === f.id ? null : f.id,
+                                  );
+                                }}
+                                className={`p-1 rounded transition-all flex items-center justify-center ${
+                                  savingFormulaFnId === f.id
+                                    ? "opacity-100 bg-amber-500/10 text-amber-500 dark:text-amber-400"
+                                    : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 animate-pulse-subtle"
+                                }`}
+                                title="Save to My Formula Library (IndexedDB)"
+                              >
+                                <Bookmark
+                                  size={14}
+                                  fill={
+                                    savingFormulaFnId === f.id
+                                      ? "currentColor"
+                                      : "none"
+                                  }
+                                />
+                              </button>
+                              <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity"></div>
+                              <button
+                                onClick={() => handleRemoveFunction(f.id)}
+                                className="p-1 hover:bg-red-500/20 hover:text-red-400 text-slate-400 dark:text-slate-500 rounded transition-all"
+                                title="Remove"
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             </div>
                           </div>
 
@@ -7440,100 +7566,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         </div>
                         {/* Action Buttons Block */}
                         <div className="absolute right-2 top-2 nodrag shrink-0 z-[1000] flex flex-col md:flex-row items-end md:items-center">
-                          {/* Desktop Inline Actions */}
-                          <div
-                            className={`hidden md:opacity-0 md:group-hover:opacity-100 md:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 transition-opacity`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveVisualEditorId(
-                                  activeVisualEditorId === f.id ? null : f.id,
-                                );
-                              }}
-                              className={`p-1 rounded transition-all flex flex-col justify-center ${
-                                activeVisualEditorId === f.id
-                                  ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
-                                  : "opacity-60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
-                              }`}
-                              title="Visual Math Composer"
-                            >
-                              <Calculator size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveActionMenuId(null);
-                                setExpandedSettingsFnId((prev) =>
-                                  prev === f.id ? null : f.id,
-                                );
-                              }}
-                              className={`p-1 rounded transition-all hover:bg-slate-100 dark:hover:bg-slate-700 flex flex-col justify-center ${
-                                expandedSettingsFnId === f.id
-                                  ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
-                                  : "opacity-60 text-slate-500 dark:text-slate-400"
-                              }`}
-                              title="Settings"
-                            >
-                              <Settings
-                                size={14}
-                                className={`transform transition-transform duration-300 ${expandedSettingsFnId === f.id ? "rotate-90 text-blue-500 dark:text-blue-400" : "hover:rotate-45"}`}
-                              />
-                            </button>
-                            <button
-                              onClick={() => handleAddFunctionAt(f.id, "above")}
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
-                              title="Insert Function Above"
-                            >
-                              <InsertAboveIcon size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleAddFunctionAt(f.id, "below")}
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
-                              title="Insert Function Below"
-                            >
-                              <InsertBelowIcon size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDuplicateFunction(f.id)}
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 rounded transition-all flex items-center justify-center"
-                              title="Duplicate Function"
-                            >
-                              <CopyPlus size={14} strokeWidth={2} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setFormulaName(f.name || "");
-                                setFormulaDesc("");
-                                setSavingFormulaFnId(
-                                  savingFormulaFnId === f.id ? null : f.id,
-                                );
-                              }}
-                              className={`p-1 rounded transition-all flex items-center justify-center ${
-                                savingFormulaFnId === f.id
-                                  ? "opacity-100 bg-amber-500/10 text-amber-500 dark:text-amber-400"
-                                  : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 animate-pulse-subtle"
-                              }`}
-                              title="Save to My Formula Library (IndexedDB)"
-                            >
-                              <Bookmark
-                                size={14}
-                                fill={
-                                  savingFormulaFnId === f.id
-                                    ? "currentColor"
-                                    : "none"
-                                }
-                              />
-                            </button>
-                            <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity"></div>
-                            <button
-                              onClick={() => handleRemoveFunction(f.id)}
-                              className="p-1 hover:bg-red-500/20 hover:text-red-400 text-slate-400 dark:text-slate-500 rounded transition-all"
-                              title="Remove"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
                           {/* Mobile Dropdown Actions Block */}
                           {activeActionMenuId === f.id && (
                             <div
