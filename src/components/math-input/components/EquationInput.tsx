@@ -45,8 +45,12 @@ export const EquationInput: React.FC<EquationInputProps> = ({
   setIsFocused,
 }) => {
   const { inputMode, isTouchDevice } = useInputMode();
-  const effectiveMode =
+  let effectiveMode =
     inputMode === "auto" ? (isTouchDevice ? "virtual" : "native") : inputMode;
+
+  if (!showKeyboard) {
+    effectiveMode = "native";
+  }
 
   useEffect(() => {
     // Keep focus when mode switches
