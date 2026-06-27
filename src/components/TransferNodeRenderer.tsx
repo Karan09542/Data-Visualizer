@@ -2480,12 +2480,12 @@ export const TransferNodeRenderer: React.FC<{
               }
             };
 
-            const handleCopyMessage = (content: string) => {
-              navigator.clipboard.writeText(content);
-              setNotification({
-                message: "Message copied",
-                type: "success",
-              });
+            const handleCopyMessage = (msg: Message) => {
+              navigator.clipboard.writeText(msg.content);
+              setCopyStatus({ id: msg.id, status: "success" });
+              setTimeout(() => {
+                setCopyStatus(prev => prev?.id === msg.id ? null : prev);
+              }, 2000);
             };
 
             const content = (
@@ -2667,12 +2667,16 @@ export const TransferNodeRenderer: React.FC<{
                                 >
                                   <button
                                     onClick={() =>
-                                      handleCopyMessage(msg.content)
+                                      handleCopyMessage(msg)
                                     }
                                     title="Copy"
                                     className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
                                   >
-                                    <Copy className="w-3.5 h-3.5" />
+                                    {copyStatus?.id === msg.id && copyStatus.status === "success" ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
                                   </button>
                                   <button
                                     onClick={() => setReplyingTo(msg)}

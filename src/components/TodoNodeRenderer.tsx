@@ -994,7 +994,17 @@ const TaskMenuPortal = ({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
+  const [copiedType, setCopiedType] = useState<string | null>(null);
   const isOpen = activeMenuTaskId === task.id;
+
+  const handleCopy = (type: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedType(type);
+    setTimeout(() => {
+      setCopiedType(null);
+      setActiveMenuTaskId(null);
+    }, 1500);
+  };
 
   useLayoutEffect(() => {
     if (isOpen && buttonRef.current && menuRef.current) {
@@ -1101,6 +1111,31 @@ const TaskMenuPortal = ({
             <ArrowDown size={12} className="text-slate-500 dark:text-slate-400" />
             <span>Move Down</span>
           </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleCopy("title", task.text || ""); }}
+            className={`w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors ${!task.notes ? "border-b border-slate-200 dark:border-slate-800/60" : ""}`}
+          >
+            {copiedType === "title" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-500 dark:text-slate-400" />}
+            <span>{copiedType === "title" ? "Copied!" : "Copy Title"}</span>
+          </button>
+          {task.notes && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleCopy("description", task.notes || ""); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
+            >
+              {copiedType === "description" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-500 dark:text-slate-400" />}
+              <span>{copiedType === "description" ? "Copied!" : "Copy Description"}</span>
+            </button>
+          )}
+          {task.notes && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleCopy("both", `${task.text}\n\n${task.notes}`); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
+            >
+              {copiedType === "both" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-500 dark:text-slate-400" />}
+              <span>{copiedType === "both" ? "Copied!" : "Copy Title & Description"}</span>
+            </button>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setActiveMenuTaskId(null); }}
             className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors"

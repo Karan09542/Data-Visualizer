@@ -5,6 +5,8 @@ export const commonSymbols: AssistantItem[] = [
   { id: "sym_parens", label: "()", insertText: "($0)", isSnippet: true },
   { id: "sym_braces", label: "{}", insertText: "{\n\t$0\n}", isSnippet: true },
   { id: "sym_brackets", label: "[]", insertText: "[$0]", isSnippet: true },
+  { id: "sym_single_quote", label: "''", insertText: "'$0'", isSnippet: true },
+  { id: "sym_double_quote", label: "\"\"", insertText: "\"$0\"", isSnippet: true },
   { id: "sym_angle", label: "<>", insertText: "<$0>", isSnippet: true },
   { id: "sym_colon", label: ":", insertText: ":" },
   { id: "sym_semi", label: ";", insertText: ";" },

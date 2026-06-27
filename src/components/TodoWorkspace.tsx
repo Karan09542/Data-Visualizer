@@ -1737,6 +1737,7 @@ function TodoWorkspaceItem({
   const [isEditingNotesInline, setIsEditingNotesInline] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isDescCopied, setIsDescCopied] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const isClickingTitleRef = useRef(false);
 
@@ -1959,12 +1960,10 @@ function TodoWorkspaceItem({
                 onClick={(e) => {
                   e.stopPropagation();
                 }}
-                ref={(el) => {
-                  if (el) {
-                    el.focus();
-                    const len = el.value.length;
-                    el.setSelectionRange(len, len);
-                  }
+                autoFocus
+                onFocus={(e) => {
+                  const len = e.target.value.length;
+                  e.target.setSelectionRange(len, len);
                 }}
               />
               <span className="absolute right-1.5 bottom-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10">
@@ -2412,7 +2411,32 @@ function TodoWorkspaceItem({
               <AlignLeft size={11} className="text-blue-500" />
               <span>Inline Description & Specs</span>
             </div>
-            <div>
+            <div className="flex items-center gap-1.5">
+              {task.notes && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(task.notes || "");
+                    setIsDescCopied(true);
+                    setTimeout(() => setIsDescCopied(false), 2000);
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded transition-all border",
+                    isDescCopied 
+                      ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20"
+                      : "bg-slate-100/50 hover:bg-slate-200/50 dark:bg-slate-800/40 dark:hover:bg-slate-700/50 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 border-slate-200/50 dark:border-slate-700/50"
+                  )}
+                >
+                  {isDescCopied ? (
+                    <>
+                      <Check size={11} /> COPIED
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={11} /> COPY
+                    </>
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => setIsEditingNotesInline(!isEditingNotesInline)}
                 className="flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded bg-slate-100/50 hover:bg-slate-200/50 dark:bg-slate-800/40 dark:hover:bg-slate-700/50 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-all border border-slate-200/50 dark:border-slate-700/50"

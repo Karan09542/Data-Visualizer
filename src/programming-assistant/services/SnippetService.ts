@@ -58,3 +58,48 @@ export const insertPair = (editor: any, open: string, close: string) => {
   editor.setSelections(newSelections);
   editor.focus();
 };
+
+export const undo = (editor: any) => {
+  if (!editor) return;
+  try {
+    // Try Monaco command trigger first
+    editor.trigger("keyboard", "undo", null);
+  } catch (e) {
+    console.error("Monaco keyboard undo trigger failed:", e);
+  }
+  // Fallback direct model undo
+  if (editor.getModel && typeof editor.getModel === "function") {
+    const model = editor.getModel();
+    if (model && typeof model.undo === "function") {
+      try {
+        model.undo();
+      } catch (e) {
+        console.error("Monaco model undo failed:", e);
+      }
+    }
+  }
+  editor.focus();
+};
+
+export const redo = (editor: any) => {
+  if (!editor) return;
+  try {
+    // Try Monaco command trigger first
+    editor.trigger("keyboard", "redo", null);
+  } catch (e) {
+    console.error("Monaco keyboard redo trigger failed:", e);
+  }
+  // Fallback direct model redo
+  if (editor.getModel && typeof editor.getModel === "function") {
+    const model = editor.getModel();
+    if (model && typeof model.redo === "function") {
+      try {
+        model.redo();
+      } catch (e) {
+        console.error("Monaco model redo failed:", e);
+      }
+    }
+  }
+  editor.focus();
+};
+

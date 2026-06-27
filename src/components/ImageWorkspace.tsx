@@ -1388,7 +1388,7 @@ interface ImageWorkspaceProps {
 }
 
 export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
-  const { parsedData, updateNodeValue } = useStore();
+  const { parsedData, updateNodeValue, setNotification } = useStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -5706,6 +5706,48 @@ function dataURLtoFile(dataurl: string, filename: string): File {
     if (active && active.length > 0) {
       const cmd = new DeleteObjectCommand("Delete Layer(s)", active);
       executeCommand(cmd);
+    }
+  };
+
+  const copyActiveObjectAsFormat = async (format: 'png' | 'jpeg' | 'svg' = 'png') => {
+    const activeObj = fabricRef.current?.getActiveObject();
+    if (!activeObj) return;
+
+    try {
+      if (format === 'svg') {
+        const clone = await activeObj.clone([]);
+        const bounds = clone.getBoundingRect();
+        
+        const elElement = document.createElement('canvas');
+        const tempCanvas = new fabric.StaticCanvas(elElement, {
+          width: bounds.width,
+          height: bounds.height
+        });
+        
+        clone.set({
+          left: (clone.left || 0) - bounds.left,
+          top: (clone.top || 0) - bounds.top
+        });
+        clone.setCoords();
+        tempCanvas.add(clone);
+        
+        const svg = tempCanvas.toSVG();
+        tempCanvas.dispose();
+        
+        await navigator.clipboard.writeText(svg);
+        setNotification({ message: 'Copied as SVG', type: 'success' });
+      } else {
+        const dataUrl = activeObj.toDataURL({ format });
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type]: blob })
+        ]);
+        setNotification({ message: `Copied as ${format.toUpperCase()}`, type: 'success' });
+      }
+    } catch (e) {
+      console.error('Failed to copy', e);
+      setNotification({ message: 'Failed to copy', type: 'error' });
     }
   };
 
@@ -10493,6 +10535,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                   <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
                   <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
                   <div className="h-px bg-[#252525] my-1" />
+                  <ContextMenuItem icon={Copy} label="Copy as PNG" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
+                  {activeContextMenu.obj?.type !== 'image' && (
+                     <ContextMenuItem icon={Copy} label="Copy as SVG" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
+                  )}
                   <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
                   {activeContextMenu.obj?.type === 'group' && (
                      <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => { 

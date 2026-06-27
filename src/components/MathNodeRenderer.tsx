@@ -162,6 +162,7 @@ interface MathFunction {
   labelScale?: number; // scale factor
   labelFlipX?: boolean;
   labelFlipY?: boolean;
+  showLabelPoint?: boolean;
   labelAlignment?: "center" | "above" | "below" | "left" | "right" | "custom";
   fillColor?: string;
   fillOpacity?: number;
@@ -6120,8 +6121,38 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                     {/* Label Settings Panel */}
                                     <div className="flex flex-col gap-2 mt-2 p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80">
-                                      <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500 mb-0.5">
-                                        Label Settings
+                                      <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500 mb-0.5 flex justify-between items-center">
+                                        <span>Label Settings</span>
+                                        <label className="flex items-center gap-1.5 cursor-pointer group/cb lowercase" title="Show a point at the label anchor">
+                                          <div className="relative flex items-center justify-center">
+                                            <input
+                                              type="checkbox"
+                                              checked={!!f.showLabelPoint}
+                                              onChange={(e) =>
+                                                setFunctions((prev) =>
+                                                  prev.map((fn) =>
+                                                    fn.id === f.id
+                                                      ? { ...fn, showLabelPoint: e.target.checked }
+                                                      : fn
+                                                  )
+                                                )
+                                              }
+                                              className="peer sr-only"
+                                            />
+                                            <div
+                                              className={`w-3 h-3 rounded-[3px] border flex items-center justify-center transition-colors ${f.showLabelPoint ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400 dark:group-hover/cb:border-slate-500"}`}
+                                            >
+                                              {f.showLabelPoint && (
+                                                <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
+                                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium normal-case group-hover/cb:text-slate-700 dark:group-hover/cb:text-slate-300 transition-colors">
+                                            Show Point
+                                          </span>
+                                        </label>
                                       </div>
 
                                       {/* Rotation Slider */}
@@ -10648,15 +10679,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                               else if (f.labelAlignment === "right") { dx = r; dy = 0; }
                                                           }
                                                           return (
-                                                            <SafeLabel
-                                                              at={[p[0] + dx, p[1] + dy]}
-                                                              tex={f.label}
-                                                              color={f.color}
-                                                              rotation={f.labelRotation}
-                                                              scale={f.labelScale}
-                                                              flipX={f.labelFlipX}
-                                                              flipY={f.labelFlipY}
-                                                            />
+                                                            <React.Fragment>
+                                                              {f.showLabelPoint && (
+                                                                <Point x={p[0] + dx} y={p[1] + dy} color={f.color} />
+                                                              )}
+                                                              <SafeLabel
+                                                                at={[p[0] + dx, p[1] + dy]}
+                                                                tex={f.label}
+                                                                color={f.color}
+                                                                rotation={f.labelRotation}
+                                                                scale={f.labelScale}
+                                                                flipX={f.labelFlipX}
+                                                                flipY={f.labelFlipY}
+                                                              />
+                                                            </React.Fragment>
                                                           );
                                                         })()}
                                                     </React.Fragment>
@@ -11345,15 +11381,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   ] as [number, number];
 
                                   return (
-                                    <SafeLabel
-                                      at={applyForwardTransform(labelPosLocal)}
-                                      tex={f.label}
-                                      color={f.color}
-                                      rotation={f.labelRotation}
-                                      scale={f.labelScale}
-                                      flipX={f.labelFlipX}
-                                      flipY={f.labelFlipY}
-                                    />
+                                    <React.Fragment>
+                                      {f.showLabelPoint && (
+                                        <Point x={applyForwardTransform(labelPosLocal)[0]} y={applyForwardTransform(labelPosLocal)[1]} color={f.color} />
+                                      )}
+                                      <SafeLabel
+                                        at={applyForwardTransform(labelPosLocal)}
+                                        tex={f.label}
+                                        color={f.color}
+                                        rotation={f.labelRotation}
+                                        scale={f.labelScale}
+                                        flipX={f.labelFlipX}
+                                        flipY={f.labelFlipY}
+                                      />
+                                    </React.Fragment>
                                   );
                                 })()}
 
@@ -11719,7 +11760,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 </React.Fragment>
                               )}
 
-                              {isInteractionLayer && f.showLabel && f.label && (
+                              {isInteractionLayer && f.showLabel && f.label && f.showLabelPoint && (
                                 <React.Fragment>
                                   {/* Label Position Handle */}
                                   {f.type !== "point" &&
