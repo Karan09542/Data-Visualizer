@@ -268,49 +268,85 @@ export default function App() {
     }
   }, [appTheme]);
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    // Only react to file drops
-    if ((window as any).__isInternalDrag) return;
-    if (!e.dataTransfer.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
+  useEffect(() => {
+    let dragCounter = 0;
     
-    e.preventDefault();
-    dragCounter.current++;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDragOver(true);
-    }
-  };
+    const handleDragEnter = (e: DragEvent) => {
+      // Only react to file drops
+      if ((window as any).__isInternalDrag) return;
+      if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
+      
+      e.preventDefault();
+      dragCounter++;
+      
+      const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
+      if (isCustomZone) {
+        setIsDragOver(false);
+      } else {
+        setIsDragOver(true);
+      }
+    };
+    
+    const handleDragOver = (e: DragEvent) => {
+      if ((window as any).__isInternalDrag) return;
+      if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
+      e.preventDefault();
+      
+      const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
+      if (isCustomZone) {
+        setIsDragOver(false);
+      } else {
+        setIsDragOver(true);
+      }
+    };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    if ((window as any).__isInternalDrag) return;
-    if (!e.dataTransfer.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
-    
-    e.preventDefault();
-    dragCounter.current--;
-    if (dragCounter.current <= 0) {
-      dragCounter.current = 0;
+    const handleDragLeave = (e: DragEvent) => {
+      if ((window as any).__isInternalDrag) return;
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        setIsDragOver(false);
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      if ((window as any).__isInternalDrag) return;
+      
+      // Always reset state on drop
+      dragCounter = 0;
       setIsDragOver(false);
-    }
-  };
+      
+      const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
+      if (isCustomZone) {
+        return; // The custom zone will handle the file import itself
+      }
+      
+      if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
+      e.preventDefault();
+      
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length === 0) return;
+  
+      try {
+        const { processFiles } = await import("./utils/fileProcessor");
+        processFiles(files);
+      } catch (err) {
+        console.error("Failed to import file processor or process files:", err);
+      }
+    };
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    if ((window as any).__isInternalDrag) return;
-    if (!e.dataTransfer.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
-    
-    e.preventDefault();
-    dragCounter.current = 0;
-    setIsDragOver(false);
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
 
-    // We hand off to our new intelligent file service
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
-
-    try {
-      // We will dynamically import the handler so App.tsx stays lean
-      const { processFiles } = await import("./utils/fileProcessor");
-      processFiles(files);
-    } catch (err) {
-      console.error("Failed to import file processor or process files:", err);
-    }
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
   }, []);
 
   useEffect(() => {
@@ -347,13 +383,6 @@ export default function App() {
 
   return (
     <div
-      onDragEnter={handleDragEnter}
-      onDragOver={(e) => {
-        if ((window as any).__isInternalDrag) return;
-        e.preventDefault();
-      }}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
       className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors relative`}
     >
       {isDragOver && (

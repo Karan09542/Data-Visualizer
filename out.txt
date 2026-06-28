@@ -1,127 +1,17 @@
-115:  return (
-193:      return { showSlider: variable.showSlider !== false, ...variable };
-195:    return {
-219:      return setError(
-227:      return setError(`Symbol '${trimmedSymbol}' already exists.`);
-234:      return setError("Min must be less than Max.");
-254:        return setError("Please enter a custom group name.");
-275:  return (
-556:    return Math.round(255 * color)
-560:  return `#${f(0)}${f(8)}${f(4)}`;
-569:  return hslToHex(hue, 85, 65);
-769:      return;
-795:        return a.name.localeCompare(b.name);
-834:        return a.name.localeCompare(b.name);
-842:      return;
-887:    return tokens.map((tok: string, i: number) => {
-903:          return (
-918:          return (
-925:      return (
-938:        return n.toTex({
-956:                return `\\textcolor{${color}}{${display}}`;
-959:            return undefined;
-1075:  return (
-1205:    return baseHex;
-1209:  return `${cleanHex}${hexAlpha}`;
-1214:    return hex.substring(0, 7);
-1216:  return hex;
-1223:  return undefined; // solid or undefined
-1240:  return (
-1337:    return () => {
-1364:    return () => {
-1371:  return createPortal(
-1479:  return (
-1551:    return <LaTeX at={at} tex={finalTex} color={color} />;
-1553:    return (
-1634:            return true;
-1635:          return false;
-1655:        return lhs - rhs;
-1657:        return NaN;
-1682:      return [
-1721:              return lerp(p00, p10, v00, v10);
-1723:              return lerp(p10, p11, v10, v11);
-1725:              return lerp(p01, p11, v01, v11);
-1727:              return lerp(p00, p01, v00, v01);
-1729:              return p00;
-1786:    return localSegments;
-1812:  return (
-1833:    return {
-1891:  return {
-1954:  return { newExpr, changed };
-2004:    return () => {
-2049:    return () => {
-2087:      return data.value.functions;
-2089:    return [
-2118:      return data.value.variables;
-2120:    return [
-2171:      return data.value.groups;
-2173:    return [
-2230:    return newList;
-2253:      return reorderList(updatedGroupId, draggedVariableId, targetId, position);
-2288:    return () => {
-2321:    return {
-2342:      return typeof val === "number" && val > 0 ? val : 1;
-2344:      return 1;
-2478:      return;
-2487:      return () => {
-2494:    return () => {
-2608:      return `${axisPrefix}${baseLabel}${axisSuffix}`;
-2611:    return <>{axisPrefix}{baseLabel}{axisSuffix}</>;
-2625:    return () => observer.disconnect();
-2671:          return {
-2713:        return { ...f, compiled, error: undefined };
-2715:        return { ...f, compiled: undefined, error: e.message };
-2738:      return;
-2766:        return newTime;
-2773:    return () => {
-2871:      return next;
-2889:      return next;
-2938:      return next;
-2954:      return;
-3782:                                                  return (
-3791:                                                  return (
-4732:                                            return {
-4738:                                          return fn;
-5013:                        return orderA - orderB;
-5027:                        return orderA - orderB;
-5051:                      return (
-5130:                            return orderA - orderB;
-5218:                        return (
-5225:                        return (
-5231:                    return (
-6113:                      return (
-6795:                              return (
-6948:                        return [x4 + px + tx, y4 + py + ty] as [number, number];
-6951:                      return (
-6964:                                            return (
-7325:                      return null;
-7330:                    return (
-7344:                                return [
-7349:                              return [tx, ty];
-7351:                              return [tx, ty];
-7385:                    return (
-7415:                    return (
-7433:                                return [tx, ty];
-7434:                              return [
-7439:                              return [tx, ty];
-7483:                                return typeof r === "object"
-7487:                                return tx;
-7503:                                return typeof r === "object"
-7507:                                return ty;
-7517:                  return (
-7530:                              return NaN;
-7531:                            return Number(res) + ty;
-7533:                            return NaN;
-7571:                              return typeof res === "object"
-7575:                              return ty;
-7591:                return null;
-7616:                          return null;
-7618:                        return (
-7644:                          return (
-7664:                            return (
-7689:                            return (
-7701:                      return null;
-7703:                      return null;
-7962:                      return prev;
-7964:                    return [...prev, newGroup];
-7986:  return isFullscreen ? (
+1:import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from "react";
+2:import { createPortal } from "react-dom";
+3:import * as fabric from "fabric";
+4:import { loadFromDexie, saveToDexie } from "../utils/fabricDexieSync";
+5:import { useStore } from "../store/useStore";
+6:import { resolveAssetUrl, importFile } from "../utils/assetManager";
+7:import { getValueAtPath } from "../utils/pathUtils";
+8:import { 
+17:import JSZip from "jszip";
+18:import { RgbaStringColorPicker } from "react-colorful";
+19:import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+20:import ImageWorker from "../utils/imageWorker?worker";
+21:import { ExportSettings, DEFAULT_EXPORT_SETTINGS } from "../types/export";
+22:import { FontPicker } from "./FontPicker";
+23:import { TypographyPresets } from "./TypographyPresets";
+24:import { ExportStudio } from "./export/ExportStudio";
+25:import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../lib/imagePresets";

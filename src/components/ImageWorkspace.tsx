@@ -12,7 +12,7 @@ import {
   Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-  Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images, Info, Keyboard
+  Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images, Info, Keyboard, Clipboard, Library, Link
 } from "lucide-react";
 import JSZip from "jszip";
 import { RgbaStringColorPicker } from "react-colorful";
@@ -23,6 +23,9 @@ import { FontPicker } from "./FontPicker";
 import { TypographyPresets } from "./TypographyPresets";
 import { ExportStudio } from "./export/ExportStudio";
 import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../lib/imagePresets";
+import { useImageImport } from "./image-import/hooks/useImageImport";
+import { processPasteEvent } from "./image-import/clipboard/clipboardImporter";
+import { AssetGallery } from "./image-import/gallery/AssetGallery";
 
 // Custom Fabric.Rect render override to support percentage and individual corner rounding
 if (fabric && fabric.Rect && fabric.Rect.prototype) {
@@ -1387,6 +1390,202 @@ interface ImageWorkspaceProps {
   path: string;
 }
 
+const ObjectDimensionsPanel = ({ fabricRef }: { fabricRef: React.RefObject<fabric.Canvas> }) => {
+  const [dims, setDims] = useState<any>(null);
+  const [lockedRatio, setLockedRatio] = useState(true);
+
+  const updateDims = useCallback(() => {
+    if (!fabricRef.current) return;
+    const active = fabricRef.current.getActiveObject();
+    if (!active) {
+      setDims(null);
+      return;
+    }
+    
+    const objType = active.type;
+    const isImage = objType === 'image';
+    const isVector = ['path', 'polygon', 'polyline', 'rect', 'circle', 'triangle', 'line'].includes(objType || '');
+    
+    const absBounds = active.getBoundingRect();
+    
+    const baseW = active.width || 0;
+    const baseH = active.height || 0;
+    
+    const scaleX = active.scaleX || 1;
+    const scaleY = active.scaleY || 1;
+    
+    const scaledW = baseW * scaleX;
+    const scaledH = baseH * scaleY;
+    
+    const center = active.getCenterPoint();
+
+    let originalRes = null;
+    if (isImage) {
+      originalRes = {
+         w: (active as fabric.Image).getOriginalSize?.().width || (active as fabric.Image).width,
+         h: (active as fabric.Image).getOriginalSize?.().height || (active as fabric.Image).height
+      };
+    }
+
+    setDims({
+      x: active.left || 0,
+      y: active.top || 0,
+      width: baseW,
+      height: baseH,
+      scaleX,
+      scaleY,
+      scaledWidth: scaledW,
+      scaledHeight: scaledH,
+      rotation: active.angle || 0,
+      bboxW: absBounds.width,
+      bboxH: absBounds.height,
+      centerX: center.x,
+      centerY: center.y,
+      isImage,
+      originalRes,
+      isVector
+    });
+  }, [fabricRef]);
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    
+    const events = ['selection:created', 'selection:updated', 'selection:cleared', 'object:modified', 'object:moving', 'object:scaling', 'object:rotating', 'object:skewing'];
+    
+    events.forEach(e => canvas.on(e as any, updateDims));
+    updateDims();
+    return () => {
+      events.forEach(e => canvas.off(e as any, updateDims));
+    };
+  }, [fabricRef, updateDims]);
+
+  if (!dims) return null;
+
+  const updateObject = (updates: any) => {
+    const active = fabricRef.current?.getActiveObject();
+    if (!active) return;
+
+    if (lockedRatio && (updates.scaledWidth !== undefined || updates.scaledHeight !== undefined)) {
+       const aspect = dims.scaledWidth / dims.scaledHeight;
+       if (updates.scaledWidth !== undefined && updates.scaledHeight === undefined) {
+         updates.scaledHeight = updates.scaledWidth / aspect;
+       } else if (updates.scaledHeight !== undefined && updates.scaledWidth === undefined) {
+         updates.scaledWidth = updates.scaledHeight * aspect;
+       }
+    }
+
+    if (updates.scaledWidth !== undefined) {
+      active.set('scaleX', updates.scaledWidth / dims.width);
+    }
+    if (updates.scaledHeight !== undefined) {
+      active.set('scaleY', updates.scaledHeight / dims.height);
+    }
+
+    if (updates.width !== undefined) active.set('width', updates.width);
+    if (updates.height !== undefined) active.set('height', updates.height);
+    if (updates.x !== undefined) active.set('left', updates.x);
+    if (updates.y !== undefined) active.set('top', updates.y);
+    if (updates.rotation !== undefined) active.set('angle', updates.rotation);
+    if (updates.scaleX !== undefined) active.set('scaleX', updates.scaleX);
+    if (updates.scaleY !== undefined) active.set('scaleY', updates.scaleY);
+
+    active.setCoords();
+    fabricRef.current?.requestRenderAll();
+    updateDims();
+  };
+
+  const resetScale = () => {
+    updateObject({ scaleX: 1, scaleY: 1, scaledWidth: dims.width, scaledHeight: dims.height });
+  };
+
+  return (
+    <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in mt-4">
+       <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center justify-between">
+          <div className="flex items-center gap-2"><Layout size={12}/> Dimensions</div>
+       </div>
+
+       <div className="grid grid-cols-2 gap-2 bg-[#141414] border border-[#222] p-2.5 rounded-lg">
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">X</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.x)} onChange={(e) => updateObject({ x: Number(e.target.value) })} />
+          </div>
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Y</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.y)} onChange={(e) => updateObject({ y: Number(e.target.value) })} />
+          </div>
+
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Width</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.width)} onChange={(e) => updateObject({ width: Number(e.target.value) })} />
+          </div>
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Height</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.height)} onChange={(e) => updateObject({ height: Number(e.target.value) })} />
+          </div>
+
+          <div className="space-y-1 relative">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold text-blue-400">Scaled Width</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-blue-900/30 rounded px-2 py-1 text-xs text-blue-200" value={Math.round(dims.scaledWidth)} onChange={(e) => updateObject({ scaledWidth: Number(e.target.value) })} />
+          </div>
+          <div className="space-y-1 relative">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold text-blue-400">Scaled Height</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-blue-900/30 rounded px-2 py-1 text-xs text-blue-200" value={Math.round(dims.scaledHeight)} onChange={(e) => updateObject({ scaledHeight: Number(e.target.value) })} />
+          </div>
+
+          <div className="col-span-2 flex items-center justify-between text-[#8A8A8A]">
+            <button onClick={() => setLockedRatio(!lockedRatio)} className={`text-[10px] flex items-center gap-1 hover:text-white transition ${lockedRatio ? 'text-blue-400' : ''}`}>
+               Aspect Ratio {lockedRatio ? '🔒' : '🔓'}
+            </button>
+            <button onClick={resetScale} className="text-[10px] hover:text-white transition">Reset Scale</button>
+          </div>
+
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Scale X (%)</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.scaleX * 100)} onChange={(e) => updateObject({ scaleX: Number(e.target.value) / 100 })} />
+          </div>
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Scale Y (%)</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.scaleY * 100)} onChange={(e) => updateObject({ scaleY: Number(e.target.value) / 100 })} />
+          </div>
+
+          <div className="space-y-1">
+             <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Rotation (°)</span>
+             <input type="number" className="w-full bg-[#0C0C0C] border border-[#333] rounded px-2 py-1 text-xs text-white" value={Math.round(dims.rotation)} onChange={(e) => updateObject({ rotation: Number(e.target.value) })} />
+          </div>
+
+          <div className="col-span-2 pt-2 mt-1 border-t border-[#222]">
+             <div className="grid grid-cols-2 gap-2 text-[10px] text-[#8A8A8A]">
+                <div>BBox W: <span className="font-mono text-white">{Math.round(dims.bboxW)}</span></div>
+                <div>BBox H: <span className="font-mono text-white">{Math.round(dims.bboxH)}</span></div>
+                <div>Center X: <span className="font-mono text-white">{Math.round(dims.centerX)}</span></div>
+                <div>Center Y: <span className="font-mono text-white">{Math.round(dims.centerY)}</span></div>
+             </div>
+          </div>
+          
+          {dims.isImage && dims.originalRes && (
+            <div className="col-span-2 pt-2 mt-1 border-t border-[#222]">
+               <div className="grid gap-1 text-[10px] text-[#8A8A8A]">
+                  <div>Image Resolution: <span className="font-mono text-white">{dims.originalRes.w} × {dims.originalRes.h} px</span></div>
+                  <div>Displayed Size: <span className="font-mono text-white">{Math.round(dims.scaledWidth)} × {Math.round(dims.scaledHeight)} px</span></div>
+               </div>
+            </div>
+          )}
+
+          {dims.isVector && (
+            <div className="col-span-2 pt-2 mt-1 border-t border-[#222]">
+               <div className="grid gap-1 text-[10px] text-[#8A8A8A]">
+                  <div>Geometry Width: <span className="font-mono text-white">{Math.round(dims.width)} px</span></div>
+                  <div>Geometry Height: <span className="font-mono text-white">{Math.round(dims.height)} px</span></div>
+               </div>
+            </div>
+          )}
+
+       </div>
+    </div>
+  );
+};
+
 export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const { parsedData, updateNodeValue, setNotification } = useStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1490,7 +1689,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
   const getAbsoluteBoundingRect = (obj: fabric.Object) => {
     if (!obj.group) {
-      return (obj as any).getBoundingRect(true);
+      return (obj as any).getBoundingRect();
     }
     const halfWidth = (obj.width || 0) / 2;
     const halfHeight = (obj.height || 0) / 2;
@@ -1896,6 +2095,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
   const [comparisonZoom, setComparisonZoom] = useState(1);
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
   const [optimizedImageUrl, setOptimizedImageUrl] = useState<string | null>(null);
+  const [originalPreviewDims, setOriginalPreviewDims] = useState<{w: number, h: number} | null>(null);
+  const [optimizedPreviewDims, setOptimizedPreviewDims] = useState<{w: number, h: number} | null>(null);
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
   const [currentPreviewOp, setCurrentPreviewOp] = useState<string>("");
   const [originalSize, setOriginalSize] = useState<number>(0);
@@ -2186,6 +2387,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
         case 'right':
           targetAbsLeft = board.x + board.width - newAbsBounds.width;
           break;
+      }
+
+      switch (mode) {
         case 'top':
         case 'stretch':
         case 'matchHeight':
@@ -2243,6 +2447,63 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
     fabricRef.current.requestRenderAll();
     updateLayersList();
   };
+
+  const resizeArtboardToSelection = (mode: 'both' | 'width' | 'height' | 'bounds') => {
+    if (!fabricRef.current) return;
+    const activeSelection = fabricRef.current.getActiveObject();
+    if (!activeSelection) return;
+
+    const targetArtboard = getTargetArtboard(activeSelection);
+    if (!targetArtboard) return;
+
+    const br = activeSelection.getBoundingRect();
+    
+    const commands: Command[] = [];
+    
+    let newWidth = targetArtboard.width;
+    let newHeight = targetArtboard.height;
+    let newX = targetArtboard.x;
+    let newY = targetArtboard.y;
+
+    if (mode === 'both' || mode === 'bounds') {
+       newWidth = br.width;
+       newHeight = br.height;
+       newX = br.left;
+       newY = br.top;
+    } else if (mode === 'width') {
+       newWidth = br.width;
+       newX = br.left;
+    } else if (mode === 'height') {
+       newHeight = br.height;
+       newY = br.top;
+    }
+
+    newWidth = Math.max(10, Math.round(newWidth));
+    newHeight = Math.max(10, Math.round(newHeight));
+    newX = Math.round(newX);
+    newY = Math.round(newY);
+
+    if (newWidth !== targetArtboard.width) {
+      commands.push(new ArtboardPropertyCommand(`Resize Width to Selection`, targetArtboard.id, 'width', targetArtboard.width, newWidth, setArtboards));
+    }
+    if (newHeight !== targetArtboard.height) {
+      commands.push(new ArtboardPropertyCommand(`Resize Height to Selection`, targetArtboard.id, 'height', targetArtboard.height, newHeight, setArtboards));
+    }
+    if (newX !== targetArtboard.x) {
+      commands.push(new ArtboardPropertyCommand(`Move Artboard X`, targetArtboard.id, 'x', targetArtboard.x, newX, setArtboards));
+    }
+    if (newY !== targetArtboard.y) {
+      commands.push(new ArtboardPropertyCommand(`Move Artboard Y`, targetArtboard.id, 'y', targetArtboard.y, newY, setArtboards));
+    }
+
+    if (commands.length > 0) {
+      const macro = new MacroCommand(`Resize Artboard to Selection`, commands);
+      executeCommand(macro);
+      updateLayersList();
+      fabricRef.current.requestRenderAll();
+    }
+  };
+
   const handleSnapping = useCallback((e: any) => {
     if (!fabricRef.current || !isSnappingEnabledRef.current || isAltPressedRef.current) {
       guidesRef.current = [];
@@ -2462,6 +2723,34 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 }
 
   // Sync canvas state back to workspace document
+  const [showAssetGallery, setShowAssetGallery] = useState(false);
+  const [showUrlPrompt, setShowUrlPrompt] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const { importAssets } = useImageImport(fabricRef, artboardsRef, activeArtboardId, (objects) => {
+    if (objects.length > 0) {
+      objects.forEach(obj => {
+        const cmd = new AddObjectCommand('Import Asset', obj);
+        executeCommand(cmd);
+      });
+    }
+  });
+
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      // Don't intercept if user is typing in an input/textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      const results = await processPasteEvent(e);
+      if (results.length > 0) {
+        importAssets(results);
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [importAssets]);
+
   const updateLayersList = useCallback(() => {
     if (!fabricRef.current) return;
     const items = fabricRef.current.getObjects();
@@ -5689,15 +5978,20 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = async (f) => {
-      const result = f.target?.result as string;
-      addImageFromUrl(result);
-    };
-    reader.readAsDataURL(file);
+    const results = Array.from(files).map(file => {
+      if (file.type === 'image/svg+xml') {
+        return { url: URL.createObjectURL(file), type: 'svg' as const, name: file.name };
+      }
+      return { url: URL.createObjectURL(file), type: 'image' as const, name: file.name };
+    });
+    
+    if (results.length > 0) {
+       importAssets(results);
+    }
+    
     e.target.value = '';
   };
 
@@ -6535,44 +6829,49 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       // 1. Get raw pixel buffer
       const { buffer, width, height } = await generateArtboardPixelBuffer(board);
 
-      // Determine preview target resolution (supporting the performance-cap downscaling)
-      const maxPreviewDim = 800; 
-      let targetW = board.width;
-      let targetH = board.height;
-
+      // 1. Determine Preview Resolutions
+      // The Original ALWAYS uses the active artboard bounds (board.width, board.height).
+      let origTargetW = board.width;
+      let origTargetH = board.height;
+      
+      // The Optimized ALWAYS uses the final output bounds (taking resize into account).
+      let optTargetW = origTargetW;
+      let optTargetH = origTargetH;
       if (exportTarget === "current" && exportSettings.resize.enabled) {
-        targetW = exportSettings.resize.width;
-        targetH = exportSettings.resize.height;
+        optTargetW = exportSettings.resize.width;
+        optTargetH = exportSettings.resize.height;
+      }
+      
+      setOriginalPreviewDims({ w: origTargetW, h: origTargetH });
+      setOptimizedPreviewDims({ w: optTargetW, h: optTargetH });
+
+      // We downscale ONLY for internal preview performance if dimensions are massive,
+      // but we maintain the relative scale between Original and Optimized.
+      let previewScale = 1;
+      const maxTargetDim = Math.max(origTargetW, origTargetH, optTargetW, optTargetH);
+      if (maxTargetDim > 1200) { 
+         previewScale = 1200 / maxTargetDim;
       }
 
-      const needsDownscaleForPreview = targetW > maxPreviewDim || targetH > maxPreviewDim;
-      let previewW = targetW;
-      let previewH = targetH;
+      const origPreviewW = Math.max(1, Math.round(origTargetW * previewScale));
+      const origPreviewH = Math.max(1, Math.round(origTargetH * previewScale));
 
-      if (needsDownscaleForPreview) {
-        const ratio = targetW / targetH;
-        if (targetW > targetH) {
-          previewW = maxPreviewDim;
-          previewH = Math.round(maxPreviewDim / ratio);
-        } else {
-          previewH = maxPreviewDim;
-          previewW = Math.round(maxPreviewDim * ratio);
-        }
-      }
+      const optPreviewW = Math.max(1, Math.round(optTargetW * previewScale));
+      const optPreviewH = Math.max(1, Math.round(optTargetH * previewScale));
 
       // 2. Original URL extraction & original lossless blob measurement
       setCurrentPreviewOp("Rendering before/after viewport...");
       const originalCanvas = document.createElement('canvas');
-      originalCanvas.width = previewW;
-      originalCanvas.height = previewH;
+      originalCanvas.width = origPreviewW;
+      originalCanvas.height = origPreviewH;
       const oCtx = originalCanvas.getContext('2d')!;
 
-      const sourceImage = new ImageData(new Uint8ClampedArray(buffer), width, height);
+      const sourceImage = new ImageData(new Uint8ClampedArray(buffer), width, height); // width/height is board.width/height
       const offscreenOriginal = document.createElement('canvas');
       offscreenOriginal.width = width;
       offscreenOriginal.height = height;
       offscreenOriginal.getContext('2d')!.putImageData(sourceImage, 0, 0);
-      oCtx.drawImage(offscreenOriginal, 0, 0, previewW, previewH);
+      oCtx.drawImage(offscreenOriginal, 0, 0, origPreviewW, origPreviewH);
 
       const originalUrl = originalCanvas.toDataURL("image/png");
       setOriginalImageUrl(originalUrl);
@@ -6587,14 +6886,13 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       const formatLabel = exportSettings.format.toUpperCase();
       setCurrentPreviewOp(`Running jSquash WASM optimization (${formatLabel})...`);
 
-      // Modify settings for preview to use preview resolution
       const previewSettings: ExportSettings = {
         ...exportSettings,
         resize: {
           ...exportSettings.resize,
           enabled: true,
-          width: previewW,
-          height: previewH
+          width: optPreviewW,
+          height: optPreviewH
         }
       };
 
@@ -6607,7 +6905,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
       );
 
       const optimizedBlob = new Blob([optimizedBuffer], { type: `image/${exportSettings.format}` });
-      setOptimizedSize(optimizedBlob.size);
+      
+      // Calculate projected optimized size since we might have downscaled for preview performance
+      const projectedOptimizedSize = previewScale < 1 ? Math.round(optimizedBlob.size / (previewScale * previewScale)) : optimizedBlob.size;
+      setOptimizedSize(projectedOptimizedSize);
       setPsnr(calculatedPsnr);
 
       const optUrl = URL.createObjectURL(optimizedBlob);
@@ -6736,7 +7037,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         <button className="h-8 w-8 hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white flex items-center justify-center rounded transition-colors shrink-0" title="Import Image" onClick={handleImportImageClick}>
           <Upload size={14} />
         </button>
-        <input id="img-upload" type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+        <input id="img-upload" type="file" multiple className="hidden" accept="image/*,image/svg+xml" onChange={handleFileUpload} />
 
         <div className="flex-1" />
 
@@ -6904,7 +7205,31 @@ function dataURLtoFile(dataurl: string, filename: string): File {
            )}
 
            {/* Canvas Container */}
-           <div className="flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]">
+           <div 
+             className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]"
+             onDragEnter={(e) => { e.preventDefault(); }}
+             onDragLeave={(e) => { e.preventDefault(); }}
+             onDragOver={(e) => { e.preventDefault(); }}
+             onDrop={async (e) => {
+               e.preventDefault();
+               if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  const files = Array.from(e.dataTransfer.files);
+                  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+                  const results = imageFiles.map(file => {
+                     if (file.type === 'image/svg+xml') {
+                        // For SVG, we need to read the text. It's async so we can just use URL for now or properly await.
+                        // For simplicity in sync map, we just create object URL. The hook will load it.
+                        // Actually, SVG needs string if we want it as group, but fabric.loadSVGFromURL can take a blob URL too.
+                        return { url: URL.createObjectURL(file), type: 'svg' as const, name: file.name };
+                     }
+                     return { url: URL.createObjectURL(file), type: 'image' as const, name: file.name };
+                  });
+                  if (results.length > 0) {
+                     importAssets(results);
+                  }
+               }
+             }}
+           >
               {/* subtle grid background */}
               <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px'}} />
               
@@ -7397,25 +7722,41 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                              >
                                 <TransformComponent wrapperStyle={{ width: "100%", height: "100%", cursor: isDraggingDivider ? "ew-resize" : "grab" }} contentStyle={{ width: "100%", height: "100%" }}>
                                    <div className="relative w-full h-full flex items-center justify-center">
-                                       <img 
-                                           src={optimizedImageUrl || originalImageUrl || ""} 
-                                           alt="Optimized" 
-                                           referrerPolicy="no-referrer"
-                                           className="max-w-full max-h-full object-contain pointer-events-none" 
-                                           style={{
-                                              backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                              ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                           }}
-                                       />
+                                      {originalPreviewDims && optimizedPreviewDims && (
+                                        <div 
+                                          className="relative"
+                                          style={{
+                                            width: originalPreviewDims.w,
+                                            height: originalPreviewDims.h,
+                                            maxWidth: '100%',
+                                            maxHeight: '100%',
+                                            aspectRatio: `${originalPreviewDims.w} / ${originalPreviewDims.h}`
+                                          }}
+                                        >
+                                           {/* OPTIMIZED IMAGE (Background layer) */}
+                                           <img 
+                                               src={optimizedImageUrl || originalImageUrl || ""} 
+                                               alt="Optimized" 
+                                               referrerPolicy="no-referrer"
+                                               className="absolute inset-0 w-full h-full object-fill pointer-events-none" 
+                                               style={{
+                                                  backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
+                                                  ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                               }}
+                                           />
 
-                                       {/* ORIGINAL IMAGE (Foreground layer with clipPath) */}
-                                       <img 
-                                           src={originalImageUrl || ""} 
-                                           alt="Original" 
-                                           referrerPolicy="no-referrer"
-                                           className="absolute inset-0 w-full h-full object-contain pointer-events-none" 
-                                           style={{ clipPath: `polygon(0 0, ${comparisonDivider}% 0, ${comparisonDivider}% 100%, 0 100%)` }}
-                                       />
+                                           {/* ORIGINAL IMAGE (Foreground layer with clipPath) */}
+                                           <img 
+                                               src={originalImageUrl || ""} 
+                                               alt="Original" 
+                                               referrerPolicy="no-referrer"
+                                               className="absolute inset-0 w-full h-full object-fill pointer-events-none" 
+                                               style={{ 
+                                                  clipPath: `polygon(0 0, ${comparisonDivider}% 0, ${comparisonDivider}% 100%, 0 100%)` 
+                                               }}
+                                           />
+                                        </div>
+                                      )}
                                    </div>
                                 </TransformComponent>
                              </TransformWrapper>
@@ -7474,8 +7815,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                             >
                                <div className={`grid ${isMobile ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2'} gap-4 w-full h-full p-4`}>
                                   <div className="relative rounded-xl border border-[#222] bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
-                                     <div className="w-full h-full flex items-center justify-center">
-                                        <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none" style={{
+                                     <div className="relative w-full h-full flex items-center justify-center">
+                                        <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
                                            backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                            ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                         }} />
@@ -7483,8 +7824,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                      {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original: {formatBytes(originalSize || 0)}</span>}
                                   </div>
                                   <div className="relative rounded-xl border border-blue-500/20 bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
-                                     <div className="w-full h-full flex items-center justify-center">
-                                        <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none" style={{
+                                     <div className="relative w-full h-full flex items-center justify-center">
+                                        <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
                                            backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                            ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                         }} />
@@ -7514,8 +7855,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }} 
                                contentStyle={{ width: "100%", height: "100%" }}
                             >
-                               <div className="w-full h-full flex items-center justify-center p-4 text-center">
-                                  <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none mx-auto" style={{
+                               <div className="relative w-full h-full flex items-center justify-center p-4">
+                                  <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
                                      backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                      ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                   }} />
@@ -7543,8 +7884,8 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }} 
                                contentStyle={{ width: "100%", height: "100%" }}
                             >
-                               <div className="w-full h-full flex items-center justify-center p-4 text-center">
-                                  <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain pointer-events-none mx-auto" style={{
+                               <div className="relative w-full h-full flex items-center justify-center p-4">
+                                  <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
                                      backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
                                      ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
                                   }} />
@@ -8251,6 +8592,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                                 })()}
                             </span>
                          </div>
+                         
+                         {/* Object Dimensions & Transform Panel */}
+                         <ObjectDimensionsPanel fabricRef={fabricRef} />
+
                          {/* Transform Module */}
                          <div>
                             <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 flex items-center gap-2"><Move size={12}/> Transform</div>
@@ -10535,6 +10880,11 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                   <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
                   <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
                   <div className="h-px bg-[#252525] my-1" />
+                  <ContextMenuItem icon={Crop} label="Resize Artboard to Selection" onClick={() => { resizeArtboardToSelection('both'); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Crop} label="Resize Artboard Width to Selection" onClick={() => { resizeArtboardToSelection('width'); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
+                  <div className="h-px bg-[#252525] my-1" />
                   <ContextMenuItem icon={Copy} label="Copy as PNG" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
                   {activeContextMenu.obj?.type !== 'image' && (
                      <ContextMenuItem icon={Copy} label="Copy as SVG" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
@@ -10636,15 +10986,53 @@ function dataURLtoFile(dataurl: string, filename: string): File {
                     />
                   ))}
                   <div className="h-px bg-[#252525] my-1" />
-                  <ContextMenuItem icon={Upload} label="Import Image" onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                  <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
+                  <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
+                     try {
+                        const items = await navigator.clipboard.read();
+                        const results = await processPasteEvent({ clipboardData: { items: items as any } } as any);
+                        if (results.length > 0) importAssets(results);
+                     } catch(e) {}
+                     closeContextMenu();
+                  }} />
+                  <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => { 
+                     setShowUrlPrompt(true);
+                     closeContextMenu();
+                  }} />
                </>
             ) : (
                <>
                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Canvas Actions</div>
-                  <ContextMenuItem icon={Upload} label="Import Image" onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
                   <ContextMenuItem icon={Plus} label="New Artboard" onClick={() => { createArtboard(); closeContextMenu(); }} />
                   <ContextMenuItem icon={Type} label="Add Text" onClick={() => { addText(); closeContextMenu(); }} />
                   <ContextMenuItem icon={Grid} label="Toggle Grid" onClick={() => { closeContextMenu(); }} />
+                  <div className="h-px bg-[#252525] my-1" />
+                  <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
+                  <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
+                     try {
+                        const items = await navigator.clipboard.read();
+                        // This uses a hacky adapter to pass to our processPasteEvent which expects a standard PasteEvent
+                        const dataItems = Array.from(items).flatMap((item: any) => 
+                           item.types.map((type: string) => ({
+                              type,
+                              getType: () => item.getType(type),
+                           }))
+                        );
+                        // We actually already have a processClipboardItems function for exactly this!
+                        const { processClipboardItems } = await import('./image-import/clipboard/clipboardImporter');
+                        const results = await processClipboardItems(items as any);
+                        if (results.length > 0) importAssets(results);
+                     } catch(e) {}
+                     closeContextMenu();
+                  }} />
+                  <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
+                  <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => { 
+                     setShowUrlPrompt(true);
+                     closeContextMenu();
+                  }} />
                </>
             )}
          </div>,
@@ -10826,6 +11214,69 @@ function dataURLtoFile(dataurl: string, filename: string): File {
         document.body
       )}
 
+      {showUrlPrompt && (
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowUrlPrompt(false)}>
+          <div className="bg-[#111] border border-[#222] rounded-xl w-full max-w-md p-6 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+              <Link size={18} className="text-blue-500" />
+              Import from URL
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-[#8A8A8A] font-bold uppercase tracking-wider mb-2 block">Image or SVG URL</label>
+                <input 
+                  type="text" 
+                  value={urlInput}
+                  onChange={e => setUrlInput(e.target.value)}
+                  placeholder="https://example.com/image.png"
+                  className="w-full bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && urlInput) {
+                      importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
+                      setShowUrlPrompt(false);
+                      setUrlInput("");
+                    } else if (e.key === 'Escape') {
+                      setShowUrlPrompt(false);
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button 
+                  onClick={() => setShowUrlPrompt(false)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-[#A0A0A0] hover:text-white hover:bg-[#222] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    if (urlInput) {
+                      importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
+                      setShowUrlPrompt(false);
+                      setUrlInput("");
+                    }
+                  }}
+                  disabled={!urlInput}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Import
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAssetGallery && (
+         <AssetGallery 
+            onClose={() => setShowAssetGallery(false)}
+            onImport={(assets) => {
+               importAssets(assets);
+               setShowAssetGallery(false);
+            }}
+         />
+      )}
     </div>
   </div>
   );
