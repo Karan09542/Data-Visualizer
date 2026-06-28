@@ -8,11 +8,11 @@ const MiniPlayer: React.FC = () => {
   if (isPlayerOpen || !currentTrack) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 animate-in slide-in-from-bottom-8 fade-in duration-300">
-      <div className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-3 flex items-center gap-4 min-w-[320px] max-w-[400px]">
+    <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:left-auto z-40 flex justify-center animate-in slide-in-from-bottom-8 fade-in duration-300 pointer-events-none">
+      <div className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl p-2 sm:p-3 flex items-center gap-3 sm:gap-4 w-full md:min-w-[320px] max-w-[400px] pointer-events-auto">
         
         {/* Thumbnail */}
-        <div className="w-12 h-12 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex flex-shrink-0 items-center justify-center relative overflow-hidden group cursor-pointer" onClick={togglePlayer}>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 flex flex-shrink-0 items-center justify-center relative overflow-hidden group cursor-pointer" onClick={togglePlayer}>
           {currentTrack.thumbnail ? (
             <img src={currentTrack.thumbnail} alt="cover" className="w-full h-full object-cover" />
           ) : (
