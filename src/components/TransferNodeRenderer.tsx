@@ -20,7 +20,7 @@ import {
   UploadCloud,
   Download,
   Check,
-  File,
+  File as FileIcon,
   Globe,
   Share2,
   Laptop,
@@ -52,11 +52,133 @@ import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "../lib/db";
 
+export interface Attachment {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  content: string; // Object URL locally, base64 when sent
+  originalBlob?: Blob;
+}
+
+const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer" }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: {id: string, status: string} | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid" }) => {
+  const isFileObj = file instanceof File;
+  const fileName = isFileObj ? file.name : (file as Attachment).fileName;
+  const fileSize = isFileObj ? file.size : (file as Attachment).fileSize;
+  const fType = isFileObj ? getFileType(file.name) : (file as Attachment).fileType;
+  
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (file instanceof File) {
+      const url = URL.createObjectURL(file);
+      setLocalUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [file]);
+
+  const content = file instanceof File ? localUrl : (file as Attachment).content;
+  const sizeClasses = layout === "grid" 
+    ? (fType === "image" || fType === "video" ? "w-full aspect-square" : "w-full p-2.5 flex items-center gap-3")
+    : layout === "single-grid"
+    ? (fType === "image" || fType === "video" ? "w-full max-h-[350px]" : "w-full p-2.5 flex items-center gap-3")
+    : layout === "list"
+    ? "w-full p-2.5 flex items-center gap-3"
+    : (fType === "image" || fType === "video" ? "w-32 h-32" : "w-48 p-2.5 flex items-center gap-3");
+
+  return (
+    <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 ${sizeClasses}`}>
+      {fType === "image" && content && (
+        <img src={content} alt={fileName} className="w-full h-full object-cover" />
+      )}
+      {fType === "video" && content && (
+        <>
+          <video src={content} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+            <Play className="w-8 h-8 text-white opacity-80" />
+          </div>
+        </>
+      )}
+      {fType === "audio" && (
+        <>
+          <div className="w-10 h-10 rounded bg-indigo-500/20 flex items-center justify-center shrink-0">
+            <Volume2 className="w-5 h-5 text-indigo-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-slate-200 truncate">{fileName}</div>
+            <div className="text-xs text-slate-400">{formatFileSize(fileSize)}</div>
+          </div>
+        </>
+      )}
+      {fType === "pdf" && (
+        <>
+          <div className="w-10 h-10 rounded bg-red-500/20 flex items-center justify-center shrink-0">
+            <FileText className="w-5 h-5 text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-slate-200 truncate">{fileName}</div>
+            <div className="text-xs text-slate-400">{formatFileSize(fileSize)}</div>
+          </div>
+        </>
+      )}
+      {fType !== "image" && fType !== "video" && fType !== "audio" && fType !== "pdf" && (
+        <>
+          <div className="w-10 h-10 rounded bg-slate-500/20 flex items-center justify-center shrink-0">
+            <FileIcon className="w-5 h-5 text-slate-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-slate-200 truncate">{fileName}</div>
+            <div className="text-xs text-slate-400">{formatFileSize(fileSize)}</div>
+          </div>
+        </>
+      )}
+
+      {/* Action Buttons Container */}
+      <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+        {onCopy && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy();
+            }}
+            className="w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
+          >
+            {copyStatusObj?.id === (file as Attachment).id && copyStatusObj.status === "success" ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+          </button>
+        )}
+        {!readonly && onRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="w-7 h-7 rounded-full bg-black/60 hover:bg-red-500 text-white flex items-center justify-center transition-colors backdrop-blur-sm"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      
+      {/* Footer Info for Image/Video */}
+      {(fType === "image" || fType === "video") && (
+        <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/80 to-transparent">
+          <div className="text-[10px] text-white/90 truncate">{fileName}</div>
+        </div>
+      )}
+    </div>
+  );
+});
+
 interface Message {
   id: string;
   sender: "me" | "remote";
-  type: "text" | "file" | "node" | "workspace";
+  type: "text" | "file" | "composite" | "node" | "workspace";
   content: string;
+  attachments?: Attachment[];
   fileName?: string;
   fileType?: string;
   fileSize?: number;
@@ -268,6 +390,7 @@ export const TransferNodeRenderer: React.FC<{
 
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [copyPasteOffer, setCopyPasteOffer] = useState("");
   const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
 
@@ -294,7 +417,6 @@ export const TransferNodeRenderer: React.FC<{
   const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
   const [unreadCount, setUnreadCount] = useState(0);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [showScrollDown, setShowScrollDown] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollPosRef = useRef<number>(0);
   const lastMessageRef = useRef<HTMLDivElement>(null);
@@ -546,7 +668,17 @@ export const TransferNodeRenderer: React.FC<{
         if (e.key === "Escape") {
           setSelectedMedia(null);
         } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-          const mediaMsgs = messages.filter(m => m.type === "file");
+          const mediaMsgs = messages.reduce<any[]>((acc, m) => {
+            if (m.type === "file") {
+              acc.push(m);
+            }
+            if (m.type === "composite" && m.attachments) {
+              m.attachments.forEach(att => {
+                acc.push({ ...att, sender: m.sender, timestamp: m.timestamp });
+              });
+            }
+            return acc;
+          }, []);
           const idx = mediaMsgs.findIndex(m => m.id === selectedMedia.id);
           if (idx !== -1) {
             if (e.key === "ArrowLeft" && idx > 0) {
@@ -678,7 +810,6 @@ export const TransferNodeRenderer: React.FC<{
     setIsAtBottom(atBottom);
     if (atBottom) {
       setUnreadCount(0);
-      setShowScrollDown(false);
     }
   };
 
@@ -704,9 +835,6 @@ export const TransferNodeRenderer: React.FC<{
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
-    } else if (!isAtBottom) {
-      // Just received new message, not at bottom
-      setShowScrollDown(true);
     }
   }, [messages]);
 
@@ -839,16 +967,17 @@ export const TransferNodeRenderer: React.FC<{
     fileName?: string,
     replyTo?: Message["replyTo"],
     fileBlob?: Blob,
+    localMsgOverride?: Message,
   ) => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
-    const msgId = uuidv4();
+    const msgId = localMsgOverride ? localMsgOverride.id : uuidv4();
     const totalChunks = Math.ceil(payloadStr.length / CHUNK_SIZE);
     const startTime = performance.now();
 
     const objectUrl = type === "file" ? dataURItoBlobURL(payloadStr, fileName) : payloadStr;
     const finalBlob = fileBlob || (type === "file" && objectUrl ? blobRegistry.get(objectUrl) : undefined);
 
-    const initialMsg: Message = {
+    const initialMsg: Message = localMsgOverride || {
       id: msgId,
       sender: "me",
       type: type as any,
@@ -867,7 +996,7 @@ export const TransferNodeRenderer: React.FC<{
       blobRegistry.set(objectUrl, finalBlob);
     }
 
-    if (type === "file") {
+    if (type === "file" || type === "composite") {
       setMessages((prev) => [...prev, initialMsg]);
     }
 
@@ -902,7 +1031,7 @@ export const TransferNodeRenderer: React.FC<{
       const progress = Math.floor(((i + 1) / totalChunks) * 100);
       setTransferProgress(progress);
 
-      if (type === "file") {
+      if (type === "file" || type === "composite") {
         setMessages((prev) =>
           prev.map((m) => (m.id === msgId ? { ...m, chunksSent: i + 1 } : m)),
         );
@@ -917,7 +1046,7 @@ export const TransferNodeRenderer: React.FC<{
     dcRef.current.send(JSON.stringify({ type: "chunk_end", msgId }));
     setTransferProgress(0);
 
-    if (type === "file") {
+    if (type === "file" || type === "composite") {
       setMessages((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, status: "sent" } : m)),
       );
@@ -1046,7 +1175,6 @@ export const TransferNodeRenderer: React.FC<{
 
           if (!isAtBottom || document.visibilityState === "hidden") {
             setUnreadCount((prev) => prev + 1);
-            setShowScrollDown(true);
             sendLocalNotification("New Message", msg.content);
           }
 
@@ -1118,6 +1246,36 @@ export const TransferNodeRenderer: React.FC<{
                   type: "success",
                 });
               } catch (err) {}
+            } else if (chunkData.type === "composite") {
+              try {
+                const compositePayload = JSON.parse(fullPayload);
+                const attachments: Attachment[] = (compositePayload.attachments || []).map((att: any) => {
+                  const objectUrl = dataURItoBlobURL(att.content, att.fileName);
+                  const originalBlob = blobRegistry.get(objectUrl);
+                  return { ...att, content: objectUrl, originalBlob };
+                });
+                const newMsg: Message = {
+                  id: msg.msgId,
+                  sender: "remote",
+                  type: "composite",
+                  content: compositePayload.content,
+                  attachments,
+                  timestamp: Date.now(),
+                  status: "received",
+                  replyTo: chunkData.replyTo,
+                };
+                setMessages((prev) => [...prev, newMsg]);
+
+                if (!isAtBottom || document.visibilityState === "hidden") {
+                  setUnreadCount((prev) => prev + 1);
+                  sendLocalNotification(
+                    "Message Received",
+                    compositePayload.content || "New message with attachments",
+                  );
+                }
+              } catch (e) {
+                console.error("Failed to parse composite message", e);
+              }
             } else if (chunkData.type === "file") {
               const fType = chunkData.fileName
                 ? getFileType(chunkData.fileName)
@@ -1141,7 +1299,6 @@ export const TransferNodeRenderer: React.FC<{
 
               if (!isAtBottom || document.visibilityState === "hidden") {
                 setUnreadCount((prev) => prev + 1);
-                setShowScrollDown(true);
                 sendLocalNotification(
                   "File Received",
                   chunkData.fileName || "New file received",
@@ -1331,9 +1488,9 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (
-      !chatInput.trim() ||
+      (!chatInput.trim() && pendingFiles.length === 0) ||
       !dcRef.current ||
       dcRef.current.readyState !== "open"
     )
@@ -1349,27 +1506,95 @@ export const TransferNodeRenderer: React.FC<{
         }
       : undefined;
 
-    const msgId = uuidv4();
-    const msg: Message = {
-      id: msgId,
-      sender: "me",
-      type: "text",
-      content: chatInput,
-      timestamp: Date.now(),
-      status: "sent",
-      replyTo: replyData,
-    };
-    dcRef.current.send(
-      JSON.stringify({
-        type: "text",
-        id: msgId,
-        content: chatInput,
-        replyTo: replyData,
-      }),
-    );
-    setMessages((prev) => [...prev, msg]);
+    const textContent = chatInput;
+    const filesToProcess = [...pendingFiles];
+    
     setChatInput("");
+    setPendingFiles([]);
     setReplyingTo(null);
+
+    if (filesToProcess.length > 0) {
+      const msgId = uuidv4();
+      const attachments: Attachment[] = [];
+      const compositePayloadAttachments: any[] = [];
+      
+      for (const file of filesToProcess) {
+        const fileContent = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        
+        const fType = getFileType(file.name);
+        const objectUrl = URL.createObjectURL(file);
+        blobRegistry.set(objectUrl, file);
+        
+        const attId = uuidv4();
+        attachments.push({
+          id: attId,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: fType,
+          content: objectUrl,
+          originalBlob: file
+        });
+        
+        compositePayloadAttachments.push({
+          id: attId,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: fType,
+          content: fileContent
+        });
+      }
+
+      const compositePayload = {
+        content: textContent,
+        attachments: compositePayloadAttachments
+      };
+
+      const localMsgOverride: Message = {
+        id: msgId,
+        sender: "me",
+        type: "composite",
+        content: textContent,
+        attachments,
+        timestamp: Date.now(),
+        status: "sending",
+        chunksSent: 0,
+        chunksTotal: 0, 
+        replyTo: replyData
+      };
+
+      await sendLargeMessage(
+        "composite",
+        JSON.stringify(compositePayload),
+        undefined,
+        replyData,
+        undefined,
+        localMsgOverride
+      );
+    } else if (textContent.trim()) {
+      const msgId = uuidv4();
+      const msg: Message = {
+        id: msgId,
+        sender: "me",
+        type: "text",
+        content: textContent,
+        timestamp: Date.now(),
+        status: "sent",
+        replyTo: replyData,
+      };
+      dcRef.current.send(
+        JSON.stringify({
+          type: "text",
+          id: msgId,
+          content: textContent,
+          replyTo: replyData,
+        }),
+      );
+      setMessages((prev) => [...prev, msg]);
+    }
   };
 
   const sendWorkspace = () => {
@@ -1396,7 +1621,17 @@ export const TransferNodeRenderer: React.FC<{
 
   const isDark = appTheme === "dark";
 
-  const mediaMsgs = messages.filter((m) => m.type === "file");
+  const mediaMsgs = messages.reduce<any[]>((acc, m) => {
+    if (m.type === "file") {
+      acc.push(m);
+    }
+    if (m.type === "composite" && m.attachments) {
+      m.attachments.forEach(att => {
+        acc.push({ ...att, sender: m.sender, timestamp: m.timestamp });
+      });
+    }
+    return acc;
+  }, []);
   const selectedMediaIdx = selectedMedia ? mediaMsgs.findIndex((m) => m.id === selectedMedia.id) : -1;
   const hasPrevMedia = selectedMediaIdx > 0;
   const hasNextMedia = selectedMediaIdx !== -1 && selectedMediaIdx < mediaMsgs.length - 1;
@@ -2457,7 +2692,17 @@ export const TransferNodeRenderer: React.FC<{
           connectionState === "transferring") &&
           (() => {
             const chatMessages = messages;
-            const mediaMessages = messages.filter((m) => m.type === "file");
+            const mediaMessages = messages.reduce<any[]>((acc, m) => {
+              if (m.type === "file") {
+                acc.push(m);
+              }
+              if (m.type === "composite" && m.attachments) {
+                m.attachments.forEach(att => {
+                  acc.push({ ...att, sender: m.sender, timestamp: m.timestamp });
+                });
+              }
+              return acc;
+            }, []);
 
             const scrollToMessage = (id: string) => {
               const el = document.getElementById(`msg-${id}`);
@@ -2572,22 +2817,38 @@ export const TransferNodeRenderer: React.FC<{
                   onMouseDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
                   onWheel={(e) => e.stopPropagation()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const items = Array.from(e.dataTransfer.items);
+                    const files = items
+                      .filter(item => item.kind === 'file')
+                      .map(item => item.getAsFile())
+                      .filter((f): f is File => f !== null);
+                    
+                    if (files.length > 0) {
+                      setPendingFiles(prev => [...prev, ...files]);
+                    }
+                  }}
                 >
-                  {showScrollDown && (
+                  {!isAtBottom && (
                     <button
                       onClick={() => {
                         scrollRef.current?.scrollTo({
                           top: scrollRef.current.scrollHeight,
                           behavior: "smooth",
                         });
-                        setShowScrollDown(false);
                       }}
-                      className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-full shadow-lg flex items-center gap-2 hover:bg-indigo-700 transition-all border border-indigo-400/30"
+                      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-full shadow-lg flex items-center gap-2 hover:bg-indigo-700 transition-all border border-indigo-400/30 shadow-indigo-900/20"
                     >
                       <ChevronRight className="w-3.5 h-3.5 rotate-90" />
                       {unreadCount > 0
                         ? `${unreadCount} New Messages`
-                        : "Go to bottom"}
+                        : "Jump to Latest"}
                     </button>
                   )}
                   <AnimatePresence mode="wait">
@@ -2651,7 +2912,9 @@ export const TransferNodeRenderer: React.FC<{
                                 }}
                                 className={`group relative max-w-[85%] rounded-3xl p-1 transition-all duration-300 ${
                                   msg.sender === "me"
-                                    ? "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
+                                    ? msg.type === "composite" || msg.type === "file" 
+                                      ? isDark ? "bg-slate-800 text-white rounded-tr-sm shadow-xl" : "bg-slate-200 text-slate-800 rounded-tr-sm shadow-sm"
+                                      : "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
                                     : isDark
                                       ? "bg-[#161f30] text-slate-200 rounded-tl-sm border border-white/5"
                                       : "bg-slate-100 text-slate-800 rounded-tl-sm"
@@ -2712,11 +2975,60 @@ export const TransferNodeRenderer: React.FC<{
                                     </span>
                                   </button>
                                 )}
-                                {msg.type === "text" ? (
+                                {msg.type === "text" && (
                                   <div className="px-4 py-2.5 text-xs font-medium">
                                     {msg.content}
                                   </div>
-                                ) : (
+                                )}
+                                {msg.type === "composite" && (
+                                  <div className="flex flex-col gap-1 p-1">
+                                    {(() => {
+                                      const visuals = msg.attachments?.filter(att => att.fileType === "image" || att.fileType === "video") || [];
+                                      const others = msg.attachments?.filter(att => att.fileType !== "image" && att.fileType !== "video") || [];
+                                      
+                                      return (
+                                        <>
+                                          {visuals.length > 0 && (
+                                            <div className={`grid gap-1 ${visuals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                              {visuals.map((att, i) => (
+                                                <div key={i} className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`} onClick={() => setSelectedMedia({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}>
+                                                  <FilePreviewCard 
+                                                    file={att} 
+                                                    readonly 
+                                                    layout={visuals.length === 1 ? "single-grid" : "grid"}
+                                                    copyStatusObj={copyStatus}
+                                                    onCopy={() => handleMediaCopy({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}
+                                                  />
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {others.length > 0 && (
+                                            <div className="flex flex-col gap-1">
+                                              {others.map((att, i) => (
+                                                <div key={i} className="cursor-pointer" onClick={() => setSelectedMedia({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}>
+                                                  <FilePreviewCard 
+                                                    file={att} 
+                                                    readonly 
+                                                    layout="list"
+                                                    copyStatusObj={copyStatus}
+                                                    onCopy={() => handleMediaCopy({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}
+                                                  />
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
+                                    {msg.content && (
+                                      <div className="px-3 py-1.5 text-xs font-medium mt-0.5">
+                                        {msg.content}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {msg.type === "file" && (
                                   <div className="flex flex-col gap-1">
                                     {msg.fileType === "image" && (
                                       <button
@@ -2840,7 +3152,7 @@ export const TransferNodeRenderer: React.FC<{
                                           msg.fileType === "text_file" ? (
                                             <FileText className="w-6 h-6" />
                                           ) : (
-                                            <File className="w-6 h-6" />
+                                            <FileIcon className="w-6 h-6" />
                                           )}
                                         </div>
                                         <div className="flex flex-col min-w-0 flex-1">
@@ -2967,9 +3279,27 @@ export const TransferNodeRenderer: React.FC<{
                             </div>
                           )}
 
-                          <div className="flex items-center gap-3">
+                          <AnimatePresence>
+                            {pendingFiles.length > 0 && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="mb-3 flex overflow-x-auto pb-2 gap-3"
+                              >
+                                {pendingFiles.map((file, idx) => (
+                                  <FilePreviewCard
+                                    key={`${file.name}-${idx}`}
+                                    file={file}
+                                    onRemove={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
+                                  />
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                          <div className="flex items-center gap-2">
                             <label
-                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                              className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${
                                 isDark
                                   ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
                                   : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
@@ -2981,34 +3311,18 @@ export const TransferNodeRenderer: React.FC<{
                                 className="hidden"
                                 multiple
                                 onChange={(e) => {
-                                  const files = Array.from(
-                                    e.target.files || [],
-                                  );
-                                  if (files.length === 0 || !dcRef.current)
-                                    return;
-
-                                  files.forEach((file) => {
-                                    const reader = new FileReader();
-                                    reader.onload = (re) => {
-                                      const content = re.target
-                                        ?.result as string;
-                                      const fType = getFileType(file.name);
-                                      sendLargeMessage(
-                                        "file",
-                                        content,
-                                        file.name,
-                                        undefined,
-                                        file,
-                                      );
-                                    };
-                                    reader.readAsDataURL(file);
-                                  });
+                                  const files = Array.from(e.target.files || []);
+                                  if (files.length > 0) {
+                                    setPendingFiles(prev => [...prev, ...files]);
+                                  }
+                                  // clear the input so the same file can be selected again
+                                  e.target.value = '';
                                 }}
                               />
                             </label>
 
                             <div
-                              className={`flex-1 flex items-center rounded-2xl p-1.5 border transition-all shadow-inner ${
+                              className={`flex-1 flex items-center rounded-3xl p-1.5 border transition-all shadow-inner min-w-0 ${
                                 isDark
                                   ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
                                   : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
@@ -3018,20 +3332,31 @@ export const TransferNodeRenderer: React.FC<{
                                 type="text"
                                 value={chatInput}
                                 onChange={(e) => setChatInput(e.target.value)}
+                                onPaste={(e) => {
+                                  const items = Array.from(e.clipboardData.items);
+                                  const files = items
+                                    .filter(item => item.kind === 'file')
+                                    .map(item => item.getAsFile())
+                                    .filter((f): f is File => f !== null);
+                                  
+                                  if (files.length > 0) {
+                                    setPendingFiles(prev => [...prev, ...files]);
+                                  }
+                                }}
                                 onKeyDown={(e) => {
                                   e.stopPropagation();
                                   if (e.key === "Enter") sendMessage();
                                 }}
                                 onKeyUp={(e) => e.stopPropagation()}
                                 placeholder="Type a message..."
-                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium"
+                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0"
                               />
                               <button
                                 onClick={sendMessage}
-                                disabled={!chatInput.trim()}
-                                className="p-2.5 bg-indigo-600 disabled:opacity-50 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center"
+                                disabled={!chatInput.trim() && pendingFiles.length === 0}
+                                className="w-[36px] h-[36px] shrink-0 bg-indigo-600 disabled:opacity-50 text-white rounded-full hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center"
                               >
-                                <Send className="w-4 h-4" />
+                                <Send className="w-4 h-4 ml-0.5" />
                               </button>
                             </div>
 
@@ -3045,7 +3370,7 @@ export const TransferNodeRenderer: React.FC<{
                                   resetState();
                                 }
                               }}
-                              className={`p-3.5 rounded-2xl border transition-all ${isDark ? "border-red-500/10 bg-red-500/5 hover:bg-red-500/10 text-red-400" : "border-red-50/10 bg-red-50 hover:bg-red-100 text-red-500"}`}
+                              className={`p-2.5 rounded-full border transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark ? "border-red-500/10 bg-red-500/5 hover:bg-red-500/10 text-red-400" : "border-red-50/10 bg-red-50 hover:bg-red-100 text-red-500"}`}
                             >
                               <X className="w-5 h-5" />
                             </button>
@@ -3095,7 +3420,7 @@ export const TransferNodeRenderer: React.FC<{
                                   </div>
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
-                                    <File className="w-6 h-6 text-indigo-500" />
+                                    <FileIcon className="w-6 h-6 text-indigo-500" />
                                   </div>
                                 )}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
@@ -3420,6 +3745,17 @@ export const TransferNodeRenderer: React.FC<{
                                   <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
                                     <TextFileViewer url={media.content} />
                                   </div>
+                                </div>
+                              )}
+                              {media.fileType === "file" && (
+                                <div className="max-w-sm w-full bg-[#161f30] rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center p-8 border border-white/5 text-center">
+                                  <FileIcon className="w-20 h-20 text-indigo-500 mb-6" />
+                                  <h3 className="text-lg font-bold text-white mb-2 break-all line-clamp-3">{media.fileName}</h3>
+                                  <p className="text-slate-400 text-[10px] mb-8 uppercase tracking-widest font-bold">{media.fileSize ? formatFileSize(media.fileSize) : "Unknown Size"}</p>
+                                  <a href={media.content} download={media.fileName} className="px-6 py-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
+                                    <Download className="w-4 h-4" />
+                                    Download File
+                                  </a>
                                 </div>
                               )}
                             </motion.div>
