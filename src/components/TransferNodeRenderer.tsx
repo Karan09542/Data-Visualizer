@@ -417,6 +417,8 @@ export const TransferNodeRenderer: React.FC<{
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
 
+  const [chatInputFocused, setChatInputFocused] = useState(false);
+
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
 
@@ -3849,11 +3851,30 @@ export const TransferNodeRenderer: React.FC<{
                                 onKeyDown={(e) => {
                                   e.stopPropagation();
                                   if (e.key === "Enter") sendMessage();
+                                  if (e.key === "Escape") {
+                                    setChatInput("");
+                                    setEditingMessage(null);
+                                    setReplyingTo(null);
+                                  }
                                 }}
                                 onKeyUp={(e) => e.stopPropagation()}
+                                onFocus={() => setChatInputFocused(true)}
+                                onBlur={() => setChatInputFocused(false)}
                                 placeholder="Type a message..."
                                 className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0"
                               />
+                              {!chatInputFocused && chatInput.length > 0 && (
+                                <button
+                                  onClick={() => {
+                                    setChatInput("");
+                                    setEditingMessage(null);
+                                    setReplyingTo(null);
+                                  }}
+                                  className="w-[32px] h-[32px] shrink-0 text-slate-400 hover:text-slate-600 sm:hidden flex items-center justify-center transition-colors"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
                                 onClick={sendMessage}
                                 disabled={!chatInput.trim() && pendingFiles.length === 0}
