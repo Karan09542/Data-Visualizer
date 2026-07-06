@@ -17,6 +17,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [rendering, setRendering] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordRequired, setPasswordRequired] = useState<boolean>(false);
+  const [password, setPassword] = useState<string>("");
   const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -44,7 +46,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
     const cleanUrl = url.replace(/#.*$/, "");
 
-    const loadPdfDoc = async () => {
+    const loadPdfDoc = async (currentPassword?: string) => {
       let arrayBuffer: ArrayBuffer | null = null;
       let lastErrorMsg = "";
 
@@ -86,7 +88,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
         try {
           const loadingTask = pdfjsLib.getDocument({
             data: new Uint8Array(arrayBuffer),
-            useSystemFonts: true
+            useSystemFonts: true,
+            password: currentPassword
           });
           
           const pdf = await loadingTask.promise;
@@ -95,8 +98,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
           setTotalPages(pdf.numPages);
           setCurrentPage(1);
           setLoading(false);
+          setPasswordRequired(false);
           return;
         } catch (err: any) {
+          if (err.name === "PasswordException") {
+            if (active) {
+              setPasswordRequired(true);
+              setLoading(false);
+              if (currentPassword) {
+                setError("Incorrect password. Please try again.");
+              }
+            }
+            return;
+          }
           console.error("PDF.js parsing error:", err);
           lastErrorMsg += `\nPDFJS Parsing Error: ${err.message || err.toString()}`;
         }
@@ -109,7 +123,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
       }
     };
 
-    loadPdfDoc();
+    loadPdfDoc(password);
 
     return () => {
       active = false;
@@ -208,6 +222,49 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
     link.click();
     document.body.removeChild(link);
   };
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password) {
+      setReloadKey(prev => prev + 1);
+    }
+  };
+
+  const submitPassword = () => {
+    if (password) {
+      setReloadKey(prev => prev + 1);
+    }
+  };
+
+  if (passwordRequired) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 h-full bg-slate-900/30 dark:bg-slate-950/40 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
+        <AlertCircle className="h-10 w-10 text-amber-500 mb-4" />
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Password Protected PDF</h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center max-w-xs">
+          This document is encrypted. Please enter the password to view the content.
+        </p>
+        <form onSubmit={handlePasswordSubmit} className="w-full max-w-xs flex flex-col gap-3">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter PDF password"
+            className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+            autoFocus
+          />
+          {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
+          <button
+            type="submit"
+            onClick={submitPassword}
+            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg active:scale-[0.98]"
+          >
+            Unlock PDF
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
