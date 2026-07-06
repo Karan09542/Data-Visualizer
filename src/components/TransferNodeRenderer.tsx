@@ -9,6 +9,40 @@ import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
 import LZString from "lz-string";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import JSZip from "jszip";
+
+async function getFilesFromEntry(entry: any, path = ""): Promise<{file: File, path: string}[]> {
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      entry.file((file: File) => resolve([{ file, path: path + file.name }]));
+    });
+  } else if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    let entries: any[] = [];
+    
+    const readEntries = async (): Promise<any[]> => {
+      return new Promise((resolve) => {
+        dirReader.readEntries(async (results: any[]) => {
+          if (results.length) {
+            entries = entries.concat(results);
+            resolve(entries.concat(await readEntries()));
+          } else {
+            resolve(entries);
+          }
+        });
+      });
+    };
+    const allEntries = await readEntries();
+    
+    let files: {file: File, path: string}[] = [];
+    for (const e of allEntries) {
+      files = files.concat(await getFilesFromEntry(e, path + entry.name + "/"));
+    }
+    return files;
+  }
+  return [];
+}
+
 import {
   Copy,
   Plus,
@@ -92,7 +126,16 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
   return (
     <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 ${sizeClasses}`}>
       {fType === "image" && content && (
-        <img src={content} alt={fileName} className="w-full h-full object-cover" />
+        <>
+          <img src={content} alt={fileName} className="w-full h-full object-cover" />
+          {layout === "composer" && (
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-4 flex items-end">
+              <span className="text-[10px] font-bold text-white truncate w-full drop-shadow-md">
+                {fileName}
+              </span>
+            </div>
+          )}
+        </>
       )}
       {fType === "video" && content && (
         <>
@@ -388,6 +431,28 @@ export const TransferNodeRenderer: React.FC<{
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [zippingTasks, setZippingTasks] = useState<{id: string, folderName: string, progress?: number}[]>([]);
+  const zipWorkerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    zipWorkerRef.current = new Worker(new URL('../workers/zipWorker', import.meta.url), { type: 'module' });
+    zipWorkerRef.current.onmessage = (e) => {
+      const { id, zipFile, error, progress } = e.data;
+      if (progress !== undefined) {
+        setZippingTasks(prev => prev.map(t => t.id === id ? { ...t, progress } : t));
+        return;
+      }
+      setZippingTasks(prev => prev.filter(t => t.id !== id));
+      if (zipFile) {
+        setPendingFiles(prev => [...prev, zipFile]);
+      } else if (error) {
+        console.error("Zipping error:", error);
+      }
+    };
+    return () => {
+      zipWorkerRef.current?.terminate();
+    };
+  }, []);
   const [copyPasteOffer, setCopyPasteOffer] = useState("");
   const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
 
@@ -414,6 +479,7 @@ export const TransferNodeRenderer: React.FC<{
   const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
   const [autoClipboardSync, setAutoClipboardSync] = useState(false);
   const lastClipboardTextRef = useRef<string>("");
+  const lastClipboardImageRef = useRef<string>("");
   const autoClipboardSyncRef = useRef(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -447,34 +513,122 @@ export const TransferNodeRenderer: React.FC<{
     const syncClipboard = async () => {
       try {
         if (!navigator.clipboard) return;
-        const text = await navigator.clipboard.readText();
-        if (text && text.trim() && text !== lastClipboardTextRef.current) {
-          lastClipboardTextRef.current = text;
 
-          if (dcRef.current && dcRef.current.readyState === "open") {
-            const msg: Message = {
-              id: uuidv4(),
-              type: "text",
-              content: text,
-              timestamp: Date.now(),
-              sender: "me",
-              status: "sending",
-            };
+        let hasNewData = false;
 
-            setMessages((prev) => [...prev, msg]);
+        // Try reading items (images, etc)
+        let newImageFiles: File[] = [];
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            let itemHandled = false;
+            for (const type of item.types) {
+              if (type === 'text/plain' || type === 'text/html') continue;
+              
+              try {
+                const blob = await item.getType(type);
+                const sizeKey = `${blob.size}-${type}`;
+                if (lastClipboardImageRef.current !== sizeKey) {
+                  lastClipboardImageRef.current = sizeKey;
+                  let ext = type.split('/')[1] || 'bin';
+                  if (ext === 'jpeg') ext = 'jpg';
+                  if (ext === 'svg+xml') ext = 'svg';
+                  
+                  const prefix = type.startsWith('image/') ? 'image' : 'file';
+                  const file = new File([blob], `clipboard-${prefix}.${ext}`, { type });
+                  newImageFiles.push(file);
+                  hasNewData = true;
+                  itemHandled = true;
+                }
+              } catch (e) {}
+              
+              if (itemHandled) break;
+            }
+          }
+        } catch(e) {
+          // Ignore read errors
+        }
 
-            const payload = {
-              type: "text",
-              id: msg.id,
-              content: text,
-              timestamp: msg.timestamp,
-            };
+        // Try reading text
+        let newText = "";
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim() && text !== lastClipboardTextRef.current) {
+            lastClipboardTextRef.current = text;
+            newText = text;
+            hasNewData = true;
+          }
+        } catch(e) {
+          // Ignore read errors
+        }
 
-            dcRef.current.send(JSON.stringify(payload));
+        if (hasNewData && dcRef.current && dcRef.current.readyState === "open") {
+          if (newImageFiles.length > 0) {
+             const msgId = uuidv4();
+             const attachments: Attachment[] = [];
+             const compositePayloadAttachments: any[] = [];
+              
+             for (const file of newImageFiles) {
+               const fileContent = await new Promise<string>((resolve) => {
+                 const reader = new FileReader();
+                 reader.onload = (e) => resolve(e.target?.result as string);
+                 reader.readAsDataURL(file);
+               });
+                 
+               const fType = getFileType(file.name);
+               const objectUrl = URL.createObjectURL(file);
+               blobRegistry.set(objectUrl, file);
+                 
+               const attId = uuidv4();
+               attachments.push({
+                 id: attId,
+                 fileName: file.name,
+                 fileSize: file.size,
+                 fileType: fType,
+                 content: objectUrl,
+                 originalBlob: file
+               });
+                 
+               compositePayloadAttachments.push({
+                 id: attId,
+                 fileName: file.name,
+                 fileSize: file.size,
+                 fileType: fType,
+                 content: fileContent
+               });
+             }
+             
+             const compositePayload = {
+               content: newText,
+               attachments: compositePayloadAttachments
+             };
+
+             const localMsgOverride: Message = {
+               id: msgId,
+               sender: "me",
+               type: "composite",
+               content: newText,
+               attachments,
+               timestamp: Date.now(),
+               status: "sending",
+               chunksSent: 0,
+               chunksTotal: 0
+             };
+
+             await sendLargeMessage(
+               "composite",
+               JSON.stringify(compositePayload),
+               undefined,
+               undefined,
+               undefined,
+               localMsgOverride
+             );
+          } else if (newText.trim()) {
+            await sendLargeMessage("text", newText);
           }
         }
       } catch (err) {
-        // Ignore read errors
+        // Ignore overall errors
       }
     };
 
@@ -1094,7 +1248,9 @@ export const TransferNodeRenderer: React.FC<{
     const objectUrl = type === "file" ? dataURItoBlobURL(payloadStr, fileName) : payloadStr;
     const finalBlob = fileBlob || (type === "file" && objectUrl ? blobRegistry.get(objectUrl) : undefined);
 
-    const initialMsg: Message = localMsgOverride || {
+    const initialMsg: Message = localMsgOverride 
+      ? { ...localMsgOverride, chunksTotal: totalChunks }
+      : {
       id: msgId,
       sender: "me",
       type: type as any,
@@ -1113,7 +1269,7 @@ export const TransferNodeRenderer: React.FC<{
       blobRegistry.set(objectUrl, finalBlob);
     }
 
-    if (type === "file" || type === "composite") {
+    if (type === "file" || type === "composite" || type === "text") {
       setMessages((prev) => [...prev, initialMsg]);
     }
 
@@ -1148,7 +1304,7 @@ export const TransferNodeRenderer: React.FC<{
       const progress = Math.floor(((i + 1) / totalChunks) * 100);
       setTransferProgress(progress);
 
-      if (type === "file" || type === "composite") {
+      if (type === "file" || type === "composite" || type === "text") {
         setMessages((prev) =>
           prev.map((m) => (m.id === msgId ? { ...m, chunksSent: i + 1 } : m)),
         );
@@ -1163,7 +1319,7 @@ export const TransferNodeRenderer: React.FC<{
     dcRef.current.send(JSON.stringify({ type: "chunk_end", msgId }));
     setTransferProgress(0);
 
-    if (type === "file" || type === "composite") {
+    if (type === "file" || type === "composite" || type === "text") {
       setMessages((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, status: "sent" } : m)),
       );
@@ -1429,6 +1585,35 @@ export const TransferNodeRenderer: React.FC<{
                 sendLocalNotification(
                   "File Received",
                   chunkData.fileName || "New file received",
+                );
+              }
+            } else if (chunkData.type === "text") {
+              const newMsg: Message = {
+                id: msg.msgId,
+                sender: "remote",
+                type: "text",
+                content: fullPayload,
+                timestamp: Date.now(),
+                status: "received",
+                replyTo: chunkData.replyTo,
+              };
+              setMessages((prev) => [...prev, newMsg]);
+
+              if (autoClipboardSyncRef.current) {
+                try {
+                  navigator.clipboard.writeText(fullPayload).then(() => {
+                     lastClipboardTextRef.current = fullPayload;
+                  }).catch(() => {
+                     // writeText requires user gesture if not focused
+                  });
+                } catch (err) {}
+              }
+
+              if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
+                setUnreadCount((prev) => prev + 1);
+                sendLocalNotification(
+                  "New Message",
+                  fullPayload.length > 30 ? fullPayload.substring(0, 30) + "..." : fullPayload,
                 );
               }
             }
@@ -1702,25 +1887,7 @@ export const TransferNodeRenderer: React.FC<{
         localMsgOverride
       );
     } else if (textContent.trim()) {
-      const msgId = uuidv4();
-      const msg: Message = {
-        id: msgId,
-        sender: "me",
-        type: "text",
-        content: textContent,
-        timestamp: Date.now(),
-        status: "sent",
-        replyTo: replyData,
-      };
-      dcRef.current.send(
-        JSON.stringify({
-          type: "text",
-          id: msgId,
-          content: textContent,
-          replyTo: replyData,
-        }),
-      );
-      setMessages((prev) => [...prev, msg]);
+      await sendLargeMessage("text", textContent, undefined, replyData);
     }
   };
 
@@ -2987,17 +3154,30 @@ export const TransferNodeRenderer: React.FC<{
                     e.preventDefault();
                     e.stopPropagation();
                   }}
-                  onDrop={(e) => {
+                  onDrop={async (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     const items = Array.from(e.dataTransfer.items);
-                    const files = items
-                      .filter(item => item.kind === 'file')
-                      .map(item => item.getAsFile())
-                      .filter((f): f is File => f !== null);
                     
-                    if (files.length > 0) {
-                      setPendingFiles(prev => [...prev, ...files]);
+                    const newFiles: File[] = [];
+                    for (const item of items) {
+                      if (item.kind === 'file') {
+                        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+                        if (entry && entry.isDirectory) {
+                          const filesInDir = await getFilesFromEntry(entry);
+                          if (filesInDir.length > 0) {
+                             const id = uuidv4();
+                             setZippingTasks(prev => [...prev, { id, folderName: entry.name }]);
+                             zipWorkerRef.current?.postMessage({ id, files: filesInDir, folderName: entry.name });
+                          }
+                        } else {
+                          const f = item.getAsFile();
+                          if (f) newFiles.push(f);
+                        }
+                      }
+                    }
+                    if (newFiles.length > 0) {
+                      setPendingFiles(prev => [...prev, ...newFiles]);
                     }
                   }}
                 >
@@ -3086,6 +3266,20 @@ export const TransferNodeRenderer: React.FC<{
                                       : "bg-slate-100 text-slate-800 rounded-tl-sm"
                                 }`}
                               >
+                                {msg.status === "sending" && (msg.type === "composite" || msg.type === "file" || msg.type === "text") && (
+                                  <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm rounded-[inherit] flex flex-col items-center justify-center p-4">
+                                    <RefreshCw className="w-5 h-5 text-white animate-spin mb-2" />
+                                    <div className="text-[10px] font-bold text-white uppercase tracking-wider whitespace-nowrap">Sending...</div>
+                                    {(msg.chunksTotal ?? 0) > 0 && (
+                                      <div className="w-full max-w-[120px] h-1.5 bg-white/20 rounded-full mt-3 overflow-hidden">
+                                        <div 
+                                          className="h-full bg-indigo-400 rounded-full transition-all duration-300"
+                                          style={{ width: `${((msg.chunksSent ?? 0) / (msg.chunksTotal ?? 1)) * 100}%` }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                                 {/* Hover Actions Bar - Desktop only */}
                                 <div
                                   className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 shadow-lg ${
@@ -3446,7 +3640,7 @@ export const TransferNodeRenderer: React.FC<{
                           )}
 
                           <AnimatePresence>
-                            {pendingFiles.length > 0 && (
+                            {(pendingFiles.length > 0 || zippingTasks.length > 0) && (
                               <motion.div
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: "auto", opacity: 1 }}
@@ -3459,6 +3653,34 @@ export const TransferNodeRenderer: React.FC<{
                                     file={file}
                                     onRemove={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
                                   />
+                                ))}
+                                {zippingTasks.map((task, idx) => (
+                                  <div key={task.id} className="relative group shrink-0 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 w-48 p-2.5 flex items-center gap-3">
+                                    <div className="p-3 rounded-xl bg-white/5 text-white/50 relative flex items-center justify-center">
+                                      <RefreshCw className="w-6 h-6 animate-spin absolute text-indigo-400" />
+                                      <FileIcon className="w-6 h-6 opacity-30" />
+                                    </div>
+                                    <div className="flex flex-col min-w-0 flex-1 relative z-10">
+                                      <span className="text-xs font-black truncate leading-tight mb-1 text-slate-300 pr-2">
+                                        {task.folderName}.zip
+                                      </span>
+                                      <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400">
+                                        <span>Zipping {task.progress !== undefined ? `${Math.round(task.progress)}%` : '...'}</span>
+                                      </div>
+                                    </div>
+                                    <div 
+                                      className="absolute bottom-0 left-0 h-1 bg-indigo-500 transition-all duration-300 ease-linear"
+                                      style={{ width: `${task.progress || 0}%` }}
+                                    />
+                                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() => setZippingTasks(prev => prev.filter(t => t.id !== task.id))}
+                                        className="w-6 h-6 rounded-full bg-black/60 hover:bg-red-500 text-white flex items-center justify-center transition-colors backdrop-blur-sm"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 ))}
                               </motion.div>
                             )}
