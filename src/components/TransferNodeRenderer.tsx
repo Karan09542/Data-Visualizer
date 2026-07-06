@@ -134,7 +134,7 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
       )}
 
       {/* Action Buttons Container */}
-      <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+      <div className="absolute top-1 right-1 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-20">
         {onCopy && (
           <button
             onClick={(e) => {
@@ -1620,6 +1620,31 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const isDark = appTheme === "dark";
+  
+  const renderContentWithLinks = (text: string) => {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            referrerPolicy="no-referrer"
+            className={`${isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-500'} underline underline-offset-2 break-all cursor-pointer pointer-events-auto select-text`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={i} className="select-text">{part}</span>;
+    });
+  };
 
   const mediaMsgs = messages.reduce<any[]>((acc, m) => {
     if (m.type === "file") {
@@ -2976,8 +3001,8 @@ export const TransferNodeRenderer: React.FC<{
                                   </button>
                                 )}
                                 {msg.type === "text" && (
-                                  <div className="px-4 py-2.5 text-xs font-medium">
-                                    {msg.content}
+                                  <div className="px-4 py-2.5 text-xs font-medium select-text">
+                                    {renderContentWithLinks(msg.content)}
                                   </div>
                                 )}
                                 {msg.type === "composite" && (
@@ -3022,8 +3047,8 @@ export const TransferNodeRenderer: React.FC<{
                                       );
                                     })()}
                                     {msg.content && (
-                                      <div className="px-3 py-1.5 text-xs font-medium mt-0.5">
-                                        {msg.content}
+                                      <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text">
+                                        {renderContentWithLinks(msg.content)}
                                       </div>
                                     )}
                                   </div>

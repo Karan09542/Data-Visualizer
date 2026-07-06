@@ -1011,12 +1011,13 @@ const EquationInput = ({
       if (/^[a-zA-Z_]\w*$/.test(tok)) {
         const isVar =
           variables.some((v: any) => v.name === tok) ||
-          ["x", "y", "t", "time", "theta"].includes(tok);
+          ["x", "y", "t", "time", "theta"].includes(tok) ||
+          tok.startsWith("t_");
         if (isVar) {
           const color =
             tok === "x"
               ? "#10b981"
-              : ["t", "time"].includes(tok)
+              : (["t", "time"].includes(tok) || tok.startsWith("t_"))
                 ? "#8b5cf6"
                 : tok === "y"
                   ? "#3b82f6"
@@ -1063,19 +1064,20 @@ const EquationInput = ({
             if (n.isSymbolNode) {
               const isVar =
                 variables.some((v: any) => v.name === n.name) ||
-                ["x", "y", "t", "time", "theta"].includes(n.name);
+                ["x", "y", "t", "time", "theta"].includes(n.name) ||
+                n.name.startsWith("t_");
               if (isVar) {
                 const color =
                   n.name === "x"
                     ? "#10b981"
-                    : ["t", "time"].includes(n.name)
+                    : (["t", "time"].includes(n.name) || n.name.startsWith("t_"))
                       ? "#8b5cf6"
                       : n.name === "y"
                         ? "#3b82f6"
                         : n.name === "theta"
                           ? "#f59e0b"
                           : getVarColor(n.name);
-                const display = n.name === "theta" ? "\\theta" : n.name;
+                const display = n.name === "theta" ? "\\theta" : n.name.replace("_", "\\_");
                 return `\\textcolor{${color}}{${display}}`;
               }
             }
@@ -3070,7 +3072,37 @@ const decoupleGeometry = (f: MathFunction, baseScope: any) => {
 const parseAndAdjustForCompile = (exprStr: string): any => {
   const node = mathjs.parse(exprStr);
   const transformNode = (n: any): any => {
-    const mapped = n.map(transformNode);
+    let mapped = n.map(transformNode);
+    if (mapped.isFunctionNode) {
+      try {
+        if (mapped.fn.name === "derivative") {
+           let arg0 = mapped.args[0];
+           let arg1 = mapped.args[1];
+           if (arg0 && arg0.isConstantNode && typeof arg0.value === 'string') {
+             arg0 = mathjs.parse(arg0.value);
+           }
+           if (arg1 && arg1.isConstantNode && typeof arg1.value === 'string') {
+             arg1 = mathjs.parse(arg1.value);
+           }
+           const res = (mathjs as any).derivative(arg0, arg1);
+           if (res && (res.isNode || res.type)) {
+             mapped = res.map(transformNode);
+           }
+        } else if (mapped.fn.name === "simplify") {
+           const res = (mathjs as any).simplify(mapped.args[0]);
+           if (res && (res.isNode || res.type)) {
+             mapped = res.map(transformNode);
+           }
+        } else if (mapped.fn.name === "rationalize") {
+           const res = (mathjs as any).rationalize(mapped.args[0]);
+           if (res && (res.isNode || res.type)) {
+             mapped = res.map(transformNode);
+           }
+        }
+      } catch (e) {
+        // Ignore errors during pre-evaluation
+      }
+    }
     if (mapped.type === "AccessorNode" || mapped.isAccessorNode) {
       return new (mathjs as any).FunctionNode("indexHelper", [
         mapped.object,
@@ -4107,8 +4139,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   // Compile functions & extract variables
   useEffect(() => {
-    const varsToAdd = new Set<string>();
-    const assignedVars = new Set<string>();
+    const timer = setTimeout(() => {
+      const varsToAdd = new Set<string>();
+      const assignedVars = new Set<string>();
 
     const tempBaseScope = variables.reduce(
       (acc, v) => ({ ...acc, [v.name]: v.value }),
@@ -4126,6 +4159,23 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     tempBaseScope.Vector = (...args: any[]) => args;
     tempBaseScope.Polygon = (...args: any[]) => args;
     tempBaseScope.Point = (...args: any[]) => args;
+
+    // Pre-populate t_... variables for test evaluations
+    functions.forEach((f, idx) => {
+      const fTime = f.hasCustomTimeline
+        ? f.time !== undefined
+          ? f.time
+          : 0
+        : time;
+      tempBaseScope[`t_${idx + 1}`] = fTime;
+      if (f.name) {
+        const match = f.name.match(/^([a-zA-Z0-9_]+)/);
+        const fnId = match ? match[1] : f.name;
+        if (fnId && fnId !== "t" && fnId !== "time") {
+          tempBaseScope[`t_${fnId}`] = fTime;
+        }
+      }
+    });
 
     const newFunctions = functions.map((f) => {
       try {
@@ -4157,9 +4207,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             node.traverse((n: any) => {
               if (
                 n.isSymbolNode &&
-                !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point"].includes(
+                !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper"].includes(
                   n.name,
                 ) &&
+                !n.name.startsWith("t_") &&
                 !mathjs[n.name as keyof typeof mathjs] &&
                 !assignedVars.has(n.name)
               ) {
@@ -4225,7 +4276,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         node.traverse((n: any) => {
           if (
             n.isSymbolNode &&
-            !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point"].includes(n.name) &&
+            !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper"].includes(n.name) &&
+            !n.name.startsWith("t_") &&
             !mathjs[n.name as keyof typeof mathjs] &&
             !assignedVars.has(n.name)
           ) {
@@ -4278,6 +4330,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       (v) => !currentVarNames.has(v) && !assignedVars.has(v),
     );
     setMissingVars(missing);
+    }, 100);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     functions.map((f) => f.expr).join(","),

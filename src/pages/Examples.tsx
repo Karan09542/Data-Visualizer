@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore, CodeFormat } from '../store/useStore';
-import { Play, Copy, Check, LayoutTemplate, ArrowRight } from 'lucide-react';
+import { Play, Copy, Check, LayoutTemplate, ArrowRight, Share2 } from 'lucide-react';
 import { Highlight, themes } from 'prism-react-renderer';
 
 const EXAMPLES: Array<{ title: string, description: string, format: CodeFormat, data: string }> = [
@@ -71,7 +71,7 @@ services:
     ports:
       - "8080:80"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV: production
     volumes:
       - ./src:/var/www/html
   db:
@@ -83,6 +83,14 @@ services:
       - pgdata:/var/lib/postgresql/data
 volumes:
   pgdata:`
+  },
+  {
+    title: "WebRTC File Sharing",
+    description: "Structured metadata for a peer-to-peer file transfer session, including connection states and ICE candidates.",
+    format: "json",
+    data: `{
+    "file_transfer_node": "bhole"
+}`
   }
 ];
 
@@ -173,6 +181,28 @@ export default function Examples() {
         <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-400 leading-relaxed">
           Select from the templates below to quickly load sample files into the visual workspace and see the engine in action.
         </p>
+      </div>
+
+      {/* WebRTC Info Section */}
+      <div className="mb-16 p-8 bg-gradient-to-br from-indigo-500/5 to-cyan-500/5 dark:from-indigo-500/10 dark:to-cyan-500/10 border border-indigo-100 dark:border-indigo-900/30 rounded-[2rem] relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-6 opacity-10">
+          <Share2 size={120} className="text-indigo-600 dark:text-indigo-400 rotate-12" />
+        </div>
+        <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+          <div className="w-16 h-16 shrink-0 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-sm text-indigo-600 dark:text-indigo-400 border border-slate-100 dark:border-slate-700">
+            <Share2 size={32} />
+          </div>
+          <div className="flex-1 text-center md:text-left">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">WebRTC P2P File Sharing</h2>
+            <p className="text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
+              Experience ultra-secure, direct device-to-device transfers. Our visualizer uses WebRTC technology to share data and files without ever touching a server. All metadata and transfer states are fully observable within the workspace.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <div className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-full">ENCRYPTED</div>
+            <div className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-bold rounded-full">NO-SERVER</div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

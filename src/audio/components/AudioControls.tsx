@@ -54,44 +54,22 @@ export const AudioControls: React.FC = () => {
       {/* Controls Container */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-6 sm:gap-4 mt-2 sm:mt-0">
         
-        {/* Mobile: Playback Settings (Left) & Volume (Right) in one row, Desktop: just Playback Settings */}
-        <div className="flex w-full sm:w-auto items-center justify-between sm:justify-start gap-2 order-2 sm:order-1 px-4 sm:px-0">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={toggleShuffle} 
-              title="Shuffle"
-              className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-            >
-              <Shuffle size={18} />
-            </button>
-            <button 
-              onClick={toggleLoop} 
-              title="Repeat"
-              className={`p-2 rounded-full transition-colors ${isLooping ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-            >
-              <Repeat size={18} />
-            </button>
-          </div>
-          
-          {/* Mobile Volume (Hidden on SM and up) */}
-          <div className="flex sm:hidden items-center gap-2 w-32">
-            <button 
-              onClick={toggleMute}
-              title={isMuted || volume === 0 ? "Unmute" : "Mute"}
-              className="p-2 text-slate-500 hover:text-indigo-500 transition-colors"
-            >
-              {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01"
-              value={isMuted ? 0 : volume} 
-              onChange={handleVolume}
-              className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-            />
-          </div>
+        {/* Playback Settings (Shuffle/Repeat) */}
+        <div className="flex items-center justify-center sm:justify-start gap-2 order-2 sm:order-1 w-full sm:w-auto">
+          <button 
+            onClick={toggleShuffle} 
+            title="Shuffle"
+            className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+          >
+            <Shuffle size={18} />
+          </button>
+          <button 
+            onClick={toggleLoop} 
+            title="Repeat"
+            className={`p-2 rounded-full transition-colors ${isLooping ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+          >
+            <Repeat size={18} />
+          </button>
         </div>
 
         {/* Main Controls */}
@@ -119,14 +97,14 @@ export const AudioControls: React.FC = () => {
           </button>
         </div>
 
-        {/* Desktop Volume (Hidden on Mobile) */}
-        <div className="hidden sm:flex items-center justify-end gap-2 w-28 order-3">
+        {/* Desktop & Mobile Volume */}
+        <div className="flex items-center justify-center sm:justify-end gap-3 sm:gap-2 w-full sm:w-28 order-3 px-6 sm:px-0">
           <button 
             onClick={toggleMute}
             title={isMuted || volume === 0 ? "Unmute" : "Mute"}
             className="p-2 text-slate-500 hover:text-indigo-500 transition-colors"
           >
-            {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            {isMuted || volume === 0 ? <VolumeX size={20} className="sm:w-[18px] sm:h-[18px]" /> : <Volume2 size={20} className="sm:w-[18px] sm:h-[18px]" />}
           </button>
           <input 
             type="range" 
@@ -135,7 +113,7 @@ export const AudioControls: React.FC = () => {
             step="0.01"
             value={isMuted ? 0 : volume} 
             onChange={handleVolume}
-            className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            className="w-full h-2 sm:h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
           />
         </div>
       </div>

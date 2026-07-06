@@ -877,9 +877,9 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
             
             <button 
               onClick={() => { setActiveSidebarItem("Saved"); setActiveTab("All"); }}
-              className={`transition-colors flex items-center gap-2 text-sm font-medium ${activeSidebarItem === "Saved" ? "text-blue-500" : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+              className={`transition-colors flex items-center gap-2 text-sm font-medium ${activeSidebarItem.startsWith("Saved") ? "text-blue-500" : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
             >
-              <Bookmark size={18} fill={activeSidebarItem === "Saved" ? "currentColor" : "none"} /> Saved
+              <Bookmark size={18} fill={activeSidebarItem.startsWith("Saved") ? "currentColor" : "none"} /> Saved
             </button>
           </div>
 
@@ -913,7 +913,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   );
 
   const renderStats = () => {
-    if (!query || activeSidebarItem === "Saved" || (isSearching && results.length === 0)) return null;
+    if (!query || activeSidebarItem.startsWith("Saved") || (isSearching && results.length === 0)) return null;
     return (
        <div className="flex justify-between items-center py-4 px-1 border-b border-slate-200 dark:border-slate-800/50 mb-6">
           <div className="text-[13px] text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1.5">
@@ -1174,7 +1174,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   };
 
   const renderKnowledgePanel = () => {
-    if (activeSidebarItem === "Saved" || activeTab === "Images") return null;
+    if (activeSidebarItem.startsWith("Saved") || activeTab === "Images") return null;
 
     if (isSearching && !knowledgePanel) {
       return (
@@ -1591,7 +1591,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
   };
 
   const renderLoadMore = () => {
-    if (!query || activeSidebarItem === "Saved" || !hasMore) return null;
+    if (!query || activeSidebarItem.startsWith("Saved") || !hasMore) return null;
     return (
       <div className="flex justify-center mt-6 pb-20">
         <button 
@@ -1639,11 +1639,11 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
               {renderStats()}
               <div className="flex flex-col lg:flex-row gap-8">
                  <div className="flex-1 min-w-0">
-                   {activeTab === "Images" || activeSidebarItem === "Images" ? renderImages() : renderResults()}
+                   {(!activeSidebarItem.startsWith("Saved") && (activeTab === "Images" || activeSidebarItem === "Images")) ? renderImages() : renderResults()}
                    {renderLoadMore()}
                  </div>
-                 {(activeTab !== "Images" && activeSidebarItem !== "Images") && renderKnowledgePanel()}
-                 {renderImagePanel()}
+                 {(!activeSidebarItem.startsWith("Saved") && activeTab !== "Images" && activeSidebarItem !== "Images") && renderKnowledgePanel()}
+                 {(!activeSidebarItem.startsWith("Saved") || activeSidebarItem === "Saved_Images") && renderImagePanel()}
               </div>
            </div>
         </div>
