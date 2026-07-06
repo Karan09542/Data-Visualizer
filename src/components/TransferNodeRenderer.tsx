@@ -3234,6 +3234,12 @@ export const TransferNodeRenderer: React.FC<{
                                   Messages are sent directly between devices.
                                   Nothing is stored on any server.
                                 </p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-4">
+                                  Drag & Drop Supported
+                                </p>
+                                <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
+                                  Send files and folders directly. Folders are automatically zipped (max ~1GB recommended).
+                                </p>
                               </div>
                             </div>
                           )}
@@ -3645,7 +3651,7 @@ export const TransferNodeRenderer: React.FC<{
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: "auto", opacity: 1 }}
                                 exit={{ height: 0, opacity: 0 }}
-                                className="mb-3 flex overflow-x-auto pb-2 gap-3"
+                                className="mb-1 flex overflow-x-auto pb-2 gap-3"
                               >
                                 {pendingFiles.map((file, idx) => (
                                   <FilePreviewCard
@@ -3685,6 +3691,9 @@ export const TransferNodeRenderer: React.FC<{
                               </motion.div>
                             )}
                           </AnimatePresence>
+                          <div className={`text-[10px] uppercase font-bold tracking-wider mb-2 text-center opacity-40 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                            Drop files / folders to send • Max ~1GB recommended
+                          </div>
                           <div className="flex items-center gap-2">
                             <label
                               className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${
@@ -3736,7 +3745,7 @@ export const TransferNodeRenderer: React.FC<{
                                   if (e.key === "Enter") sendMessage();
                                 }}
                                 onKeyUp={(e) => e.stopPropagation()}
-                                placeholder="Type a message..."
+                                placeholder="Type a message (or drop files/folders)..."
                                 className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0"
                               />
                               <button
