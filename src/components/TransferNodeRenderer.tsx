@@ -69,6 +69,7 @@ import {
   Minimize,
   MoreVertical,
   Trash2,
+  Edit2,
   ExternalLink,
   Play,
   Volume2,
@@ -241,6 +242,8 @@ interface Message {
     fileName?: string;
   };
   originalBlob?: Blob;
+  isDeleted?: boolean;
+  isEdited?: boolean;
 }
 
 export const blobRegistry = new Map<string, Blob>();
@@ -258,6 +261,8 @@ const getFileType = (fileName: string) => {
 };
 
 const formatFileSize = (bytes: number) => sharedFormatFileSize(bytes, 'B', 1);
+
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 const getMimeType = (fileName: string, parsedMime?: string) => {
   if (parsedMime && parsedMime !== "application/octet-stream" && parsedMime !== "") {
@@ -410,6 +415,7 @@ export const TransferNodeRenderer: React.FC<{
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
 
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
@@ -1434,6 +1440,15 @@ export const TransferNodeRenderer: React.FC<{
           return;
         }
 
+        if (msg.type === "msg_delete") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === msg.msgId ? { ...m, isDeleted: true, content: "", attachments: [] } : m,
+            ),
+          );
+          return;
+        }
+
         if (msg.type === "text") {
           const newMsg: Message = {
             id: uuidv4(),
@@ -1528,6 +1543,15 @@ export const TransferNodeRenderer: React.FC<{
                   message: "Received and loaded workspace!",
                   type: "success",
                 });
+              } catch (err) {}
+            } else if (chunkData.type === "msg_edit") {
+              try {
+                const editPayload = JSON.parse(fullPayload);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === editPayload.targetId ? { ...m, content: editPayload.content, isEdited: true } : m,
+                  ),
+                );
               } catch (err) {}
             } else if (chunkData.type === "composite") {
               try {
@@ -1821,9 +1845,28 @@ export const TransferNodeRenderer: React.FC<{
     const textContent = chatInput;
     const filesToProcess = [...pendingFiles];
     
+    const totalPendingSize = filesToProcess.reduce((acc, curr) => acc + curr.size, 0);
+    if (totalPendingSize > MAX_FILE_SIZE) {
+       setNotification({ message: "Total size of attached files exceeds 100MB limit. Please remove some files.", type: "error" });
+       return;
+    }
+    
     setChatInput("");
     setPendingFiles([]);
     setReplyingTo(null);
+    
+    if (editingMessage) {
+      setEditingMessage(null);
+      // Optimistically update locally
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === editingMessage.id ? { ...m, content: textContent, isEdited: true } : m,
+        ),
+      );
+      // Send edit command
+      await sendLargeMessage("msg_edit", JSON.stringify({ targetId: editingMessage.id, content: textContent }));
+      return;
+    }
 
     if (filesToProcess.length > 0) {
       const msgId = uuidv4();
@@ -3160,21 +3203,31 @@ export const TransferNodeRenderer: React.FC<{
                     const items = Array.from(e.dataTransfer.items);
                     
                     const newFiles: File[] = [];
+                    let hasLarge = false;
                     for (const item of items) {
                       if (item.kind === 'file') {
                         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
                         if (entry && entry.isDirectory) {
                           const filesInDir = await getFilesFromEntry(entry);
-                          if (filesInDir.length > 0) {
+                          const totalSize = filesInDir.reduce((acc, curr) => acc + curr.file.size, 0);
+                          if (totalSize > MAX_FILE_SIZE) {
+                            hasLarge = true;
+                          } else if (filesInDir.length > 0) {
                              const id = uuidv4();
                              setZippingTasks(prev => [...prev, { id, folderName: entry.name }]);
                              zipWorkerRef.current?.postMessage({ id, files: filesInDir, folderName: entry.name });
                           }
                         } else {
                           const f = item.getAsFile();
-                          if (f) newFiles.push(f);
+                          if (f) {
+                            if (f.size > MAX_FILE_SIZE) hasLarge = true;
+                            else newFiles.push(f);
+                          }
                         }
                       }
+                    }
+                    if (hasLarge) {
+                      setNotification({ message: "Files/folders exceeding 100MB limit were ignored", type: "error" });
                     }
                     if (newFiles.length > 0) {
                       setPendingFiles(prev => [...prev, ...newFiles]);
@@ -3234,11 +3287,8 @@ export const TransferNodeRenderer: React.FC<{
                                   Messages are sent directly between devices.
                                   Nothing is stored on any server.
                                 </p>
-                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-4">
-                                  Drag & Drop Supported
-                                </p>
-                                <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
-                                  Send files and folders directly. Folders are automatically zipped (max ~1GB recommended).
+                                <p className={`text-xs mt-2 font-medium ${isDark ? "text-indigo-400/80" : "text-indigo-500/80"}`}>
+                                  Max file/folder size: 100MB
                                 </p>
                               </div>
                             </div>
@@ -3316,7 +3366,14 @@ export const TransferNodeRenderer: React.FC<{
                                   </button>
                                 </div>
 
-                                {msg.replyTo && (
+                                {msg.isDeleted ? (
+                                  <div className="px-4 py-2.5 text-xs font-medium italic opacity-50 flex items-center gap-2">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    This message was deleted
+                                  </div>
+                                ) : (
+                                  <>
+                                    {msg.replyTo && (
                                   <button
                                     onClick={() =>
                                       scrollToMessage(msg.replyTo!.id)
@@ -3553,6 +3610,8 @@ export const TransferNodeRenderer: React.FC<{
                                     )}
                                   </div>
                                 )}
+                                  </>
+                                )}
                               </div>
 
                               <div className="flex items-center gap-2 mt-1.5 px-2">
@@ -3565,6 +3624,11 @@ export const TransferNodeRenderer: React.FC<{
                                     },
                                   )}
                                 </span>
+                                {msg.isEdited && !msg.isDeleted && (
+                                  <span className="text-[10px] text-slate-500 font-bold tracking-tight italic">
+                                    (edited)
+                                  </span>
+                                )}
                                 {msg.sender === "me" && (
                                   <div className="flex items-center">
                                     {msg.status === "sending" && (
@@ -3590,7 +3654,34 @@ export const TransferNodeRenderer: React.FC<{
                           className={`p-4 border-t ${isDark ? "bg-[#0d1017]/50 border-white/5" : "bg-white border-slate-100"}`}
                         >
                           <AnimatePresence>
-                            {replyingTo && (
+                            {editingMessage && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className={`mb-3 px-3 py-2 rounded-2xl border flex gap-3 relative group overflow-hidden ${isDark ? "bg-amber-500/5 border-amber-500/20" : "bg-amber-50 border-amber-500/20"}`}
+                              >
+                                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-0.5">
+                                    Editing message
+                                  </p>
+                                  <p className={`text-xs font-bold truncate ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                    {editingMessage.content}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setEditingMessage(null);
+                                    setChatInput("");
+                                  }}
+                                  className={`p-1 rounded-full transition-colors ${isDark ? "hover:bg-amber-500/10 text-slate-400" : "hover:bg-amber-500/10 text-slate-500"}`}
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </motion.div>
+                            )}
+                            {replyingTo && !editingMessage && (
                               <motion.div
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: "auto", opacity: 1 }}
@@ -3651,7 +3742,7 @@ export const TransferNodeRenderer: React.FC<{
                                 initial={{ height: 0, opacity: 0 }}
                                 animate={{ height: "auto", opacity: 1 }}
                                 exit={{ height: 0, opacity: 0 }}
-                                className="mb-1 flex overflow-x-auto pb-2 gap-3"
+                                className="mb-3 flex overflow-x-auto pb-2 gap-3"
                               >
                                 {pendingFiles.map((file, idx) => (
                                   <FilePreviewCard
@@ -3691,9 +3782,6 @@ export const TransferNodeRenderer: React.FC<{
                               </motion.div>
                             )}
                           </AnimatePresence>
-                          <div className={`text-[10px] uppercase font-bold tracking-wider mb-2 text-center opacity-40 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            Drop files / folders to send • Max ~1GB recommended
-                          </div>
                           <div className="flex items-center gap-2">
                             <label
                               className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${
@@ -3709,8 +3797,17 @@ export const TransferNodeRenderer: React.FC<{
                                 multiple
                                 onChange={(e) => {
                                   const files = Array.from(e.target.files || []);
-                                  if (files.length > 0) {
-                                    setPendingFiles(prev => [...prev, ...files]);
+                                  const validFiles = [];
+                                  let hasLarge = false;
+                                  for (const f of files) {
+                                    if (f.size > MAX_FILE_SIZE) hasLarge = true;
+                                    else validFiles.push(f);
+                                  }
+                                  if (hasLarge) {
+                                    setNotification({ message: "Files exceeding 100MB limit were ignored", type: "error" });
+                                  }
+                                  if (validFiles.length > 0) {
+                                    setPendingFiles(prev => [...prev, ...validFiles]);
                                   }
                                   // clear the input so the same file can be selected again
                                   e.target.value = '';
@@ -3736,8 +3833,17 @@ export const TransferNodeRenderer: React.FC<{
                                     .map(item => item.getAsFile())
                                     .filter((f): f is File => f !== null);
                                   
-                                  if (files.length > 0) {
-                                    setPendingFiles(prev => [...prev, ...files]);
+                                  const validFiles = [];
+                                  let hasLarge = false;
+                                  for (const f of files) {
+                                    if (f.size > MAX_FILE_SIZE) hasLarge = true;
+                                    else validFiles.push(f);
+                                  }
+                                  if (hasLarge) {
+                                    setNotification({ message: "Pasted files exceeding 100MB limit were ignored", type: "error" });
+                                  }
+                                  if (validFiles.length > 0) {
+                                    setPendingFiles(prev => [...prev, ...validFiles]);
                                   }
                                 }}
                                 onKeyDown={(e) => {
@@ -3745,7 +3851,7 @@ export const TransferNodeRenderer: React.FC<{
                                   if (e.key === "Enter") sendMessage();
                                 }}
                                 onKeyUp={(e) => e.stopPropagation()}
-                                placeholder="Type a message (or drop files/folders)..."
+                                placeholder="Type a message..."
                                 className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0"
                               />
                               <button
@@ -3942,17 +4048,50 @@ export const TransferNodeRenderer: React.FC<{
                                     Download
                                   </a>
                                 )}
+                                {msg.sender === "me" && (msg.type === "text" || msg.type === "composite") && !msg.isDeleted && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingMessage(msg);
+                                      setChatInput(msg.content);
+                                      setShowContextMenu(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                    Edit
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     setMessages((prev) =>
                                       prev.filter((m) => m.id !== msg.id),
                                     );
+                                    setShowContextMenu(null);
                                   }}
                                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-red-500/10 text-red-400" : "hover:bg-red-50 text-red-600"}`}
                                 >
                                   <Trash2 className="w-4 h-4" />
-                                  Delete
+                                  Delete for me
                                 </button>
+                                {msg.sender === "me" && (
+                                  <button
+                                    onClick={() => {
+                                      setMessages((prev) =>
+                                        prev.map((m) =>
+                                          m.id === msg.id ? { ...m, isDeleted: true, content: "", attachments: [] } : m,
+                                        ),
+                                      );
+                                      if (dcRef.current && dcRef.current.readyState === "open") {
+                                        dcRef.current.send(JSON.stringify({ type: "msg_delete", msgId: msg.id }));
+                                      }
+                                      setShowContextMenu(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${isDark ? "hover:bg-red-500/10 text-red-400" : "hover:bg-red-50 text-red-600"}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete for everyone
+                                  </button>
+                                )}
                               </div>
                             );
                           })()}
