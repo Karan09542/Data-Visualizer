@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import {
   useEffect,
   useLayoutEffect,
@@ -2219,11 +2220,7 @@ export default function GraphVisualizer() {
                     Size
                   </span>
                   <span className="text-sm font-medium text-slate-800 dark:text-slate-300">
-                    {mediaInfoModal.size >= 1024 * 1024
-                      ? (mediaInfoModal.size / (1024 * 1024)).toFixed(2) + " MB"
-                      : mediaInfoModal.size >= 1024
-                        ? (mediaInfoModal.size / 1024).toFixed(2) + " KB"
-                        : mediaInfoModal.size + " B"}
+                    {formatFileSize(mediaInfoModal.size, 'B')}
                   </span>
                 </div>
               </div>

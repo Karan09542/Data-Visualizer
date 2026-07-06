@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import * as fabric from "fabric";
@@ -6807,13 +6808,7 @@ function dataURLtoFile(dataurl: string, filename: string): File {
   };
 
   // Helper to format bytes cleanly
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
+  const formatBytes = (bytes: number): string => formatFileSize(bytes, 'B', 1);
 
   // Live preview generator for Squoosh-like image comparison
   const generateLivePreview = async () => {

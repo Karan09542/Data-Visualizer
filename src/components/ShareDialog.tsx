@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Copy, Check, AlertTriangle, Info, Share2, Zap, Link as LinkIcon, Download } from 'lucide-react';
@@ -283,11 +284,11 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
                  >
                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
                       <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Raw Data</span>
-                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{(shareInfo.rawSize / 1024).toFixed(1)} KB</span>
+                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatFileSize(shareInfo.rawSize, 'B')}</span>
                    </div>
                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
                       <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Compressed</span>
-                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{(shareInfo.compressedSize / 1024).toFixed(1)} KB</span>
+                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatFileSize(shareInfo.compressedSize, 'B')}</span>
                    </div>
                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
                       <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Compression Ratio</span>

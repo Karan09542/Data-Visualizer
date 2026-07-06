@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import React, { useEffect, useRef } from "react";
 import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
@@ -2082,7 +2083,7 @@ function NodeRenderer({
                         Size:
                       </span>
                       <span className="text-slate-700 dark:text-slate-300 font-medium">
-                        {(assetDetails.size / 1024).toFixed(1)} KB
+                        {formatFileSize(assetDetails.size, 'B')}
                       </span>
                     </div>
                     {typeof assetDetails.width === "number" &&

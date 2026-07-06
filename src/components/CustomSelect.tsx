@@ -137,7 +137,7 @@ export default function CustomSelect({
               top: coords.top,
               left: coords.left,
               minWidth: coords.width,
-              zIndex: 9999,
+              zIndex: 99999,
             }}
             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl overflow-hidden py-1"
           >

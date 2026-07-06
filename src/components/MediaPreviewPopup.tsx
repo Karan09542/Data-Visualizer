@@ -131,6 +131,7 @@ const MediaPreviewPopup: React.FC = () => {
                src={resolvedUrl}
                autoRotate
                cameraControls
+               showControls
                style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
              />
           )}

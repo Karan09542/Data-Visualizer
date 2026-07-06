@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import { useState } from 'react';
 import { 
   AlertTriangle, 
@@ -47,9 +48,7 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
 
   const formatBytes = (bytes?: number) => {
     if (!bytes) return 'Unknown size';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1048576).toFixed(1)} MB`;
+    return formatFileSize(bytes, 'B', 1);
   };
 
   // Decide on best visual elements based on error category

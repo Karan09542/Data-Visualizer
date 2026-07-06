@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import React, { useState, useRef, useEffect } from "react";
 import { ZoomIn, ZoomOut, Maximize2, Image, FileText, ChevronDown, LineChart, RefreshCw, Layers } from "lucide-react";
 
@@ -254,10 +255,9 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
       const src = displaySrc || "";
       const base64Length = src.split(",")[1]?.length || src.length;
       const estimatedBytes = base64Length * 0.75;
-      const estimatedKB = Math.round(estimatedBytes / 1024);
-      return `${estimatedKB || 32} KB`;
+      return formatFileSize(estimatedBytes || 32768, 'B', 1);
     } catch {
-      return "32 KB";
+      return formatFileSize(32768, 'B', 1);
     }
   };
 

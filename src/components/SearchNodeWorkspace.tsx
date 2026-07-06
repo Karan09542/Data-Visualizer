@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Search, X, Clock, MapPin, ExternalLink, Image as ImageIcon, 
@@ -1419,7 +1420,7 @@ export function SearchNodeWorkspace({ path }: SearchWorkspaceProps) {
 
     // Dynamic resolution or metadata
     const resolution = img.width && img.height ? `${img.width} × ${img.height} pixels` : "HD Resolution";
-    const fileSize = img.size ? `${Math.round(img.size / 1024)} KB` : "";
+    const fileSize = img.size ? formatFileSize(img.size, 'B') : "";
 
     return (
       <>

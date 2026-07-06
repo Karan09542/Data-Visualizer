@@ -1,3 +1,4 @@
+import { formatFileSize } from "../lib/formatFileSize";
 import { useState, useEffect, useRef } from "react";
 import {
   FileText,
@@ -95,13 +96,7 @@ export function ImportModal() {
         ? intelligentKeyName
         : customKey || "imported_data";
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024,
-      sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  };
+  const formatBytes = (bytes: number) => formatFileSize(bytes, 'B', 1);
 
   const applyImport = () => {
     if (!pendingImport) return;

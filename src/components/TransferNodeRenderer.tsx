@@ -1,3 +1,4 @@
+import { formatFileSize as sharedFormatFileSize } from "../lib/formatFileSize";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { HierarchyPointNode } from "d3";
@@ -41,8 +42,9 @@ import {
   Search,
   Clock,
   Eye,
-  AlertCircle,
   ClipboardPaste,
+  Clipboard,
+  ClipboardCheck,
   QrCode,
   LogIn,
   Scan,
@@ -212,13 +214,7 @@ const getFileType = (fileName: string) => {
   return "file";
 };
 
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
+const formatFileSize = (bytes: number) => sharedFormatFileSize(bytes, 'B', 1);
 
 const getMimeType = (fileName: string, parsedMime?: string) => {
   if (parsedMime && parsedMime !== "application/octet-stream" && parsedMime !== "") {
@@ -416,6 +412,9 @@ export const TransferNodeRenderer: React.FC<{
   const [transferProgress, setTransferProgress] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
+  const [autoClipboardSync, setAutoClipboardSync] = useState(false);
+  const lastClipboardTextRef = useRef<string>("");
+  const autoClipboardSyncRef = useRef(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -437,6 +436,60 @@ export const TransferNodeRenderer: React.FC<{
     transferSpeed: 0,
     bufferedAmount: 0,
   });
+
+  useEffect(() => {
+    autoClipboardSyncRef.current = autoClipboardSync;
+  }, [autoClipboardSync]);
+
+  useEffect(() => {
+    if (!autoClipboardSync) return;
+
+    const syncClipboard = async () => {
+      try {
+        if (!navigator.clipboard) return;
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim() && text !== lastClipboardTextRef.current) {
+          lastClipboardTextRef.current = text;
+
+          if (dcRef.current && dcRef.current.readyState === "open") {
+            const msg: Message = {
+              id: uuidv4(),
+              type: "text",
+              content: text,
+              timestamp: Date.now(),
+              sender: "me",
+              status: "sending",
+            };
+
+            setMessages((prev) => [...prev, msg]);
+
+            const payload = {
+              type: "text",
+              id: msg.id,
+              content: text,
+              timestamp: msg.timestamp,
+            };
+
+            dcRef.current.send(JSON.stringify(payload));
+          }
+        }
+      } catch (err) {
+        // Ignore read errors
+      }
+    };
+
+    window.addEventListener("focus", syncClipboard);
+    
+    // We can also poll gently while active, or rely on focus.
+    const interval = setInterval(() => {
+      if (document.hasFocus()) syncClipboard();
+    }, 1500);
+
+    return () => {
+      window.removeEventListener("focus", syncClipboard);
+      clearInterval(interval);
+    };
+  }, [autoClipboardSync]);
 
   useEffect(() => {
     if ("Notification" in window) {
@@ -516,39 +569,15 @@ export const TransferNodeRenderer: React.FC<{
     };
   }, [unreadCount]);
 
-  const isDark = appTheme === "dark";
-
-  const [clipboardSyncEnabled, setClipboardSyncEnabled] = useState(false);
-  const [clipboardHistory, setClipboardHistory] = useState<Array<{id: string, text: string, timestamp: number, from: string}>>([]);
-  const [showClipboardHistory, setShowClipboardHistory] = useState(false);
-
-  const handleClipboardSync = (text: string) => {
-    if (!clipboardSyncEnabled || !text.trim() || !dcRef.current || dcRef.current.readyState !== "open") return;
-    
-    dcRef.current.send(JSON.stringify({
-      type: "clipboard-sync",
-      content: text,
-      timestamp: Date.now(),
-      sender: "me"
-    }));
-  };
-
-  // Listen for native copy events when enabled
   useEffect(() => {
-    if (!clipboardSyncEnabled) return;
-
-    const handleNativeCopy = (e: ClipboardEvent) => {
-      // Small delay to ensure clipboard is updated if we're hooking into the copy event
-      setTimeout(() => {
-        navigator.clipboard.readText().then(text => {
-          if (text) handleClipboardSync(text);
-        }).catch(() => {});
-      }, 50);
+    const handleFocus = () => {
+      if (viewMode === "chat" && isAtBottom) {
+        setUnreadCount(0);
+      }
     };
-
-    window.addEventListener('copy', handleNativeCopy as any);
-    return () => window.removeEventListener('copy', handleNativeCopy as any);
-  }, [clipboardSyncEnabled]);
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [viewMode, isAtBottom]);
 
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [viewedMediaIds, setViewedMediaIds] = useState<Set<string>>(new Set());
@@ -1249,24 +1278,6 @@ export const TransferNodeRenderer: React.FC<{
           return;
         }
 
-        if (msg.type === "clipboard-sync") {
-          if (clipboardSyncEnabled) {
-            const newEntry = {
-              id: uuidv4(),
-              text: msg.content,
-              timestamp: msg.timestamp || Date.now(),
-              from: "Remote Device"
-            };
-            setClipboardHistory(prev => [newEntry, ...prev].slice(0, 50));
-            sendLocalNotification("Clipboard Synced", msg.content.substring(0, 50) + (msg.content.length > 50 ? "..." : ""));
-            setNotification({
-              message: "Remote clipboard content received",
-              type: "info"
-            });
-          }
-          return;
-        }
-
         if (msg.type === "text") {
           const newMsg: Message = {
             id: uuidv4(),
@@ -1278,6 +1289,16 @@ export const TransferNodeRenderer: React.FC<{
             replyTo: msg.replyTo,
           };
           setMessages((prev) => [...prev, newMsg]);
+
+          if (autoClipboardSyncRef.current) {
+            try {
+              navigator.clipboard.writeText(msg.content).then(() => {
+                 lastClipboardTextRef.current = msg.content;
+              }).catch(() => {
+                 // writeText requires user gesture if not focused
+              });
+            } catch (err) {}
+          }
 
           if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
             setUnreadCount((prev) => prev + 1);
@@ -1724,6 +1745,8 @@ export const TransferNodeRenderer: React.FC<{
     setIsHosting(false);
     setScanMode(null);
   };
+
+  const isDark = appTheme === "dark";
   
   const renderContentWithLinks = (text: string) => {
     if (!text) return null;
@@ -2927,26 +2950,22 @@ export const TransferNodeRenderer: React.FC<{
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setClipboardSyncEnabled(!clipboardSyncEnabled)}
-                        className={`p-2.5 rounded-xl border transition-all relative ${clipboardSyncEnabled ? (isDark ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-400" : "border-indigo-200 bg-indigo-50 text-indigo-600 shadow-sm") : (isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-100 bg-slate-50 text-slate-500")}`}
-                        title={clipboardSyncEnabled ? "Disable Clipboard Sync" : "Enable Clipboard Sync"}
-                      >
-                        <Copy className="w-4 h-4" />
-                        {clipboardSyncEnabled && (
-                          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setShowClipboardHistory(!showClipboardHistory)}
-                        className={`p-2.5 rounded-xl border transition-all ${showClipboardHistory ? (isDark ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-400" : "border-indigo-200 bg-indigo-50 text-indigo-600 shadow-sm") : (isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-100 bg-slate-50 text-slate-500")}`}
-                        title="Clipboard History"
-                      >
-                        <Clock className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setIsFullscreen(!isFullscreen)}
+                    <button
+                      onClick={() => setAutoClipboardSync(!autoClipboardSync)}
+                      title={autoClipboardSync ? "Auto Clipboard Sync: ON" : "Auto Clipboard Sync: OFF"}
+                      className={`p-2.5 rounded-xl border transition-all ${
+                        autoClipboardSync
+                          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-500"
+                          : isDark
+                          ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400"
+                          : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      <Clipboard className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setIsFullscreen(!isFullscreen)}
                       className={`p-2.5 rounded-xl border transition-all ${isDark ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400" : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"}`}
                     >
                       {isFullscreen ? (
@@ -3583,91 +3602,6 @@ export const TransferNodeRenderer: React.FC<{
                     )}
                   </AnimatePresence>
 
-                  {/* Clipboard History Overlay */}
-                  <AnimatePresence>
-                    {showClipboardHistory && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className={`absolute inset-0 z-[60] p-4 flex flex-col ${isDark ? "bg-[#0d1017]" : "bg-white"}`}
-                      >
-                        <div className="flex items-center justify-between mb-4 shrink-0">
-                          <div className="flex items-center gap-2">
-                            <Clock className={`w-4 h-4 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
-                            <h4 className={`text-sm font-bold ${isDark ? "text-white" : "text-slate-900"}`}>Synced Clipboard</h4>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setClipboardHistory([])}
-                              className={`p-1.5 rounded-lg transition-all ${isDark ? "hover:bg-white/5 text-slate-500 hover:text-red-400" : "hover:bg-slate-100 text-slate-400 hover:text-red-500"}`}
-                              title="Clear History"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setShowClipboardHistory(false)}
-                              className={`p-1.5 rounded-lg transition-all ${isDark ? "bg-white/5 text-slate-400 hover:bg-white/10" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
-                          {clipboardHistory.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
-                              <Copy className="w-8 h-8 mb-2" />
-                              <p className="text-xs font-medium">No synced snippets yet</p>
-                            </div>
-                          ) : (
-                            clipboardHistory.map((item) => (
-                              <div
-                                key={item.id}
-                                className={`group p-3 rounded-xl border transition-all ${isDark ? "border-white/5 bg-white/5 hover:border-indigo-500/30" : "border-slate-100 bg-slate-50 hover:border-indigo-200"}`}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className={`text-xs font-medium break-words leading-relaxed line-clamp-3 mb-2 ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                                      {item.text}
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-                                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                      </span>
-                                      <span className={`w-1 h-1 rounded-full ${isDark ? "bg-white/10" : "bg-slate-300"}`} />
-                                      <span className={`text-[9px] font-bold uppercase tracking-wider ${isDark ? "text-indigo-400" : "text-indigo-600"}`}>
-                                        {item.from}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(item.text);
-                                      setNotification({ message: "Copied to clipboard", type: "success" });
-                                    }}
-                                    className={`p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${isDark ? "bg-indigo-600 text-white" : "bg-white text-indigo-600 shadow-sm"}`}
-                                  >
-                                    <Copy className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                        
-                        <div className={`mt-4 pt-4 border-t ${isDark ? "border-white/5" : "border-slate-100"}`}>
-                          <div className={`p-3 rounded-xl flex items-center gap-3 ${isDark ? "bg-amber-500/10 border border-amber-500/20" : "bg-amber-50 border border-amber-100"}`}>
-                            <AlertCircle className={`w-4 h-4 shrink-0 ${isDark ? "text-amber-400" : "text-amber-600"}`} />
-                            <p className={`text-[10px] leading-tight font-medium ${isDark ? "text-amber-200/70" : "text-amber-800/70"}`}>
-                              Sync is only active while the toggle is ON. Data is transferred directly between devices and never stored on a server.
-                            </p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
                   <AnimatePresence>
                     {showContextMenu && (
                       <div
@@ -3996,12 +3930,11 @@ export const TransferNodeRenderer: React.FC<{
                       </div>
                     </div>
                   )}
-                </AnimatePresence>,
-                document.body
-              )}
-            </div>
-          </div>
-        );
+                  </AnimatePresence>,
+                  document.body
+                )}
+              </div>
+            );
 
             return isFullscreen
               ? createPortal(

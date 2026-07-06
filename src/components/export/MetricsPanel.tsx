@@ -1,4 +1,5 @@
 
+import { formatFileSize } from "../../lib/formatFileSize";
 import React from 'react';
 import { Activity, BarChart3, TrendingDown, Percent, FileType } from 'lucide-react';
 
@@ -23,13 +24,7 @@ export const MetricsPanel: React.FC<Props> = ({
   format,
   psnr
 }) => {
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
+  const formatBytes = (bytes: number): string => formatFileSize(bytes, 'B', 1);
 
   const reduction = originalSize > 0 ? ((originalSize - optimizedSize) / originalSize) * 100 : 0;
   const ratio = optimizedSize > 0 ? (originalSize / optimizedSize).toFixed(1) : '1:1';

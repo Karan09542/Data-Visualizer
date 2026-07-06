@@ -1,3 +1,4 @@
+import { formatFileSize } from "../../../lib/formatFileSize";
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, X, Check, FileImage, Image as ImageIcon, Box } from 'lucide-react';
 import { discoverAllAssets } from '../services/assetDiscovery';
@@ -9,12 +10,7 @@ interface AssetGalleryProps {
 }
 
 export function formatBytes(bytes: number, decimals = 2) {
-    if (!+bytes) return '0 Bytes'
-    const k = 1024
-    const dm = decimals < 0 ? 0 : decimals
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
+    return formatFileSize(bytes, 'B', decimals);
 }
 
 export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
