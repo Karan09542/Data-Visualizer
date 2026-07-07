@@ -23,6 +23,7 @@ import { CodeWorkspace } from "./components/CodeWorkspace";
 import { initDexieSync } from "./store/dexieSync";
 import { PyMissingPromptModal } from "./components/PyMissingPromptModal";
 import ProductivityLayer from "./components/ProductivityLayer";
+import StickyNotesManager from "./components/StickyNotesManager";
 import { ServiceWorkerUpdater } from "./components/ServiceWorkerUpdater";
 import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcuts";
 
@@ -510,6 +511,7 @@ export default function App() {
       <MediaPreviewPopup />
       <PyMissingPromptModal />
       <ProductivityLayer />
+      <StickyNotesManager />
 
       <Suspense fallback={null}>
         <AudioPlayerModal />

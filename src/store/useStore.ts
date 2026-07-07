@@ -139,6 +139,7 @@ export const defaultSettings = {
   activeDocumentName: null as string | null,
   isDirty: false,
   lastSavedCode: null as string | null,
+  stickyNotesEnabled: false,
 };
 
 export type CodeFormat = "json" | "yaml";
@@ -435,6 +436,8 @@ export interface StoreState {
   ) => void;
   isSavedDocsOpen: boolean;
   setIsSavedDocsOpen: (isOpen: boolean) => void;
+  stickyNotesEnabled: boolean;
+  setStickyNotesEnabled: (enabled: boolean) => void;
   schemaExportActive: boolean;
   setSchemaExportActive: (active: boolean) => void;
   // Resets
@@ -1067,6 +1070,7 @@ export const useStore = create<StoreState>()(
         void set({ isShortcutsOpen: isOpen }),
       setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
       setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
+      setStickyNotesEnabled: (enabled: boolean) => set({ stickyNotesEnabled: enabled }),
       setActiveDocumentId: (id: number | null) => set({ activeDocumentId: id }),
       setActiveDocumentName: (name: string | null) => set({ activeDocumentName: name }),
       setIsDirty: (isDirty: boolean) => set({ isDirty }),
@@ -1315,6 +1319,7 @@ export const useStore = create<StoreState>()(
           "activeDocumentName",
           "isDirty",
           "lastSavedCode",
+          "stickyNotesEnabled",
         ];
         return Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key)),

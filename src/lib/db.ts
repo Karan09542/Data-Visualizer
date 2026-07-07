@@ -151,6 +151,21 @@ export interface AudioTrack {
   createdAt: number;
 }
 
+export interface StickyNote {
+  id: string;
+  content: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  isMinimized: boolean;
+  isMaximized?: boolean;
+  zIndex?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -168,6 +183,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   nodeSearchSettings: EntityTable<NodeSearchSettings, 'storageKey'>;
   nodeSearchImageBookmarks: EntityTable<NodeSearchImageBookmark, 'id'>;
   audio_tracks: EntityTable<AudioTrack, 'id'>;
+  stickyNotes: EntityTable<StickyNote, 'id'>;
 };
 
 db.version(8).stores({
@@ -203,6 +219,10 @@ db.version(11).stores({
 
 db.version(12).stores({
   audio_tracks: 'id, title, source, type, createdAt'
+});
+
+db.version(14).stores({
+  stickyNotes: 'id, createdAt, updatedAt'
 });
 
 export { db };

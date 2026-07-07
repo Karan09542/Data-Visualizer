@@ -53,163 +53,171 @@ const TextPreviewPopup: React.FC = () => {
     <AnimatePresence>
       {activePreviewText && (
         <div 
-          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-md"
+          className="fixed inset-0 z-[10000] flex items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-sm"
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
           <motion.div
-             initial={{ opacity: 0, scale: 0.9, y: 20 }}
+             initial={{ opacity: 0, scale: 0.98, y: 10 }}
              animate={{ opacity: 1, scale: 1, y: 0 }}
-             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-             className="relative w-full max-w-4xl h-full max-h-[85vh] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl flex flex-col overflow-hidden"
+             exit={{ opacity: 0, scale: 0.98, y: 10 }}
+             className="relative w-full max-w-5xl h-[100dvh] sm:h-full max-h-none sm:max-h-[90vh] bg-slate-900 border-0 sm:border border-slate-800 shadow-2xl rounded-none sm:rounded-xl flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-slate-800/80 border-b border-slate-700 backdrop-blur-sm shrink-0">
-              <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
-                <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg hidden sm:block shrink-0">
-                  <Type size={18} />
+            <div className="flex flex-row items-center justify-between gap-3 pl-4 pr-2 py-2 sm:py-2.5 bg-slate-900 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
+                  <Type size={16} />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm sm:text-base font-semibold text-white tracking-tight flex items-center gap-2 whitespace-nowrap overflow-hidden text-ellipsis">
-                    {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown View' : (viewMode === 'html' ? 'HTML Preview' : 'Raw View'))}
-                    <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30 font-mono uppercase shrink-0">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-white tracking-tight truncate">
+                      {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown' : (viewMode === 'html' ? 'HTML' : 'Raw View'))}
+                    </h3>
+                    <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700 font-mono uppercase shrink-0">
                       {activePreviewPath?.split('.').pop()}
                     </span>
-                  </h3>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate w-full" title={activePreviewPath || ''}>
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono truncate max-w-[150px] sm:max-w-xs" title={activePreviewPath || ''}>
                     {activePreviewPath}
                   </p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 w-full sm:w-auto overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {/* Mode Toggles */}
-                <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 mr-2 shrink-0">
+                <div className="flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
                   <button
                     onClick={() => setViewMode('raw')}
-                    className={`p-1.5 rounded-md transition-all ${viewMode === 'raw' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'raw' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                     title="Code View"
                   >
-                    <FileText size={16} />
+                    <FileText size={14} />
                   </button>
                   <button
                     onClick={() => setViewMode('markdown')}
-                    className={`p-1.5 rounded-md transition-all ${viewMode === 'markdown' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'markdown' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                     title="Markdown Preview"
                   >
-                    <Layout size={16} />
+                    <Layout size={14} />
                   </button>
                   <button
                     onClick={() => setViewMode('html')}
-                    className={`p-1.5 rounded-md transition-all ${viewMode === 'html' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'html' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                     title="HTML Preview"
                   >
-                    <Globe size={16} />
+                    <Globe size={14} />
                   </button>
                   <button
                     onClick={() => setViewMode('edit')}
-                    className={`p-1.5 rounded-md transition-all ${viewMode === 'edit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                    className={`p-1.5 rounded-md transition-all ${viewMode === 'edit' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                     title="Edit Text"
                   >
-                    <Edit3 size={16} />
+                    <Edit3 size={14} />
                   </button>
                 </div>
 
-                <div className="h-6 w-[1px] bg-slate-700 mx-1 hidden sm:block" />
+                <div className="h-4 w-[1px] bg-slate-800 mx-1 hidden sm:block" />
 
-                <button
-                  onClick={handleCopy}
-                  className="p-2 sm:px-3 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors border border-slate-600 flex items-center gap-2"
-                >
-                  {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                  <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleCopy}
+                    className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors border border-slate-700 flex items-center gap-2"
+                  >
+                    {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                    <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
 
-                <button
-                  onClick={() => setActivePreviewText(null)}
-                  className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors border border-transparent hover:border-slate-700"
-                >
-                  <X size={20} />
-                </button>
+                  <button
+                    onClick={() => setActivePreviewText(null)}
+                    className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-hidden flex flex-col bg-slate-950">
               {viewMode === 'edit' ? (
-                <div className="flex-1 p-4 bg-slate-950 flex flex-col gap-4">
+                <div className="flex-1 p-3 sm:p-4 flex flex-col gap-3">
                   <textarea
                     autoFocus
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
-                    className="flex-1 bg-transparent text-slate-200 font-mono text-sm leading-relaxed outline-none resize-none p-4 border border-slate-800 rounded-xl focus:border-indigo-500/50 transition-colors custom-scrollbar"
+                    className="flex-1 bg-slate-900/50 text-slate-200 font-mono text-sm leading-relaxed outline-none resize-none p-4 border border-slate-800 rounded-lg focus:border-indigo-500/30 transition-colors custom-scrollbar"
                     placeholder="Enter content here..."
                   />
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end items-center gap-3">
                     <button
                       onClick={() => {
                         setEditText(activePreviewText);
                         setViewMode('raw');
                       }}
-                      className="px-4 py-2 text-slate-400 hover:text-slate-200 text-sm font-medium transition-colors"
+                      className="text-slate-500 hover:text-slate-300 text-xs font-medium transition-colors"
                     >
-                      Discard
+                      Discard changes
                     </button>
                     <button
                       onClick={handleSave}
-                      className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-xl shadow-indigo-600/20 transition-all active:scale-95"
+                      className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-lg shadow-indigo-600/10"
                     >
-                      <Save size={16} />
-                      Save Changes
+                      <Save size={14} />
+                      Save
                     </button>
                   </div>
                 </div>
               ) : viewMode === 'markdown' ? (
-                <div className="flex-1 p-6 sm:p-10 overflow-auto bg-white dark:bg-slate-950 custom-scrollbar">
-                  <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-none prose-headings:tracking-tight prose-a:text-indigo-400 prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-800 markdown-body">
+                <div className="flex-1 p-4 sm:p-8 overflow-auto bg-white dark:bg-slate-950 custom-scrollbar">
+                  <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:tracking-tight prose-a:text-indigo-400 prose-pre:bg-slate-900 prose-pre:border prose-pre:border-slate-800 markdown-body">
                     <ReactMarkdown>{editText}</ReactMarkdown>
                   </div>
                 </div>
               ) : viewMode === 'html' ? (
-                <div className="flex-1 p-4 bg-slate-950 overflow-hidden flex flex-col">
+                <div className="flex-1 p-2 bg-slate-950 overflow-hidden flex flex-col">
                   <iframe
                     srcDoc={editText}
                     sandbox="allow-scripts allow-popups"
-                    className="w-full flex-1 rounded-xl bg-white border border-slate-800 shadow-inner"
+                    className="w-full flex-1 rounded-lg bg-white border-0 shadow-inner"
                     title="HTML Preview"
                   />
                 </div>
               ) : (
-                <div className="flex-1 p-4 sm:p-6 overflow-auto bg-slate-950 custom-scrollbar">
-                  <div className="bg-slate-900/50 rounded-xl border border-slate-800 p-6 shadow-inner ring-1 ring-white/5 min-h-full">
-                    <pre className="font-mono text-sm sm:text-base text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
-                      {editText}
-                    </pre>
-                  </div>
+                <div className="flex-1 overflow-auto bg-slate-950 custom-scrollbar">
+                  <pre className="p-4 sm:p-6 font-mono text-sm text-slate-300 leading-relaxed whitespace-pre-wrap break-words min-h-full selection:bg-indigo-500/30">
+                    {editText}
+                  </pre>
                 </div>
               )}
             </div>
 
             {/* Bottom Bar */}
-            <div className="px-6 py-3 bg-slate-800/50 border-t border-slate-700 text-[10px] text-slate-500 font-mono flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-4">
-                <span>{editText.length} CHARS</span>
-                <span>{editText.split(/\s+/).filter(Boolean).length} WORDS</span>
+            <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 text-[9px] text-slate-600 font-mono flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1">
+                  <span className="text-slate-400 font-bold">{editText.length}</span>
+                  <span>CHARS</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="text-slate-400 font-bold">{editText.split(/\s+/).filter(Boolean).length}</span>
+                  <span>WORDS</span>
+                </span>
               </div>
-              <span className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 {viewMode === 'edit' ? (
-                  <>
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
-                    UNSAVED EDITS
-                  </>
+                  <div className="flex items-center gap-1.5 text-amber-500/80">
+                    <div className="w-1 h-1 rounded-full bg-amber-500 animate-pulse"></div>
+                    UNSAVED
+                  </div>
                 ) : (
-                  <>
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                    {viewMode === 'markdown' ? 'MARKDOWN PREVIEW' : (viewMode === 'html' ? 'HTML PREVIEW' : 'READ ONLY VIEW')}
-                  </>
+                  <div className="flex items-center gap-1.5 text-slate-500 uppercase tracking-widest">
+                    <div className="w-1 h-1 rounded-full bg-emerald-500/50"></div>
+                    {viewMode === 'markdown' ? 'Markdown' : (viewMode === 'html' ? 'HTML' : 'Read Only')}
+                  </div>
                 )}
-              </span>
+              </div>
             </div>
           </motion.div>
           

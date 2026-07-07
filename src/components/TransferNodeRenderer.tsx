@@ -2159,7 +2159,13 @@ export const TransferNodeRenderer: React.FC<{
             </h3>
             <div className="flex flex-col gap-1.5 mt-2">
               <p className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none">
-                <Activity className="w-3 h-3 text-emerald-500" /> P2P Secure Connection
+                <div 
+                  className={`w-2 h-2 rounded-full border ${
+                    (connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
+                      ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                      : "bg-transparent border-slate-400 dark:border-slate-600"
+                  }`} 
+                /> P2P Secure Connection
               </p>
               <div className="flex items-center">
                 <span className={`px-2 py-0.5 rounded-md border text-[9.5px] font-mono tracking-wide whitespace-nowrap leading-none ${isDark ? "bg-[#161b22]/50 border-white/5 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
@@ -2193,7 +2199,18 @@ export const TransferNodeRenderer: React.FC<{
                   : "Generating Answer"
               : connectionState === "waiting"
                 ? "Ready To Pair"
-                : connectionState}
+                : (
+                  <span className="flex items-center gap-1.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${
+                      (connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
+                        ? "bg-emerald-500 animate-pulse"
+                        : connectionState === "failed"
+                          ? "bg-red-500"
+                          : "bg-slate-400"
+                    }`} />
+                    {connectionState}
+                  </span>
+                )}
           </div>
 
           {connectionState !== "waiting" && (
@@ -2619,7 +2636,7 @@ export const TransferNodeRenderer: React.FC<{
                       setCopiedSDP(true);
                       setTimeout(() => setCopiedSDP(false), 2000);
                       setNotification({
-                        message: "SDP Copied to Clipboard",
+                        message: `${isHosting ? "Offer" : "Answer"} Copied to Clipboard`,
                         type: "success",
                       });
                     }}
@@ -2639,7 +2656,7 @@ export const TransferNodeRenderer: React.FC<{
                     ) : (
                       <Copy className="w-3 h-3" />
                     )}{" "}
-                    {copiedSDP ? "Copied" : "Copy SDP"}
+                    {copiedSDP ? "Copied" : (isHosting ? "Copy Offer" : "Copy Answer")}
                   </button>
                 </div>
               </>

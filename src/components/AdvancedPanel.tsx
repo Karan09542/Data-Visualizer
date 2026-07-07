@@ -33,7 +33,8 @@ export default function AdvancedPanel() {
     canvasBackgroundImage, setCanvasBackgroundImage,
     canvasBackgroundBlur, setCanvasBackgroundBlur,
     resetAllSettings, setIsShortcutsOpen,
-    isMathHelpOpen, setIsMathHelpOpen
+    isMathHelpOpen, setIsMathHelpOpen,
+    stickyNotesEnabled, setStickyNotesEnabled
   } = useStore();
 
   const {
@@ -657,6 +658,27 @@ export default function AdvancedPanel() {
                 onChange={(e) => setShowMediaPreview(e.target.checked)}
               />
               <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-200 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-yellow-500/10 text-yellow-500 rounded-md shrink-0">
+                <PenTool size={18} />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Sticky Notes</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Floating workspace notes (local only)</div>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={stickyNotesEnabled}
+                onChange={(e) => setStickyNotesEnabled(e.target.checked)}
+              />
+              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-200 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-500"></div>
             </label>
           </div>
 
