@@ -32,7 +32,7 @@ export const indexHelper = (obj: any, ...indices: any[]) => {
     if (Array.isArray(current)) {
       const numIdx = Number(idx);
       if (!isNaN(numIdx)) {
-        current = current[numIdx];
+        current = current[numIdx - 1];
       } else {
         return undefined;
       }
