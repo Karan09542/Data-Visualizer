@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useMotionValue } from 'motion/react';
 import { Plus, List, Trash2, StickyNote as StickyIcon } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import StickyNote from './StickyNote';
@@ -13,8 +13,18 @@ export default function StickyNotesManager() {
   const notes = useLiveQuery(() => db.stickyNotes.toArray()) || [];
   const [showPanel, setShowPanel] = useState(false);
   
-  // Floating button position
+  // Floating button position source of truth
   const [buttonPos, setButtonPos] = useState({ x: window.innerWidth - 80, y: 80 });
+  
+  // Motion values for smoother dragging and persistence
+  const x = useMotionValue(buttonPos.x);
+  const y = useMotionValue(buttonPos.y);
+
+  // Sync motion values when source of truth changes (e.g. resize)
+  useEffect(() => {
+    x.set(buttonPos.x);
+    y.set(buttonPos.y);
+  }, [buttonPos, x, y]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -73,7 +83,7 @@ export default function StickyNotesManager() {
     await db.stickyNotes.add(duplicated);
   };
 
-  const handleFocus = useCallback(async (id: string) => {
+  const handleFocus = async (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
@@ -81,7 +91,7 @@ export default function StickyNotesManager() {
     if (note.zIndex === maxZ && notes.length > 1) return;
 
     await db.stickyNotes.update(id, { zIndex: maxZ + 1 });
-  }, [notes]);
+  };
 
   const handleClearAll = async () => {
     if (confirm('Delete all sticky notes?')) {
@@ -98,9 +108,10 @@ export default function StickyNotesManager() {
         drag
         dragMomentum={false}
         initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: 1, scale: 1, x: buttonPos.x, y: buttonPos.y }}
-        onDragEnd={(_, info) => {
-           setButtonPos(prev => ({ x: prev.x + info.offset.x, y: prev.y + info.offset.y }));
+        style={{ x, y }}
+        animate={{ opacity: 1, scale: 1 }}
+        onDragEnd={() => {
+           setButtonPos({ x: x.get(), y: y.get() });
         }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -110,10 +121,12 @@ export default function StickyNotesManager() {
       >
         <button 
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             handleAddNote();
           }}
-          className="w-full h-full flex items-center justify-center relative z-10"
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute inset-0 w-full h-full flex items-center justify-center z-10 rounded-full"
           title="New Note (Right click for All)"
         >
           <Plus size={28} className="group-hover:rotate-90 transition-transform duration-300" />
@@ -122,9 +135,11 @@ export default function StickyNotesManager() {
         {/* Panel Button */}
         <button
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             setShowPanel(true);
           }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="absolute -left-12 w-10 h-10 bg-slate-800 text-slate-400 rounded-full flex items-center justify-center shadow-lg hover:bg-slate-700 hover:text-white transition-all scale-0 group-hover:scale-100 origin-right border border-slate-700 pointer-events-auto z-20"
           title="Show All Notes"
         >
@@ -135,10 +150,12 @@ export default function StickyNotesManager() {
         {notes.length > 0 && (
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               handleClearAll();
             }}
-            className="absolute -right-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors scale-0 group-hover:scale-100 pointer-events-auto"
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute -right-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors scale-0 group-hover:scale-100 pointer-events-auto z-20"
             title="Clear All"
           >
             <Trash2 size={12} />

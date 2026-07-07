@@ -33,12 +33,12 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd 
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[6000] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" onClick={onClose}>
+    <div className="fixed inset-0 z-[6000] flex items-center justify-center sm:p-4 p-0 bg-slate-950/80 backdrop-blur-md" onClick={onClose}>
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="w-full max-w-2xl h-[80vh] bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl flex flex-col overflow-hidden"
+        className="w-full h-full sm:h-[80vh] sm:max-w-2xl bg-slate-900 sm:border border-slate-800 shadow-2xl sm:rounded-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, Minimize2, Trash2, GripHorizontal, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check } from 'lucide-react';
+import { X, Maximize2, Minimize2, Trash2, GripHorizontal, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check, Eraser } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 
 interface Props {
@@ -24,6 +24,11 @@ const COLORS = [
 export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(note.content);
+  useEffect(() => {
+    if (!isEditing) {
+      setContent(note.content);
+    }
+  }, [note.content, isEditing]);
   const [showColors, setShowColors] = useState(false);
   const [copyStatus, setCopyStatus] = useState(false);
   const [duplicateStatus, setDuplicateStatus] = useState(false);
@@ -126,33 +131,34 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
         zIndex: isMax ? 10000 : (note.zIndex || 5000),
       }}
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      className={`fixed shadow-2xl overflow-hidden flex flex-col group border border-black/5 dark:border-white/10 ${
+      className={`fixed shadow-2xl overflow-hidden flex flex-col group border border-black/10 dark:border-white/10 ${
         isMax ? 'rounded-none' : 'rounded-2xl'
       }`}
       style={{ 
         backgroundColor: note.color, 
+        backgroundImage: `linear-gradient(to bottom right, rgba(255,255,255,0.2), transparent)`,
         color: '#1a1a1a',
         pointerEvents: 'auto',
       }}
       onPointerDown={() => onFocus(note.id)}
     >
       {/* Header / Drag Handle */}
-      <div className={`h-10 flex items-center justify-between px-3 cursor-grab active:cursor-grabbing shrink-0 bg-black/5 group-hover:bg-black/10 transition-colors ${isMax ? 'cursor-default' : ''}`}>
-        <div className="flex items-center gap-2">
-          {!isMax && <GripHorizontal size={16} className="opacity-40" />}
-          {isMax && <Edit2 size={14} className="opacity-40" />}
-          <span className="text-[10px] font-bold uppercase tracking-widest opacity-30 select-none">
-            {isMax ? 'Fullscreen Note' : 'Sticky Note'}
+      <div className={`h-11 flex items-center justify-between pl-3 pr-4 cursor-grab active:cursor-grabbing shrink-0 bg-black/5 group-hover:bg-black/[0.08] transition-colors border-b border-black/5 ${isMax ? 'cursor-default' : ''}`}>
+        <div className="flex items-center gap-2.5">
+          {!isMax && <GripHorizontal size={15} className="opacity-30" />}
+          {isMax && <Edit2 size={14} className="opacity-30" />}
+          <span className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-25 select-none font-sans">
+            {isMax ? 'Fullscreen' : 'Note'}
           </span>
         </div>
         
-        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button 
             onClick={() => setShowColors(!showColors)}
             className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
             title="Change Color"
           >
-            <Palette size={16} />
+            <Palette size={16} className="opacity-70" />
           </button>
           <button 
             onClick={() => handleCopy(note.content)}
@@ -166,7 +172,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
                 </motion.div>
               ) : (
                 <motion.div key="clip" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                  <Clipboard size={16} />
+                  <Clipboard size={16} className="opacity-70" />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -177,26 +183,36 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             title="Duplicate Note"
           >
             <motion.div animate={duplicateStatus ? { scale: 1.2, rotate: 5 } : { scale: 1, rotate: 0 }}>
-              <CopyPlus size={16} />
+              <CopyPlus size={16} className="opacity-70" />
             </motion.div>
+          </button>
+          <button 
+            onClick={() => {
+              setContent('');
+              onUpdate({ ...note, content: '', updatedAt: Date.now() });
+            }}
+            className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
+            title="Clear Text"
+          >
+            <Eraser size={16} className="opacity-70" />
           </button>
           <button 
             onClick={toggleMaximize}
             className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
             title={isMax ? "Restore" : "Fullscreen"}
           >
-            {isMax ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            {isMax ? <Minimize2 size={16} className="opacity-70" /> : <Maximize2 size={16} className="opacity-70" />}
           </button>
           <button 
             onClick={toggleMinimize}
             className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
             title="Minimize to List"
           >
-            <X size={16} />
+            <X size={16} className="opacity-70" />
           </button>
           <button 
             onClick={() => onDelete(note.id)}
-            className="p-1.5 hover:bg-red-500/20 text-red-700 rounded-lg transition-colors ml-1"
+            className="p-1.5 hover:bg-red-500/20 text-red-700 rounded-lg transition-colors"
             title="Delete Note"
           >
             <Trash2 size={16} />
@@ -205,27 +221,27 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 relative p-4 sm:p-6 overflow-hidden">
-        <div className={`h-full flex flex-col transition-shadow duration-200 rounded-xl ${isEditing ? 'bg-black/5 ring-1 ring-black/10' : ''}`}>
+      <div className="flex-1 relative p-2 sm:p-3 overflow-hidden flex flex-col">
+        <div className={`flex-1 flex flex-col transition-all duration-300 rounded-xl ${isEditing ? 'bg-black/[0.04] ring-1 ring-black/5' : ''}`}>
           {isEditing ? (
             <textarea
               ref={textareaRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onBlur={handleSave}
-              className={`w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none p-3 resize-none font-medium leading-relaxed placeholder:opacity-30 custom-scrollbar ${
-                isMax ? 'text-2xl sm:text-4xl' : 'text-sm sm:text-base'
+              className={`w-full h-full bg-transparent border-none focus:ring-0 focus:outline-none p-3 sm:p-4 resize-none font-medium leading-relaxed placeholder:text-black/15 custom-scrollbar ${
+                isMax ? 'text-2xl sm:text-5xl font-bold' : 'text-sm sm:text-[15px]'
               }`}
-              placeholder="Start typing..."
+              placeholder="Start typing your thoughts..."
             />
           ) : (
             <div 
-              className={`w-full h-full font-medium leading-relaxed whitespace-pre-wrap break-words cursor-text overflow-y-auto custom-scrollbar p-3 ${
-                isMax ? 'text-2xl sm:text-4xl' : 'text-sm sm:text-base'
+              className={`w-full h-full font-medium leading-relaxed whitespace-pre-wrap break-words [word-break:break-word] [overflow-wrap:anywhere] cursor-text overflow-y-auto custom-scrollbar p-3 sm:p-4 ${
+                isMax ? 'text-2xl sm:text-5xl font-bold' : 'text-sm sm:text-[15px]'
               }`}
               onClick={() => setIsEditing(true)}
             >
-              {note.content || <span className="opacity-30 italic">Click to edit note...</span>}
+              {content ? content : <span className="opacity-20 italic font-normal">Click to edit note...</span>}
             </div>
           )}
         </div>
@@ -234,16 +250,16 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
         <AnimatePresence>
           {showColors && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="absolute bottom-4 left-4 right-4 p-3 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl flex justify-between border border-black/10 z-10"
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              className="absolute bottom-4 left-4 right-4 p-2.5 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl flex justify-between items-center border border-black/5 z-10"
             >
               {COLORS.map(c => (
                 <button
                   key={c}
                   onClick={() => changeColor(c)}
-                  className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border border-black/10 transition-all hover:scale-125 shadow-sm"
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-black/5 transition-all hover:scale-110 active:scale-95 shadow-sm ${note.color === c ? 'ring-2 ring-black/10 ring-offset-2' : ''}`}
                   style={{ backgroundColor: c }}
                 />
               ))}
@@ -257,19 +273,19 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
         <div 
           onMouseDown={handleResize}
           onTouchStart={handleResize}
-          className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-center justify-center text-black/20 hover:text-black/40 transition-colors"
+          className="absolute bottom-1 right-1 w-6 h-6 cursor-nwse-resize flex items-center justify-center text-black/10 hover:text-black/30 transition-colors"
         >
-          <CornerRightDown size={14} className="rotate-45" />
+          <CornerRightDown size={12} className="rotate-45" />
         </div>
       )}
 
       {/* Footer Info */}
-      <div className="h-6 px-4 flex items-center justify-between opacity-30 select-none">
-        <span className="text-[9px] font-mono uppercase tracking-widest">
-          {note.content.length} characters
+      <div className="h-7 px-4 flex items-center justify-between opacity-20 select-none border-t border-black/[0.03]">
+        <span className="text-[8px] font-mono uppercase tracking-[0.1em] font-bold">
+          {content.length} chars
         </span>
-        <span className="text-[9px] font-mono uppercase tracking-widest">
-          Updated {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <span className="text-[8px] font-mono uppercase tracking-[0.1em] font-bold">
+          {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
     </motion.div>

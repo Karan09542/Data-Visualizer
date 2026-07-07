@@ -122,7 +122,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[600] flex items-center justify-center sm:p-4 p-0">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -134,7 +134,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative w-full max-w-2xl border rounded-2xl shadow-2xl overflow-hidden font-sans ${
+            className={`relative w-full h-full sm:h-auto sm:max-w-2xl border sm:rounded-2xl shadow-2xl overflow-hidden font-sans flex flex-col ${
               appTheme === 'dark' ? 'bg-[#0f172a] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
             }`}
           >
@@ -207,7 +207,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             {/* Content */}
-            <div className="p-6 max-h-[60vh] overflow-y-auto scrollbar-none space-y-6 text-sm">
+            <div className="p-6 flex-1 sm:max-h-[60vh] overflow-y-auto scrollbar-none space-y-6 text-sm">
               {activeTab === 'api' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className={`p-4 rounded-xl border flex gap-3 ${

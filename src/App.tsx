@@ -436,7 +436,7 @@ export default function App() {
             </div>
 
             {/* Mobile Editor Overlay */}
-            <div className="md:hidden absolute top-0 bottom-0 left-0 w-[85%] z-[300] shadow-2xl bg-white dark:bg-[#0d1117]">
+            <div className="md:hidden absolute top-0 bottom-0 left-0 w-full z-[300] shadow-2xl bg-white dark:bg-[#0d1117]">
               <EditorPanel />
             </div>
 
