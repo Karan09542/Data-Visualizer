@@ -1,5 +1,5 @@
 import { MathWorkerHandler } from "../types";
-import { getParsedNode } from "../utils/parse";
+import { getParsedNode, parseAndAdjustForCompile } from "../utils/parse";
 
 const toTex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string, string> }> = (payload, context) => {
   context.cancellationToken.throwIfCancelled();
@@ -86,13 +86,29 @@ const expressionToLatexWithEval: MathWorkerHandler<{ expression: string; colored
 
   try {
     const node = context.math.parse(payload.expression);
-    const scope = context.createMathScope(payload.scope);
-    const result = node.evaluate(scope);
-    if (result !== undefined && typeof result !== "function") {
-      const resStr = context.math.format(result, { precision: 5 });
-      if (resStr !== payload.expression.trim()) {
-        return { ...latexResult, evalResult: resStr };
+    let hasAlgebraic = false;
+    node.traverse((n: any) => {
+      if (n.isFunctionNode && ["derivative", "simplify", "rationalize"].includes(n.fn.name)) {
+        hasAlgebraic = true;
       }
+    });
+
+    let resStr = "";
+    if (hasAlgebraic) {
+      const transformed = parseAndAdjustForCompile(context.registry, payload.expression);
+      if (transformed) {
+        resStr = transformed.toString();
+      }
+    } else {
+      const scope = context.createMathScope(payload.scope);
+      const result = node.evaluate(scope);
+      if (result !== undefined && typeof result !== "function") {
+        resStr = context.math.format(result, { precision: 5 });
+      }
+    }
+
+    if (resStr && resStr !== payload.expression.trim()) {
+      return { ...latexResult, evalResult: resStr };
     }
   } catch (e) {
     // Could happen for unassigned variables in scope
