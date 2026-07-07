@@ -7693,11 +7693,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       })()}
                                     <Plot.Parametric
                                       minSamplingDepth={Math.max(
-                                        1,
-                                        Math.min(8, samplingDepth),
+                                        8,
+                                        Math.min(10, samplingDepth),
                                       )}
                                       maxSamplingDepth={Math.max(
-                                        1,
+                                        8,
                                         Math.min(14, samplingDepth),
                                       )}
                                       xy={(t: number) => {
@@ -7899,11 +7899,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       })()}
                                     <Plot.Parametric
                                       minSamplingDepth={Math.max(
-                                        1,
-                                        Math.min(8, samplingDepth),
+                                        8,
+                                        Math.min(10, samplingDepth),
                                       )}
                                       maxSamplingDepth={Math.max(
-                                        1,
+                                        8,
                                         Math.min(14, samplingDepth),
                                       )}
                                       xy={(tVal: number) => {
@@ -8042,11 +8042,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       })()}
                                     <Plot.Parametric
                                       minSamplingDepth={Math.max(
-                                        1,
-                                        Math.min(8, samplingDepth),
+                                        8,
+                                        Math.min(10, samplingDepth),
                                       )}
                                       maxSamplingDepth={Math.max(
-                                        1,
+                                        8,
                                         Math.min(14, samplingDepth),
                                       )}
                                       t={[
