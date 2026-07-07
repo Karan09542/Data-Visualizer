@@ -27,8 +27,6 @@ export default function StickyNotesManager() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  if (!stickyNotesEnabled) return null;
-
   // Active notes are those not minimized
   const activeNotes = notes.filter(n => !n.isMinimized);
 
@@ -90,6 +88,8 @@ export default function StickyNotesManager() {
       await db.stickyNotes.clear();
     }
   };
+
+  if (!stickyNotesEnabled) return null;
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[4900] no-export" data-capture-exclude="true">

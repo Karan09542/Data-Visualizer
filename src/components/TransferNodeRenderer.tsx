@@ -2158,7 +2158,7 @@ export const TransferNodeRenderer: React.FC<{
               Direct Transfer
             </h3>
             <div className="flex flex-col gap-1.5 mt-2">
-              <p className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none">
+              <div className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none">
                 <div 
                   className={`w-2 h-2 rounded-full border ${
                     (connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
@@ -2166,7 +2166,7 @@ export const TransferNodeRenderer: React.FC<{
                       : "bg-transparent border-slate-400 dark:border-slate-600"
                   }`} 
                 /> P2P Secure Connection
-              </p>
+              </div>
               <div className="flex items-center">
                 <span className={`px-2 py-0.5 rounded-md border text-[9.5px] font-mono tracking-wide whitespace-nowrap leading-none ${isDark ? "bg-[#161b22]/50 border-white/5 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
                   {nodeKey}
