@@ -7773,6 +7773,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       (f.type === "implicit" ? "=" : "<")
                                     }
                                     baseScope={baseScope}
+                                    dependenciesHash={`${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${
+                                      /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
+                                      (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
+                                      (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
+                                        ? `time:${time}_fTime:${fTime}`
+                                        : "static"
+                                    }`}
                                     color={f.color}
                                     fillColor={f.fillColor}
                                     fillOpacity={

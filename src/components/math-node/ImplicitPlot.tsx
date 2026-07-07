@@ -20,6 +20,8 @@ interface ImplicitPlotProps {
   py?: number;
   lineStyle?: string;
   samplingDepth?: number;
+  id?: string;
+  dependenciesHash?: string;
 }
 
 export const ImplicitPlot: React.FC<ImplicitPlotProps> = ({
@@ -38,6 +40,8 @@ export const ImplicitPlot: React.FC<ImplicitPlotProps> = ({
   py = 0,
   lineStyle,
   samplingDepth = 14,
+  id,
+  dependenciesHash,
 }) => {
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
@@ -182,9 +186,9 @@ export const ImplicitPlot: React.FC<ImplicitPlotProps> = ({
 
     return localSegments;
   }, [
-    compiledLHS, compiledRHS, baseScope,
+    compiledLHS, compiledRHS, dependenciesHash || baseScope, samplingDepth,
     xRange[0], xRange[1], yRange[0], yRange[1],
-    samplingDepth, rot, scaleX, scaleY, tx, ty, px, py
+    tx, ty, px, py, rot, scaleX, scaleY,
   ]);
 
   const isSpecialDashed = lineStyle && lineStyle !== "solid";

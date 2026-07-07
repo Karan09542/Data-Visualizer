@@ -27,6 +27,7 @@ interface InequalityPlotProps {
   lineStyle?: string;
   samplingDepth?: number;
   id?: string;
+  dependenciesHash?: string;
 }
 
 export const InequalityPlot: React.FC<InequalityPlotProps> = ({
@@ -52,6 +53,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
   lineStyle,
   samplingDepth = 14,
   id,
+  dependenciesHash,
 }) => {
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
@@ -223,7 +225,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
 
     return { fill: fillPath, boundary: boundaryPath, dy };
   }, [
-    compiledLHS, compiledRHS, operator, baseScope, samplingDepth,
+    compiledLHS, compiledRHS, operator, dependenciesHash || baseScope, samplingDepth,
     xRange[0], xRange[1], yRange[0], yRange[1],
     tx, ty, px, py, rot, scaleX, scaleY,
   ]);
