@@ -4,39 +4,37 @@ import { getParsedNode, parseAndAdjustForCompile } from "../utils/parse";
 const toTex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string, string> }> = (payload, context) => {
   context.cancellationToken.throwIfCancelled();
   const node = getParsedNode(context.registry, payload.expression);
-  if (payload.coloredVars) {
-    const tex = node.toTex({
-      handler: (n: any) => {
-        if (n.isSymbolNode && payload.coloredVars![n.name]) {
-          const color = payload.coloredVars![n.name];
-          const display = n.name === "theta" ? "\\theta" : n.name.replace("_", "\\_");
-          return `\\textcolor{${color}}{${display}}`;
+  const tex = node.toTex({
+    handler: (n: any) => {
+      if (n.isSymbolNode) {
+        const display = n.name === "theta" ? "\\theta" : n.name;
+        if (payload.coloredVars && payload.coloredVars[n.name]) {
+          return `\\textcolor{${payload.coloredVars[n.name]}}{${display}}`;
         }
-        return undefined;
-      },
-    });
-    return { tex };
-  }
-  return { tex: node.toTex() };
+        return display;
+      }
+      return undefined;
+    },
+  });
+  return { tex };
 };
 
 const expressionToLatex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string, string> }> = (payload, context) => {
   context.cancellationToken.throwIfCancelled();
   const getLatex = (exprStr: string) => {
     const n = context.math.parse(exprStr);
-    if (payload.coloredVars) {
-      return n.toTex({
-        handler: (node: any) => {
-          if (node.isSymbolNode && payload.coloredVars![node.name]) {
-            const color = payload.coloredVars![node.name];
-            const display = node.name === "theta" ? "\\theta" : node.name.replace("_", "\\_");
-            return `\\textcolor{${color}}{${display}}`;
+    return n.toTex({
+      handler: (node: any) => {
+        if (node.isSymbolNode) {
+          const display = node.name === "theta" ? "\\theta" : node.name;
+          if (payload.coloredVars && payload.coloredVars[node.name]) {
+            return `\\textcolor{${payload.coloredVars[node.name]}}{${display}}`;
           }
-          return undefined;
-        },
-      });
-    }
-    return n.toTex();
+          return display;
+        }
+        return undefined;
+      },
+    });
   };
 
   try {

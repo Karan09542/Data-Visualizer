@@ -42,6 +42,7 @@ import {
   Type,
   List,
   Calculator,
+  FunctionSquare,
 } from "lucide-react";
 import { MathKeyboard } from "./MathKeyboard";
 import { CaretOverlay } from "./math-input/components/CaretOverlay";
@@ -1896,7 +1897,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {functions.map((f) => (
+                    {functions.map((f, index) => (
                       <div
                         key={f.id}
                         draggable={canDragFunctionId === f.id}
@@ -1967,15 +1968,32 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 : "transparent",
                               border: `2px solid ${f.color}`,
                             }}
-                            onClick={() =>
-                              setFunctions((prev) =>
-                                prev.map((fn) =>
-                                  fn.id === f.id
-                                    ? { ...fn, visible: !fn.visible }
-                                    : fn,
-                                ),
-                              )
-                            }
+                            title={"Toggle visibility\nAlt + Click: Solo mode! This instantly hides all other shapes on the graph and makes sure only the shape you clicked on is visible.\nShift + Click: This makes all the equations from the top of the list down to the one you clicked visible, while immediately hiding every equation below it."}
+                            onClick={(e) => {
+                              if (e.altKey) {
+                                setFunctions((prev) =>
+                                  prev.map((fn) => ({
+                                    ...fn,
+                                    visible: fn.id === f.id,
+                                  }))
+                                );
+                              } else if (e.shiftKey) {
+                                setFunctions((prev) =>
+                                  prev.map((fn, i) => ({
+                                    ...fn,
+                                    visible: i <= index,
+                                  }))
+                                );
+                              } else {
+                                setFunctions((prev) =>
+                                  prev.map((fn) =>
+                                    fn.id === f.id
+                                      ? { ...fn, visible: !fn.visible }
+                                      : fn,
+                                  ),
+                                );
+                              }
+                            }}
                           />
                           <select
                             value={f.type}
@@ -2890,6 +2908,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               ? {
                                                 ...fn,
                                                 showLabel: e.target.checked,
+                                                label: e.target.checked && !fn.label ? (fn.latex || fn.expr || "") : fn.label,
                                               }
                                               : fn,
                                           ),
@@ -2905,20 +2924,41 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                 {f.showLabel && (
                                   <>
-                                    <div className="flex w-full mt-2 mb-1">
-                                      <LabelInput
-                                        value={f.label || ""}
-                                        onChange={(val) =>
+                                    <div className="flex w-full mt-2 mb-1 gap-1.5 items-stretch group/label">
+                                      <div className="flex-1 min-w-0">
+                                        <LabelInput
+                                          value={f.label || ""}
+                                          onChange={(val) =>
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? { ...fn, label: val }
+                                                  : fn,
+                                              ),
+                                            )
+                                          }
+                                          placeholder="Text or LaTeX (e.g. A_1)"
+                                        />
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           setFunctions((prev) =>
                                             prev.map((fn) =>
                                               fn.id === f.id
-                                                ? { ...fn, label: val }
+                                                ? {
+                                                    ...fn,
+                                                    label: fn.latex || fn.expr || "",
+                                                  }
                                                 : fn,
                                             ),
-                                          )
-                                        }
-                                        placeholder="Text or LaTeX (e.g. A_1)"
-                                      />
+                                          );
+                                        }}
+                                        title="Inject current equation"
+                                        className="shrink-0 flex items-center justify-center w-8 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md border border-slate-200 dark:border-transparent transition-colors opacity-70 hover:opacity-100"
+                                      >
+                                        <FunctionSquare className="w-4 h-4" strokeWidth={2} />
+                                      </button>
                                     </div>
 
                                     {/* Label Settings Panel */}
