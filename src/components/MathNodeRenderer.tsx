@@ -2,7 +2,6 @@ import React, {
   useState,
   useEffect,
   useRef,
-  useLayoutEffect,
   useCallback,
   useMemo,
 } from "react";
@@ -30,7 +29,6 @@ import {
   RotateCcw,
   GripVertical,
   Folder,
-  FolderPlus,
   Menu,
   MoreVertical,
   Bookmark,
@@ -42,12 +40,11 @@ import {
   Type,
   List,
   Calculator,
+  FunctionSquare,
 } from "lucide-react";
-import { MathKeyboard } from "./MathKeyboard";
-import { CaretOverlay } from "./math-input/components/CaretOverlay";
+
 import {
   Mafs,
-  Coordinates,
   Plot,
   Transform,
   Point,
@@ -56,3189 +53,50 @@ import {
   MovablePoint,
   Text,
   Line,
-  LaTeX,
   usePaneContext,
-  useTransformContext,
-  vec,
 } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import * as mathjs from "mathjs";
-import Markdown from "react-markdown";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import remarkGfm from "remark-gfm";
 import { useStore } from "../store/useStore";
-import { HexAlphaColorPicker } from "react-colorful";
+import { useMathWorker } from "../hooks/useMathWorker";
 import { liveQuery } from "dexie";
 import { db } from "../lib/db";
 import MathHelpPopup from "./MathHelpPopup";
 
-const InsertAboveIcon = ({
-  size = 14,
-  className = "",
-}: {
-  size?: number;
-  className?: string;
-}) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <path d="M12 3v7" />
-    <path d="M8.5 6.5h7" />
-    <rect x="4" y="15" width="16" height="5" rx="1.5" />
-  </svg>
-);
+import {
+  MathFunction,
+  MathVariable,
+  VariableGroup,
+  COLORS,
+  getVarColor,
+  getHexWithAlpha,
+  getStrokeDasharray,
+  formatMathError,
+  generateSafeId,
+  computePCA,
+  decoupleGeometry,
+  parseAndAdjustForCompile,
+  indexHelper,
+  resolveGeometryPoints,
+  InsertAboveIcon,
+  InsertBelowIcon,
+  ReadableColorBadge,
+  PortalColorPicker,
+  VariableEditorModal,
+  EquationInput,
+  LabelInput,
+  SafeLabel,
+  CurvePatternDefs,
+  InequalityPlot,
+  AdaptiveGrid,
+  createAxisLabelFormatter,
+  MATH_EXAMPLES,
+  TraceOverlay
+} from "./math-node";
 
-const InsertBelowIcon = ({
-  size = 14,
-  className = "",
-}: {
-  size?: number;
-  className?: string;
-}) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <rect x="4" y="4" width="16" height="5" rx="1.5" />
-    <path d="M12 14v7" />
-    <path d="M8.5 17.5h7" />
-  </svg>
-);
-
-const generateSafeId = () => {
-  return (
-    "id_" +
-    Math.random().toString(36).substring(2, 11) +
-    "_" +
-    Date.now().toString(36)
-  );
-};
-
-interface MathFunction {
-  id: string;
-  name?: string;
-  expr: string;
-  color: string;
-  visible: boolean;
-  type:
-    | "function"
-    | "parametric"
-    | "point"
-    | "implicit"
-    | "differential"
-    | "polar"
-    | "vector"
-    | "polygon"
-    | "inequality"
-    | "line";
-  compiled?: any;
-  expr2?: string; // For parametric x/y or polar r/theta
-  compiled2?: any;
-  operator?: string;
-  error?: string;
-  showLabel?: boolean;
-  label?: string;
-  labelPosition?: [number, number];
-  labelRotation?: number; // degrees
-  labelScale?: number; // scale factor
-  labelFlipX?: boolean;
-  labelFlipY?: boolean;
-  showLabelPoint?: boolean;
-  labelAlignment?: "center" | "above" | "below" | "left" | "right" | "custom";
-  fillColor?: string;
-  fillOpacity?: number;
-  fillPattern?:
-    | "solid"
-    | "hatch-diagonal"
-    | "hatch-reverse"
-    | "hatch-cross"
-    | "dotted"
-    | "grid"
-    | "dashed"
-    | "math-region";
-  patternSpacing?: number;
-  patternThickness?: number;
-  patternAngle?: number;
-  lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
-  outlineWidth?: number;
-
-  // Behaviors
-  isDraggable?: boolean;
-  isTransformable?: boolean;
-  isRotatable?: boolean;
-  isResizable?: boolean;
-  isPivotEnabled?: boolean;
-  showPoint?: boolean;
-
-  // Transform States
-  transformTranslate?: [number, number]; // [x, y]
-  transformRotate?: number; // radians
-  transformScale?: [number, number]; // [sx, sy]
-  transformPivot?: [number, number]; // [px, py]
-
-  // Individual Timeline Support
-  hasCustomTimeline?: boolean;
-  time?: number;
-  isPlaying?: boolean;
-  timeMin?: number;
-  timeMax?: number;
-  timeSpeed?: number;
-  timeMode?: "loop" | "bounce" | "continuous";
-  direction?: number;
-}
-
-interface MathVariable {
-  id: string;
-  name: string;
-  displayName: string;
-  description: string;
-  value: number;
-  defaultValue: number;
-  min: number;
-  max: number;
-  step: number;
-  groupId: string;
-  showSlider?: boolean;
-}
-
-interface VariableGroup {
-  id: string;
-  name: string;
-  isCollapsed: boolean;
-}
-
-const VariableEditorModal = ({
-  variable,
-  groups,
-  existingVariables,
-  onSave,
-  onClose,
-}: any) => {
-  const isNew = !variable || variable.name.endsWith("_copy");
-  const [formData, setFormData] = useState<MathVariable>(() => {
-    if (variable) {
-      return { showSlider: variable.showSlider !== false, ...variable };
-    }
-    return {
-      id: generateSafeId(),
-      name: "",
-      displayName: "",
-      description: "",
-      value: 1,
-      defaultValue: 1,
-      min: -10,
-      max: 10,
-      step: 0.1,
-      groupId: groups[0]?.id || "default",
-      showSlider: true,
-    };
-  });
-
-  const [groupMode, setGroupMode] = useState<"select" | "new">("select");
-  const [newGroupName, setNewGroupName] = useState("");
-  const [error, setError] = useState("");
-
-  const handleSave = () => {
-    setError("");
-    const trimmedSymbol = formData.name.trim();
-    if (!trimmedSymbol) return setError("Symbol is required.");
-    if (!/^[a-zA-Z_]\w*$/.test(trimmedSymbol))
-      return setError(
-        "Invalid symbol format (must start with letter/underscore, e.g. k, a_1).",
-      );
-    if (
-      existingVariables.some(
-        (v: any) => v.name === trimmedSymbol && v.id !== formData.id,
-      )
-    )
-      return setError(`Symbol '${trimmedSymbol}' already exists.`);
-
-    // Validate bounds only if slider is enabled
-    const isSliderEnabled = formData.showSlider !== false;
-    const minVal = isNaN(formData.min) ? -10 : formData.min;
-    const maxVal = isNaN(formData.max) ? 10 : formData.max;
-    if (isSliderEnabled && minVal >= maxVal)
-      return setError("Min must be less than Max.");
-
-    const finalVar = {
-      ...formData,
-      name: trimmedSymbol,
-      min: minVal,
-      max: maxVal,
-      step: isNaN(formData.step) || formData.step <= 0 ? 0.1 : formData.step,
-      defaultValue: isNaN(formData.defaultValue) ? 1 : formData.defaultValue,
-      value: isNaN(formData.value)
-        ? isNaN(formData.defaultValue)
-          ? 1
-          : formData.defaultValue
-        : formData.value,
-      showSlider: isSliderEnabled,
-    };
-
-    if (groupMode === "new") {
-      const trimmedGroup = newGroupName.trim();
-      if (!trimmedGroup) {
-        return setError("Please enter a custom group name.");
-      }
-      const existingGroup = groups.find(
-        (g: any) => g.name.toLowerCase() === trimmedGroup.toLowerCase(),
-      );
-      if (existingGroup) {
-        onSave({ ...finalVar, groupId: existingGroup.id });
-      } else {
-        const newGroupId = `group_${generateSafeId()}`;
-        const newGroup = {
-          id: newGroupId,
-          name: trimmedGroup,
-          isCollapsed: false,
-        };
-        onSave({ ...finalVar, groupId: newGroupId }, newGroup);
-      }
-    } else {
-      onSave(finalVar);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[99999] bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl w-full max-w-sm flex flex-col nodrag cursor-default text-slate-800 dark:text-slate-100 overflow-hidden transform transition-all">
-        {/* Modal Header */}
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-lg">
-              <FolderPlus size={16} />
-            </div>
-            <div>
-              <h3 className="font-semibold text-slate-900 dark:text-slate-50 text-sm leading-none">
-                {isNew ? "Add Variable" : "Edit Variable"}
-              </h3>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                Define properties for your variable
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-350 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div className="p-4 flex flex-col gap-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
-          {error && (
-            <div className="text-red-600 dark:text-red-400 text-xs font-semibold bg-red-500/10 dark:bg-red-950/20 p-2.5 rounded-lg border border-red-200 dark:border-red-900/30">
-              {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3 flex-shrink-0">
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Symbol *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm text-slate-900 dark:text-slate-100 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all"
-                placeholder="e.g. a"
-                disabled={!isNew}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Display Name
-              </label>
-              <input
-                type="text"
-                value={formData.displayName}
-                onChange={(e) =>
-                  setFormData({ ...formData, displayName: e.target.value })
-                }
-                className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none transition-all"
-                placeholder="e.g. Amplitude"
-              />
-            </div>
-          </div>
-
-          {/* Range Slider Toggle */}
-          <div className="flex items-center justify-between p-2.5 bg-slate-50/50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 flex-shrink-0">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-slate-700 dark:text-slate-350 uppercase tracking-wider">
-                Show Range Slider
-              </span>
-              <span className="text-[9px] text-slate-400 dark:text-slate-500">
-                Provide an interactive slider for quick tuning
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                setFormData((prev) => ({
-                  ...prev,
-                  showSlider: !prev.showSlider,
-                }))
-              }
-              className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                formData.showSlider !== false
-                  ? "bg-blue-600 dark:bg-blue-500"
-                  : "bg-slate-200 dark:bg-slate-800"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  formData.showSlider !== false
-                    ? "translate-x-4"
-                    : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
-
-          <div
-            className={`grid grid-cols-3 gap-2 flex-shrink-0 transition-opacity duration-200 ${
-              formData.showSlider !== false
-                ? "opacity-100"
-                : "opacity-45 pointer-events-none"
-            }`}
-          >
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Min
-              </label>
-              <input
-                type="number"
-                value={isNaN(formData.min) ? "" : formData.min}
-                onChange={(e) =>
-                  setFormData({ ...formData, min: parseFloat(e.target.value) })
-                }
-                className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
-                disabled={formData.showSlider === false}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Max
-              </label>
-              <input
-                type="number"
-                value={isNaN(formData.max) ? "" : formData.max}
-                onChange={(e) =>
-                  setFormData({ ...formData, max: parseFloat(e.target.value) })
-                }
-                className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
-                disabled={formData.showSlider === false}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Step
-              </label>
-              <input
-                type="number"
-                value={isNaN(formData.step) ? "" : formData.step}
-                onChange={(e) =>
-                  setFormData({ ...formData, step: parseFloat(e.target.value) })
-                }
-                className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-xs text-slate-900 dark:text-slate-100 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
-                disabled={formData.showSlider === false}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 flex-shrink-0">
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Default Value
-              </label>
-              <input
-                type="number"
-                value={
-                  isNaN(formData.defaultValue) ? "" : formData.defaultValue
-                }
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    defaultValue: parseFloat(e.target.value),
-                  })
-                }
-                className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm text-slate-900 dark:text-slate-100 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-                Group
-              </label>
-              <div className="flex bg-slate-100 dark:bg-slate-950 rounded-lg p-0.5 border border-slate-200 dark:border-slate-800 text-[11px] h-[38px] items-center">
-                <button
-                  type="button"
-                  onClick={() => setGroupMode("select")}
-                  className={`flex-1 text-center py-1 rounded-md transition-all font-medium ${
-                    groupMode === "select"
-                      ? "bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-slate-50 border border-slate-200/55 dark:border-slate-700/60"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-white/40 dark:hover:bg-slate-900/40"
-                  }`}
-                >
-                  Select
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGroupMode("new")}
-                  className={`flex-1 text-center py-1 rounded-md transition-all font-medium ${
-                    groupMode === "new"
-                      ? "bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-slate-50 border border-slate-200/55 dark:border-slate-700/60"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-white/40 dark:hover:bg-slate-900/40"
-                  }`}
-                >
-                  + New
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Conditional Group Area */}
-          <div className="flex flex-col gap-1.5 p-2.5 bg-slate-50/50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
-            {groupMode === "select" ? (
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1 block uppercase tracking-wider">
-                  Select Group Name
-                </label>
-                <select
-                  value={formData.groupId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, groupId: e.target.value })
-                  }
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-1.5 text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-blue-500"
-                >
-                  {groups.map((g: any) => (
-                    <option
-                      key={g.id}
-                      value={g.id}
-                      className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-                    >
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1 block uppercase tracking-wider">
-                  Custom Group Name
-                </label>
-                <input
-                  type="text"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-1.5 text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-blue-500"
-                  placeholder="e.g. Physics Constants"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="flex-shrink-0">
-            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 block uppercase tracking-wider">
-              Description
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              className="w-full bg-slate-50/50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm text-slate-900 dark:text-slate-100 resize-none h-14 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
-              placeholder="What does this variable do?"
-            />
-          </div>
-        </div>
-        <div className="p-3 border-t border-slate-150 dark:border-slate-800 flex justify-end gap-2 bg-slate-50 dark:bg-slate-900/50">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg font-medium text-xs transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-xs transition-colors shadow"
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const hslToHex = (h: number, s: number, l: number) => {
-  l /= 100;
-  const a = (s * Math.min(l, 1 - l)) / 100;
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * color)
-      .toString(16)
-      .padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-};
-
-export const getVarColor = (name: string) => {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = Math.abs(hash) % 360;
-  return hslToHex(hue, 85, 65);
-};
-
-const MATH_COMPLETIONS = [
-  // Basic & Algebraic
-  { name: "sin", desc: "Sine of x", insert: "sin(" },
-  { name: "cos", desc: "Cosine of x", insert: "cos(" },
-  { name: "tan", desc: "Tangent of x", insert: "tan(" },
-  { name: "asin", desc: "Inverse sine (arcsin)", insert: "asin(" },
-  { name: "acos", desc: "Inverse cosine (arccos)", insert: "acos(" },
-  { name: "atan", desc: "Inverse tangent (arctan)", insert: "atan(" },
-  { name: "atan2", desc: "Four-quadrant inverse tangent", insert: "atan2(" },
-  { name: "exp", desc: "Exponential e^x", insert: "exp(" },
-  { name: "log", desc: "Natural logarithm (ln)", insert: "log(" },
-  { name: "ln", desc: "Natural logarithm", insert: "ln(" },
-  { name: "log10", desc: "Base 10 logarithm", insert: "log10(" },
-  { name: "log2", desc: "Base 2 logarithm", insert: "log2(" },
-  { name: "sqrt", desc: "Square root", insert: "sqrt(" },
-  { name: "cbrt", desc: "Cube root", insert: "cbrt(" },
-  { name: "abs", desc: "Absolute value", insert: "abs(" },
-  { name: "sign", desc: "Sign of a value (-1, 0, 1)", insert: "sign(" },
-  { name: "signum", desc: "Signum / sign of a value", insert: "sign(" },
-  { name: "pow", desc: "Calculate base to exponent power", insert: "pow(" },
-  { name: "mod", desc: "Modulus/remainder of division", insert: "mod(" },
-
-  // Hyperbolic
-  { name: "sinh", desc: "Hyperbolic sine", insert: "sinh(" },
-  { name: "cosh", desc: "Hyperbolic cosine", insert: "cosh(" },
-  { name: "tanh", desc: "Hyperbolic tangent", insert: "tanh(" },
-  { name: "asinh", desc: "Inverse hyperbolic sine", insert: "asinh(" },
-  { name: "acosh", desc: "Inverse hyperbolic cosine", insert: "acosh(" },
-  { name: "atanh", desc: "Inverse hyperbolic tangent", insert: "atanh(" },
-
-  // Reciprocal Trig
-  { name: "sec", desc: "Secant of x", insert: "sec(" },
-  { name: "csc", desc: "Cosecant of x", insert: "csc(" },
-  { name: "cot", desc: "Cotangent of x", insert: "cot(" },
-  { name: "asec", desc: "Inverse secant of x", insert: "asec(" },
-  { name: "acsc", desc: "Inverse cosecant of x", insert: "acsc(" },
-  { name: "acot", desc: "Inverse cotangent of x", insert: "acot(" },
-
-  // Hyperbolic Reciprocals
-  { name: "sech", desc: "Hyperbolic secant", insert: "sech(" },
-  { name: "csch", desc: "Hyperbolic cosecant", insert: "csch(" },
-  { name: "coth", desc: "Hyperbolic cotangent", insert: "coth(" },
-
-  // Matrices & Linear Algebra
-  {
-    name: "det",
-    desc: "Matrix determinant (e.g. [[x,y,1],[2,3,1],[-1,-3,1]])",
-    insert: "det(",
-  },
-  { name: "matrix", desc: "Create a matrix / 2D array", insert: "matrix(" },
-  { name: "cross", desc: "Cross product of 2 vectors", insert: "cross(" },
-  { name: "dot", desc: "Dot product of 2 vectors", insert: "dot(" },
-  {
-    name: "transpose",
-    desc: "Transpose a matrix (flip rows/columns)",
-    insert: "transpose(",
-  },
-  { name: "inv", desc: "Inverse of a square matrix", insert: "inv(" },
-  {
-    name: "identity",
-    desc: "Create an identity matrix of size n",
-    insert: "identity(",
-  },
-  { name: "ones", desc: "Create a matrix filled with ones", insert: "ones(" },
-  {
-    name: "zeros",
-    desc: "Create a matrix filled with zeros",
-    insert: "zeros(",
-  },
-  { name: "size", desc: "Get matrix dimensions/length", insert: "size(" },
-  {
-    name: "concat",
-    desc: "Concatenate matrices along an axis",
-    insert: "concat(",
-  },
-  {
-    name: "subset",
-    desc: "Get or set a subset of a matrix",
-    insert: "subset(",
-  },
-  {
-    name: "flatten",
-    desc: "Flatten a multi-dimensional matrix",
-    insert: "flatten(",
-  },
-  {
-    name: "diag",
-    desc: "Extract diagonal or create diagonal matrix",
-    insert: "diag(",
-  },
-  { name: "trace", desc: "Calculate trace of a matrix", insert: "trace(" },
-  { name: "kron", desc: "Kronecker product of two matrices", insert: "kron(" },
-
-  // Statistics & Sampling
-  { name: "mean", desc: "Mean / average of values", insert: "mean(" },
-  { name: "median", desc: "Median of values", insert: "median(" },
-  { name: "std", desc: "Standard deviation of values", insert: "std(" },
-  { name: "variance", desc: "Variance of values", insert: "variance(" },
-  { name: "sum", desc: "Sum of values or matrix", insert: "sum(" },
-  { name: "prod", desc: "Product of values or matrix", insert: "prod(" },
-  { name: "min", desc: "Minimum value", insert: "min(" },
-  { name: "max", desc: "Maximum value", insert: "max(" },
-
-  // Probability, Calculus & Higher Math
-  {
-    name: "derivative",
-    desc: "Symbolic/numerical derivative",
-    insert: "derivative(",
-  },
-  { name: "factorial", desc: "Factorial of an integer", insert: "factorial(" },
-  { name: "gamma", desc: "Euler gamma function", insert: "gamma(" },
-  { name: "gcd", desc: "Greatest common divisor", insert: "gcd(" },
-  { name: "lcm", desc: "Least common multiple", insert: "lcm(" },
-  {
-    name: "random",
-    desc: "Generate a random float in [0, 1)",
-    insert: "random(",
-  },
-  {
-    name: "randomInt",
-    desc: "Generate a random integer",
-    insert: "randomInt(",
-  },
-  {
-    name: "combinations",
-    desc: "Number of combinations (nCr)",
-    insert: "combinations(",
-  },
-  {
-    name: "permutations",
-    desc: "Number of permutations (nPr)",
-    insert: "permutations(",
-  },
-
-  // Numeric Utility Functions
-  { name: "round", desc: "Round to nearest integer", insert: "round(" },
-  { name: "floor", desc: "Round down", insert: "floor(" },
-  { name: "ceil", desc: "Round up", insert: "ceil(" },
-  { name: "fix", desc: "Round towards zero", insert: "fix(" },
-  { name: "square", desc: "Square of x (x^2)", insert: "square(" },
-  { name: "cube", desc: "Cube of x (x^3)", insert: "cube(" },
-  { name: "isPrime", desc: "Checks if number is prime", insert: "isPrime(" },
-
-  // Complex numbers
-  { name: "complex", desc: "Create a complex number", insert: "complex(" },
-  { name: "conj", desc: "Conjugate of a complex number", insert: "conj(" },
-  { name: "re", desc: "Real part of complex number", insert: "re(" },
-  { name: "im", desc: "Imaginary part of complex number", insert: "im(" },
-  { name: "arg", desc: "Argument / phase of complex number", insert: "arg(" },
-
-  // Constants
-  { name: "pi", desc: "Constant π (3.14159...)", insert: "pi" },
-  { name: "e", desc: "Constant e (2.71828...)", insert: "e" },
-  { name: "phi", desc: "Golden ratio (1.61803...)", insert: "phi" },
-  { name: "i", desc: "Imaginary unit constant", insert: "i" },
-  { name: "LN2", desc: "Natural log of 2", insert: "LN2" },
-  { name: "LN10", desc: "Natural log of 10", insert: "LN10" },
-  { name: "LOG2E", desc: "Log base 2 of e", insert: "LOG2E" },
-  { name: "LOG10E", desc: "Log base 10 of e", insert: "LOG10E" },
-  { name: "SQRT1_2", desc: "Square root of 1/2", insert: "SQRT1_2" },
-  { name: "SQRT2", desc: "Square root of 2", insert: "SQRT2" },
-];
-
-const MARKDOWN_REMARK_PLUGINS = [remarkMath, remarkGfm];
-const MARKDOWN_REHYPE_PLUGINS = [rehypeKatex];
-
-const EquationInput = ({
-  value,
-  onChange,
-  variables,
-  hoveredVar,
-  error,
-  onAddEnter,
-  onBlur,
-  globalTime = 1,
-  forceEditMode = false,
-  showKeyboard = false,
-  onToggleKeyboard,
-  onCloseKeyboard,
-}: any) => {
-  const [isFocused, setIsFocused] = useState(false);
-  const [cursorPos, setCursorPos] = useState(0);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [selIndex, setSelIndex] = useState(0);
-  const [inputRect, setInputRect] = useState<DOMRect | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const appTheme = useStore((state) => state.appTheme);
-
-  const effectiveMode = showKeyboard ? "virtual" : "native";
-
-  useEffect(() => {
-    // Keep focus when switching between native and virtual modes
-    if (isFocused && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [effectiveMode, isFocused, inputRef]);
-
-  useEffect(() => {
-    if (!isFocused) {
-      setSuggestions([]);
-      return;
-    }
-    const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
-    if (match) {
-      const search = match[0].toLowerCase();
-      const dynamicCompletions = [
-        ...MATH_COMPLETIONS,
-        ...variables.map((v: any) => ({
-          name: v.name,
-          desc: v.displayName || `Variable ${v.name}`,
-          insert: v.name,
-        })),
-        { name: "theta", desc: "Polar angle", insert: "theta" },
-      ];
-
-      const filtered = dynamicCompletions.filter(
-        (c) =>
-          c.name.toLowerCase().includes(search) ||
-          c.desc.toLowerCase().includes(search),
-      );
-
-      const sorted = [...filtered].sort((a, b) => {
-        const aStarts = a.name.toLowerCase().startsWith(search);
-        const bStarts = b.name.toLowerCase().startsWith(search);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      setSuggestions(sorted.slice(0, 8));
-      setSelIndex(0);
-    } else {
-      setSuggestions([]);
-    }
-    if (containerRef.current) {
-      setInputRect(containerRef.current.getBoundingClientRect());
-    }
-  }, [value, cursorPos, isFocused, variables]);
-
-  const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement | HTMLDivElement>,
-  ) => {
-    const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
-    const search = match ? match[0].toLowerCase() : "";
-
-    const dynamicCompletions = [
-      ...MATH_COMPLETIONS,
-      ...variables.map((v: any) => ({
-        name: v.name,
-        desc: v.displayName || `Variable ${v.name}`,
-        insert: v.name,
-      })),
-      { name: "theta", desc: "Polar angle", insert: "theta" },
-    ];
-
-    const filtered = dynamicCompletions.filter(
-      (c) =>
-        c.name.toLowerCase().includes(search) ||
-        c.desc.toLowerCase().includes(search),
-    );
-
-    const sortedCompletions = [...filtered]
-      .sort((a, b) => {
-        const aStarts = a.name.toLowerCase().startsWith(search);
-        const bStarts = b.name.toLowerCase().startsWith(search);
-        if (aStarts && !bStarts) return -1;
-        if (!aStarts && bStarts) return 1;
-        return a.name.localeCompare(b.name);
-      })
-      .slice(0, 8);
-
-    if (e.ctrlKey && e.key === " ") {
-      e.preventDefault();
-      setSuggestions(sortedCompletions);
-      setSelIndex(0);
-      return;
-    }
-
-    if (suggestions.length > 0) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setSuggestions([]);
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelIndex((i) => (i + 1) % suggestions.length);
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
-      }
-      if (e.key === "Tab" || e.key === "Enter") {
-        e.preventDefault();
-        const match = value.slice(0, cursorPos).match(/[a-zA-Z_]\w*$/);
-        const before = match
-          ? value.slice(0, cursorPos - match[0].length)
-          : value.slice(0, cursorPos);
-        const after = value.slice(cursorPos);
-        const s = suggestions[selIndex];
-        onChange(before + s.insert + after);
-        setSuggestions([]);
-        setTimeout(() => {
-          if (inputRef.current) {
-            const newPos = before.length + s.insert.length;
-            inputRef.current.selectionStart = newPos;
-            inputRef.current.selectionEnd = newPos;
-            setCursorPos(newPos);
-          }
-        }, 0);
-      }
-    } else if (e.key === "Enter" && !e.shiftKey && onAddEnter) {
-      e.preventDefault();
-      onAddEnter();
-    }
-  };
-
-  const handleKeyboardInsert = (
-    insertStr: string,
-    isTemplate: boolean = false,
-  ) => {
-    const before = value.slice(0, cursorPos);
-    const after = value.slice(cursorPos);
-    let newExpr = before + insertStr + after;
-    let newPos = cursorPos + insertStr.length;
-
-    if (isTemplate) {
-      const parenIndex = insertStr.indexOf("(");
-      if (parenIndex !== -1) {
-        newPos = cursorPos + parenIndex + 1;
-      }
-    }
-
-    onChange(newExpr);
-    setCursorPos(newPos);
-
-    // Maintain focus and set cursor position after render
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        inputRef.current.selectionStart = newPos;
-        inputRef.current.selectionEnd = newPos;
-      }
-    }, 0);
-  };
-
-  const handleKeyboardDelete = () => {
-    if (cursorPos > 0) {
-      const before = value.slice(0, cursorPos - 1);
-      const after = value.slice(cursorPos);
-      onChange(before + after);
-      const newPos = cursorPos - 1;
-      setCursorPos(newPos);
-
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.selectionStart = newPos;
-          inputRef.current.selectionEnd = newPos;
-        }
-      }, 0);
-    }
-  };
-
-  const handleKeyboardMoveCursor = (dir: "left" | "right") => {
-    let newPos = cursorPos;
-    if (dir === "left" && cursorPos > 0) newPos--;
-    if (dir === "right" && cursorPos < value.length) newPos++;
-    setCursorPos(newPos);
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        inputRef.current.selectionStart = newPos;
-        inputRef.current.selectionEnd = newPos;
-      }
-    }, 0);
-  };
-
-  const handleKeyboardAction = (
-    action: "enter" | "undo" | "redo" | "space",
-  ) => {
-    if (action === "space") {
-      handleKeyboardInsert(" ");
-    } else if (action === "enter" && onAddEnter) {
-      onAddEnter();
-    }
-  };
-
-  const getColoredText = () => {
-    if (!value) return <span className="opacity-0">placeholder</span>;
-    const tokens = value.split(/([a-zA-Z_]\w*)/);
-    const isDark = appTheme === "dark";
-    return tokens.map((tok: string, i: number) => {
-      if (/^[a-zA-Z_]\w*$/.test(tok)) {
-        const isVar =
-          variables.some((v: any) => v.name === tok) ||
-          ["x", "y", "t", "time", "theta"].includes(tok) ||
-          tok.startsWith("t_");
-        if (isVar) {
-          const color =
-            tok === "x"
-              ? "#10b981"
-              : (["t", "time"].includes(tok) || tok.startsWith("t_"))
-                ? "#8b5cf6"
-                : tok === "y"
-                  ? "#3b82f6"
-                  : tok === "theta"
-                    ? "#f59e0b"
-                    : getVarColor(tok);
-          return (
-            <span
-              key={i}
-              style={{
-                color,
-                textShadow: hoveredVar === tok ? `0 0 8px ${color}` : "none",
-                fontWeight: hoveredVar === tok ? "bold" : "normal",
-                transition: "all 0.2s",
-              }}
-            >
-              {tok}
-            </span>
-          );
-        }
-        if (MATH_COMPLETIONS.some((c) => c.name === tok)) {
-          return (
-            <span key={i} style={{ color: isDark ? "#eab308" : "#b45309" }}>
-              {tok}
-            </span>
-          );
-        }
-      }
-      return (
-        <span key={i} style={{ color: isDark ? "#cbd5e1" : "#334155" }}>
-          {tok}
-        </span>
-      );
-    });
-  };
-
-  let renderedLatex = null;
-  if (!isFocused && !error && value.trim()) {
-    try {
-      const getLatexForExpr = (exprString: string) => {
-        const n = mathjs.parse(exprString);
-        return n.toTex({
-          handler: (n: any) => {
-            if (n.isSymbolNode) {
-              const isVar =
-                variables.some((v: any) => v.name === n.name) ||
-                ["x", "y", "t", "time", "theta"].includes(n.name) ||
-                n.name.startsWith("t_");
-              if (isVar) {
-                const color =
-                  n.name === "x"
-                    ? "#10b981"
-                    : (["t", "time"].includes(n.name) || n.name.startsWith("t_"))
-                      ? "#8b5cf6"
-                      : n.name === "y"
-                        ? "#3b82f6"
-                        : n.name === "theta"
-                          ? "#f59e0b"
-                          : getVarColor(n.name);
-                const display = n.name === "theta" ? "\\theta" : n.name.replace("_", "\\_");
-                return `\\textcolor{${color}}{${display}}`;
-              }
-            }
-            return undefined;
-          },
-        });
-      };
-
-      let latex = "";
-      let rawLatexOutput = "";
-      let evalResultLatex = "";
-      let resStrOutput = "";
-      let node: any = null;
-
-      try {
-        node = mathjs.parse(value);
-        latex = getLatexForExpr(value);
-      } catch (parseError: any) {
-        const eqIndex = value.indexOf("=");
-        if (
-          eqIndex !== -1 &&
-          !value.includes("==") &&
-          !value.includes(">=") &&
-          !value.includes("<=") &&
-          !value.includes("!=")
-        ) {
-          const lhs = value.slice(0, eqIndex);
-          const rhs = value.slice(eqIndex + 1);
-          if (lhs.trim() && rhs.trim()) {
-            const lhsLatex = getLatexForExpr(lhs);
-            const rhsLatex = getLatexForExpr(rhs);
-            latex = `${lhsLatex} = ${rhsLatex}`;
-            node = null; // Do not evaluate implicit equations in the UI
-          } else {
-            throw parseError;
-          }
-        } else {
-          throw parseError;
-        }
-      }
-
-      rawLatexOutput = latex;
-
-      try {
-        const scope: any = {};
-        variables.forEach((v: any) => {
-          scope[v.name] = v.value;
-        });
-        // provide typical geometry variables so it doesn't fail parsing function plots
-        scope.x = 1;
-        scope.y = 1;
-        scope.t = globalTime;
-        scope.time = globalTime;
-        scope.theta = 1;
-
-        if (node) {
-          const result = node.evaluate(scope);
-          if (result !== undefined && typeof result !== "function") {
-            const resStr = mathjs.format(result, { precision: 5 });
-            resStrOutput = resStr;
-            if (resStr !== value.trim()) {
-              evalResultLatex = " = " + resStr;
-            }
-          }
-        }
-      } catch (evalErr) {
-        // Could happen for unassigned variables in scope
-      }
-
-      renderedLatex = (
-        <React.Fragment>
-          <span
-            className="math-rendered-block block w-full px-2 py-1.5 text-xs sm:text-sm pointer-events-none"
-            dangerouslySetInnerHTML={{
-              __html: katex.renderToString(
-                latex +
-                  (evalResultLatex
-                    ? ` \\mathbf{${evalResultLatex.replace(/ /g, "\\ ")}}`
-                    : ""),
-                {
-                  throwOnError: true,
-                  displayMode: true,
-                  strict: "ignore",
-                  trust: true,
-                },
-              ),
-            }}
-          />
-        </React.Fragment>
-      );
-    } catch (e) {
-      // 2. Fallback to Markdown or plain text
-      renderedLatex = (
-        <div className="markdown-body p-2 font-sans w-full text-sm text-slate-800 dark:text-slate-200">
-          <Markdown
-            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-          >
-            {value}
-          </Markdown>
-        </div>
-      );
-    }
-  }
-
-  return (
-    <div className="relative flex-1 group/preview" ref={containerRef}>
-      <div
-        className={`relative w-full rounded border group-hover/preview:border-slate-350 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused || forceEditMode ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
-        onClick={() => {
-          if (!isFocused) setIsFocused(true);
-          setTimeout(() => inputRef.current?.focus(), 10);
-        }}
-      >
-        <div
-          className={`relative w-full ${isFocused || forceEditMode || error || !renderedLatex ? "block" : "hidden"}`}
-        >
-          <div className="px-2 py-1.5 font-mono text-sm whitespace-pre-wrap break-all pointer-events-none opacity-0 select-none z-0 w-full min-h-[28px]">
-            {value + "\n."}
-          </div>
-
-          <div className="absolute inset-0 px-2 py-1.5 pointer-events-none font-mono text-sm whitespace-pre-wrap break-all z-0">
-            {getColoredText()}
-          </div>
-
-          {effectiveMode === "virtual" && (
-            <CaretOverlay
-              value={value}
-              cursorPos={cursorPos}
-              isFocused={isFocused}
-              getColoredText={getColoredText}
-            />
-          )}
-
-          {effectiveMode === "native" ? (
-            <textarea
-              ref={inputRef}
-              value={value}
-              onChange={(e) => {
-                onChange(e.target.value);
-                setCursorPos(e.target.selectionStart || 0);
-              }}
-              onSelect={(e) =>
-                setCursorPos(e.currentTarget.selectionStart || 0)
-              }
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => {
-                setTimeout(() => setIsFocused(false), 200);
-                if (onBlur) onBlur();
-              }}
-              onKeyDown={handleKeyDown}
-              className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
-              placeholder={isFocused ? "e.g. a * sin(b*x + c)" : ""}
-              spellCheck={false}
-              autoComplete="off"
-              style={{ overflow: "hidden" }}
-            />
-          ) : (
-            <div
-              ref={inputRef as any}
-              tabIndex={0}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => {
-                setTimeout(() => setIsFocused(false), 200);
-                if (onBlur) onBlur();
-              }}
-              onKeyDown={handleKeyDown}
-              className="absolute inset-0 w-full h-full bg-transparent outline-none caret-transparent font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
-              style={{ overflow: "hidden" }}
-            />
-          )}
-
-          {(isFocused || forceEditMode) && onToggleKeyboard && (
-            <button
-              title="Visual Math Composer"
-              className={`absolute right-1 top-1/2 -translate-y-1/2 z-30 p-1.5 md:hidden rounded transition-colors shrink-0 flex items-center justify-center ${showKeyboard ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200 dark:hover:text-slate-300 dark:hover:bg-slate-700 opacity-60 hover:opacity-100"}`}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onToggleKeyboard();
-              }}
-            >
-              <Calculator size={14} />
-            </button>
-          )}
-        </div>
-
-        {!(isFocused || forceEditMode) && renderedLatex && !error && (
-          <div className="w-full px-2 py-2 flex items-center overflow-x-auto custom-scrollbar relative pr-20 group/preview block">
-            <div className="text-slate-805 dark:text-slate-200 text-[13px] [&_.katex]:text-[14px] [&_.katex-display]:m-0">
-              {renderedLatex}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div className="text-[10px] text-red-400 mt-1 ml-1 flex items-center gap-1 opacity-80">
-          <span className="w-1 h-1 rounded-full bg-red-400 block" />
-          {error}
-        </div>
-      )}
-
-      {suggestions.length > 0 &&
-        inputRect &&
-        createPortal(
-          <div
-            className="fixed bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 shadow-2xl rounded-lg overflow-hidden z-[99999] flex flex-col py-1 text-slate-800 dark:text-slate-200"
-            style={{
-              top: inputRect.bottom + 4,
-              left: inputRect.left,
-              width: Math.max(256, inputRect.width),
-            }}
-          >
-            {suggestions.map((s, idx) => (
-              <div
-                key={s.name}
-                className={`px-3 py-1.5 flex flex-col cursor-pointer transition-colors ${idx === selIndex ? "bg-slate-100 dark:bg-slate-700" : "hover:bg-slate-50 dark:hover:bg-slate-700/50"}`}
-                onClick={() => {
-                  const match = value
-                    .slice(0, cursorPos)
-                    .match(/[a-zA-Z_]\w*$/);
-                  if (match) {
-                    const before = value.slice(0, cursorPos - match[0].length);
-                    const after = value.slice(cursorPos);
-                    onChange(before + s.insert + after);
-                  }
-                }}
-              >
-                <div className="flex items-baseline justify-between">
-                  <span className="font-mono text-blue-600 dark:text-blue-400 text-sm font-semibold">
-                    {s.name}
-                  </span>
-                  <span className="text-[10px] text-slate-550 dark:text-slate-500">
-                    {idx === selIndex ? "Tab to insert" : ""}
-                  </span>
-                </div>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {s.desc}
-                </span>
-              </div>
-            ))}
-          </div>,
-          document.body,
-        )}
-
-      {showKeyboard && (
-        <>
-          <div className="hidden md:block mt-2 w-full animate-in fade-in slide-in-from-top-2 duration-200">
-            <MathKeyboard
-              onInsert={handleKeyboardInsert}
-              onDelete={handleKeyboardDelete}
-              onMoveCursor={handleKeyboardMoveCursor}
-              onAction={handleKeyboardAction}
-              onClose={onCloseKeyboard}
-              variables={variables}
-            />
-          </div>
-          {createPortal(
-            <div className="md:hidden fixed bottom-0 left-0 right-0 z-[100000] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] animate-in slide-in-from-bottom-2">
-              <MathKeyboard
-                onInsert={handleKeyboardInsert}
-                onDelete={handleKeyboardDelete}
-                onMoveCursor={handleKeyboardMoveCursor}
-                onAction={handleKeyboardAction}
-                onClose={onCloseKeyboard}
-                variables={variables}
-              />
-            </div>,
-            document.body,
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-const getHexWithAlpha = (baseHex: string, alpha: number) => {
-  if (!baseHex) return "#ffffff33";
-  let cleanHex = baseHex;
-  if (baseHex.startsWith("#")) {
-    if (baseHex.length === 9) {
-      cleanHex = baseHex.substring(0, 7);
-    } else if (baseHex.length === 5) {
-      cleanHex =
-        "#" +
-        baseHex[1] +
-        baseHex[1] +
-        baseHex[2] +
-        baseHex[2] +
-        baseHex[3] +
-        baseHex[3];
-    } else if (baseHex.length === 4) {
-      cleanHex =
-        "#" +
-        baseHex[1] +
-        baseHex[1] +
-        baseHex[2] +
-        baseHex[2] +
-        baseHex[3] +
-        baseHex[3];
-    }
-  } else {
-    return baseHex;
-  }
-  const rounded = Math.max(0, Math.min(255, Math.round(alpha * 255)));
-  const hexAlpha = rounded.toString(16).padStart(2, "0");
-  return `${cleanHex}${hexAlpha}`;
-};
-
-const stripAlpha = (hex: string) => {
-  if (hex && hex.startsWith("#") && hex.length === 9) {
-    return hex.substring(0, 7);
-  }
-  return hex;
-};
-
-const getStrokeDasharray = (style?: string) => {
-  if (style === "dashed") return "8, 6";
-  if (style === "dotted") return "2, 4";
-  if (style === "dashdot") return "10, 4, 2, 4";
-  return undefined; // solid or undefined
-};
-
-const ReadableColorBadge = ({ color }: { color: string }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(color);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy color", err);
-    }
-  };
-
-  return (
-    <span
-      onClick={handleCopy}
-      className="group/hex relative inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 cursor-pointer font-mono text-[10px] text-slate-700 dark:text-slate-300 font-semibold select-none transition-all hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:border-blue-200 dark:hover:border-blue-800"
-      title="Click to copy HEX color"
-    >
-      <span
-        className="w-2.5 h-2.5 rounded-sm border border-slate-300 dark:border-slate-650 shrink-0 shadow-xs"
-        style={{ backgroundColor: color }}
-      />
-      <span>{color}</span>
-      <span className="inline-flex items-center opacity-0 group-hover/hex:opacity-100 transition-opacity">
-        {copied ? (
-          <span className="text-green-500 font-bold scale-110">✓</span>
-        ) : (
-          <Copy className="w-2.5 h-2.5 text-slate-400 group-hover/hex:text-blue-500 dark:group-hover/hex:text-blue-400" />
-        )}
-      </span>
-      {/* Tooltip */}
-      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/hex:block bg-slate-900 text-white text-[9px] py-0.5 px-1.5 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none font-sans font-normal opacity-95">
-        {copied ? "Copied!" : "Copy color"}
-      </span>
-    </span>
-  );
-};
-
-const PortalColorPicker = ({
-  isOpen,
-  onClose,
-  color,
-  onChange,
-  title,
-  triggerEl,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  color: string;
-  onChange: (c: string) => void;
-  title: string;
-  triggerEl: HTMLElement | null;
-}) => {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const [coords, setCoords] = useState<{ top: number; left: number }>({
-    top: 0,
-    left: 0,
-  });
-
-  useLayoutEffect(() => {
-    if (!isOpen || !triggerEl || !popoverRef.current) return;
-
-    const updatePosition = () => {
-      const trigger = triggerEl;
-      const popover = popoverRef.current;
-      if (!trigger || !popover) return;
-
-      const triggerRect = trigger.getBoundingClientRect();
-      const popoverRect = popover.getBoundingClientRect();
-
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Desired position is directly underneath, horizontally centered on the trigger
-      let top = triggerRect.bottom + 8;
-      let left =
-        triggerRect.left + triggerRect.width / 2 - popoverRect.width / 2;
-
-      // Check if it goes beyond the bottom of the viewport
-      if (top + popoverRect.height > viewportHeight) {
-        // Space above trigger instead
-        const spaceAbove = triggerRect.top - 8 - popoverRect.height;
-        if (spaceAbove > 10) {
-          top = spaceAbove;
-        } else {
-          // If no space above either, position it matching the bottom safely clamped
-          top = Math.max(10, viewportHeight - popoverRect.height - 10);
-        }
-      }
-
-      // Check horizontal bounds
-      if (left < 10) {
-        left = 10;
-      } else if (left + popoverRect.width > viewportWidth - 10) {
-        left = viewportWidth - popoverRect.width - 10;
-      }
-
-      // Ensure top is not negative if viewport is tiny
-      if (top < 10) {
-        top = 10;
-      }
-
-      setCoords({ top, left });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition, { passive: true });
-    window.addEventListener("scroll", updatePosition, { passive: true });
-
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition);
-    };
-  }, [isOpen, triggerEl]);
-
-  // Handle click outside to close
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const popover = popoverRef.current;
-      const trigger = triggerEl;
-
-      if (
-        popover &&
-        !popover.contains(event.target as Node) &&
-        trigger &&
-        !trigger.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside, {
-      passive: true,
-    });
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isOpen, onClose, triggerEl]);
-
-  if (!isOpen) return null;
-
-  return createPortal(
-    <div
-      ref={popoverRef}
-      style={{
-        position: "fixed",
-        top: `${coords.top}px`,
-        left: `${coords.left}px`,
-        zIndex: 9999,
-      }}
-      className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl w-[220px] flex flex-col items-center gap-2 animate-fadeIn"
-    >
-      <div className="flex justify-between items-center w-full mb-1">
-        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
-          {title}
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <div className="w-[196px] polygon-picker">
-        <HexAlphaColorPicker color={color} onChange={onChange} />
-      </div>
-      <input
-        type="text"
-        value={color}
-        onChange={(e) => {
-          const val = e.target.value;
-          if (val.startsWith("#") && val.length <= 9) {
-            onChange(val);
-          }
-        }}
-        className="w-full text-center font-mono text-[10px] py-1 border border-slate-200 dark:border-slate-700 rounded bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 uppercase outline-none focus:border-blue-500"
-        placeholder="#HEXCODE"
-      />
-    </div>,
-    document.body,
-  );
-};
-
-interface MathNodeRendererProps {
-  nodeId: string;
-  data: any;
-  isExpanded: boolean;
-  width?: number;
-  height?: number;
-}
-
-const LabelInput = ({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) => {
-  const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  let renderedLatex = null;
-  if (!isFocused && value.trim()) {
-    let latexStr = value;
-    // Try to parse as mathjs first to give it the "math like" formatting if it is an equation
-    try {
-      const eqIndex = value.indexOf("=");
-      if (
-        eqIndex !== -1 &&
-        !value.includes("==") &&
-        !value.includes(">=") &&
-        !value.includes("<=") &&
-        !value.includes("!=")
-      ) {
-        const lhs = value.slice(0, eqIndex).trim();
-        const rhs = value.slice(eqIndex + 1).trim();
-        const lhsTex = mathjs.parse(lhs).toTex();
-        const rhsTex = mathjs.parse(rhs).toTex();
-        latexStr = `${lhsTex} = ${rhsTex}`;
-      } else {
-        const node = mathjs.parse(value);
-        latexStr = node.toTex();
-      }
-    } catch (e) {
-      // It's not a valid mathjs expression, stick to raw value
-    }
-
-    try {
-      renderedLatex = (
-        <span
-          dangerouslySetInnerHTML={{
-            __html: katex.renderToString(latexStr, {
-              throwOnError: true,
-              displayMode: false,
-              strict: "ignore",
-              trust: true,
-            }),
-          }}
-        />
-      );
-    } catch (e) {
-      // If KaTeX still fails (e.g. invalid latex like a raw backslash), fallback to plain text
-      renderedLatex = <span className="font-mono">{value}</span>;
-    }
-  }
-
-  return (
-    <div
-      className={`relative w-full rounded-md border transition-colors cursor-text min-h-[36px] overflow-hidden ${isFocused ? "bg-white dark:bg-slate-900 border-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.5)]" : "bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"}`}
-      onClick={() => {
-        if (!isFocused) setIsFocused(true);
-        setTimeout(() => inputRef.current?.focus(), 10);
-      }}
-    >
-      <div
-        className={`relative w-full ${isFocused || !renderedLatex ? "block" : "hidden"}`}
-      >
-        <textarea
-          ref={inputRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          className="w-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-xs px-2.5 py-1.5 resize-y text-slate-800 dark:text-slate-200 custom-scrollbar min-h-[36px] block"
-          placeholder={isFocused ? placeholder : ""}
-          spellCheck={false}
-          autoComplete="off"
-          rows={Math.min(4, Math.max(1, value.split("\n").length))}
-        />
-      </div>
-
-      {!isFocused && renderedLatex && (
-        <div className="w-full px-2.5 py-1.5 flex flex-wrap items-center overflow-x-auto overflow-y-hidden custom-scrollbar">
-          <div className="text-slate-800 dark:text-slate-200 text-[12px] [&_.katex]:text-[13px] [&_.katex-display]:m-0 min-w-min">
-            {renderedLatex}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const SafeLabel = ({
-  at,
-  tex,
-  color,
-  rotation = 0,
-  scale = 1,
-  flipX = false,
-  flipY = false,
-}: {
-  at: [number, number];
-  tex: string;
-  color: string;
-  rotation?: number;
-  scale?: number;
-  flipX?: boolean;
-  flipY?: boolean;
-}) => {
-  const { viewTransform, userTransform } = useTransformContext();
-  const ref = React.useRef<HTMLSpanElement>(null);
-
-  if (!tex) return null;
-
-  let finalTex = tex;
-  try {
-    const eqIndex = tex.indexOf("=");
-    if (
-      eqIndex !== -1 &&
-      !tex.includes("==") &&
-      !tex.includes(">=") &&
-      !tex.includes("<=") &&
-      !tex.includes("!=")
-    ) {
-      const lhs = tex.slice(0, eqIndex).trim();
-      const rhs = tex.slice(eqIndex + 1).trim();
-      const lhsTex = mathjs.parse(lhs).toTex();
-      const rhsTex = mathjs.parse(rhs).toTex();
-      finalTex = `${lhsTex} = ${rhsTex}`;
-    } else {
-      const node = mathjs.parse(tex);
-      finalTex = node.toTex();
-    }
-  } catch (e) {
-    // Stick to raw tex
-  }
-
-  React.useEffect(() => {
-    if (!ref.current) return;
-    try {
-      katex.render(finalTex, ref.current, {
-        throwOnError: true,
-        strict: "ignore",
-        trust: true,
-      });
-    } catch (e) {
-      ref.current.innerText = finalTex;
-    }
-  }, [finalTex]);
-
-  const combinedTransform = vec.matrixMult(viewTransform, userTransform);
-  const width = 99999;
-  const height = 99999;
-  const pixelCenter = vec.add(vec.transform(at, combinedTransform), [-width / 2, -height / 2]);
-
-  const sx = flipX ? -scale : scale;
-  const sy = flipY ? -scale : scale;
-
-  return (
-    <foreignObject
-      x={pixelCenter[0]}
-      y={pixelCenter[1]}
-      width={width}
-      height={height}
-      style={{ pointerEvents: "none", overflow: "visible" }}
-    >
-      <span
-        ref={ref}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "100%",
-          height: "100%",
-          color: color || "var(--mafs-fg)",
-          transform: `rotate(${rotation}deg) scale(${sx}, ${sy})`,
-          transformOrigin: "center",
-        }}
-      />
-    </foreignObject>
-  );
-};
-
-const CurvePatternDefs: React.FC<{
-  id: string;
-  color: string;
-  fillColor?: string;
-  fillOpacity?: number;
-  fillPattern?:
-    | "solid"
-    | "hatch-diagonal"
-    | "hatch-reverse"
-    | "hatch-cross"
-    | "dotted"
-    | "grid"
-    | "dashed"
-    | "math-region";
-  patternSpacing?: number;
-  patternThickness?: number;
-  patternAngle?: number;
-}> = ({
-  id,
-  color,
-  fillColor,
-  fillOpacity = 0.3,
-  fillPattern = "hatch-diagonal",
-  patternSpacing,
-  patternThickness,
-  patternAngle,
-}) => {
-  const transform = useTransformContext();
-  let sx = 50;
-  let sy = 50;
-  if (transform && transform.viewTransform) {
-    sx = Math.abs(transform.viewTransform[0]);
-    sy = Math.abs(transform.viewTransform[3]);
-  }
-
-  const pColor = fillColor || color;
-  const pSpace = Math.max(5, patternSpacing || 15);
-  const pThick = Math.max(1, patternThickness || 2);
-
-  const PATTERN_BASE_SCALE = 50;
-  const currentScreenSpacing = (pSpace / PATTERN_BASE_SCALE) * sx;
-
-  let adaptiveFactor = 1;
-  if (currentScreenSpacing > 0) {
-    if (currentScreenSpacing < 6) {
-      while (currentScreenSpacing * adaptiveFactor < 12) adaptiveFactor *= 1.5;
-    } else if (currentScreenSpacing > 80) {
-      while (currentScreenSpacing * adaptiveFactor > 40) adaptiveFactor /= 1.5;
-    }
-  }
-
-  const finalScaleX = adaptiveFactor / PATTERN_BASE_SCALE;
-  const finalScaleY = adaptiveFactor / PATTERN_BASE_SCALE;
-
-  const targetScreenPixels = Math.max(0.5, pThick);
-  const strokeThick = targetScreenPixels / (finalScaleX * sx);
-  const pSize = pSpace;
-  const patternId = `curve-pattern-${id}`;
-
-  if (fillPattern === "solid") return null;
-
-  return (
-    <g style={{ display: "none" }}>
-      <defs>
-        <pattern
-          id={patternId}
-          width={pSize}
-          height={pSize}
-          patternUnits="userSpaceOnUse"
-          patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}
-        >
-          {fillPattern === "hatch-diagonal" && (
-            <React.Fragment>
-              <line
-                x1={0}
-                y1={pSize}
-                x2={pSize}
-                y2={0}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={-1}
-                y1={1}
-                x2={1}
-                y2={-1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={pSize - 1}
-                y1={pSize + 1}
-                x2={pSize + 1}
-                y2={pSize - 1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-            </React.Fragment>
-          )}
-          {fillPattern === "hatch-reverse" && (
-            <React.Fragment>
-              <line
-                x1={0}
-                y1={0}
-                x2={pSize}
-                y2={pSize}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={-1}
-                y1={pSize - 1}
-                x2={1}
-                y2={pSize + 1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={pSize - 1}
-                y1={-1}
-                x2={pSize + 1}
-                y2={1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-            </React.Fragment>
-          )}
-          {fillPattern === "hatch-cross" && (
-            <React.Fragment>
-              <line
-                x1={0}
-                y1={pSize}
-                x2={pSize}
-                y2={0}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={0}
-                y1={0}
-                x2={pSize}
-                y2={pSize}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={-1}
-                y1={1}
-                x2={1}
-                y2={-1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={pSize - 1}
-                y1={pSize + 1}
-                x2={pSize + 1}
-                y2={pSize - 1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={-1}
-                y1={pSize - 1}
-                x2={1}
-                y2={pSize + 1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={pSize - 1}
-                y1={-1}
-                x2={pSize + 1}
-                y2={1}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-            </React.Fragment>
-          )}
-          {fillPattern === "dotted" && (
-            <circle
-              cx={pSize / 2}
-              cy={pSize / 2}
-              r={strokeThick}
-              fill={pColor}
-              fillOpacity={fillOpacity}
-            />
-          )}
-          {fillPattern === "grid" && (
-            <React.Fragment>
-              <line
-                x1={0}
-                y1={0}
-                x2={pSize}
-                y2={0}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-              <line
-                x1={0}
-                y1={0}
-                x2={0}
-                y2={pSize}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                style={{ stroke: pColor }}
-              />
-            </React.Fragment>
-          )}
-          {fillPattern === "dashed" && (
-            <line
-              x1={0}
-              y1={pSize / 2}
-              x2={pSize}
-              y2={pSize / 2}
-              strokeWidth={strokeThick}
-              strokeOpacity={fillOpacity}
-              strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
-              style={{ stroke: pColor }}
-            />
-          )}
-          {fillPattern === "math-region" && (
-            <line
-              x1={0}
-              y1={pSize}
-              x2={pSize}
-              y2={0}
-              strokeWidth={Math.max(1, strokeThick * 0.5)}
-              strokeOpacity={Math.min(1, fillOpacity * 1.5)}
-              style={{ stroke: pColor }}
-            />
-          )}
-        </pattern>
-      </defs>
-    </g>
-  );
-};
-
-const InequalityPlot: React.FC<{
-  compiledLHS: any;
-  compiledRHS: any;
-  operator: string;
-  baseScope: any;
-  color: string;
-  weight?: number;
-  fillColor?: string;
-  fillOpacity?: number;
-  fillPattern?:
-    | "solid"
-    | "hatch-diagonal"
-    | "hatch-reverse"
-    | "hatch-cross"
-    | "dotted"
-    | "grid"
-    | "dashed"
-    | "math-region";
-  patternSpacing?: number;
-  patternThickness?: number;
-  patternAngle?: number;
-  tx?: number;
-  ty?: number;
-  rot?: number;
-  scaleX?: number;
-  scaleY?: number;
-  px?: number;
-  py?: number;
-  lineStyle?: string;
-  samplingDepth?: number;
-  id?: string;
-}> = ({
-  compiledLHS,
-  compiledRHS,
-  operator,
-  baseScope,
-  color,
-  weight = 3,
-  fillColor,
-  fillOpacity = 0.3,
-  fillPattern = "hatch-diagonal",
-  patternSpacing,
-  patternThickness,
-  patternAngle,
-  tx = 0,
-  ty = 0,
-  rot = 0,
-  scaleX = 1,
-  scaleY = 1,
-  px = 0,
-  py = 0,
-  lineStyle,
-  samplingDepth = 14,
-  id,
-}) => {
-  let xRange: [number, number] = [-10, 10];
-  let yRange: [number, number] = [-10, 10];
-
-  const pane = usePaneContext();
-  if (pane && pane.xPaneRange && pane.yPaneRange) {
-    xRange = pane.xPaneRange;
-    yRange = pane.yPaneRange;
-  }
-
-  const patternId = `pattern-${id || Math.random().toString(36).substring(2)}`;
-  const maskId = `mask-${id || Math.random().toString(36).substring(2)}`;
-
-  const paths = useMemo(() => {
-    if (!compiledLHS) return { fill: "", boundary: "" };
-
-    const GRID_SIZE = Math.max(40, Math.min(300, samplingDepth * 8)); // Higher resolution for smoother inequality masks
-    const xMin = xRange[0];
-    const xMax = xRange[1];
-    const yMin = yRange[0];
-    const yMax = yRange[1];
-
-    const dx = (xMax - xMin) / GRID_SIZE;
-    const dy = (yMax - yMin) / GRID_SIZE;
-
-    const isInside = (val: number) => {
-      if (isNaN(val)) return false;
-      if (operator === "<" || operator === "<=") return val < 0;
-      if (operator === ">" || operator === ">=") return val > 0;
-      if (operator === "=") return val < 0;
-      return val === 0;
-    };
-
-    let fillPath = "";
-    // Evaluate horizontally
-    const scope = { ...baseScope, x: 0, y: 0 };
-    if (operator && !(operator === "=" && fillColor === undefined)) {
-      for (let j = 0; j <= GRID_SIZE; j++) {
-        const y = yMin + j * dy;
-        let xStart: number | null = null;
-
-        for (let i = 0; i <= GRID_SIZE; i++) {
-          const x = xMin + i * dx;
-
-          // Inverse Transform for Inequality
-          let lx = x - tx - px;
-          let ly = y - ty - py;
-
-          const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
-          const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
-
-          scope.x = nx / scaleX + px;
-          scope.y = ny / scaleY + py;
-
-          let l;
-          try {
-            l = compiledLHS.evaluate(scope);
-          } catch {
-            l = NaN;
-          }
-          if (l && (l.isMatrix || Array.isArray(l))) {
-            try {
-              l = mathjs.det(l);
-            } catch {
-              l = NaN;
-            }
-          }
-          let r;
-          if (compiledRHS) {
-            try {
-              r = compiledRHS.evaluate(scope);
-            } catch {
-              r = NaN;
-            }
-          } else {
-            r = 0;
-          }
-          if (r && (r.isMatrix || Array.isArray(r))) {
-            try {
-              r = mathjs.det(r);
-            } catch {
-              r = NaN;
-            }
-          }
-          const val = Number(l) - Number(r);
-          const inside = isInside(val);
-
-          if (inside && xStart === null) xStart = x;
-          else if (!inside && xStart !== null) {
-            fillPath += `M ${xStart - dx / 2} ${y - dy / 2} L ${x - dx / 2} ${y - dy / 2} L ${x - dx / 2} ${y + dy / 2} L ${xStart - dx / 2} ${y + dy / 2} Z `;
-            xStart = null;
-          }
-        }
-        if (xStart !== null)
-          fillPath += `M ${xStart - dx / 2} ${y - dy / 2} L ${xMax + dx / 2} ${y - dy / 2} L ${xMax + dx / 2} ${y + dy / 2} L ${xStart - dx / 2} ${y + dy / 2} Z `;
-      }
-    }
-
-    // Now extract boundary using marching squares (edges only)
-    let boundaryPath = "";
-    const grid = new Float32Array((GRID_SIZE + 1) * (GRID_SIZE + 1));
-    for (let i = 0; i <= GRID_SIZE; i++) {
-      const x = xMin + i * dx;
-      for (let j = 0; j <= GRID_SIZE; j++) {
-        const y = yMin + j * dy;
-        let lx = x - tx - px;
-        let ly = y - ty - py;
-        const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
-        const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
-        scope.x = nx / scaleX + px;
-        scope.y = ny / scaleY + py;
-
-        let l;
-        try {
-          l = compiledLHS.evaluate(scope);
-        } catch {
-          l = NaN;
-        }
-        if (l && (l.isMatrix || Array.isArray(l))) {
-          try {
-            l = mathjs.det(l);
-          } catch {
-            l = NaN;
-          }
-        }
-        let r;
-        if (compiledRHS) {
-          try {
-            r = compiledRHS.evaluate(scope);
-          } catch {
-            r = NaN;
-          }
-        } else {
-          r = 0;
-        }
-        if (r && (r.isMatrix || Array.isArray(r))) {
-          try {
-            r = mathjs.det(r);
-          } catch {
-            r = NaN;
-          }
-        }
-        grid[i * (GRID_SIZE + 1) + j] = Number(l) - Number(r);
-      }
-    }
-
-    const lerp = (p1: number[], p2: number[], val1: number, val2: number) => {
-      if (isNaN(val1) || isNaN(val2)) return p1;
-      if (Math.abs(val1 - val2) < 1e-9) return p1;
-      const t = -val1 / (val2 - val1);
-      const clampedT = Math.max(0, Math.min(1, t));
-      return [
-        p1[0] + clampedT * (p2[0] - p1[0]),
-        p1[1] + clampedT * (p2[1] - p1[1]),
-      ];
-    };
-
-    for (let i = 0; i < GRID_SIZE; i++) {
-      const x0 = xMin + i * dx;
-      const x1 = x0 + dx;
-      for (let j = 0; j < GRID_SIZE; j++) {
-        const y0 = yMin + j * dy;
-        const y1 = y0 + dy;
-
-        const v00 = grid[i * (GRID_SIZE + 1) + j];
-        const v10 = grid[(i + 1) * (GRID_SIZE + 1) + j];
-        const v11 = grid[(i + 1) * (GRID_SIZE + 1) + (j + 1)];
-        const v01 = grid[i * (GRID_SIZE + 1) + (j + 1)];
-
-        if (isNaN(v00) || isNaN(v10) || isNaN(v11) || isNaN(v01)) {
-          continue;
-        }
-
-        const b00 = v00 > 0 ? 1 : 0;
-        const b10 = v10 > 0 ? 1 : 0;
-        const b11 = v11 > 0 ? 1 : 0;
-        const b01 = v01 > 0 ? 1 : 0;
-
-        const index = (b01 << 3) | (b11 << 2) | (b10 << 1) | b00;
-        if (index === 0 || index === 15) continue;
-
-        const p00 = [x0, y0];
-        const p10 = [x1, y0];
-        const p11 = [x1, y1];
-        const p01 = [x0, y1];
-
-        const e0 = lerp(p00, p10, v00, v10);
-        const e1 = lerp(p10, p11, v10, v11);
-        const e2 = lerp(p01, p11, v01, v11);
-        const e3 = lerp(p00, p01, v00, v01);
-
-        switch (index) {
-          case 1:
-            boundaryPath += `M${e0[0]},${e0[1]} L${e3[0]},${e3[1]} `;
-            break;
-          case 2:
-            boundaryPath += `M${e1[0]},${e1[1]} L${e0[0]},${e0[1]} `;
-            break;
-          case 3:
-            boundaryPath += `M${e1[0]},${e1[1]} L${e3[0]},${e3[1]} `;
-            break;
-          case 4:
-            boundaryPath += `M${e2[0]},${e2[1]} L${e1[0]},${e1[1]} `;
-            break;
-          case 5:
-            boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `;
-            break;
-          case 6:
-            boundaryPath += `M${e2[0]},${e2[1]} L${e0[0]},${e0[1]} `;
-            break;
-          case 7:
-            boundaryPath += `M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `;
-            break;
-          case 8:
-            boundaryPath += `M${e3[0]},${e3[1]} L${e2[0]},${e2[1]} `;
-            break;
-          case 9:
-            boundaryPath += `M${e0[0]},${e0[1]} L${e2[0]},${e2[1]} `;
-            break;
-          case 10:
-            boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `;
-            break;
-          case 11:
-            boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} `;
-            break;
-          case 12:
-            boundaryPath += `M${e3[0]},${e3[1]} L${e1[0]},${e1[1]} `;
-            break;
-          case 13:
-            boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} `;
-            break;
-          case 14:
-            boundaryPath += `M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `;
-            break;
-        }
-      }
-    }
-
-    return { fill: fillPath, boundary: boundaryPath, dy };
-  }, [
-    compiledLHS,
-    compiledRHS,
-    operator,
-    baseScope,
-    samplingDepth,
-    xRange[0],
-    xRange[1],
-    yRange[0],
-    yRange[1],
-    tx,
-    ty,
-    px,
-    py,
-    rot,
-    scaleX,
-    scaleY,
-  ]);
-
-  const customDashPattern =
-    lineStyle && lineStyle !== "solid"
-      ? getStrokeDasharray(lineStyle)
-      : undefined;
-  const isStrict = operator === "<" || operator === ">";
-  const finalStrokeDash = customDashPattern || (isStrict ? "6,6" : "none");
-
-  const pColor = fillColor || color;
-  const pSpace = patternSpacing || 15;
-  const pSize = pSpace;
-  const pThick = Math.max(1, patternThickness || 2);
-
-  // Calculate visual properties from mafs context
-  let sx = 50;
-  let sy = 50;
-  try {
-    const transform = useTransformContext();
-    if (transform && transform.viewTransform) {
-      sx = Math.abs(transform.viewTransform[0]);
-      sy = Math.abs(transform.viewTransform[3]); // d
-    }
-  } catch (e) {}
-
-  // Pattern coordinate system:
-  // We define the pattern in a sensible "pixel-like" coordinate system (e.g. 0 to 15).
-  // Then we map it into the world space. We assume 50 pixels = 1 world unit natively.
-  const PATTERN_BASE_SCALE = 50;
-
-  // Calculate how many screen pixels 1 pattern repetition currently occupies:
-  const currentScreenSpacing = (pSpace / PATTERN_BASE_SCALE) * sx;
-
-  // Adaptive zoom factor:
-  let adaptiveFactor = 1;
-  if (currentScreenSpacing > 0) {
-    if (currentScreenSpacing < 6) {
-      // Zoomed way out. Increase pattern world size to prevent pure solid blobs
-      while (currentScreenSpacing * adaptiveFactor < 12) adaptiveFactor *= 1.5;
-    } else if (currentScreenSpacing > 80) {
-      // Zoomed way in. Decrease pattern world size to prevent giant gaps
-      while (currentScreenSpacing * adaptiveFactor > 40) adaptiveFactor /= 1.5;
-    }
-  }
-
-  // To put our 0..15 pattern box into world space, we scale it down by 1/50.
-  // We also apply our adaptive factor to prevent the extremes.
-  // Because we want it to map correctly to both X and Y, we use sx/sy to correct non-square aspect ratios if any,
-  // but wait - world is world! If sx != sy, the world cells are stretched. We should stretch the pattern to match?
-  // Actually, patternTransform scales the pattern relative to world space.
-  // We just use uniform scale if world is uniform. If world was non-uniform scaled by mafs,
-  // maybe we should maintain aspect ratio by applying `sx/sy`?
-  // Usually, sx == sy in mafs graphs.
-  const ptScaleX =
-    (1 / PATTERN_BASE_SCALE) * adaptiveFactor * (50 / sx) * (sx / 50); // simplified to just standard scale
-
-  // Actually, wait! The user wants the pattern spacing to "exist in graph/world coordinates".
-  // This means if I have a grid, its lines should stay pinned to the same world values during zoom/pan!
-  // If we just do `scale( adaptiveFactor / PATTERN_BASE_SCALE )`, it satisfies this perfectly!
-  const finalScaleX = adaptiveFactor / PATTERN_BASE_SCALE;
-  const finalScaleY = adaptiveFactor / PATTERN_BASE_SCALE;
-
-  // Let's ensure thickness stays exactly exactly pThick target screen pixels.
-  // The pattern gets scaled by finalScaleX relative to world, and then by sx for the screen.
-  // We want: strokeWidth * finalScaleX * sx = target_screen_pixels
-  // So: strokeWidth = pThick / (finalScaleX * sx);
-  // We add a minor clamping to ensure it's not negative or zero.
-  const targetScreenPixels = Math.max(0.5, pThick);
-  const strokeThick = targetScreenPixels / (finalScaleX * sx);
-
-  return (
-    <g
-      style={{
-        transform: "var(--mafs-view-transform)",
-        transformOrigin: "0 0",
-      }}
-    >
-      <defs>
-        <mask
-          id={maskId}
-          maskUnits="userSpaceOnUse"
-          x={xRange[0]}
-          y={yRange[0]}
-          width={xRange[1] - xRange[0]}
-          height={yRange[1] - yRange[0]}
-        >
-          {paths.fill && (
-            <path
-              d={paths.fill}
-              fill="white"
-              stroke="white"
-              strokeWidth={paths.dy * 0.1}
-              strokeLinejoin="round"
-            />
-          )}
-        </mask>
-        {fillPattern !== "solid" && (
-          <pattern
-            id={patternId}
-            width={pSize}
-            height={pSize}
-            patternUnits="userSpaceOnUse"
-            patternTransform={`scale(${finalScaleX}, ${finalScaleY}) rotate(${patternAngle || 0})`}
-          >
-            {fillPattern === "hatch-diagonal" && (
-              <React.Fragment>
-                <line
-                  x1={0}
-                  y1={pSize}
-                  x2={pSize}
-                  y2={0}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={-1}
-                  y1={1}
-                  x2={1}
-                  y2={-1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={pSize - 1}
-                  y1={pSize + 1}
-                  x2={pSize + 1}
-                  y2={pSize - 1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-              </React.Fragment>
-            )}
-            {fillPattern === "hatch-reverse" && (
-              <React.Fragment>
-                <line
-                  x1={0}
-                  y1={0}
-                  x2={pSize}
-                  y2={pSize}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={-1}
-                  y1={pSize - 1}
-                  x2={1}
-                  y2={pSize + 1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={pSize - 1}
-                  y1={-1}
-                  x2={pSize + 1}
-                  y2={1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-              </React.Fragment>
-            )}
-            {fillPattern === "hatch-cross" && (
-              <React.Fragment>
-                <line
-                  x1={0}
-                  y1={pSize}
-                  x2={pSize}
-                  y2={0}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={0}
-                  y1={0}
-                  x2={pSize}
-                  y2={pSize}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={-1}
-                  y1={1}
-                  x2={1}
-                  y2={-1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={pSize - 1}
-                  y1={pSize + 1}
-                  x2={pSize + 1}
-                  y2={pSize - 1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={-1}
-                  y1={pSize - 1}
-                  x2={1}
-                  y2={pSize + 1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={pSize - 1}
-                  y1={-1}
-                  x2={pSize + 1}
-                  y2={1}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-              </React.Fragment>
-            )}
-            {fillPattern === "dotted" && (
-              <circle
-                cx={pSize / 2}
-                cy={pSize / 2}
-                r={strokeThick}
-                fill={pColor}
-                fillOpacity={fillOpacity}
-              />
-            )}
-            {fillPattern === "grid" && (
-              <React.Fragment>
-                <line
-                  x1={0}
-                  y1={0}
-                  x2={pSize}
-                  y2={0}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-                <line
-                  x1={0}
-                  y1={0}
-                  x2={0}
-                  y2={pSize}
-                  strokeWidth={strokeThick}
-                  strokeOpacity={fillOpacity}
-                  style={{ stroke: pColor }}
-                />
-              </React.Fragment>
-            )}
-            {fillPattern === "dashed" && (
-              <line
-                x1={0}
-                y1={pSize / 2}
-                x2={pSize}
-                y2={pSize / 2}
-                strokeWidth={strokeThick}
-                strokeOpacity={fillOpacity}
-                strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
-                style={{ stroke: pColor }}
-              />
-            )}
-            {fillPattern === "math-region" && (
-              <line
-                x1={0}
-                y1={pSize}
-                x2={pSize}
-                y2={0}
-                strokeWidth={Math.max(1, strokeThick * 0.5)}
-                strokeOpacity={Math.min(1, fillOpacity * 1.5)}
-                style={{ stroke: pColor }}
-              />
-            )}
-          </pattern>
-        )}
-      </defs>
-
-      {paths.fill &&
-        (fillPattern === "solid" ? (
-          <rect
-            x={xRange[0]}
-            y={yRange[0]}
-            width={xRange[1] - xRange[0]}
-            height={yRange[1] - yRange[0]}
-            fill={pColor}
-            fillOpacity={fillOpacity}
-            mask={`url(#${maskId})`}
-          />
-        ) : (
-          <rect
-            x={xRange[0]}
-            y={yRange[0]}
-            width={xRange[1] - xRange[0]}
-            height={yRange[1] - yRange[0]}
-            fill={`url(#${patternId})`}
-            mask={`url(#${maskId})`}
-          />
-        ))}
-      {paths.boundary && (
-        <path
-          d={paths.boundary}
-          fill="none"
-          strokeWidth={weight}
-          strokeDasharray={finalStrokeDash}
-          style={{ stroke: color, vectorEffect: "non-scaling-stroke" }}
-        />
-      )}
-    </g>
-  );
-};
-
-const ImplicitPlot: React.FC<{
-  compiledLHS: any;
-  compiledRHS: any;
-  baseScope: any;
-  color: string;
-  weight?: number;
-  opacity?: number;
-  tx?: number;
-  ty?: number;
-  rot?: number;
-  scaleX?: number;
-  scaleY?: number;
-  px?: number;
-  py?: number;
-  lineStyle?: string;
-  samplingDepth?: number;
-}> = ({
-  compiledLHS,
-  compiledRHS,
-  baseScope,
-  color,
-  weight = 3,
-  opacity = 1,
-  tx = 0,
-  ty = 0,
-  rot = 0,
-  scaleX = 1,
-  scaleY = 1,
-  px = 0,
-  py = 0,
-  lineStyle,
-  samplingDepth = 14,
-}) => {
-  let xRange: [number, number] = [-10, 10];
-  let yRange: [number, number] = [-10, 10];
-
-  const pane = usePaneContext();
-  if (pane && pane.xPaneRange && pane.yPaneRange) {
-    xRange = pane.xPaneRange;
-    yRange = pane.yPaneRange;
-  }
-
-  const GRID_SIZE = Math.max(20, Math.min(200, samplingDepth * 6)); // E.g., depth 14 -> 84, depth 20 -> 120
-
-  const segments = useMemo(() => {
-    if (!compiledLHS) return [];
-
-    const xMin = xRange[0];
-    const xMax = xRange[1];
-    const yMin = yRange[0];
-    const yMax = yRange[1];
-
-    const dx = (xMax - xMin) / GRID_SIZE;
-    const dy = (yMax - yMin) / GRID_SIZE;
-
-    const evalF = (x: number, y: number): number => {
-      try {
-        const lhsRaw = compiledLHS.evaluate({
-          ...baseScope,
-          x: x - tx,
-          y: y - ty,
-        });
-        const rhsRaw = compiledRHS
-          ? compiledRHS.evaluate({ ...baseScope, x: x - tx, y: y - ty })
-          : 0;
-
-        let lhsVal = lhsRaw;
-        let rhsVal = rhsRaw;
-
-        // Helper to check if a value is a matrix or 2D array
-        const isMatrixLike = (val: any) => {
-          if (!val) return false;
-          if (Array.isArray(val)) return true;
-          if (
-            typeof val === "object" &&
-            (val.isMatrix ||
-              val.constructor?.name === "Matrix" ||
-              Array.isArray(val.toArray?.()))
-          )
-            return true;
-          return false;
-        };
-
-        if (isMatrixLike(lhsVal)) {
-          try {
-            lhsVal = mathjs.det(lhsVal);
-          } catch {
-            // fallback if not a square matrix or det fails
-          }
-        }
-        if (isMatrixLike(rhsVal)) {
-          try {
-            rhsVal = mathjs.det(rhsVal);
-          } catch {
-            // fallback
-          }
-        }
-
-        const lhs = Number(lhsVal);
-        const rhs = Number(rhsVal);
-        return lhs - rhs;
-      } catch {
-        return NaN;
-      }
-    };
-
-    const grid: number[][] = [];
-    for (let i = 0; i <= GRID_SIZE; i++) {
-      grid[i] = [];
-      const x = xMin + i * dx;
-      for (let j = 0; j <= GRID_SIZE; j++) {
-        const y = yMin + j * dy;
-        grid[i][j] = evalF(x, y);
-      }
-    }
-
-    const localSegments: { p1: [number, number]; p2: [number, number] }[] = [];
-
-    const lerp = (
-      p1: [number, number],
-      p2: [number, number],
-      val1: number,
-      val2: number,
-    ): [number, number] => {
-      if (Math.abs(val1 - val2) < 1e-9) return p1;
-      const t = -val1 / (val2 - val1);
-      const clampedT = Math.max(0, Math.min(1, t));
-      return [
-        p1[0] + clampedT * (p2[0] - p1[0]),
-        p1[1] + clampedT * (p2[1] - p1[1]),
-      ];
-    };
-
-    for (let i = 0; i < GRID_SIZE; i++) {
-      const x0 = xMin + i * dx;
-      const x1 = x0 + dx;
-      for (let j = 0; j < GRID_SIZE; j++) {
-        const y0 = yMin + j * dy;
-        const y1 = y0 + dy;
-
-        const v00 = grid[i][j];
-        const v10 = grid[i + 1][j];
-        const v11 = grid[i + 1][j + 1];
-        const v01 = grid[i][j + 1];
-
-        if (isNaN(v00) || isNaN(v10) || isNaN(v11) || isNaN(v01)) {
-          continue;
-        }
-
-        const s0 = v00 >= 0 ? 1 : 0;
-        const s1 = v10 >= 0 ? 1 : 0;
-        const s2 = v11 >= 0 ? 1 : 0;
-        const s3 = v01 >= 0 ? 1 : 0;
-
-        const index = (s0 << 3) | (s1 << 2) | (s2 << 1) | s3;
-
-        if (index === 0 || index === 15) continue;
-
-        const p00: [number, number] = [x0, y0];
-        const p10: [number, number] = [x1, y0];
-        const p11: [number, number] = [x1, y1];
-        const p01: [number, number] = [x0, y1];
-
-        const getEdgePoint = (edge: number): [number, number] => {
-          switch (edge) {
-            case 0:
-              return lerp(p00, p10, v00, v10);
-            case 1:
-              return lerp(p10, p11, v10, v11);
-            case 2:
-              return lerp(p01, p11, v01, v11);
-            case 3:
-              return lerp(p00, p01, v00, v01);
-            default:
-              return p00;
-          }
-        };
-
-        const addSegment = (e1: number, e2: number) => {
-          localSegments.push({ p1: getEdgePoint(e1), p2: getEdgePoint(e2) });
-        };
-
-        switch (index) {
-          case 1:
-            addSegment(2, 3);
-            break;
-          case 2:
-            addSegment(1, 2);
-            break;
-          case 3:
-            addSegment(1, 3);
-            break;
-          case 4:
-            addSegment(0, 1);
-            break;
-          case 5:
-            addSegment(0, 3);
-            addSegment(1, 2);
-            break;
-          case 6:
-            addSegment(0, 2);
-            break;
-          case 7:
-            addSegment(0, 3);
-            break;
-          case 8:
-            addSegment(0, 3);
-            break;
-          case 9:
-            addSegment(0, 2);
-            break;
-          case 10:
-            addSegment(0, 1);
-            addSegment(2, 3);
-            break;
-          case 11:
-            addSegment(0, 1);
-            break;
-          case 12:
-            addSegment(1, 3);
-            break;
-          case 13:
-            addSegment(1, 2);
-            break;
-          case 14:
-            addSegment(2, 3);
-            break;
-        }
-      }
-    }
-
-    return localSegments;
-  }, [
-    compiledLHS,
-    compiledRHS,
-    baseScope,
-    xRange[0],
-    xRange[1],
-    yRange[0],
-    yRange[1],
-  ]);
-
-  const isSpecialDashed = lineStyle && lineStyle !== "solid";
-  const customDashPattern = getStrokeDasharray(lineStyle);
-
-  const renderedSegments = segments.map((s, idx) => (
-    <Line.Segment
-      key={idx}
-      point1={s.p1}
-      point2={s.p2}
-      color={color}
-      weight={weight}
-      opacity={opacity}
-      style={isSpecialDashed ? "dashed" : "solid"}
-    />
-  ));
-
-  return (
-    <React.Fragment>
-      {isSpecialDashed ? (
-        <g
-          style={
-            {
-              "--mafs-line-stroke-dash-style": customDashPattern,
-            } as React.CSSProperties
-          }
-        >
-          {renderedSegments}
-        </g>
-      ) : (
-        renderedSegments
-      )}
-    </React.Fragment>
-  );
-};
-
-const computePCA = (points: [number, number][]) => {
-  if (points.length < 2)
-    return {
-      center: points[0] || ([0, 0] as [number, number]),
-      u: [1, 0] as [number, number],
-      v: [0, 1] as [number, number],
-    };
-
-  let cx = 0,
-    cy = 0;
-  for (let p of points) {
-    cx += p[0];
-    cy += p[1];
-  }
-  cx /= points.length;
-  cy /= points.length;
-
-  let cxx = 0,
-    cxy = 0,
-    cyy = 0;
-  for (let p of points) {
-    let dx = p[0] - cx;
-    let dy = p[1] - cy;
-    cxx += dx * dx;
-    cxy += dx * dy;
-    cyy += dy * dy;
-  }
-  cxx /= points.length;
-  cxy /= points.length;
-  cyy /= points.length;
-
-  let trace = cxx + cyy;
-  let det = cxx * cyy - cxy * cxy;
-  let desc = Math.sqrt(Math.max(0, (trace * trace) / 4 - det));
-  let lambda1 = trace / 2 + desc;
-
-  let ux = 0,
-    uy = 0;
-  if (Math.abs(cxy) > 1e-6) {
-    ux = lambda1 - cyy;
-    uy = cxy;
-  } else {
-    ux = 1;
-    uy = 0;
-    if (cyy > cxx) {
-      ux = 0;
-      uy = 1;
-    }
-  }
-  let uLen = Math.sqrt(ux * ux + uy * uy);
-  if (uLen > 0) {
-    ux /= uLen;
-    uy /= uLen;
-  } else {
-    ux = 1;
-    uy = 0;
-  }
-
-  let vx = -uy,
-    vy = ux;
-  return {
-    center: [cx, cy] as [number, number],
-    u: [ux, uy] as [number, number],
-    v: [vx, vy] as [number, number],
-  };
-};
-
-const decoupleGeometry = (f: MathFunction, baseScope: any) => {
-  if (
-    f.type !== "point" &&
-    f.type !== "vector" &&
-    f.type !== "polygon" &&
-    f.type !== "line"
-  ) {
-    return { newExpr: f.expr, changed: false };
-  }
-  let changed = false;
-  let newExpr = f.expr;
-  if (f.compiled) {
-    try {
-      const node = mathjs.parse(f.expr) as any;
-      let rightSide = node.isAssignmentNode ? node.value : node;
-
-      let hasSymbol = false;
-      rightSide.traverse((n: any) => {
-        if (n.isSymbolNode) hasSymbol = true;
-      });
-
-      if (hasSymbol) {
-        const data = f.compiled.evaluate(baseScope);
-        const arr = data.toArray ? data.toArray() : data;
-
-        if (Array.isArray(arr) && arr.length > 0) {
-          let isSinglePoint = false;
-          let ptsToTransform = arr;
-
-          if (!Array.isArray(arr[0])) {
-            isSinglePoint = true;
-            ptsToTransform = [arr];
-          } else if (
-            Array.isArray(arr[0]) &&
-            arr[0].length === 1 &&
-            typeof arr[0][0] === "number"
-          ) {
-            if (arr.length === 2 && arr[1] && arr[1].length === 1) {
-              isSinglePoint = true;
-              ptsToTransform = [[arr[0][0], arr[1][0]]];
-            }
-          }
-
-          const match = f.expr.match(/^([^=]+=\s*)/);
-          const prefix = match ? match[1] : "";
-
-          if (isSinglePoint) {
-            const p = ptsToTransform[0];
-            if (f.expr.includes("[[")) {
-              newExpr = `${prefix}[[${p[0].toFixed(2)}], [${p[1].toFixed(2)}]]`;
-            } else {
-              newExpr = `${prefix}[${p[0].toFixed(2)}, ${p[1].toFixed(2)}]`;
-            }
-          } else {
-            const ptStrs = ptsToTransform
-              .map((p: any) => `[${p[0].toFixed(2)}, ${p[1].toFixed(2)}]`)
-              .join(", ");
-            newExpr = `${prefix}[${ptStrs}]`;
-          }
-          changed = true;
-        }
-      }
-    } catch (e) {}
-  }
-  return { newExpr, changed };
-};
-
-const parseAndAdjustForCompile = (exprStr: string): any => {
-  const node = mathjs.parse(exprStr);
-  const transformNode = (n: any): any => {
-    let mapped = n.map(transformNode);
-    if (mapped.isFunctionNode) {
-      try {
-        if (mapped.fn.name === "derivative") {
-           let arg0 = mapped.args[0];
-           let arg1 = mapped.args[1];
-           if (arg0 && arg0.isConstantNode && typeof arg0.value === 'string') {
-             arg0 = mathjs.parse(arg0.value);
-           }
-           if (arg1 && arg1.isConstantNode && typeof arg1.value === 'string') {
-             arg1 = mathjs.parse(arg1.value);
-           }
-           const res = (mathjs as any).derivative(arg0, arg1);
-           if (res && (res.isNode || res.type)) {
-             mapped = res.map(transformNode);
-           }
-        } else if (mapped.fn.name === "simplify") {
-           const res = (mathjs as any).simplify(mapped.args[0]);
-           if (res && (res.isNode || res.type)) {
-             mapped = res.map(transformNode);
-           }
-        } else if (mapped.fn.name === "rationalize") {
-           const res = (mathjs as any).rationalize(mapped.args[0]);
-           if (res && (res.isNode || res.type)) {
-             mapped = res.map(transformNode);
-           }
-        }
-      } catch (e) {
-        // Ignore errors during pre-evaluation
-      }
-    }
-    if (mapped.type === "AccessorNode" || mapped.isAccessorNode) {
-      return new (mathjs as any).FunctionNode("indexHelper", [
-        mapped.object,
-        ...mapped.index.dimensions,
-      ]);
-    }
-    return mapped;
-  };
-  return transformNode(node);
-};
-
-const resolveNestedValue = (val: any): any => {
-  if (!val) return val;
-  if (typeof val.toArray === "function") {
-    val = val.toArray();
-  }
-  if (Array.isArray(val)) {
-    return val.map((item) => resolveNestedValue(item));
-  }
-  return val;
-};
-
-const indexHelper = (obj: any, ...indices: any[]) => {
-  let current = obj;
-  if (current && typeof current.toArray === "function") {
-    current = current.toArray();
-  }
-  current = resolveNestedValue(current);
-
-  for (let idx of indices) {
-    if (idx && typeof idx.toArray === "function") {
-      idx = idx.toArray();
-    }
-    if (Array.isArray(current)) {
-      const numIdx = Number(idx);
-      if (!isNaN(numIdx)) {
-        current = current[numIdx];
-      } else {
-        return undefined;
-      }
-    } else if (current && typeof current === "object") {
-      current = current[idx];
-    } else {
-      return undefined;
-    }
-  }
-  return current;
-};
-
-const extractPointsFromValue = (val: any): [number, number][] => {
-  if (val == null) return [];
-
-  // If it is a coordinate point [x, y]
-  if (Array.isArray(val) && val.length === 2 && typeof val[0] === "number" && typeof val[1] === "number") {
-    return [[Number(val[0]), Number(val[1])]];
-  }
-
-  // If it's an array of elements (which could be points, lines, polygons, etc.)
-  if (Array.isArray(val)) {
-    const points: [number, number][] = [];
-    for (const item of val) {
-      points.push(...extractPointsFromValue(item));
-    }
-    return points;
-  }
-
-  return [];
-};
-
-const deduplicatePoints = (pts: [number, number][]): [number, number][] => {
-  const result: [number, number][] = [];
-  for (const p of pts) {
-    if (result.length === 0) {
-      result.push(p);
-    } else {
-      const last = result[result.length - 1];
-      const isDuplicate = Math.abs(last[0] - p[0]) < 1e-5 && Math.abs(last[1] - p[1]) < 1e-5;
-      if (!isDuplicate) {
-        result.push(p);
-      }
-    }
-  }
-  if (result.length > 2) {
-    const first = result[0];
-    const last = result[result.length - 1];
-    if (Math.abs(first[0] - last[0]) < 1e-5 && Math.abs(first[1] - last[1]) < 1e-5) {
-      result.pop();
-    }
-  }
-  return result;
-};
-
-const formatMathError = (errMessage: string): string => {
-  if (!errMessage) return errMessage;
-  const match = errMessage.match(/Undefined symbol\s+([a-zA-Z0-9_]+)/i) || 
-                errMessage.match(/Symbol\s+([a-zA-Z0-9_]+)\s+is undefined/i);
-  if (match) {
-    return `Unknown geometry reference "${match[1]}".`;
-  }
-  return errMessage;
-};
-
-const resolveGeometryPoints = (
-  f: MathFunction,
-  baseScope: any,
-): { points: [number, number][]; error?: string } => {
-  if (!f.compiled) {
-    return { points: [], error: f.error };
-  }
-
-  try {
-    const evaluated = f.compiled.evaluate(baseScope);
-    const rawData = resolveNestedValue(evaluated);
-    const points = extractPointsFromValue(rawData);
-    const cleanedPoints = deduplicatePoints(points);
-
-    if (cleanedPoints.length === 0) {
-      return { points: [], error: "No valid geometry coordinates found." };
-    }
-
-    return { points: cleanedPoints };
-  } catch (e: any) {
-    const formattedError = formatMathError(e.message || String(e));
-    return { points: [], error: formattedError };
-  }
-};
-
-const COLORS = [
-  "#3b82f6",
-  "#ef4444",
-  "#10b981",
-  "#f59e0b",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-];
 
 export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   nodeId,
@@ -3247,6 +105,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   width,
   height,
 }) => {
+  const { compileFunctions, expressionToLatexWithEval, batchEvaluate, evaluateCompiled } = useMathWorker();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(true);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
@@ -3377,7 +236,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       try {
         const parsed = JSON.parse(data.value);
         if (parsed && Array.isArray(parsed.functions)) return parsed.functions;
-      } catch (e) {}
+      } catch (e) { }
     } else if (
       data.value &&
       typeof data.value === "object" &&
@@ -3408,7 +267,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       try {
         const parsed = JSON.parse(data.value);
         if (parsed && Array.isArray(parsed.variables)) return parsed.variables;
-      } catch (e) {}
+      } catch (e) { }
     } else if (
       data.value &&
       typeof data.value === "object" &&
@@ -3461,7 +320,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       try {
         const parsed = JSON.parse(data.value);
         if (parsed && Array.isArray(parsed.groups)) return parsed.groups;
-      } catch (e) {}
+      } catch (e) { }
     } else if (
       data.value &&
       typeof data.value === "object" &&
@@ -3613,7 +472,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         if (parsed && parsed.gridSettings) {
           settings = parsed.gridSettings;
         }
-      } catch (e) {}
+      } catch (e) { }
     } else if (
       data?.value &&
       typeof data.value === "object" &&
@@ -3850,7 +709,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }, [serializedValue]);
 
@@ -3983,140 +842,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     };
   }, [data?.path]);
 
-  const getAxisLabel = (n: number) => {
-    if (n === 0 && axisFilter !== "custom_mapping" && axisFilter !== "custom")
-      return 0;
-
-    let baseLabel: React.ReactNode = "";
-
-    if (axisFilter === "all") {
-      baseLabel = n % 1 === 0 ? n : "";
-    } else if (axisFilter === "even") {
-      baseLabel = n % 2 === 0 ? n : "";
-    } else if (axisFilter === "odd") {
-      baseLabel = Math.abs(n % 2) === 1 ? n : "";
-    } else if (axisFilter === "custom") {
-      try {
-        const res = mathjs.evaluate(customAxisFilter, { n });
-        if (res) baseLabel = n;
-      } catch {
-        baseLabel = "";
-      }
-    } else if (axisFilter === "custom_mapping") {
-      const linesStr = customAxisMapping.split("\n");
-      for (const line of linesStr) {
-        // Use either ':' or '->' or '→' as delimiter
-        const delimiter = line.includes("→")
-          ? "→"
-          : line.includes("->")
-            ? "->"
-            : ":";
-        const [k, ...vParts] = line.split(delimiter);
-        if (vParts.length > 0 && parseFloat(k.trim()) === n) {
-          baseLabel = vParts.join(delimiter).trim();
-          break;
-        }
-      }
-    } else if (axisFilter === "pi") {
-      const fraction = n / Math.PI;
-      const rounded = Math.round(fraction * 1000) / 1000;
-      if (Math.abs(rounded) < 0.001) baseLabel = "0";
-      else if (Math.abs(rounded - 1) < 0.001) baseLabel = "π";
-      else if (Math.abs(rounded + 1) < 0.001) baseLabel = "-π";
-      else baseLabel = `${rounded}π`;
-    } else if (axisFilter === "euler") {
-      const superscriptMap: Record<string, string> = {
-        "0": "⁰",
-        "1": "¹",
-        "2": "²",
-        "3": "³",
-        "4": "⁴",
-        "5": "⁵",
-        "6": "⁶",
-        "7": "⁷",
-        "8": "⁸",
-        "9": "⁹",
-        "-": "⁻",
-      };
-      if (n === 0) baseLabel = "0";
-      else if (n === 1) baseLabel = "e";
-      else if (n === -1) baseLabel = "e⁻¹";
-      else {
-        const supN = n
-          .toString()
-          .split("")
-          .map((c) => superscriptMap[c] || c)
-          .join("");
-        baseLabel = `e${supN}`;
-      }
-    } else if (axisFilter === "complex") {
-      if (n === 0) baseLabel = "0";
-      else if (n === 1) baseLabel = "i";
-      else if (n === -1) baseLabel = "-i";
-      else baseLabel = `${n}i`;
-    } else if (axisFilter === "degrees") {
-      baseLabel = `${n}°`;
-    } else if (axisFilter === "radians") {
-      baseLabel = `${n} rad`;
-    } else if (axisFilter === "scientific") {
-      if (n === 0) baseLabel = "0";
-      else {
-        const [m, eStr] = n.toExponential(axisDecimals).split("e");
-        const exponent = eStr.replace("+", "");
-        const superscriptMap: Record<string, string> = {
-          "0": "⁰",
-          "1": "¹",
-          "2": "²",
-          "3": "³",
-          "4": "⁴",
-          "5": "⁵",
-          "6": "⁶",
-          "7": "⁷",
-          "8": "⁸",
-          "9": "⁹",
-          "-": "⁻",
-        };
-        const supExp = exponent
-          .split("")
-          .map((c) => superscriptMap[c] || c)
-          .join("");
-        baseLabel = `${m} × 10${supExp}`;
-      }
-    } else if (axisFilter === "fractions") {
-      if (n % 1 === 0) baseLabel = n.toString();
-      else {
-        const precision = 1000000;
-        const numerator = Math.round(n * precision);
-        const denominator = precision;
-        const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-        const d = gcd(Math.abs(numerator), denominator);
-        baseLabel = `${numerator / d}/${denominator / d}`;
-      }
-    } else {
-      // "numeric"
-      const rounded = +(
-        Math.round(Number(n + "e+" + axisDecimals)) +
-        "e-" +
-        axisDecimals
-      );
-      baseLabel = axisThousandsSep ? rounded.toLocaleString() : rounded;
-    }
-
-    if (baseLabel === "") return "";
-
-    // React supports strings in Mafs labels if not using foreignObject
-    if (typeof baseLabel === "string" || typeof baseLabel === "number") {
-      return `${axisPrefix}${baseLabel}${axisSuffix}`;
-    }
-
-    return (
-      <React.Fragment>
-        {axisPrefix}
-        {baseLabel}
-        {axisSuffix}
-      </React.Fragment>
-    );
-  };
+  const getAxisLabel = useMemo(() => createAxisLabelFormatter({
+    axisFilter,
+    axisDecimals,
+    axisThousandsSep,
+    axisPrefix,
+    axisSuffix,
+    customAxisFilter,
+    customAxisMapping,
+  }), [axisFilter, axisDecimals, axisThousandsSep, axisPrefix, axisSuffix, customAxisFilter, customAxisMapping]);
 
   useEffect(() => {
     if (!graphContainerRef.current) return;
@@ -4139,205 +873,90 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   // Compile functions & extract variables
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const varsToAdd = new Set<string>();
-      const assignedVars = new Set<string>();
+    let cancelled = false;
 
-    const tempBaseScope = variables.reduce(
-      (acc, v) => ({ ...acc, [v.name]: v.value }),
-      {} as any,
-    );
-    tempBaseScope.t = time;
-    tempBaseScope.time = time;
-    tempBaseScope.ln = mathjs.log;
-    tempBaseScope.log10 = mathjs.log10;
-    tempBaseScope.theta = 0;
-    tempBaseScope.indexHelper = indexHelper;
-
-    // Register our special functions
-    tempBaseScope.Line = (...args: any[]) => args;
-    tempBaseScope.Vector = (...args: any[]) => args;
-    tempBaseScope.Polygon = (...args: any[]) => args;
-    tempBaseScope.Point = (...args: any[]) => args;
-
-    // Pre-populate t_... variables for test evaluations
-    functions.forEach((f, idx) => {
-      const fTime = f.hasCustomTimeline
-        ? f.time !== undefined
-          ? f.time
-          : 0
-        : time;
-      tempBaseScope[`t_${idx + 1}`] = fTime;
-      if (f.name) {
-        const match = f.name.match(/^([a-zA-Z0-9_]+)/);
-        const fnId = match ? match[1] : f.name;
-        if (fnId && fnId !== "t" && fnId !== "time") {
-          tempBaseScope[`t_${fnId}`] = fTime;
-        }
-      }
-    });
-
-    const newFunctions = functions.map((f) => {
+    const runCompile = async () => {
       try {
-        if (f.type === "implicit" || f.type === "inequality") {
-          let op = "=";
-          let parts = f.expr.split("=");
+        const safeFunctions = functions || [];
+        const safeVariables = variables || [];
+        const serializableFunctions = safeFunctions.map((f) => ({
+          id: f.id,
+          expr: f.expr,
+          type: f.type,
+          name: f.name,
+          label: f.label,
+          hasCustomTimeline: f.hasCustomTimeline,
+          time: f.time,
+          operator: f.operator,
+        }));
+        const result = await compileFunctions({
+          functions: serializableFunctions,
+          variableNames: safeVariables.map((v) => v.name),
+          variableValues: safeVariables.map((v) => v.value),
+          time,
+          functionTimelines: safeFunctions.map((f) => ({ time: f.time || 0 })),
+        });
 
-          if (f.type === "inequality") {
-            const match = f.expr.match(/(<=|>=|<|>)/);
-            if (match) {
-              op = match[1];
-              parts = f.expr.split(op);
-            }
-          }
+        if (cancelled) return;
 
-          const lhsStr = parts[0].trim();
-          const rhsStr = parts[1] ? parts[1].trim() : "0";
-
-          const lhsNode = parseAndAdjustForCompile(lhsStr);
-          const rhsNode = parseAndAdjustForCompile(rhsStr);
-          const compiledLHS = lhsNode.compile();
-          const compiledRHS = rhsNode.compile();
-
-          // Add object label/name to assigned variables to prevent missing var prompts
-          if (f.label) assignedVars.add(f.label);
-          if (f.name) assignedVars.add(f.name);
-
-          const extractSymbols = (node: any) => {
-            node.traverse((n: any) => {
-              if (
-                n.isSymbolNode &&
-                !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper"].includes(
-                  n.name,
-                ) &&
-                !n.name.startsWith("t_") &&
-                !mathjs[n.name as keyof typeof mathjs] &&
-                !assignedVars.has(n.name)
-              ) {
-                varsToAdd.add(n.name);
-              }
-            });
-          };
-          extractSymbols(lhsNode);
-          extractSymbols(rhsNode);
-
-          // Verify if there are evaluation errors (e.g. undefined references)
+        // Thin synchronous shim for plotting
+        const newFunctions = safeFunctions.map((f, i) => {
+          const res = result.results[i] || {};
+          if (res.error) return { ...f, error: res.error };
           try {
-            const fScope = Object.create(tempBaseScope);
-            fScope.x = 0;
-            fScope.y = 0;
-            compiledLHS.evaluate(fScope);
-            compiledRHS.evaluate(fScope);
-          } catch (evalErr: any) {
-            const formattedError = formatMathError(evalErr.message || String(evalErr));
-            return {
-              ...f,
-              compiled: compiledLHS,
-              compiled2: compiledRHS,
-              expr2: op,
-              operator: op,
-              error: formattedError,
-            };
-          }
+            let compiled, compiled2;
+            let inferredOperator = f.operator;
+            if (f.type === "implicit" || f.type === "inequality") {
+              let op = f.operator || "=";
+              let parts = f.expr.split(op);
 
-          return {
-            ...f,
-            compiled: compiledLHS,
-            compiled2: compiledRHS,
-            expr2: op, // Store the operator for inequality
-            operator: op, // FIX: also store in operator explicitly
-            error: undefined,
-          };
-        }
+              if (f.type === "inequality") {
+                const match = f.expr.match(/(<=|>=|<|>)/);
+                if (match) {
+                  op = match[1];
+                  parts = f.expr.split(op);
+                  inferredOperator = op;
+                } else if (!f.operator) {
+                  op = "<=";
+                  parts = [f.expr, "0"];
+                  inferredOperator = op;
+                }
+              }
 
-        const node = parseAndAdjustForCompile(f.expr);
-        const compiled = node.compile();
+              const lhsStr = parts[0] ? parts[0].trim() : "0";
+              const rhsStr = parts[1] ? parts[1].trim() : "0";
 
-        // Add object label/name to assigned variables to prevent missing var prompts
-        if (f.label) assignedVars.add(f.label);
-        if (f.name) assignedVars.add(f.name);
-
-        // Find assigned variables first (LHS)
-        node.traverse((n: any, path: string, parent: any) => {
-          if (n.isAssignmentNode) {
-            if (n.object && n.object.isSymbolNode) {
-              assignedVars.add(n.object.name);
-            } else if (n.name) {
-              // sometimes simple assignments just have name
-              assignedVars.add(n.name);
+              const lhsNode = parseAndAdjustForCompile(lhsStr || "0");
+              const rhsNode = parseAndAdjustForCompile(rhsStr || "0");
+              compiled = lhsNode.compile();
+              compiled2 = rhsNode.compile();
+            } else {
+              const node = parseAndAdjustForCompile(f.expr);
+              compiled = node.compile();
             }
-          }
-          if (n.isFunctionAssignmentNode) {
-            assignedVars.add(n.name);
+            return { ...f, compiled, compiled2, compiledKey: res.compiledKey, operator: inferredOperator, error: undefined };
+          } catch (e: any) {
+            return { ...f, error: formatMathError(e.message || String(e)) };
           }
         });
 
-        // Auto-extract variables
-        node.traverse((n: any) => {
-          if (
-            n.isSymbolNode &&
-            !["x", "y", "t", "time", "theta", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper"].includes(n.name) &&
-            !n.name.startsWith("t_") &&
-            !mathjs[n.name as keyof typeof mathjs] &&
-            !assignedVars.has(n.name)
-          ) {
-            varsToAdd.add(n.name);
-          }
-        });
-
-        // Test evaluate sequentially to detect any errors and accumulate references
-        let error: string | undefined = undefined;
-        try {
-          const fTime = f.hasCustomTimeline
-            ? f.time !== undefined
-              ? f.time
-              : 0
-            : time;
-          const fScope = Object.create(tempBaseScope);
-          fScope.t = fTime;
-          fScope.time = time;
-          fScope.x = 0;
-          fScope.y = 0;
-
-          const val = compiled.evaluate(fScope);
-
-          // Propagate variables back to tempBaseScope
-          for (const key of Object.keys(fScope)) {
-            if (key !== "t" && key !== "time" && key !== "x" && key !== "y") {
-              tempBaseScope[key] = fScope[key];
-            }
-          }
-
-          const refName = f.label || f.name;
-          if (refName) {
-            tempBaseScope[refName] = val;
-          }
-        } catch (evalErr: any) {
-          error = formatMathError(evalErr.message || String(evalErr));
-        }
-
-        return { ...f, compiled, error };
-      } catch (e: any) {
-        return { ...f, compiled: undefined, error: formatMathError(e.message || String(e)) };
+        setFunctions(newFunctions);
+        setMissingVars(result.missingVars);
+      } catch (e) {
+        console.error("Worker compile failed", e);
       }
-    });
+    };
 
-    setFunctions(newFunctions);
-
-    // Detect missing vars
-    const currentVarNames = new Set(variables.map((v) => v.name));
-    const missing = Array.from(varsToAdd).filter(
-      (v) => !currentVarNames.has(v) && !assignedVars.has(v),
-    );
-    setMissingVars(missing);
-    }, 100);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = setTimeout(runCompile, 100);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [
     functions.map((f) => f.expr).join(","),
     variables.map((v) => v.name).join(","),
-    functions.some((f) => !("compiled" in f) && !("error" in f)),
-  ]); // Compile when expressions or variables change
+    functions.some((f) => !("compiledKey" in f) && !("error" in f)),
+  ]);
 
   // Create a serialized key to watch changes to individual function timeline settings without re-running on general expression edits
   const functionsSerializedKey = functions
@@ -4505,9 +1124,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         const fScope = Object.create(baseScope);
         fScope.t = fTime;
         fScope.time = time;
-        
+
         const val = f.compiled.evaluate(fScope);
-        
+
         // Propagate variables defined in fScope to baseScope
         for (const key of Object.keys(fScope)) {
           if (key !== "t" && key !== "time" && key !== "x" && key !== "y") {
@@ -4519,7 +1138,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         if (refName) {
           baseScope[refName] = val;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   });
 
@@ -4570,15 +1189,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
   const handleInsertFunctionFromHelp = (formula: {
     type:
-      | "function"
-      | "parametric"
-      | "point"
-      | "implicit"
-      | "polar"
-      | "vector"
-      | "polygon"
-      | "inequality"
-      | "line";
+    | "function"
+    | "parametric"
+    | "point"
+    | "implicit"
+    | "polar"
+    | "vector"
+    | "polygon"
+    | "inequality"
+    | "line";
     expr: string;
     expr2?: string;
     name?: string;
@@ -4702,271 +1321,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       return;
     }
     setActiveExample(exampleName);
-    if (exampleName === "Lissajous") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "[A * sin(a*t + d + time), B * sin(b*t)]",
-          type: "parametric",
-          color: COLORS[0],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "A",
-          displayName: "Amplitude X",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v2",
-          name: "B",
-          displayName: "Amplitude Y",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v3",
-          name: "a",
-          displayName: "Freq X",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v4",
-          name: "b",
-          displayName: "Freq Y",
-          description: "",
-          value: 4,
-          defaultValue: 4,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v5",
-          name: "d",
-          displayName: "Phase",
-          description: "",
-          value: Math.PI / 2,
-          defaultValue: Math.PI / 2,
-          min: 0,
-          max: Math.PI * 2,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Fourier") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "4/pi * (sin(x) + sin(3*x)/3 + sin(5*x)/5 + sin(7*x)/7)",
-          type: "function",
-          color: COLORS[2],
-          visible: true,
-        },
-      ]);
-      setVariables([]);
-    } else if (exampleName === "Wave") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "A * sin(k*x - w*t + phi)",
-          type: "function",
-          color: COLORS[3],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "A",
-          displayName: "Amplitude",
-          description: "",
-          value: 2,
-          defaultValue: 2,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v2",
-          name: "k",
-          displayName: "Wave Number",
-          description: "",
-          value: 2,
-          defaultValue: 2,
-          min: 0,
-          max: 10,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v3",
-          name: "w",
-          displayName: "Angular Freq",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 10,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v4",
-          name: "phi",
-          displayName: "Phase String",
-          description: "",
-          value: 0,
-          defaultValue: 0,
-          min: 0,
-          max: 6.28,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Geometry") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "A = [2, 3]",
-          type: "point",
-          color: COLORS[0],
-          visible: true,
-        },
-        {
-          id: "f2",
-          expr: "B = [-1, 2]",
-          type: "point",
-          color: COLORS[1],
-          visible: true,
-        },
-        {
-          id: "f3",
-          expr: "C = [1, -2]",
-          type: "point",
-          color: COLORS[2],
-          visible: true,
-        },
-        {
-          id: "f4",
-          expr: "[A, B, C]",
-          type: "polygon",
-          color: COLORS[3],
-          visible: true,
-        },
-        {
-          id: "f5",
-          expr: "v = A - B",
-          type: "vector",
-          color: COLORS[4],
-          visible: true,
-        },
-        {
-          id: "f6",
-          expr: "[r * cos(t), r * sin(t)]",
-          type: "parametric",
-          color: COLORS[5],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "r",
-          displayName: "Circle Radius",
-          description: "Radius of implicit circle",
-          value: 2,
-          defaultValue: 2,
-          min: 0.1,
-          max: 10,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Statistics") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "(1/(sigma * sqrt(2*pi))) * e^(-0.5 * ((x - mu)/sigma)^2)",
-          type: "function",
-          color: COLORS[4],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "mu",
-          displayName: "Mean",
-          description: "Center of distribution",
-          value: 0,
-          defaultValue: 0,
-          min: -10,
-          max: 10,
-          step: 0.5,
-          groupId: "default",
-        },
-        {
-          id: "v2",
-          name: "sigma",
-          displayName: "Standard Dev",
-          description: "Spread of distribution",
-          value: 1,
-          defaultValue: 1,
-          min: 0.1,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Matrix") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "A = [2, 3]",
-          type: "point",
-          color: COLORS[0],
-          visible: true,
-          isDraggable: true,
-        },
-        {
-          id: "f2",
-          expr: "B = [-2, -1]",
-          type: "point",
-          color: COLORS[1],
-          visible: true,
-          isDraggable: true,
-        },
-        {
-          id: "f3",
-          expr: "[[x, y, 1], [A[1], A[2], 1], [B[1], B[2], 1]] = 0",
-          type: "implicit",
-          color: COLORS[2],
-          visible: true,
-        },
-      ]);
-      setVariables([]);
+
+    const exampleData = MATH_EXAMPLES[exampleName];
+    if (exampleData) {
+      setFunctions(exampleData.functions);
+      setVariables(exampleData.variables);
     }
   };
 
@@ -5006,11 +1365,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
         <div className="flex items-center gap-1 nodrag shrink-0">
           <button
             onClick={() => setShowGridControls((prev) => !prev)}
-            className={`p-1 rounded transition-colors md:hidden ${
-              showGridControls
-                ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200"
-            }`}
+            className={`p-1 rounded transition-colors md:hidden ${showGridControls
+              ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
+              : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
             title="Grid & Axis Settings"
           >
             <Settings size={16} />
@@ -5141,7 +1499,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {functions.map((f) => (
+                    {functions.map((f, index) => (
                       <div
                         key={f.id}
                         draggable={canDragFunctionId === f.id}
@@ -5184,11 +1542,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                         {dragOverFunctionId === f.id &&
                           dragOverFunctionPosition && (
                             <div
-                              className={`absolute left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400 z-50 rounded-full transition-all ${
-                                dragOverFunctionPosition === "top"
-                                  ? "-top-[1px]"
-                                  : "-bottom-[1px]"
-                              }`}
+                              className={`absolute left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400 z-50 rounded-full transition-all ${dragOverFunctionPosition === "top"
+                                ? "-top-[1px]"
+                                : "-bottom-[1px]"
+                                }`}
                             />
                           )}
 
@@ -5213,15 +1570,32 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 : "transparent",
                               border: `2px solid ${f.color}`,
                             }}
-                            onClick={() =>
-                              setFunctions((prev) =>
-                                prev.map((fn) =>
-                                  fn.id === f.id
-                                    ? { ...fn, visible: !fn.visible }
-                                    : fn,
-                                ),
-                              )
-                            }
+                            title={"Toggle visibility\nAlt + Click: Solo mode! This instantly hides all other shapes on the graph and makes sure only the shape you clicked on is visible.\nShift + Click: This makes all the equations from the top of the list down to the one you clicked visible, while immediately hiding every equation below it."}
+                            onClick={(e) => {
+                              if (e.altKey) {
+                                setFunctions((prev) =>
+                                  prev.map((fn) => ({
+                                    ...fn,
+                                    visible: fn.id === f.id,
+                                  }))
+                                );
+                              } else if (e.shiftKey) {
+                                setFunctions((prev) =>
+                                  prev.map((fn, i) => ({
+                                    ...fn,
+                                    visible: i <= index,
+                                  }))
+                                );
+                              } else {
+                                setFunctions((prev) =>
+                                  prev.map((fn) =>
+                                    fn.id === f.id
+                                      ? { ...fn, visible: !fn.visible }
+                                      : fn,
+                                  ),
+                                );
+                              }
+                            }}
                           />
                           <select
                             value={f.type}
@@ -5386,11 +1760,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     activeVisualEditorId === f.id ? null : f.id,
                                   );
                                 }}
-                                className={`p-1 rounded transition-all flex flex-col justify-center ${
-                                  activeVisualEditorId === f.id
-                                    ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
-                                    : "opacity-60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
-                                }`}
+                                className={`p-1 rounded transition-all flex flex-col justify-center ${activeVisualEditorId === f.id
+                                  ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                  : "opacity-60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                  }`}
                                 title="Visual Math Composer"
                               >
                                 <Calculator size={14} />
@@ -5403,11 +1776,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     prev === f.id ? null : f.id,
                                   );
                                 }}
-                                className={`p-1 rounded transition-all hover:bg-slate-100 dark:hover:bg-slate-700 flex flex-col justify-center ${
-                                  expandedSettingsFnId === f.id
-                                    ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
-                                    : "opacity-60 text-slate-500 dark:text-slate-400"
-                                }`}
+                                className={`p-1 rounded transition-all hover:bg-slate-100 dark:hover:bg-slate-700 flex flex-col justify-center ${expandedSettingsFnId === f.id
+                                  ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                  : "opacity-60 text-slate-500 dark:text-slate-400"
+                                  }`}
                                 title="Settings"
                               >
                                 <Settings
@@ -5467,14 +1839,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       () => setCopiedAction(null),
                                       2000,
                                     );
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 }}
-                                className={`p-1 font-serif text-[11px] font-bold rounded transition-all flex items-center justify-center ${
-                                  copiedAction?.id === f.id &&
+                                className={`p-1 font-serif text-[11px] font-bold rounded transition-all flex items-center justify-center ${copiedAction?.id === f.id &&
                                   copiedAction?.type === "latex"
-                                    ? "bg-green-500/10 text-green-500"
-                                    : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400"
-                                }`}
+                                  ? "bg-green-500/10 text-green-500"
+                                  : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400"
+                                  }`}
                                 title="Copy LaTeX"
                               >
                                 TeX
@@ -5485,12 +1856,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   setCopiedAction({ id: f.id, type: "expr" });
                                   setTimeout(() => setCopiedAction(null), 2000);
                                 }}
-                                className={`p-1 rounded transition-all flex items-center justify-center ${
-                                  copiedAction?.id === f.id &&
+                                className={`p-1 rounded transition-all flex items-center justify-center ${copiedAction?.id === f.id &&
                                   copiedAction?.type === "expr"
-                                    ? "bg-green-500/10 text-green-500"
-                                    : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400"
-                                }`}
+                                  ? "bg-green-500/10 text-green-500"
+                                  : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400"
+                                  }`}
                                 title="Copy Formula"
                               >
                                 <Copy size={14} />
@@ -5510,11 +1880,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     savingFormulaFnId === f.id ? null : f.id,
                                   );
                                 }}
-                                className={`p-1 rounded transition-all flex items-center justify-center ${
-                                  savingFormulaFnId === f.id
-                                    ? "opacity-100 bg-amber-500/10 text-amber-500 dark:text-amber-400"
-                                    : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 animate-pulse-subtle"
-                                }`}
+                                className={`p-1 rounded transition-all flex items-center justify-center ${savingFormulaFnId === f.id
+                                  ? "opacity-100 bg-amber-500/10 text-amber-500 dark:text-amber-400"
+                                  : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 animate-pulse-subtle"
+                                  }`}
                                 title="Save to My Formula Library (IndexedDB)"
                               >
                                 <Bookmark
@@ -5639,11 +2008,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 !showPreviewLatex,
                                               );
                                             }}
-                                            className={`p-0.5 rounded border flex items-center justify-center h-5 w-5 cursor-pointer transition-colors ${
-                                              showPreviewLatex
-                                                ? "bg-blue-600/10 text-blue-405 border-blue-500/20 hover:bg-blue-600/20"
-                                                : "bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-700/45"
-                                            }`}
+                                            className={`p-0.5 rounded border flex items-center justify-center h-5 w-5 cursor-pointer transition-colors ${showPreviewLatex
+                                              ? "bg-blue-600/10 text-blue-405 border-blue-500/20 hover:bg-blue-600/20"
+                                              : "bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-700/45"
+                                              }`}
                                             title={
                                               showPreviewLatex
                                                 ? "Show Raw Text Code"
@@ -5756,7 +2124,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       {f.type === "polar"
                                                         ? "r = "
                                                         : f.type ===
-                                                            "parametric"
+                                                          "parametric"
                                                           ? "[x,y] = "
                                                           : "y = "}
                                                       {f.expr}
@@ -5861,13 +2229,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           prev.map((fn) =>
                                             fn.id === f.id
                                               ? {
-                                                  ...fn,
-                                                  isDraggable: e.target.checked,
-                                                  isTransformable: e.target
-                                                    .checked
-                                                    ? false
-                                                    : fn.isTransformable,
-                                                }
+                                                ...fn,
+                                                isDraggable: e.target.checked,
+                                                isTransformable: e.target
+                                                  .checked
+                                                  ? false
+                                                  : fn.isTransformable,
+                                              }
                                               : fn,
                                           ),
                                         )
@@ -5909,14 +2277,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    isTransformable:
-                                                      e.target.checked,
-                                                    isDraggable: e.target
-                                                      .checked
-                                                      ? false
-                                                      : fn.isDraggable,
-                                                  }
+                                                  ...fn,
+                                                  isTransformable:
+                                                    e.target.checked,
+                                                  isDraggable: e.target
+                                                    .checked
+                                                    ? false
+                                                    : fn.isDraggable,
+                                                }
                                                 : fn,
                                             ),
                                           )
@@ -5959,10 +2327,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    isRotatable:
-                                                      e.target.checked,
-                                                  }
+                                                  ...fn,
+                                                  isRotatable:
+                                                    e.target.checked,
+                                                }
                                                 : fn,
                                             ),
                                           )
@@ -6005,10 +2373,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    isResizable:
-                                                      e.target.checked,
-                                                  }
+                                                  ...fn,
+                                                  isResizable:
+                                                    e.target.checked,
+                                                }
                                                 : fn,
                                             ),
                                           )
@@ -6051,10 +2419,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    isPivotEnabled:
-                                                      e.target.checked,
-                                                  }
+                                                  ...fn,
+                                                  isPivotEnabled:
+                                                    e.target.checked,
+                                                }
                                                 : fn,
                                             ),
                                           )
@@ -6096,9 +2464,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    showPoint: e.target.checked,
-                                                  }
+                                                  ...fn,
+                                                  showPoint: e.target.checked,
+                                                }
                                                 : fn,
                                             ),
                                           )
@@ -6140,9 +2508,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           prev.map((fn) =>
                                             fn.id === f.id
                                               ? {
-                                                  ...fn,
-                                                  showLabel: e.target.checked,
-                                                }
+                                                ...fn,
+                                                showLabel: e.target.checked,
+                                                label: e.target.checked && !fn.label ? (fn.latex || fn.expr || "") : fn.label,
+                                              }
                                               : fn,
                                           ),
                                         )
@@ -6157,20 +2526,41 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                 {f.showLabel && (
                                   <>
-                                    <div className="flex w-full mt-2 mb-1">
-                                      <LabelInput
-                                        value={f.label || ""}
-                                        onChange={(val) =>
+                                    <div className="flex w-full mt-2 mb-1 gap-1.5 items-stretch group/label">
+                                      <div className="flex-1 min-w-0">
+                                        <LabelInput
+                                          value={f.label || ""}
+                                          onChange={(val) =>
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? { ...fn, label: val }
+                                                  : fn,
+                                              ),
+                                            )
+                                          }
+                                          placeholder="Text or LaTeX (e.g. A_1)"
+                                        />
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           setFunctions((prev) =>
                                             prev.map((fn) =>
                                               fn.id === f.id
-                                                ? { ...fn, label: val }
+                                                ? {
+                                                  ...fn,
+                                                  label: fn.latex || fn.expr || "",
+                                                }
                                                 : fn,
                                             ),
-                                          )
-                                        }
-                                        placeholder="Text or LaTeX (e.g. A_1)"
-                                      />
+                                          );
+                                        }}
+                                        title="Inject current equation"
+                                        className="shrink-0 flex items-center justify-center w-8 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md border border-slate-200 dark:border-transparent transition-colors opacity-70 hover:opacity-100"
+                                      >
+                                        <FunctionSquare className="w-4 h-4" strokeWidth={2} />
+                                      </button>
                                     </div>
 
                                     {/* Label Settings Panel */}
@@ -6267,11 +2657,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
-                                              f.labelFlipX
-                                                ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
-                                            }`}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${f.labelFlipX
+                                              ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
+                                              }`}
                                           >
                                             Flip X
                                           </button>
@@ -6284,11 +2673,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
-                                              f.labelFlipY
-                                                ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
-                                            }`}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${f.labelFlipY
+                                              ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
+                                              }`}
                                           >
                                             Flip Y
                                           </button>
@@ -6298,7 +2686,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       {/* Quick Presets */}
                                       <div className="flex flex-col gap-1 mt-1 pt-1.5 border-t border-slate-200/50 dark:border-slate-700/50">
                                         <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mb-0.5">Quick Presets</span>
-                                        
+
                                         <div className="flex flex-wrap gap-1">
                                           <button
                                             type="button"
@@ -6307,14 +2695,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 prev.map((fn) =>
                                                   fn.id === f.id
                                                     ? {
-                                                        ...fn,
-                                                        labelRotation: 0,
-                                                        labelScale: 1.0,
-                                                        labelFlipX: false,
-                                                        labelFlipY: false,
-                                                        labelPosition: [0.3, 0.3],
-                                                        labelAlignment: undefined,
-                                                      }
+                                                      ...fn,
+                                                      labelRotation: 0,
+                                                      labelScale: 1.0,
+                                                      labelFlipX: false,
+                                                      labelFlipY: false,
+                                                      labelPosition: [0.3, 0.3],
+                                                      labelAlignment: undefined,
+                                                    }
                                                     : fn
                                                 )
                                               );
@@ -6378,11 +2766,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
-                                              f.labelAlignment === "center"
-                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "center"
+                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                              }`}
                                             title="Center label exactly on shape"
                                           >
                                             Center
@@ -6397,11 +2784,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
-                                              f.labelAlignment === "above"
-                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "above"
+                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                              }`}
                                             title="Snap label above shape"
                                           >
                                             Above
@@ -6416,11 +2802,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
-                                              f.labelAlignment === "below"
-                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "below"
+                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                              }`}
                                             title="Snap label below shape"
                                           >
                                             Below
@@ -6435,11 +2820,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
-                                              f.labelAlignment === "left"
-                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "left"
+                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                              }`}
                                             title="Snap label to left"
                                           >
                                             Left
@@ -6454,11 +2838,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 )
                                               );
                                             }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
-                                              f.labelAlignment === "right"
-                                                ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                                : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                            }`}
+                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "right"
+                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
+                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+                                              }`}
                                             title="Snap label to right"
                                           >
                                             Right
@@ -6489,61 +2872,59 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    hasCustomTimeline: checked,
-                                                    time: checked
-                                                      ? fn.time !== undefined
-                                                        ? fn.time
-                                                        : 0
-                                                      : undefined,
-                                                    isPlaying: checked
-                                                      ? fn.isPlaying !==
-                                                        undefined
-                                                        ? fn.isPlaying
-                                                        : true
-                                                      : undefined,
-                                                    timeMin: checked
-                                                      ? fn.timeMin !== undefined
-                                                        ? fn.timeMin
-                                                        : 0
-                                                      : undefined,
-                                                    timeMax: checked
-                                                      ? fn.timeMax !== undefined
-                                                        ? fn.timeMax
-                                                        : 10
-                                                      : undefined,
-                                                    timeSpeed: checked
-                                                      ? fn.timeSpeed !==
-                                                        undefined
-                                                        ? fn.timeSpeed
-                                                        : 1
-                                                      : undefined,
-                                                    timeMode: checked
-                                                      ? fn.timeMode || "loop"
-                                                      : undefined,
-                                                    direction: checked
-                                                      ? fn.direction !==
-                                                        undefined
-                                                        ? fn.direction
-                                                        : 1
-                                                      : undefined,
-                                                  }
+                                                  ...fn,
+                                                  hasCustomTimeline: checked,
+                                                  time: checked
+                                                    ? fn.time !== undefined
+                                                      ? fn.time
+                                                      : 0
+                                                    : undefined,
+                                                  isPlaying: checked
+                                                    ? fn.isPlaying !==
+                                                      undefined
+                                                      ? fn.isPlaying
+                                                      : true
+                                                    : undefined,
+                                                  timeMin: checked
+                                                    ? fn.timeMin !== undefined
+                                                      ? fn.timeMin
+                                                      : 0
+                                                    : undefined,
+                                                  timeMax: checked
+                                                    ? fn.timeMax !== undefined
+                                                      ? fn.timeMax
+                                                      : 10
+                                                    : undefined,
+                                                  timeSpeed: checked
+                                                    ? fn.timeSpeed !==
+                                                      undefined
+                                                      ? fn.timeSpeed
+                                                      : 1
+                                                    : undefined,
+                                                  timeMode: checked
+                                                    ? fn.timeMode || "loop"
+                                                    : undefined,
+                                                  direction: checked
+                                                    ? fn.direction !==
+                                                      undefined
+                                                      ? fn.direction
+                                                      : 1
+                                                    : undefined,
+                                                }
                                                 : fn,
                                             ),
                                           );
                                         }}
-                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                          f.hasCustomTimeline
-                                            ? "bg-blue-500"
-                                            : "bg-slate-200 dark:bg-slate-700"
-                                        }`}
+                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${f.hasCustomTimeline
+                                          ? "bg-blue-500"
+                                          : "bg-slate-200 dark:bg-slate-700"
+                                          }`}
                                       >
                                         <span
-                                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                                            f.hasCustomTimeline
-                                              ? "translate-x-4"
-                                              : "translate-x-0"
-                                          }`}
+                                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${f.hasCustomTimeline
+                                            ? "translate-x-4"
+                                            : "translate-x-0"
+                                            }`}
                                         />
                                       </button>
                                     </div>
@@ -6572,19 +2953,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   prev.map((fn) =>
                                                     fn.id === f.id
                                                       ? {
-                                                          ...fn,
-                                                          isPlaying:
-                                                            !fn.isPlaying,
-                                                        }
+                                                        ...fn,
+                                                        isPlaying:
+                                                          !fn.isPlaying,
+                                                      }
                                                       : fn,
                                                   ),
                                                 );
                                               }}
-                                              className={`p-1.5 rounded text-white font-medium transition-all flex items-center justify-center active:scale-95 ${
-                                                f.isPlaying
-                                                  ? "bg-amber-500 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
-                                                  : "bg-emerald-500 hover:bg-emerald-600 shadow-xs shadow-emerald-500/10"
-                                              }`}
+                                              className={`p-1.5 rounded text-white font-medium transition-all flex items-center justify-center active:scale-95 ${f.isPlaying
+                                                ? "bg-amber-500 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
+                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-xs shadow-emerald-500/10"
+                                                }`}
                                               title={
                                                 f.isPlaying
                                                   ? "Pause Timeline"
@@ -6640,14 +3020,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   prev.map((fn) =>
                                                     fn.id === f.id
                                                       ? {
-                                                          ...fn,
-                                                          time:
-                                                            fn.timeMin !==
+                                                        ...fn,
+                                                        time:
+                                                          fn.timeMin !==
                                                             undefined
-                                                              ? fn.timeMin
-                                                              : 0,
-                                                          direction: 1,
-                                                        }
+                                                            ? fn.timeMin
+                                                            : 0,
+                                                        direction: 1,
+                                                      }
                                                       : fn,
                                                   ),
                                                 );
@@ -6682,9 +3062,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     prev.map((fn) =>
                                                       fn.id === f.id
                                                         ? {
-                                                            ...fn,
-                                                            timeMin: val,
-                                                          }
+                                                          ...fn,
+                                                          timeMin: val,
+                                                        }
                                                         : fn,
                                                     ),
                                                   );
@@ -6713,9 +3093,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     prev.map((fn) =>
                                                       fn.id === f.id
                                                         ? {
-                                                            ...fn,
-                                                            timeMax: val,
-                                                          }
+                                                          ...fn,
+                                                          timeMax: val,
+                                                        }
                                                         : fn,
                                                     ),
                                                   );
@@ -6748,9 +3128,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     prev.map((fn) =>
                                                       fn.id === f.id
                                                         ? {
-                                                            ...fn,
-                                                            timeSpeed: val,
-                                                          }
+                                                          ...fn,
+                                                          timeSpeed: val,
+                                                        }
                                                         : fn,
                                                     ),
                                                   );
@@ -6771,9 +3151,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     prev.map((fn) =>
                                                       fn.id === f.id
                                                         ? {
-                                                            ...fn,
-                                                            timeMode: val,
-                                                          }
+                                                          ...fn,
+                                                          timeMode: val,
+                                                        }
                                                         : fn,
                                                     ),
                                                   );
@@ -6814,11 +3194,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   copiedVarId === copyId;
                                                 return (
                                                   <div
-                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
-                                                      isCopied
-                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                                                        : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                    }`}
+                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${isCopied
+                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                      }`}
                                                     onClick={() => {
                                                       navigator.clipboard.writeText(
                                                         "t",
@@ -6834,11 +3213,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   >
                                                     <div className="flex items-center gap-1.5">
                                                       <code
-                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
-                                                          isCopied
-                                                            ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
-                                                            : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                        }`}
+                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${isCopied
+                                                          ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
+                                                          : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                          }`}
                                                       >
                                                         t
                                                       </code>
@@ -6872,11 +3250,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   copiedVarId === copyId;
                                                 return (
                                                   <div
-                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
-                                                      isCopied
-                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                                                        : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                    }`}
+                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${isCopied
+                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                      }`}
                                                     onClick={() => {
                                                       navigator.clipboard.writeText(
                                                         `t_${fnIndex}`,
@@ -6892,11 +3269,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   >
                                                     <div className="flex items-center gap-1.5">
                                                       <code
-                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
-                                                          isCopied
-                                                            ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
-                                                            : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                        }`}
+                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${isCopied
+                                                          ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
+                                                          : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                          }`}
                                                       >{`t_${fnIndex}`}</code>
                                                       <span className="text-[9px] text-slate-500 dark:text-slate-400">
                                                         Any function in
@@ -6932,11 +3308,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     copiedVarId === copyId;
                                                   return (
                                                     <div
-                                                      className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${
-                                                        isCopied
-                                                          ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                                                          : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                      }`}
+                                                      className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${isCopied
+                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
+                                                        : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
+                                                        }`}
                                                       onClick={() => {
                                                         navigator.clipboard.writeText(
                                                           `t_${fnCleanName}`,
@@ -6954,11 +3329,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     >
                                                       <div className="flex items-center gap-1.5">
                                                         <code
-                                                          className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${
-                                                            isCopied
-                                                              ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
-                                                              : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                          }`}
+                                                          className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${isCopied
+                                                            ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
+                                                            : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
+                                                            }`}
                                                         >{`t_${fnCleanName}`}</code>
                                                         <span className="text-[9px] text-slate-500 dark:text-slate-400">
                                                           Any function in
@@ -7006,16 +3380,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           prev.map((fn) =>
                                             fn.id === f.id
                                               ? {
-                                                  ...fn,
-                                                  transformTranslate: [
-                                                    parseFloat(
-                                                      e.target.value,
-                                                    ) || 0,
-                                                    fn
-                                                      .transformTranslate?.[1] ||
-                                                      0,
-                                                  ],
-                                                }
+                                                ...fn,
+                                                transformTranslate: [
+                                                  parseFloat(
+                                                    e.target.value,
+                                                  ) || 0,
+                                                  fn
+                                                    .transformTranslate?.[1] ||
+                                                  0,
+                                                ],
+                                              }
                                               : fn,
                                           ),
                                         )
@@ -7033,16 +3407,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           prev.map((fn) =>
                                             fn.id === f.id
                                               ? {
-                                                  ...fn,
-                                                  transformTranslate: [
-                                                    fn
-                                                      .transformTranslate?.[0] ||
-                                                      0,
-                                                    parseFloat(
-                                                      e.target.value,
-                                                    ) || 0,
-                                                  ],
-                                                }
+                                                ...fn,
+                                                transformTranslate: [
+                                                  fn
+                                                    .transformTranslate?.[0] ||
+                                                  0,
+                                                  parseFloat(
+                                                    e.target.value,
+                                                  ) || 0,
+                                                ],
+                                              }
                                               : fn,
                                           ),
                                         )
@@ -7066,11 +3440,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    transformScale: [1, 1],
-                                                    transformRotate: 0,
-                                                    transformTranslate: [0, 0],
-                                                  }
+                                                  ...fn,
+                                                  transformScale: [1, 1],
+                                                  transformRotate: 0,
+                                                  transformTranslate: [0, 0],
+                                                }
                                                 : fn,
                                             ),
                                           )
@@ -7090,21 +3464,21 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           type="number"
                                           value={Math.round(
                                             ((f.transformRotate || 0) * 180) /
-                                              Math.PI,
+                                            Math.PI,
                                           )}
                                           onChange={(e) =>
                                             setFunctions((prev) =>
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      transformRotate:
-                                                        ((parseFloat(
-                                                          e.target.value,
-                                                        ) || 0) *
-                                                          Math.PI) /
-                                                        180,
-                                                    }
+                                                    ...fn,
+                                                    transformRotate:
+                                                      ((parseFloat(
+                                                        e.target.value,
+                                                      ) || 0) *
+                                                        Math.PI) /
+                                                      180,
+                                                  }
                                                   : fn,
                                               ),
                                             )
@@ -7130,16 +3504,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      transformScale: [
-                                                        parseFloat(
-                                                          e.target.value,
-                                                        ) || 1,
-                                                        parseFloat(
-                                                          e.target.value,
-                                                        ) || 1,
-                                                      ],
-                                                    }
+                                                    ...fn,
+                                                    transformScale: [
+                                                      parseFloat(
+                                                        e.target.value,
+                                                      ) || 1,
+                                                      parseFloat(
+                                                        e.target.value,
+                                                      ) || 1,
+                                                    ],
+                                                  }
                                                   : fn,
                                               ),
                                             )
@@ -7166,16 +3540,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 prev.map((fn) =>
                                                   fn.id === f.id
                                                     ? {
-                                                        ...fn,
-                                                        transformPivot: [
-                                                          parseFloat(
-                                                            e.target.value,
-                                                          ) || 0,
-                                                          fn
-                                                            .transformPivot?.[1] ||
-                                                            0,
-                                                        ],
-                                                      }
+                                                      ...fn,
+                                                      transformPivot: [
+                                                        parseFloat(
+                                                          e.target.value,
+                                                        ) || 0,
+                                                        fn
+                                                          .transformPivot?.[1] ||
+                                                        0,
+                                                      ],
+                                                    }
                                                     : fn,
                                                 ),
                                               )
@@ -7193,16 +3567,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 prev.map((fn) =>
                                                   fn.id === f.id
                                                     ? {
-                                                        ...fn,
-                                                        transformPivot: [
-                                                          fn
-                                                            .transformPivot?.[0] ||
-                                                            0,
-                                                          parseFloat(
-                                                            e.target.value,
-                                                          ) || 0,
-                                                        ],
-                                                      }
+                                                      ...fn,
+                                                      transformPivot: [
+                                                        fn
+                                                          .transformPivot?.[0] ||
+                                                        0,
+                                                        parseFloat(
+                                                          e.target.value,
+                                                        ) || 0,
+                                                      ],
+                                                    }
                                                     : fn,
                                                 ),
                                               )
@@ -7244,20 +3618,19 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    expr: newExpr,
-                                                    expr2: op,
-                                                    operator: op,
-                                                  }
+                                                  ...fn,
+                                                  expr: newExpr,
+                                                  expr2: op,
+                                                  operator: op,
+                                                }
                                                 : fn,
                                             ),
                                           );
                                         }}
-                                        className={`flex-1 py-1 px-2 font-mono text-[11px] font-bold transition-colors ${
-                                          (f.expr2 || "<=") === op
-                                            ? "bg-blue-500 text-white"
-                                            : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                                        } border-r border-slate-200 dark:border-slate-700/60 last:border-r-0`}
+                                        className={`flex-1 py-1 px-2 font-mono text-[11px] font-bold transition-colors ${(f.expr2 || "<=") === op
+                                          ? "bg-blue-500 text-white"
+                                          : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                          } border-r border-slate-200 dark:border-slate-700/60 last:border-r-0`}
                                       >
                                         {op}
                                       </button>
@@ -7318,12 +3691,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         );
                                       }
                                     }}
-                                    className={`w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer transition-all duration-200 ${
-                                      activeColorPickerFnId === f.id &&
+                                    className={`w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer transition-all duration-200 ${activeColorPickerFnId === f.id &&
                                       activeColorPickerType === "outline"
-                                        ? "ring-2 ring-blue-500 scale-115"
-                                        : "hover:scale-110"
-                                    }`}
+                                      ? "ring-2 ring-blue-500 scale-115"
+                                      : "hover:scale-110"
+                                      }`}
                                     style={{
                                       background:
                                         "linear-gradient(45deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ec4899)",
@@ -7395,18 +3767,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      fillColor: e.target
-                                                        .checked
-                                                        ? getHexWithAlpha(
-                                                            f.color,
-                                                            f.fillOpacity !==
-                                                              undefined
-                                                              ? f.fillOpacity
-                                                              : 0.3,
-                                                          )
-                                                        : undefined,
-                                                    }
+                                                    ...fn,
+                                                    fillColor: e.target
+                                                      .checked
+                                                      ? getHexWithAlpha(
+                                                        f.color,
+                                                        f.fillOpacity !==
+                                                          undefined
+                                                          ? f.fillOpacity
+                                                          : 0.3,
+                                                      )
+                                                      : undefined,
+                                                  }
                                                   : fn,
                                               ),
                                             );
@@ -7467,18 +3839,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   prev.map((fn) =>
                                                     fn.id === f.id
                                                       ? {
-                                                          ...fn,
-                                                          fillColor:
-                                                            colorWithAlpha,
-                                                        }
+                                                        ...fn,
+                                                        fillColor:
+                                                          colorWithAlpha,
+                                                      }
                                                       : fn,
                                                   ),
                                                 );
                                                 if (
                                                   activeColorPickerFnId ===
-                                                    f.id &&
+                                                  f.id &&
                                                   activeColorPickerType ===
-                                                    "fill"
+                                                  "fill"
                                                 ) {
                                                   setActiveColorPickerFnId(
                                                     null,
@@ -7501,7 +3873,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             onClick={(e) => {
                                               if (
                                                 activeColorPickerFnId ===
-                                                  f.id &&
+                                                f.id &&
                                                 activeColorPickerType === "fill"
                                               ) {
                                                 setActiveColorPickerFnId(null);
@@ -7519,12 +3891,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 );
                                               }
                                             }}
-                                            className={`w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer transition-all duration-200 ${
-                                              activeColorPickerFnId === f.id &&
+                                            className={`w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer transition-all duration-200 ${activeColorPickerFnId === f.id &&
                                               activeColorPickerType === "fill"
-                                                ? "ring-2 ring-blue-500 scale-115"
-                                                : "hover:scale-110"
-                                            }`}
+                                              ? "ring-2 ring-blue-500 scale-115"
+                                              : "hover:scale-110"
+                                              }`}
                                             style={{
                                               background:
                                                 "linear-gradient(45deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ec4899)",
@@ -7566,7 +3937,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 Math.round(
                                                   (parseInt(alphaHex, 16) /
                                                     255) *
-                                                    100,
+                                                  100,
                                                 ) / 100;
                                             } else if (
                                               newColor.startsWith("#") &&
@@ -7578,10 +3949,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      fillColor: newColor,
-                                                      fillOpacity: parsedAlpha,
-                                                    }
+                                                    ...fn,
+                                                    fillColor: newColor,
+                                                    fillOpacity: parsedAlpha,
+                                                  }
                                                   : fn,
                                               ),
                                             );
@@ -7661,390 +4032,389 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     f.type === "parametric" ||
                                     f.type === "polar" ||
                                     f.type === "polygon") && (
-                                    <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/60">
-                                      <span className="text-slate-550 dark:text-slate-400 font-semibold mb-0.5">
-                                        Region Style
-                                      </span>
-                                      <div className="grid grid-cols-4 gap-1.5">
-                                        {(
-                                          [
-                                            { value: "solid", label: "Solid" },
-                                            {
-                                              value: "hatch-diagonal",
-                                              label: "Diagonal",
-                                            },
-                                            {
-                                              value: "hatch-reverse",
-                                              label: "Reverse",
-                                            },
-                                            {
-                                              value: "hatch-cross",
-                                              label: "Cross",
-                                            },
-                                            {
-                                              value: "dotted",
-                                              label: "Dotted",
-                                            },
-                                            { value: "grid", label: "Grid" },
-                                            {
-                                              value: "dashed",
-                                              label: "Dashed",
-                                            },
-                                            {
-                                              value: "math-region",
-                                              label: "Math",
-                                            },
-                                          ] as const
-                                        ).map((style) => {
-                                          const isSelected =
-                                            (f.fillPattern ||
-                                              "hatch-diagonal") === style.value;
-                                          const pCol =
-                                            f.fillColor || f.color || "#3b82f6";
-                                          const op = f.fillOpacity ?? 0.65;
-                                          const pId = `preview-${f.id}-${style.value}`;
-                                          const pt = f.patternThickness || 2;
-                                          const ps = f.patternSpacing || 15;
+                                      <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/60">
+                                        <span className="text-slate-550 dark:text-slate-400 font-semibold mb-0.5">
+                                          Region Style
+                                        </span>
+                                        <div className="grid grid-cols-4 gap-1.5">
+                                          {(
+                                            [
+                                              { value: "solid", label: "Solid" },
+                                              {
+                                                value: "hatch-diagonal",
+                                                label: "Diagonal",
+                                              },
+                                              {
+                                                value: "hatch-reverse",
+                                                label: "Reverse",
+                                              },
+                                              {
+                                                value: "hatch-cross",
+                                                label: "Cross",
+                                              },
+                                              {
+                                                value: "dotted",
+                                                label: "Dotted",
+                                              },
+                                              { value: "grid", label: "Grid" },
+                                              {
+                                                value: "dashed",
+                                                label: "Dashed",
+                                              },
+                                              {
+                                                value: "math-region",
+                                                label: "Math",
+                                              },
+                                            ] as const
+                                          ).map((style) => {
+                                            const isSelected =
+                                              (f.fillPattern ||
+                                                "hatch-diagonal") === style.value;
+                                            const pCol =
+                                              f.fillColor || f.color || "#3b82f6";
+                                            const op = f.fillOpacity ?? 0.65;
+                                            const pId = `preview-${f.id}-${style.value}`;
+                                            const pt = f.patternThickness || 2;
+                                            const ps = f.patternSpacing || 15;
 
-                                          // Scale down the preview pattern to fit nicely in the button
-                                          // Default pSize is 15. We can render standard 15 size and let it tile in the 24x24 box.
-                                          const previewScale =
-                                            style.value === "math-region"
-                                              ? 0.75
-                                              : 0.6;
-                                          const pSize = ps;
+                                            // Scale down the preview pattern to fit nicely in the button
+                                            // Default pSize is 15. We can render standard 15 size and let it tile in the 24x24 box.
+                                            const previewScale =
+                                              style.value === "math-region"
+                                                ? 0.75
+                                                : 0.6;
+                                            const pSize = ps;
 
-                                          return (
-                                            <button
-                                              key={style.value}
-                                              type="button"
-                                              onClick={() => {
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id
-                                                      ? {
+                                            return (
+                                              <button
+                                                key={style.value}
+                                                type="button"
+                                                onClick={() => {
+                                                  setFunctions((prev) =>
+                                                    prev.map((fn) =>
+                                                      fn.id === f.id
+                                                        ? {
                                                           ...fn,
                                                           fillPattern:
                                                             style.value,
                                                         }
-                                                      : fn,
-                                                  ),
-                                                );
-                                              }}
-                                              className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded transition-all select-none border ${
-                                                isSelected
+                                                        : fn,
+                                                    ),
+                                                  );
+                                                }}
+                                                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded transition-all select-none border ${isSelected
                                                   ? "bg-blue-500/10 border-blue-500/50 text-blue-600 dark:text-blue-400"
                                                   : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-400/50 hover:bg-slate-50 dark:hover:bg-slate-800/80"
-                                              }`}
-                                              title={style.label}
-                                            >
-                                              <div className="h-6 w-10 mt-0.5 mb-1 rounded-[3px] border border-slate-200/50 dark:border-slate-700/50 overflow-hidden flex items-center justify-center bg-white dark:bg-slate-900/50">
-                                                <svg
-                                                  width="100%"
-                                                  height="100%"
-                                                  xmlns="http://www.w3.org/2000/svg"
-                                                >
-                                                  <defs>
-                                                    {style.value !==
-                                                      "solid" && (
-                                                      <pattern
-                                                        id={pId}
-                                                        width={pSize}
-                                                        height={pSize}
-                                                        patternUnits="userSpaceOnUse"
-                                                        patternTransform={`scale(${previewScale})`}
-                                                      >
-                                                        {style.value ===
-                                                          "hatch-diagonal" && (
-                                                          <React.Fragment>
-                                                            <line
-                                                              x1={0}
-                                                              y1={pSize}
-                                                              x2={pSize}
-                                                              y2={0}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={-1}
-                                                              y1={1}
-                                                              x2={1}
-                                                              y2={-1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={pSize - 1}
-                                                              y1={pSize + 1}
-                                                              x2={pSize + 1}
-                                                              y2={pSize - 1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                          </React.Fragment>
+                                                  }`}
+                                                title={style.label}
+                                              >
+                                                <div className="h-6 w-10 mt-0.5 mb-1 rounded-[3px] border border-slate-200/50 dark:border-slate-700/50 overflow-hidden flex items-center justify-center bg-white dark:bg-slate-900/50">
+                                                  <svg
+                                                    width="100%"
+                                                    height="100%"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                  >
+                                                    <defs>
+                                                      {style.value !==
+                                                        "solid" && (
+                                                          <pattern
+                                                            id={pId}
+                                                            width={pSize}
+                                                            height={pSize}
+                                                            patternUnits="userSpaceOnUse"
+                                                            patternTransform={`scale(${previewScale})`}
+                                                          >
+                                                            {style.value ===
+                                                              "hatch-diagonal" && (
+                                                                <React.Fragment>
+                                                                  <line
+                                                                    x1={0}
+                                                                    y1={pSize}
+                                                                    x2={pSize}
+                                                                    y2={0}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={-1}
+                                                                    y1={1}
+                                                                    x2={1}
+                                                                    y2={-1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={pSize - 1}
+                                                                    y1={pSize + 1}
+                                                                    x2={pSize + 1}
+                                                                    y2={pSize - 1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                </React.Fragment>
+                                                              )}
+                                                            {style.value ===
+                                                              "hatch-reverse" && (
+                                                                <React.Fragment>
+                                                                  <line
+                                                                    x1={0}
+                                                                    y1={0}
+                                                                    x2={pSize}
+                                                                    y2={pSize}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={-1}
+                                                                    y1={pSize - 1}
+                                                                    x2={1}
+                                                                    y2={pSize + 1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={pSize - 1}
+                                                                    y1={-1}
+                                                                    x2={pSize + 1}
+                                                                    y2={1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                </React.Fragment>
+                                                              )}
+                                                            {style.value ===
+                                                              "hatch-cross" && (
+                                                                <React.Fragment>
+                                                                  <line
+                                                                    x1={0}
+                                                                    y1={pSize}
+                                                                    x2={pSize}
+                                                                    y2={0}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={0}
+                                                                    y1={0}
+                                                                    x2={pSize}
+                                                                    y2={pSize}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={-1}
+                                                                    y1={1}
+                                                                    x2={1}
+                                                                    y2={-1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={pSize - 1}
+                                                                    y1={pSize + 1}
+                                                                    x2={pSize + 1}
+                                                                    y2={pSize - 1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={-1}
+                                                                    y1={pSize - 1}
+                                                                    x2={1}
+                                                                    y2={pSize + 1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={pSize - 1}
+                                                                    y1={-1}
+                                                                    x2={pSize + 1}
+                                                                    y2={1}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                </React.Fragment>
+                                                              )}
+                                                            {style.value ===
+                                                              "dotted" && (
+                                                                <circle
+                                                                  cx={pSize / 2}
+                                                                  cy={pSize / 2}
+                                                                  r={pt}
+                                                                  fill={pCol}
+                                                                  fillOpacity={op}
+                                                                />
+                                                              )}
+                                                            {style.value ===
+                                                              "grid" && (
+                                                                <React.Fragment>
+                                                                  <line
+                                                                    x1={0}
+                                                                    y1={0}
+                                                                    x2={pSize}
+                                                                    y2={0}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                  <line
+                                                                    x1={0}
+                                                                    y1={0}
+                                                                    x2={0}
+                                                                    y2={pSize}
+                                                                    stroke={pCol}
+                                                                    strokeWidth={pt}
+                                                                    strokeOpacity={op}
+                                                                  />
+                                                                </React.Fragment>
+                                                              )}
+                                                            {style.value ===
+                                                              "dashed" && (
+                                                                <line
+                                                                  x1={0}
+                                                                  y1={pSize / 2}
+                                                                  x2={pSize}
+                                                                  y2={pSize / 2}
+                                                                  stroke={pCol}
+                                                                  strokeWidth={pt}
+                                                                  strokeOpacity={op}
+                                                                  strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
+                                                                />
+                                                              )}
+                                                            {style.value ===
+                                                              "math-region" && (
+                                                                <line
+                                                                  x1={0}
+                                                                  y1={pSize}
+                                                                  x2={pSize}
+                                                                  y2={0}
+                                                                  stroke={pCol}
+                                                                  strokeWidth={Math.max(
+                                                                    1,
+                                                                    pt * 0.5,
+                                                                  )}
+                                                                  strokeOpacity={Math.min(
+                                                                    1,
+                                                                    op * 1.5,
+                                                                  )}
+                                                                />
+                                                              )}
+                                                          </pattern>
                                                         )}
-                                                        {style.value ===
-                                                          "hatch-reverse" && (
-                                                          <React.Fragment>
-                                                            <line
-                                                              x1={0}
-                                                              y1={0}
-                                                              x2={pSize}
-                                                              y2={pSize}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={-1}
-                                                              y1={pSize - 1}
-                                                              x2={1}
-                                                              y2={pSize + 1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={pSize - 1}
-                                                              y1={-1}
-                                                              x2={pSize + 1}
-                                                              y2={1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                          </React.Fragment>
-                                                        )}
-                                                        {style.value ===
-                                                          "hatch-cross" && (
-                                                          <React.Fragment>
-                                                            <line
-                                                              x1={0}
-                                                              y1={pSize}
-                                                              x2={pSize}
-                                                              y2={0}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={0}
-                                                              y1={0}
-                                                              x2={pSize}
-                                                              y2={pSize}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={-1}
-                                                              y1={1}
-                                                              x2={1}
-                                                              y2={-1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={pSize - 1}
-                                                              y1={pSize + 1}
-                                                              x2={pSize + 1}
-                                                              y2={pSize - 1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={-1}
-                                                              y1={pSize - 1}
-                                                              x2={1}
-                                                              y2={pSize + 1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={pSize - 1}
-                                                              y1={-1}
-                                                              x2={pSize + 1}
-                                                              y2={1}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                          </React.Fragment>
-                                                        )}
-                                                        {style.value ===
-                                                          "dotted" && (
-                                                          <circle
-                                                            cx={pSize / 2}
-                                                            cy={pSize / 2}
-                                                            r={pt}
-                                                            fill={pCol}
-                                                            fillOpacity={op}
-                                                          />
-                                                        )}
-                                                        {style.value ===
-                                                          "grid" && (
-                                                          <React.Fragment>
-                                                            <line
-                                                              x1={0}
-                                                              y1={0}
-                                                              x2={pSize}
-                                                              y2={0}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                            <line
-                                                              x1={0}
-                                                              y1={0}
-                                                              x2={0}
-                                                              y2={pSize}
-                                                              stroke={pCol}
-                                                              strokeWidth={pt}
-                                                              strokeOpacity={op}
-                                                            />
-                                                          </React.Fragment>
-                                                        )}
-                                                        {style.value ===
-                                                          "dashed" && (
-                                                          <line
-                                                            x1={0}
-                                                            y1={pSize / 2}
-                                                            x2={pSize}
-                                                            y2={pSize / 2}
-                                                            stroke={pCol}
-                                                            strokeWidth={pt}
-                                                            strokeOpacity={op}
-                                                            strokeDasharray={`${Math.max(1, pSize / 2)},${Math.max(1, pSize / 2)}`}
-                                                          />
-                                                        )}
-                                                        {style.value ===
-                                                          "math-region" && (
-                                                          <line
-                                                            x1={0}
-                                                            y1={pSize}
-                                                            x2={pSize}
-                                                            y2={0}
-                                                            stroke={pCol}
-                                                            strokeWidth={Math.max(
-                                                              1,
-                                                              pt * 0.5,
-                                                            )}
-                                                            strokeOpacity={Math.min(
-                                                              1,
-                                                              op * 1.5,
-                                                            )}
-                                                          />
-                                                        )}
-                                                      </pattern>
+                                                    </defs>
+
+                                                    {style.value === "solid" ? (
+                                                      <rect
+                                                        width="100%"
+                                                        height="100%"
+                                                        fill={pCol}
+                                                        fillOpacity={op}
+                                                      />
+                                                    ) : (
+                                                      <rect
+                                                        width="100%"
+                                                        height="100%"
+                                                        fill={`url(#${pId})`}
+                                                      />
                                                     )}
-                                                  </defs>
-
-                                                  {style.value === "solid" ? (
-                                                    <rect
-                                                      width="100%"
-                                                      height="100%"
-                                                      fill={pCol}
-                                                      fillOpacity={op}
-                                                    />
-                                                  ) : (
-                                                    <rect
-                                                      width="100%"
-                                                      height="100%"
-                                                      fill={`url(#${pId})`}
-                                                    />
-                                                  )}
-                                                </svg>
-                                              </div>
-                                              <div className="text-[9px] font-semibold opacity-90">
-                                                {style.label}
-                                              </div>
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-
-                                      {/* Pattern Advanced Controls */}
-                                      {(f.fillPattern || "hatch-diagonal") !==
-                                        "solid" && (
-                                        <div className="grid grid-cols-2 gap-3 mt-1.5 p-2 bg-slate-50 dark:bg-slate-900/40 rounded border border-slate-200 dark:border-slate-800">
-                                          {/* Spacing */}
-                                          <div className="flex flex-col gap-1">
-                                            <div className="flex justify-between items-center text-[10px]">
-                                              <span className="text-slate-500 dark:text-slate-400">
-                                                Spacing
-                                              </span>
-                                              <span className="font-mono text-slate-400">
-                                                {f.patternSpacing || 15}
-                                              </span>
-                                            </div>
-                                            <input
-                                              type="range"
-                                              min="4"
-                                              max="40"
-                                              step="1"
-                                              value={f.patternSpacing || 15}
-                                              onChange={(e) =>
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id
-                                                      ? {
-                                                          ...fn,
-                                                          patternSpacing:
-                                                            parseInt(
-                                                              e.target.value,
-                                                            ),
-                                                        }
-                                                      : fn,
-                                                  ),
-                                                )
-                                              }
-                                              className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
-                                            />
-                                          </div>
-                                          {/* Thickness */}
-                                          <div className="flex flex-col gap-1">
-                                            <div className="flex justify-between items-center text-[10px]">
-                                              <span className="text-slate-500 dark:text-slate-400">
-                                                Thickness
-                                              </span>
-                                              <span className="font-mono text-slate-400">
-                                                {f.patternThickness || 2}
-                                              </span>
-                                            </div>
-                                            <input
-                                              type="range"
-                                              min="1"
-                                              max="10"
-                                              step="0.5"
-                                              value={f.patternThickness || 2}
-                                              onChange={(e) =>
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id
-                                                      ? {
-                                                          ...fn,
-                                                          patternThickness:
-                                                            parseFloat(
-                                                              e.target.value,
-                                                            ),
-                                                        }
-                                                      : fn,
-                                                  ),
-                                                )
-                                              }
-                                              className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
-                                            />
-                                          </div>
+                                                  </svg>
+                                                </div>
+                                                <div className="text-[9px] font-semibold opacity-90">
+                                                  {style.label}
+                                                </div>
+                                              </button>
+                                            );
+                                          })}
                                         </div>
-                                      )}
-                                    </div>
-                                  )}
+
+                                        {/* Pattern Advanced Controls */}
+                                        {(f.fillPattern || "hatch-diagonal") !==
+                                          "solid" && (
+                                            <div className="grid grid-cols-2 gap-3 mt-1.5 p-2 bg-slate-50 dark:bg-slate-900/40 rounded border border-slate-200 dark:border-slate-800">
+                                              {/* Spacing */}
+                                              <div className="flex flex-col gap-1">
+                                                <div className="flex justify-between items-center text-[10px]">
+                                                  <span className="text-slate-500 dark:text-slate-400">
+                                                    Spacing
+                                                  </span>
+                                                  <span className="font-mono text-slate-400">
+                                                    {f.patternSpacing || 15}
+                                                  </span>
+                                                </div>
+                                                <input
+                                                  type="range"
+                                                  min="4"
+                                                  max="40"
+                                                  step="1"
+                                                  value={f.patternSpacing || 15}
+                                                  onChange={(e) =>
+                                                    setFunctions((prev) =>
+                                                      prev.map((fn) =>
+                                                        fn.id === f.id
+                                                          ? {
+                                                            ...fn,
+                                                            patternSpacing:
+                                                              parseInt(
+                                                                e.target.value,
+                                                              ),
+                                                          }
+                                                          : fn,
+                                                      ),
+                                                    )
+                                                  }
+                                                  className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+                                                />
+                                              </div>
+                                              {/* Thickness */}
+                                              <div className="flex flex-col gap-1">
+                                                <div className="flex justify-between items-center text-[10px]">
+                                                  <span className="text-slate-500 dark:text-slate-400">
+                                                    Thickness
+                                                  </span>
+                                                  <span className="font-mono text-slate-400">
+                                                    {f.patternThickness || 2}
+                                                  </span>
+                                                </div>
+                                                <input
+                                                  type="range"
+                                                  min="1"
+                                                  max="10"
+                                                  step="0.5"
+                                                  value={f.patternThickness || 2}
+                                                  onChange={(e) =>
+                                                    setFunctions((prev) =>
+                                                      prev.map((fn) =>
+                                                        fn.id === f.id
+                                                          ? {
+                                                            ...fn,
+                                                            patternThickness:
+                                                              parseFloat(
+                                                                e.target.value,
+                                                              ),
+                                                          }
+                                                          : fn,
+                                                      ),
+                                                    )
+                                                  }
+                                                  className="h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
+                                      </div>
+                                    )}
                                 </React.Fragment>
                               )}
 
@@ -8087,19 +4457,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    lineStyle: style.value,
-                                                  }
+                                                  ...fn,
+                                                  lineStyle: style.value,
+                                                }
                                                 : fn,
                                             ),
                                           );
                                         }}
-                                        className={`px-1 rounded-md h-9 flex flex-col items-center justify-center gap-1 transition-all w-full select-none cursor-pointer border ${
-                                          (f.lineStyle || "solid") ===
+                                        className={`px-1 rounded-md h-9 flex flex-col items-center justify-center gap-1 transition-all w-full select-none cursor-pointer border ${(f.lineStyle || "solid") ===
                                           style.value
-                                            ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-sm"
-                                            : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-50/50 dark:bg-slate-900/30"
-                                        }`}
+                                          ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-sm"
+                                          : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-50/50 dark:bg-slate-900/30"
+                                          }`}
                                       >
                                         <span className="text-[10px] truncate leading-none">
                                           {style.label}
@@ -8261,7 +4630,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     navigator.clipboard.writeText(
                                       mathjs.format(res, { precision: 5 }),
                                     );
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 }}
                                 className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
                               >
@@ -8295,7 +4664,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       finalTex = node.toTex({});
                                     }
                                     navigator.clipboard.writeText(finalTex);
-                                  } catch (e) {}
+                                  } catch (e) { }
                                 }}
                                 className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs font-medium transition-colors"
                               >
@@ -8433,26 +4802,23 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                       return (
                         <div
-                          className={`relative w-full transition-all duration-300 ease-out flex items-center pointer-events-none select-none z-30 ${
-                            show
-                              ? "h-6 my-1 opacity-100 scale-y-100"
-                              : "h-0 my-0 opacity-0 scale-y-0"
-                          }`}
+                          className={`relative w-full transition-all duration-300 ease-out flex items-center pointer-events-none select-none z-30 ${show
+                            ? "h-6 my-1 opacity-100 scale-y-100"
+                            : "h-0 my-0 opacity-0 scale-y-0"
+                            }`}
                         >
                           <div className="absolute inset-x-0 h-1 flex items-center pr-1.5 pl-0.5">
                             <div
-                              className={`h-0.5 w-full rounded-full relative ${
-                                isFav
-                                  ? "bg-rose-500 shadow-[0_0_12px_#f43f5e] dark:shadow-[0_0_15px_#f43f5e]"
-                                  : "bg-blue-500 shadow-[0_0_12px_#3b82f6] dark:shadow-[0_0_15px_#3b82f6]"
-                              }`}
+                              className={`h-0.5 w-full rounded-full relative ${isFav
+                                ? "bg-rose-500 shadow-[0_0_12px_#f43f5e] dark:shadow-[0_0_15px_#f43f5e]"
+                                : "bg-blue-500 shadow-[0_0_12px_#3b82f6] dark:shadow-[0_0_15px_#3b82f6]"
+                                }`}
                             >
                               <div
-                                className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rounded-full ring-[4px] transition-all duration-300 ${
-                                  isFav
-                                    ? "bg-rose-450 ring-rose-500/30"
-                                    : "bg-blue-450 ring-blue-500/30"
-                                } ${show ? "scale-100 opacity-100" : "scale-0 opacity-0"}`}
+                                className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 rounded-full ring-[4px] transition-all duration-300 ${isFav
+                                  ? "bg-rose-450 ring-rose-500/30"
+                                  : "bg-blue-450 ring-blue-500/30"
+                                  } ${show ? "scale-100 opacity-100" : "scale-0 opacity-0"}`}
                               />
                             </div>
                           </div>
@@ -8732,12 +5098,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           }
                                           onDragLeave={handleDragLeave}
                                           onDragEnd={handleDragEnd}
-                                          className={`p-3 border border-rose-200/40 dark:border-rose-500/15 bg-rose-50/15 dark:bg-[#0D1527]/90 hover:bg-rose-50/25 dark:hover:bg-[#131f3c] rounded-xl flex flex-col gap-2 group/formula transition-all duration-200 shadow-[0_0_15px_rgba(244,63,94,0.02)] relative lg:hover:shadow-[0_0_15px_rgba(244,63,94,0.05)] ${
-                                            draggedIndex === index &&
+                                          className={`p-3 border border-rose-200/40 dark:border-rose-500/15 bg-rose-50/15 dark:bg-[#0D1527]/90 hover:bg-rose-50/25 dark:hover:bg-[#131f3c] rounded-xl flex flex-col gap-2 group/formula transition-all duration-200 shadow-[0_0_15px_rgba(244,63,94,0.02)] relative lg:hover:shadow-[0_0_15px_rgba(244,63,94,0.05)] ${draggedIndex === index &&
                                             draggedGroup === "favorite"
-                                              ? "opacity-15 border-dashed border-rose-500 bg-rose-550/5 scale-[0.98] shadow-inner scale-y-95 transition-all duration-200"
-                                              : ""
-                                          }`}
+                                            ? "opacity-15 border-dashed border-rose-500 bg-rose-550/5 scale-[0.98] shadow-inner scale-y-95 transition-all duration-200"
+                                            : ""
+                                            }`}
                                         >
                                           {/* Header Row */}
                                           <div className="flex items-center justify-between gap-2">
@@ -8791,7 +5156,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 {formula.type === "polar"
                                                   ? "POLAR"
                                                   : formula.type ===
-                                                      "parametric"
+                                                    "parametric"
                                                     ? "PARAMETRIC"
                                                     : "FUNCTION"}
                                               </span>
@@ -8809,8 +5174,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       expr: formula.expr,
                                                       color:
                                                         COLORS[
-                                                          prev.length %
-                                                            COLORS.length
+                                                        prev.length %
+                                                        COLORS.length
                                                         ],
                                                       type:
                                                         (formula.type as any) ||
@@ -8853,7 +5218,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                           {/* Edit or Latex field */}
                                           {editingFormulaFieldId ===
-                                          formula.id ? (
+                                            formula.id ? (
                                             <div className="pl-5 pr-1 mt-0.5">
                                               <input
                                                 type="text"
@@ -8924,7 +5289,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   title="Copy Raw Expression String"
                                                 >
                                                   {copiedFormulaId ===
-                                                  formula.id ? (
+                                                    formula.id ? (
                                                     <Check
                                                       size={11}
                                                       className="text-emerald-450 stroke-[3]"
@@ -8972,12 +5337,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         }
                                         onDragLeave={handleDragLeave}
                                         onDragEnd={handleDragEnd}
-                                        className={`p-3 border border-slate-200 dark:border-slate-800/40 bg-white dark:bg-[#0D1527]/30 hover:bg-slate-50/70 dark:hover:bg-[#0D1527]/60 rounded-xl flex flex-col gap-2 group/formula transition-all duration-200 shadow-xs relative ${
-                                          draggedIndex === index &&
+                                        className={`p-3 border border-slate-200 dark:border-slate-800/40 bg-white dark:bg-[#0D1527]/30 hover:bg-slate-50/70 dark:hover:bg-[#0D1527]/60 rounded-xl flex flex-col gap-2 group/formula transition-all duration-200 shadow-xs relative ${draggedIndex === index &&
                                           draggedGroup === "regular"
-                                            ? "opacity-15 border-dashed border-blue-500 bg-blue-500/5 scale-[0.98] shadow-inner scale-y-95 transition-all duration-200"
-                                            : ""
-                                        }`}
+                                          ? "opacity-15 border-dashed border-blue-500 bg-blue-500/5 scale-[0.98] shadow-inner scale-y-95 transition-all duration-200"
+                                          : ""
+                                          }`}
                                       >
                                         {/* Header Row */}
                                         <div className="flex items-center justify-between gap-2">
@@ -9048,8 +5412,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                     expr: formula.expr,
                                                     color:
                                                       COLORS[
-                                                        prev.length %
-                                                          COLORS.length
+                                                      prev.length %
+                                                      COLORS.length
                                                       ],
                                                     type:
                                                       (formula.type as any) ||
@@ -9092,7 +5456,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                                         {/* Click to Edit / Blur to LaTeX Block */}
                                         {editingFormulaFieldId ===
-                                        formula.id ? (
+                                          formula.id ? (
                                           <div className="pl-5 pr-1 mt-0.5">
                                             <input
                                               type="text"
@@ -9161,7 +5525,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 title="Copy Raw Expression String"
                                               >
                                                 {copiedFormulaId ===
-                                                formula.id ? (
+                                                  formula.id ? (
                                                   <Check
                                                     size={11}
                                                     className="text-emerald-450 stroke-[3]"
@@ -9326,11 +5690,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           onClick={() => handleLoadExample("Lissajous")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
-                            activeExample === "Lissajous"
-                              ? "bg-blue-500/10 border-blue-400 dark:border-blue-500 ring-1 ring-blue-400/50"
-                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                          }`}
+                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Lissajous"
+                            ? "bg-blue-500/10 border-blue-400 dark:border-blue-500 ring-1 ring-blue-400/50"
+                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                            }`}
                         >
                           <span className="text-[10px] text-blue-500 font-semibold dark:text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300">
                             Animation
@@ -9342,11 +5705,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                         <button
                           onClick={() => handleLoadExample("Fourier")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
-                            activeExample === "Fourier"
-                              ? "bg-emerald-500/10 border-emerald-400 dark:border-emerald-500 ring-1 ring-emerald-400/50"
-                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                          }`}
+                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Fourier"
+                            ? "bg-emerald-500/10 border-emerald-400 dark:border-emerald-500 ring-1 ring-emerald-400/50"
+                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                            }`}
                         >
                           <span className="text-[10px] text-emerald-600 font-semibold dark:text-emerald-400 group-hover:text-emerald-700 dark:group-hover:text-emerald-300">
                             Mathematics
@@ -9358,11 +5720,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                         <button
                           onClick={() => handleLoadExample("Wave")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
-                            activeExample === "Wave"
-                              ? "bg-amber-500/10 border-amber-400 dark:border-amber-500 ring-1 ring-amber-400/50"
-                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                          }`}
+                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Wave"
+                            ? "bg-amber-500/10 border-amber-400 dark:border-amber-500 ring-1 ring-amber-400/50"
+                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                            }`}
                         >
                           <span className="text-[10px] text-amber-600 font-semibold dark:text-amber-400 group-hover:text-amber-700 dark:group-hover:text-amber-300">
                             Physics
@@ -9374,11 +5735,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                         <button
                           onClick={() => handleLoadExample("Statistics")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
-                            activeExample === "Statistics"
-                              ? "bg-purple-500/10 border-purple-400 dark:border-purple-500 ring-1 ring-purple-400/50"
-                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                          }`}
+                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Statistics"
+                            ? "bg-purple-500/10 border-purple-400 dark:border-purple-500 ring-1 ring-purple-400/50"
+                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                            }`}
                         >
                           <span className="text-[10px] text-purple-600 font-semibold dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300">
                             Statistics
@@ -9390,11 +5750,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                         <button
                           onClick={() => handleLoadExample("Geometry")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
-                            activeExample === "Geometry"
-                              ? "bg-pink-500/10 border-pink-400 dark:border-pink-500 ring-1 ring-pink-400/50"
-                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                          }`}
+                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Geometry"
+                            ? "bg-pink-500/10 border-pink-400 dark:border-pink-500 ring-1 ring-pink-400/50"
+                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                            }`}
                         >
                           <span className="text-[10px] text-pink-600 font-semibold dark:text-pink-400 group-hover:text-pink-700 dark:group-hover:text-pink-300">
                             Geometry
@@ -9406,11 +5765,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
                         <button
                           onClick={() => handleLoadExample("Matrix")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${
-                            activeExample === "Matrix"
-                              ? "bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50"
-                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                          }`}
+                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Matrix"
+                            ? "bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50"
+                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                            }`}
                         >
                           <span className="text-[10px] text-indigo-600 font-semibold dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
                             Matrices
@@ -9566,11 +5924,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 setDragOverVariableId(null);
                                 setDraggedVariableId(null);
                               }}
-                              className={`border-2 border-dashed rounded-lg p-3 text-center text-xs transition-all flex flex-col items-center justify-center gap-1 min-h-[64px] ${
-                                dragOverVariableId === `empty_${group.id}`
-                                  ? "border-blue-500 bg-blue-500/10 text-blue-500"
-                                  : "border-slate-200 dark:border-slate-800/60 text-slate-400 dark:text-slate-500 hover:border-slate-350 dark:hover:border-slate-700"
-                              }`}
+                              className={`border-2 border-dashed rounded-lg p-3 text-center text-xs transition-all flex flex-col items-center justify-center gap-1 min-h-[64px] ${dragOverVariableId === `empty_${group.id}`
+                                ? "border-blue-500 bg-blue-500/10 text-blue-500"
+                                : "border-slate-200 dark:border-slate-800/60 text-slate-400 dark:text-slate-500 hover:border-slate-350 dark:hover:border-slate-700"
+                                }`}
                             >
                               <Folder className="opacity-30" size={14} />
                               <span>Empty. Drag variables here.</span>
@@ -9622,11 +5979,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     );
                                   }
                                 }}
-                                className={`flex flex-col gap-2 bg-white dark:bg-slate-900/50 p-3 rounded-lg border group transition-all relative ${
-                                  hoveredVar === v.name
-                                    ? "border-blue-500/50"
-                                    : "border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600"
-                                } ${draggedVariableId === v.id ? "opacity-40" : ""} ${draggedVariableId !== null ? "[&>*]:pointer-events-none" : ""} ${""} ${""}`}
+                                className={`flex flex-col gap-2 bg-white dark:bg-slate-900/50 p-3 rounded-lg border group transition-all relative ${hoveredVar === v.name
+                                  ? "border-blue-500/50"
+                                  : "border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600"
+                                  } ${draggedVariableId === v.id ? "opacity-40" : ""} ${draggedVariableId !== null ? "[&>*]:pointer-events-none" : ""} ${""} ${""}`}
                                 onMouseEnter={() => setHoveredVar(v.name)}
                                 onMouseLeave={() => setHoveredVar(null)}
                               >
@@ -9634,11 +5990,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 {dragOverVariableId === v.id &&
                                   dragOverVariablePosition && (
                                     <div
-                                      className={`absolute left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400 z-50 rounded-full transition-all ${
-                                        dragOverVariablePosition === "top"
-                                          ? "-top-[1px]"
-                                          : "-bottom-[1px]"
-                                      }`}
+                                      className={`absolute left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400 z-50 rounded-full transition-all ${dragOverVariablePosition === "top"
+                                        ? "-top-[1px]"
+                                        : "-bottom-[1px]"
+                                        }`}
                                     />
                                   )}
                                 <div className="flex items-start justify-between">
@@ -10014,11 +6369,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           {/* Graph Controls */}
           {(isExpanded || isFullscreen) && (
             <div
-              className={`absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-auto z-40 flex flex-wrap md:flex-nowrap items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl transition-all duration-300 ${
-                showGridControls
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
-              }`}
+              className={`absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-auto z-40 flex flex-wrap md:flex-nowrap items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl transition-all duration-300 ${showGridControls
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
+                }`}
             >
               <button
                 onClick={() => setGridType("none")}
@@ -10260,19 +6614,26 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             preserveAspectRatio="contain"
             pan={true}
           >
-            {gridType === "cartesian" && (
-              <Coordinates.Cartesian
-                xAxis={{ lines: parsedAxisStep, labels: getAxisLabel }}
-                yAxis={{ lines: parsedAxisStep, labels: getAxisLabel }}
-                subdivisions={gridSubdivisions}
-              />
-            )}
-            {gridType === "polar" && (
-              <Coordinates.Polar
-                lines={parsedAxisStep}
-                subdivisions={gridSubdivisions}
-              />
-            )}
+            <AdaptiveGrid
+              gridType={gridType}
+              gridSubdivisions={gridSubdivisions}
+              parsedAxisStep={parsedAxisStep}
+              axisStepStr={axisStepStr}
+              axisFilter={axisFilter}
+              axisDecimals={axisDecimals}
+              axisThousandsSep={axisThousandsSep}
+              axisPrefix={axisPrefix}
+              axisSuffix={axisSuffix}
+              customAxisFilter={customAxisFilter}
+              customAxisMapping={customAxisMapping}
+            />
+            
+            <TraceOverlay 
+              functions={functions} 
+              baseScope={baseScope} 
+              time={time}
+              containerRef={graphContainerRef} 
+            />
 
             {(() => {
               latestContextRef.current = {
@@ -10367,7 +6728,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     pt = [x, y];
                                     break;
                                   }
-                                } catch {}
+                                } catch { }
                               }
                             } else if (f.type === "parametric") {
                               for (let t of [
@@ -10386,7 +6747,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                   let arr = res.toArray ? res.toArray() : res;
                                   pt = [Number(arr[0]), Number(arr[1])];
                                   break;
-                                } catch {}
+                                } catch { }
                               }
                             } else if (f.type === "polar") {
                               for (let t of [
@@ -10408,7 +6769,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     pt = [r * Math.cos(t), r * Math.sin(t)];
                                     break;
                                   }
-                                } catch {}
+                                } catch { }
                               }
                             } else if (
                               f.type === "implicit" ||
@@ -10432,10 +6793,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     }
                                     let r = f.compiled2
                                       ? f.compiled2.evaluate({
-                                          ...baseScope,
-                                          x: i,
-                                          y: j,
-                                        })
+                                        ...baseScope,
+                                        x: i,
+                                        y: j,
+                                      })
                                       : 0;
                                     if (r && (r.isMatrix || Array.isArray(r))) {
                                       try {
@@ -10457,7 +6818,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       pt = [i, j];
                                       found = true;
                                     }
-                                  } catch {}
+                                  } catch { }
                                 }
                               }
                             }
@@ -10702,11 +7063,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                                     prev.map(
                                                                       (fn) =>
                                                                         fn.id ===
-                                                                        f.id
+                                                                          f.id
                                                                           ? {
-                                                                              ...fn,
-                                                                              expr: newExpr,
-                                                                            }
+                                                                            ...fn,
+                                                                            expr: newExpr,
+                                                                          }
                                                                           : fn,
                                                                     ),
                                                                 );
@@ -10725,12 +7086,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                           let dx = f.labelPosition?.[0] ?? 0.3;
                                                           let dy = f.labelPosition?.[1] ?? 0.3;
                                                           if (f.labelAlignment && f.labelAlignment !== "custom") {
-                                                              const r = 0.5;
-                                                              if (f.labelAlignment === "center") { dx = 0; dy = 0; }
-                                                              else if (f.labelAlignment === "above") { dx = 0; dy = r; }
-                                                              else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
-                                                              else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
-                                                              else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                                            const r = 0.5;
+                                                            if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                                            else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                                            else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                                            else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                                            else if (f.labelAlignment === "right") { dx = r; dy = 0; }
                                                           }
                                                           return (
                                                             <React.Fragment>
@@ -10766,7 +7127,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       style={isDashed ? "dashed" : "solid"}
                                                       weight={
                                                         f.outlineWidth !==
-                                                        undefined
+                                                          undefined
                                                           ? f.outlineWidth
                                                           : 3
                                                       }
@@ -10793,42 +7154,42 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   <React.Fragment>
                                                     {f.fillColor !==
                                                       undefined && (
-                                                      <CurvePatternDefs
-                                                        id={f.id}
-                                                        color={f.color}
-                                                        fillColor={f.fillColor}
-                                                        fillOpacity={
-                                                          f.fillOpacity !==
-                                                          undefined
-                                                            ? f.fillOpacity
-                                                            : 0.2
-                                                        }
-                                                        fillPattern={
-                                                          f.fillPattern
-                                                        }
-                                                        patternSpacing={
-                                                          f.patternSpacing
-                                                        }
-                                                        patternThickness={
-                                                          f.patternThickness
-                                                        }
-                                                        patternAngle={
-                                                          f.patternAngle
-                                                        }
-                                                      />
-                                                    )}
+                                                        <CurvePatternDefs
+                                                          id={f.id}
+                                                          color={f.color}
+                                                          fillColor={f.fillColor}
+                                                          fillOpacity={
+                                                            f.fillOpacity !==
+                                                              undefined
+                                                              ? f.fillOpacity
+                                                              : 0.2
+                                                          }
+                                                          fillPattern={
+                                                            f.fillPattern
+                                                          }
+                                                          patternSpacing={
+                                                            f.patternSpacing
+                                                          }
+                                                          patternThickness={
+                                                            f.patternThickness
+                                                          }
+                                                          patternAngle={
+                                                            f.patternAngle
+                                                          }
+                                                        />
+                                                      )}
                                                     <Polygon
                                                       points={points}
                                                       color={
                                                         f.fillColor !==
-                                                        undefined
+                                                          undefined
                                                           ? f.fillColor ||
-                                                            f.color
+                                                          f.color
                                                           : f.color
                                                       }
                                                       fillOpacity={
                                                         f.fillColor !==
-                                                        undefined
+                                                          undefined
                                                           ? f.fillPattern ===
                                                             "solid"
                                                             ? f.fillOpacity !==
@@ -10837,7 +7198,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                               : 0.2
                                                             : 1
                                                           : f.fillOpacity !==
-                                                              undefined
+                                                            undefined
                                                             ? f.fillOpacity
                                                             : 0.2
                                                       }
@@ -10849,7 +7210,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                             ),
                                                           strokeWidth:
                                                             f.outlineWidth !==
-                                                            undefined
+                                                              undefined
                                                               ? f.outlineWidth
                                                               : undefined,
                                                           stroke: f.color,
@@ -10875,7 +7236,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       style={isDashed ? "dashed" : "solid"}
                                                       weight={
                                                         f.outlineWidth !==
-                                                        undefined
+                                                          undefined
                                                           ? f.outlineWidth
                                                           : 3
                                                       }
@@ -10917,10 +7278,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           const tVal =
                                             (2 * Math.PI * i) / steps;
                                           try {
-                                            const res = f.compiled.evaluate({
-                                              ...baseScope,
-                                              t: tVal,
-                                            });
+                                            const scope = Object.create(baseScope);
+                                            scope.t = tVal;
+                                            const res = f.compiled.evaluate(scope);
                                             const arr =
                                               res && res.toArray
                                                 ? res.toArray()
@@ -10936,7 +7296,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 ]),
                                               );
                                             }
-                                          } catch {}
+                                          } catch { }
                                         }
                                         if (fillPoints.length < 2) return null;
                                         return (
@@ -10982,19 +7342,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       })()}
                                     <Plot.Parametric
                                       minSamplingDepth={Math.max(
-                                        1,
-                                        Math.min(8, samplingDepth),
+                                        8,
+                                        Math.min(10, samplingDepth),
                                       )}
                                       maxSamplingDepth={Math.max(
-                                        1,
-                                        samplingDepth,
+                                        8,
+                                        Math.min(14, samplingDepth),
                                       )}
                                       xy={(t: number) => {
                                         try {
-                                          const res = f.compiled.evaluate({
-                                            ...baseScope,
-                                            t,
-                                          });
+                                          const scope = Object.create(baseScope);
+                                          scope.t = t;
+                                          const res = f.compiled.evaluate(scope);
                                           const arr =
                                             res && res.toArray
                                               ? res.toArray()
@@ -11017,9 +7376,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       color={f.color}
                                       weight={
                                         hoveredVar &&
-                                        new RegExp(`\\b${hoveredVar}\\b`).test(
-                                          f.expr,
-                                        )
+                                          new RegExp(`\\b${hoveredVar}\\b`).test(
+                                            f.expr,
+                                          )
                                           ? 6
                                           : f.outlineWidth !== undefined
                                             ? f.outlineWidth
@@ -11028,8 +7387,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       opacity={
                                         hoveredVar
                                           ? new RegExp(
-                                              `\\b${hoveredVar}\\b`,
-                                            ).test(f.expr)
+                                            `\\b${hoveredVar}\\b`,
+                                          ).test(f.expr)
                                             ? 1
                                             : 0.3
                                           : 1
@@ -11063,6 +7422,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       (f.type === "implicit" ? "=" : "<")
                                     }
                                     baseScope={baseScope}
+                                    dependenciesHash={`${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
+                                      (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
+                                      (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
+                                      ? `time:${time}_fTime:${fTime}`
+                                      : "static"
+                                      }`}
                                     color={f.color}
                                     fillColor={f.fillColor}
                                     fillOpacity={
@@ -11084,9 +7449,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     lineStyle={f.lineStyle}
                                     weight={
                                       hoveredVar &&
-                                      new RegExp(`\\b${hoveredVar}\\b`).test(
-                                        f.expr,
-                                      )
+                                        new RegExp(`\\b${hoveredVar}\\b`).test(
+                                          f.expr,
+                                        )
                                         ? 6
                                         : f.outlineWidth !== undefined
                                           ? f.outlineWidth
@@ -11112,7 +7477,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           try {
                                             const useThetaAsAngle =
                                               /\btheta\b/.test(f.expr);
-                                            const scope = { ...baseScope };
+                                            const scope = Object.create(baseScope);
                                             if (useThetaAsAngle) {
                                               scope.theta = tVal;
                                               scope.x = tVal;
@@ -11136,7 +7501,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 ]),
                                               );
                                             }
-                                          } catch {}
+                                          } catch { }
                                         }
                                         if (fillPoints.length < 2) return null;
                                         return (
@@ -11182,18 +7547,18 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       })()}
                                     <Plot.Parametric
                                       minSamplingDepth={Math.max(
-                                        1,
-                                        Math.min(8, samplingDepth),
+                                        8,
+                                        Math.min(10, samplingDepth),
                                       )}
                                       maxSamplingDepth={Math.max(
-                                        1,
-                                        samplingDepth,
+                                        8,
+                                        Math.min(14, samplingDepth),
                                       )}
                                       xy={(tVal: number) => {
                                         try {
                                           const useThetaAsAngle =
                                             /\btheta\b/.test(f.expr);
-                                          const scope = { ...baseScope };
+                                          const scope = Object.create(baseScope);
                                           if (useThetaAsAngle) {
                                             scope.theta = tVal;
                                             scope.x = tVal;
@@ -11219,9 +7584,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       color={f.color}
                                       weight={
                                         hoveredVar &&
-                                        new RegExp(`\\b${hoveredVar}\\b`).test(
-                                          f.expr,
-                                        )
+                                          new RegExp(`\\b${hoveredVar}\\b`).test(
+                                            f.expr,
+                                          )
                                           ? 6
                                           : f.outlineWidth !== undefined
                                             ? f.outlineWidth
@@ -11230,8 +7595,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       opacity={
                                         hoveredVar
                                           ? new RegExp(
-                                              `\\b${hoveredVar}\\b`,
-                                            ).test(f.expr)
+                                            `\\b${hoveredVar}\\b`,
+                                          ).test(f.expr)
                                             ? 1
                                             : 0.3
                                           : 1
@@ -11267,10 +7632,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           const xVal =
                                             xMin + ((xMax - xMin) * i) / steps;
                                           try {
-                                            const res = f.compiled.evaluate({
-                                              ...baseScope,
-                                              x: xVal,
-                                            });
+                                            const scope = Object.create(baseScope);
+                                            scope.x = xVal;
+                                            const res = f.compiled.evaluate(scope);
                                             const y = Number(res);
                                             if (!isNaN(y) && isFinite(y)) {
                                               fillPoints.push(
@@ -11280,7 +7644,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 ]),
                                               );
                                             }
-                                          } catch {}
+                                          } catch { }
                                         }
                                         if (fillPoints.length < 2) return null;
                                         return (
@@ -11326,12 +7690,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       })()}
                                     <Plot.Parametric
                                       minSamplingDepth={Math.max(
-                                        1,
-                                        Math.min(8, samplingDepth),
+                                        8,
+                                        Math.min(10, samplingDepth),
                                       )}
                                       maxSamplingDepth={Math.max(
-                                        1,
-                                        samplingDepth,
+                                        8,
+                                        Math.min(14, samplingDepth),
                                       )}
                                       t={[
                                         xRange[0] - Math.max(50, (xRange[1] - xRange[0]) * 2),
@@ -11339,10 +7703,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       ]}
                                       xy={(t) => {
                                         try {
-                                          const res = f.compiled.evaluate({
-                                            ...baseScope,
-                                            x: t,
-                                          });
+                                          const scope = Object.create(baseScope);
+                                          scope.x = t;
+                                          const res = f.compiled.evaluate(scope);
                                           if (
                                             res &&
                                             typeof res === "object" &&
@@ -11371,9 +7734,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       color={f.color}
                                       weight={
                                         hoveredVar &&
-                                        new RegExp(`\\b${hoveredVar}\\b`).test(
-                                          f.expr,
-                                        )
+                                          new RegExp(`\\b${hoveredVar}\\b`).test(
+                                            f.expr,
+                                          )
                                           ? 6
                                           : f.outlineWidth !== undefined
                                             ? f.outlineWidth
@@ -11382,8 +7745,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       opacity={
                                         hoveredVar
                                           ? new RegExp(
-                                              `\\b${hoveredVar}\\b`,
-                                            ).test(f.expr)
+                                            `\\b${hoveredVar}\\b`,
+                                          ).test(f.expr)
                                             ? 1
                                             : 0.3
                                           : 1
@@ -11417,16 +7780,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     bx = pca.center[0];
                                     by = pca.center[1];
                                   }
-                                  
+
                                   let dx = f.labelPosition?.[0] ?? 0.3;
                                   let dy = f.labelPosition?.[1] ?? 0.3;
                                   if (f.labelAlignment && f.labelAlignment !== "custom") {
-                                      const r = Math.max(1.0, baseRadius * 0.8 + 0.3);
-                                      if (f.labelAlignment === "center") { dx = 0; dy = 0; }
-                                      else if (f.labelAlignment === "above") { dx = 0; dy = r; }
-                                      else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
-                                      else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
-                                      else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                    const r = Math.max(1.0, baseRadius * 0.8 + 0.3);
+                                    if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                    else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                    else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                    else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                    else if (f.labelAlignment === "right") { dx = r; dy = 0; }
                                   }
 
                                   const labelPosLocal = [
@@ -11515,14 +7878,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    expr: newExpr,
-                                                    transformTranslate:
-                                                      undefined,
-                                                    transformRotate: undefined,
-                                                    transformScale: undefined,
-                                                    transformPivot: undefined,
-                                                  }
+                                                  ...fn,
+                                                  expr: newExpr,
+                                                  transformTranslate:
+                                                    undefined,
+                                                  transformRotate: undefined,
+                                                  transformScale: undefined,
+                                                  transformPivot: undefined,
+                                                }
                                                 : fn,
                                             ),
                                           );
@@ -11538,17 +7901,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           prev.map((fn) =>
                                             fn.id === f.id
                                               ? {
-                                                  ...fn,
-                                                  expr: newExpr,
-                                                  transformTranslate: [
-                                                    (fn
-                                                      .transformTranslate?.[0] ||
-                                                      0) + dX,
-                                                    (fn
-                                                      .transformTranslate?.[1] ||
-                                                      0) + dY,
-                                                  ],
-                                                }
+                                                ...fn,
+                                                expr: newExpr,
+                                                transformTranslate: [
+                                                  (fn
+                                                    .transformTranslate?.[0] ||
+                                                    0) + dX,
+                                                  (fn
+                                                    .transformTranslate?.[1] ||
+                                                    0) + dY,
+                                                ],
+                                              }
                                               : fn,
                                           ),
                                         );
@@ -11579,9 +7942,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         <MovablePoint
                                           point={localToGlobal(
                                             px +
-                                              Math.cos(baseAngle) * baseRadius,
+                                            Math.cos(baseAngle) * baseRadius,
                                             py +
-                                              Math.sin(baseAngle) * baseRadius,
+                                            Math.sin(baseAngle) * baseRadius,
                                           )}
                                           color="#eab308"
                                           onMove={(pt) => {
@@ -11602,10 +7965,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      expr: newExpr,
-                                                      transformRotate: newRot,
-                                                    }
+                                                    ...fn,
+                                                    expr: newExpr,
+                                                    transformRotate: newRot,
+                                                  }
                                                   : fn,
                                               ),
                                             );
@@ -11634,17 +7997,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         <MovablePoint
                                           point={localToGlobal(
                                             px +
-                                              Math.cos(
-                                                baseAngle - Math.PI / 4,
-                                              ) *
-                                                baseRadius *
-                                                1.2,
+                                            Math.cos(
+                                              baseAngle - Math.PI / 4,
+                                            ) *
+                                            baseRadius *
+                                            1.2,
                                             py +
-                                              Math.sin(
-                                                baseAngle - Math.PI / 4,
-                                              ) *
-                                                baseRadius *
-                                                1.2,
+                                            Math.sin(
+                                              baseAngle - Math.PI / 4,
+                                            ) *
+                                            baseRadius *
+                                            1.2,
                                           )}
                                           color="#10b981"
                                           onMove={(pt) => {
@@ -11680,21 +8043,21 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               0.01,
                                               Math.abs(
                                                 localDx /
-                                                  (startDxHandle || 0.001),
+                                                (startDxHandle || 0.001),
                                               ),
                                             );
                                             let scaleY = Math.max(
                                               0.01,
                                               Math.abs(
                                                 localDy /
-                                                  (startDyHandle || 0.001),
+                                                (startDyHandle || 0.001),
                                               ),
                                             );
 
                                             if (isShiftPressed) {
                                               const dist = Math.sqrt(
                                                 dxHandle * dxHandle +
-                                                  dyHandle * dyHandle,
+                                                dyHandle * dyHandle,
                                               );
                                               const startDist =
                                                 baseRadius * 1.2;
@@ -11713,13 +8076,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      expr: newExpr,
-                                                      transformScale: [
-                                                        scaleX,
-                                                        scaleY,
-                                                      ],
-                                                    }
+                                                    ...fn,
+                                                    expr: newExpr,
+                                                    transformScale: [
+                                                      scaleX,
+                                                      scaleY,
+                                                    ],
+                                                  }
                                                   : fn,
                                               ),
                                             );
@@ -11795,16 +8158,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    transformPivot: [
-                                                      pNewX,
-                                                      pNewY,
-                                                    ],
-                                                    transformTranslate: [
-                                                      tNewX,
-                                                      tNewY,
-                                                    ],
-                                                  }
+                                                  ...fn,
+                                                  transformPivot: [
+                                                    pNewX,
+                                                    pNewY,
+                                                  ],
+                                                  transformTranslate: [
+                                                    tNewX,
+                                                    tNewY,
+                                                  ],
+                                                }
                                                 : fn,
                                             ),
                                           );
@@ -11821,62 +8184,62 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     (!activeGizmo ||
                                       activeGizmo.id !== f.id ||
                                       activeGizmo.type === "label") && (() => {
-                                      let bx = px;
-                                      let by = py;
-                                      if (f.type === "vector" && points && points.length > 0) {
-                                        bx = points[0][0] / 2;
-                                        by = points[0][1] / 2;
-                                      } else if ((f.type === "line" || f.type === "polygon") && pca?.center) {
-                                        bx = pca.center[0];
-                                        by = pca.center[1];
-                                      }
+                                        let bx = px;
+                                        let by = py;
+                                        if (f.type === "vector" && points && points.length > 0) {
+                                          bx = points[0][0] / 2;
+                                          by = points[0][1] / 2;
+                                        } else if ((f.type === "line" || f.type === "polygon") && pca?.center) {
+                                          bx = pca.center[0];
+                                          by = pca.center[1];
+                                        }
 
-                                      let dx = f.labelPosition?.[0] ?? 0.3;
-                                      let dy = f.labelPosition?.[1] ?? 0.3;
-                                      if (f.labelAlignment && f.labelAlignment !== "custom") {
+                                        let dx = f.labelPosition?.[0] ?? 0.3;
+                                        let dy = f.labelPosition?.[1] ?? 0.3;
+                                        if (f.labelAlignment && f.labelAlignment !== "custom") {
                                           const r = Math.max(1.0, baseRadius * 0.8 + 0.3);
                                           if (f.labelAlignment === "center") { dx = 0; dy = 0; }
                                           else if (f.labelAlignment === "above") { dx = 0; dy = r; }
                                           else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
                                           else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
                                           else if (f.labelAlignment === "right") { dx = r; dy = 0; }
-                                      }
+                                        }
 
-                                      const handlePt = localToGlobal(
-                                        bx + dx,
-                                        by + dy,
-                                      );
+                                        const handlePt = localToGlobal(
+                                          bx + dx,
+                                          by + dy,
+                                        );
 
-                                      return (
-                                        <MovablePoint
-                                          point={handlePt}
-                                          color="#a855f7" // Purple color for Label Handle
-                                          onMove={(pt) => {
-                                            handleGizmoMove(f.id, "label");
-                                            const baseGlobal = localToGlobal(bx, by);
-                                            const dGlobalX = pt[0] - baseGlobal[0];
-                                            const dGlobalY = pt[1] - baseGlobal[1];
+                                        return (
+                                          <MovablePoint
+                                            point={handlePt}
+                                            color="#a855f7" // Purple color for Label Handle
+                                            onMove={(pt) => {
+                                              handleGizmoMove(f.id, "label");
+                                              const baseGlobal = localToGlobal(bx, by);
+                                              const dGlobalX = pt[0] - baseGlobal[0];
+                                              const dGlobalY = pt[1] - baseGlobal[1];
 
-                                            // Invert: local to global
-                                            const theta1 = -(baseAngle + rot);
-                                            const cos1 = Math.cos(theta1);
-                                            const sin1 = Math.sin(theta1);
-                                            let x1 = dGlobalX * cos1 - dGlobalY * sin1;
-                                            let y1 = dGlobalX * sin1 + dGlobalY * cos1;
+                                              // Invert: local to global
+                                              const theta1 = -(baseAngle + rot);
+                                              const cos1 = Math.cos(theta1);
+                                              const sin1 = Math.sin(theta1);
+                                              let x1 = dGlobalX * cos1 - dGlobalY * sin1;
+                                              let y1 = dGlobalX * sin1 + dGlobalY * cos1;
 
-                                            x1 /= sx || 1;
-                                            y1 /= sy || 1;
+                                              x1 /= sx || 1;
+                                              y1 /= sy || 1;
 
-                                            const theta2 = baseAngle;
-                                            const cos2 = Math.cos(theta2);
-                                            const sin2 = Math.sin(theta2);
-                                            const localDx = x1 * cos2 - y1 * sin2;
-                                            const localDy = x1 * sin2 + y1 * cos2;
+                                              const theta2 = baseAngle;
+                                              const cos2 = Math.cos(theta2);
+                                              const sin2 = Math.sin(theta2);
+                                              const localDx = x1 * cos2 - y1 * sin2;
+                                              const localDy = x1 * sin2 + y1 * cos2;
 
-                                            setFunctions((prev) =>
-                                              prev.map((fn) =>
-                                                fn.id === f.id
-                                                  ? {
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id
+                                                    ? {
                                                       ...fn,
                                                       labelPosition: [
                                                         localDx,
@@ -11884,13 +8247,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                       ],
                                                       labelAlignment: "custom",
                                                     }
-                                                  : fn,
-                                              ),
-                                            );
-                                          }}
-                                        />
-                                      );
-                                    })()}
+                                                    : fn,
+                                                ),
+                                              );
+                                            }}
+                                          />
+                                        );
+                                      })()}
 
                                   {f.type === "point" &&
                                     (!activeGizmo ||
@@ -11900,12 +8263,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       let dx = f.labelPosition?.[0] ?? 0.3;
                                       let dy = f.labelPosition?.[1] ?? 0.3;
                                       if (f.labelAlignment && f.labelAlignment !== "custom") {
-                                          const r = 0.5;
-                                          if (f.labelAlignment === "center") { dx = 0; dy = 0; }
-                                          else if (f.labelAlignment === "above") { dx = 0; dy = r; }
-                                          else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
-                                          else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
-                                          else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                        const r = 0.5;
+                                        if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+                                        else if (f.labelAlignment === "above") { dx = 0; dy = r; }
+                                        else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
+                                        else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
+                                        else if (f.labelAlignment === "right") { dx = r; dy = 0; }
                                       }
 
                                       const handlePt = localToGlobal(
@@ -11942,13 +8305,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               prev.map((fn) =>
                                                 fn.id === f.id
                                                   ? {
-                                                      ...fn,
-                                                      labelPosition: [
-                                                        localDx,
-                                                        localDy,
-                                                      ],
-                                                      labelAlignment: "custom",
-                                                    }
+                                                    ...fn,
+                                                    labelPosition: [
+                                                      localDx,
+                                                      localDy,
+                                                    ],
+                                                    labelAlignment: "custom",
+                                                  }
                                                   : fn,
                                               ),
                                             );
