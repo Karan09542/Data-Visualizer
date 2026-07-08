@@ -93,7 +93,8 @@ import {
   InequalityPlot,
   AdaptiveGrid,
   createAxisLabelFormatter,
-  MATH_EXAMPLES
+  MATH_EXAMPLES,
+  TraceOverlay
 } from "./math-node";
 
 
@@ -6625,6 +6626,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               axisSuffix={axisSuffix}
               customAxisFilter={customAxisFilter}
               customAxisMapping={customAxisMapping}
+            />
+            
+            <TraceOverlay 
+              functions={functions} 
+              baseScope={baseScope} 
+              time={time}
+              containerRef={graphContainerRef} 
             />
 
             {(() => {

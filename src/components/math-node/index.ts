@@ -12,3 +12,4 @@ export * from "./InequalityPlot";
 export * from "./ImplicitPlot";
 export * from "./AdaptiveGrid";
 export * from "./examples";
+export * from "./TraceOverlay";
