@@ -10,3 +10,5 @@ export * from "./SafeLabel";
 export * from "./CurvePatternDefs";
 export * from "./InequalityPlot";
 export * from "./ImplicitPlot";
+export * from "./AdaptiveGrid";
+export * from "./examples";

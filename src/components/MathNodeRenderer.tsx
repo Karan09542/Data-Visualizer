@@ -2,7 +2,6 @@ import React, {
   useState,
   useEffect,
   useRef,
-  useLayoutEffect,
   useCallback,
   useMemo,
 } from "react";
@@ -30,7 +29,6 @@ import {
   RotateCcw,
   GripVertical,
   Folder,
-  FolderPlus,
   Menu,
   MoreVertical,
   Bookmark,
@@ -44,11 +42,9 @@ import {
   Calculator,
   FunctionSquare,
 } from "lucide-react";
-import { MathKeyboard } from "./MathKeyboard";
-import { CaretOverlay } from "./math-input/components/CaretOverlay";
+
 import {
   Mafs,
-  Coordinates,
   Plot,
   Transform,
   Point,
@@ -57,23 +53,15 @@ import {
   MovablePoint,
   Text,
   Line,
-  LaTeX,
   usePaneContext,
-  useTransformContext,
-  vec,
 } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import * as mathjs from "mathjs";
-import Markdown from "react-markdown";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import remarkGfm from "remark-gfm";
 import { useStore } from "../store/useStore";
 import { useMathWorker } from "../hooks/useMathWorker";
-import { HexAlphaColorPicker } from "react-colorful";
 import { liveQuery } from "dexie";
 import { db } from "../lib/db";
 import MathHelpPopup from "./MathHelpPopup";
@@ -83,20 +71,15 @@ import {
   MathVariable,
   VariableGroup,
   COLORS,
-  MATH_COMPLETIONS,
   getVarColor,
   getHexWithAlpha,
-  stripAlpha,
   getStrokeDasharray,
   formatMathError,
   generateSafeId,
   computePCA,
   decoupleGeometry,
   parseAndAdjustForCompile,
-  resolveNestedValue,
   indexHelper,
-  extractPointsFromValue,
-  deduplicatePoints,
   resolveGeometryPoints,
   InsertAboveIcon,
   InsertBelowIcon,
@@ -108,138 +91,11 @@ import {
   SafeLabel,
   CurvePatternDefs,
   InequalityPlot,
-  ImplicitPlot
+  AdaptiveGrid,
+  createAxisLabelFormatter,
+  MATH_EXAMPLES
 } from "./math-node";
 
-const toSuperscript = (num: string) => {
-  const map: Record<string, string> = {
-    '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-    '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻', '.': '·'
-  };
-  return num.split('').map(c => map[c] || c).join('');
-};
-
-function getNiceStep(targetSpacing: number): number {
-  const exponent = Math.floor(Math.log10(targetSpacing));
-  const fraction = targetSpacing / Math.pow(10, exponent);
-  
-  let niceFraction: number;
-  if (fraction <= 1.5) niceFraction = 1;
-  else if (fraction <= 3.5) niceFraction = 2;
-  else if (fraction <= 7.5) niceFraction = 5;
-  else niceFraction = 10;
-
-  return niceFraction * Math.pow(10, exponent);
-}
-
-const formatAdaptiveLabel = (n: number, step: number) => {
-  // Ensure we only label on the major nice steps
-  const isLabelStep = Math.abs((n / step) - Math.round(n / step)) < 1e-4;
-  if (!isLabelStep) return "";
-  
-  const absN = Math.abs(n);
-  if (absN === 0) return 0;
-  
-  if (absN >= 1e6 || (absN < 1e-4 && absN > 0)) {
-    const str = absN.toExponential();
-    const [coef, exp] = str.split('e');
-    const cleanCoef = parseFloat(coef);
-    const sign = n < 0 ? "-" : "";
-    const supExp = toSuperscript(parseInt(exp, 10).toString());
-    return `${sign}${cleanCoef === 1 ? '' : cleanCoef + '×'}10${supExp}`;
-  }
-  
-  return parseFloat(n.toPrecision(12));
-};
-
-const AdaptiveGrid = ({
-  gridType,
-  gridSubdivisions,
-  parsedAxisStep,
-  axisStepStr,
-  axisFilter,
-  getAxisLabel,
-}: {
-  gridType: string;
-  gridSubdivisions: number;
-  parsedAxisStep: number;
-  axisStepStr: string;
-  axisFilter: string;
-  getAxisLabel: (n: number, adaptiveStep?: number) => React.ReactNode;
-}) => {
-  const pane = usePaneContext();
-  const { viewTransform } = useTransformContext();
-  
-  const scaleX = viewTransform[0];
-  const scaleY = viewTransform[4];
-
-  let xStep = parsedAxisStep;
-  let yStep = parsedAxisStep;
-  
-  let dynamicLabelsX: ((n: number) => React.ReactNode) | false = (n) => getAxisLabel(n, parsedAxisStep);
-  let dynamicLabelsY: ((n: number) => React.ReactNode) | false = (n) => getAxisLabel(n, parsedAxisStep);
-
-  // We want labels approximately 80 pixels apart (major grid lines)
-  const targetMathSpacingX = 80 / scaleX;
-  const targetMathSpacingY = 80 / Math.abs(scaleY);
-  
-  const niceStepX = getNiceStep(targetMathSpacingX);
-  const niceStepY = getNiceStep(targetMathSpacingY);
-  
-  const userSpecifiedStep = axisStepStr.trim() !== "";
-  const effectiveStepX = userSpecifiedStep ? parsedAxisStep : niceStepX;
-  const effectiveStepY = userSpecifiedStep ? parsedAxisStep : niceStepY;
-  
-  // Grid lines rendered automatically with subdivisions of the major step
-  xStep = effectiveStepX;
-  yStep = effectiveStepY;
-
-  dynamicLabelsX = (n: number) => {
-    const isLabelStep = Math.abs((n / effectiveStepX) - Math.round(n / effectiveStepX)) < 1e-4;
-    if (!isLabelStep) return "";
-    return getAxisLabel(n, effectiveStepX);
-  };
-
-  dynamicLabelsY = (n: number) => {
-    const isLabelStep = Math.abs((n / effectiveStepY) - Math.round(n / effectiveStepY)) < 1e-4;
-    if (!isLabelStep) return "";
-    return getAxisLabel(n, effectiveStepY);
-  };
-
-  if (gridType === "cartesian") {
-    return (
-      <Coordinates.Cartesian
-        xAxis={{ lines: xStep, labels: dynamicLabelsX }}
-        yAxis={{ lines: yStep, labels: dynamicLabelsY }}
-        subdivisions={gridSubdivisions || 5}
-      />
-    );
-  }
-  
-  if (gridType === "polar") {
-    // We want labels approximately 80 pixels apart (major grid lines)
-    const targetMathSpacing = 80 / scaleX;
-    const niceStep = getNiceStep(targetMathSpacing);
-    const effectiveStep = userSpecifiedStep ? parsedAxisStep : niceStep;
-
-    const dynamicLabelsPolar = (n: number) => {
-      const isLabelStep = Math.abs((n / effectiveStep) - Math.round(n / effectiveStep)) < 1e-4;
-      if (!isLabelStep) return "";
-      return getAxisLabel(n, effectiveStep);
-    };
-
-    return (
-      <Coordinates.Polar
-        xAxis={{ labels: dynamicLabelsPolar }}
-        yAxis={{ labels: dynamicLabelsPolar }}
-        lines={effectiveStep}
-        subdivisions={gridSubdivisions || 5}
-      />
-    );
-  }
-
-  return null;
-}
 
 export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   nodeId,
@@ -985,135 +841,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     };
   }, [data?.path]);
 
-  const getAxisLabel = (rawN: number, adaptiveStep?: number) => {
-    // Keep floating point math from destroying readability globally
-    let n = parseFloat(rawN.toPrecision(12));
-    
-    // Clamp microscopic floats to zero
-    if (Math.abs(n) < 1e-12) n = 0;
-
-    if (n === 0 && axisFilter !== "custom_mapping" && axisFilter !== "custom")
-      return 0;
-
-    let baseLabel: React.ReactNode = "";
-
-    if (axisFilter === "all") {
-      baseLabel = n;
-    } else if (axisFilter === "even") {
-      baseLabel = n % 2 === 0 ? n : "";
-    } else if (axisFilter === "odd") {
-      baseLabel = Math.abs(n % 2) === 1 ? n : "";
-    } else if (axisFilter === "custom") {
-      try {
-        const res = mathjs.evaluate(customAxisFilter, { n });
-        if (res) baseLabel = n;
-      } catch {
-        baseLabel = "";
-      }
-    } else if (axisFilter === "custom_mapping") {
-      const linesStr = customAxisMapping.split("\n");
-      for (const line of linesStr) {
-        // Use either ':' or '->' or '→' as delimiter
-        const delimiter = line.includes("→")
-          ? "→"
-          : line.includes("->")
-            ? "->"
-            : ":";
-        const [k, ...vParts] = line.split(delimiter);
-        if (vParts.length > 0 && parseFloat(k.trim()) === n) {
-          baseLabel = vParts.join(delimiter).trim();
-          break;
-        }
-      }
-    } else if (axisFilter === "pi") {
-      const fraction = n / Math.PI;
-      const rounded = Math.round(fraction * 1000) / 1000;
-      if (Math.abs(rounded) < 0.001) baseLabel = "0";
-      else if (Math.abs(rounded - 1) < 0.001) baseLabel = "π";
-      else if (Math.abs(rounded + 1) < 0.001) baseLabel = "-π";
-      else baseLabel = `${rounded}π`;
-    } else if (axisFilter === "euler") {
-      if (n === 0) baseLabel = "0";
-      else if (n === 1) baseLabel = "e";
-      else if (n === -1) baseLabel = "e⁻¹";
-      else {
-        const supN = toSuperscript(n.toString());
-        baseLabel = `e${supN}`;
-      }
-    } else if (axisFilter === "complex") {
-      if (n === 0) baseLabel = "0";
-      else if (n === 1) baseLabel = "i";
-      else if (n === -1) baseLabel = "-i";
-      else baseLabel = `${n}i`;
-    } else if (axisFilter === "degrees") {
-      baseLabel = `${n}°`;
-    } else if (axisFilter === "radians") {
-      baseLabel = `${n} rad`;
-    } else if (axisFilter === "scientific") {
-      if (n === 0) baseLabel = "0";
-      else {
-        const [m, eStr] = n.toExponential(axisDecimals).split("e");
-        const exponent = eStr.replace("+", "");
-        const supExp = toSuperscript(exponent);
-        baseLabel = `${m} × 10${supExp}`;
-      }
-    } else if (axisFilter === "fractions") {
-      if (n % 1 === 0) baseLabel = n.toString();
-      else {
-        const precision = 1000000;
-        const numerator = Math.round(n * precision);
-        const denominator = precision;
-        const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-        const d = gcd(Math.abs(numerator), denominator);
-        baseLabel = `${numerator / d}/${denominator / d}`;
-      }
-    } else {
-      // "numeric"
-      let effectiveDecimals = axisDecimals;
-      if (adaptiveStep !== undefined && adaptiveStep > 0) {
-        const stepLog = Math.log10(adaptiveStep);
-        if (stepLog < 0) {
-          const requiredDecimals = Math.ceil(Math.abs(stepLog));
-          effectiveDecimals = Math.max(axisDecimals, requiredDecimals);
-        }
-      }
-      
-      const rounded = Number(n.toFixed(effectiveDecimals));
-      baseLabel = axisThousandsSep ? rounded.toLocaleString() : rounded;
-    }
-    
-    // Apply scientific notation for ALL formats if the number is extraordinarily large or small
-    // (Desmos-like behavior) except when custom mapping or explicit scientific/fractions are chosen
-    if (typeof baseLabel === "number" || (axisFilter === "all" || axisFilter === "numeric" || axisFilter === "even" || axisFilter === "odd")) {
-       const absN = Math.abs(n);
-       if (baseLabel !== "" && absN > 0 && (absN >= 1e6 || absN <= 1e-4)) {
-         const str = absN.toExponential();
-         const [coef, exp] = str.split('e');
-         const cleanCoef = parseFloat(coef);
-         const sign = n < 0 ? "-" : "";
-         const supExp = toSuperscript(parseInt(exp, 10).toString());
-         baseLabel = `${sign}${cleanCoef === 1 ? '' : cleanCoef + '×'}10${supExp}`;
-       } else if (typeof baseLabel === "number") {
-         // Keep floating point math from destroying readability
-         baseLabel = parseFloat(baseLabel.toPrecision(12));
-       }
-    }
-
-    if (baseLabel === "") return "";
-
-    // React supports strings in Mafs labels if not using foreignObject
-    if (typeof baseLabel === "string" || typeof baseLabel === "number") {
-      return `${axisPrefix}${baseLabel}${axisSuffix}`;
-    }
-
-    return (
-      <React.Fragment>
-        {axisPrefix}
-        {baseLabel}
-        {axisSuffix}
-      </React.Fragment>
-    );
-  };
+  const getAxisLabel = useMemo(() => createAxisLabelFormatter({
+    axisFilter,
+    axisDecimals,
+    axisThousandsSep,
+    axisPrefix,
+    axisSuffix,
+    customAxisFilter,
+    customAxisMapping,
+  }), [axisFilter, axisDecimals, axisThousandsSep, axisPrefix, axisSuffix, customAxisFilter, customAxisMapping]);
 
   useEffect(() => {
     if (!graphContainerRef.current) return;
@@ -1172,7 +908,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             if (f.type === "implicit" || f.type === "inequality") {
               let op = f.operator || "=";
               let parts = f.expr.split(op);
-              
+
               if (f.type === "inequality") {
                 const match = f.expr.match(/(<=|>=|<|>)/);
                 if (match) {
@@ -1188,7 +924,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
               const lhsStr = parts[0] ? parts[0].trim() : "0";
               const rhsStr = parts[1] ? parts[1].trim() : "0";
-              
+
               const lhsNode = parseAndAdjustForCompile(lhsStr || "0");
               const rhsNode = parseAndAdjustForCompile(rhsStr || "0");
               compiled = lhsNode.compile();
@@ -1584,271 +1320,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       return;
     }
     setActiveExample(exampleName);
-    if (exampleName === "Lissajous") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "[A * sin(a*t + d + time), B * sin(b*t)]",
-          type: "parametric",
-          color: COLORS[0],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "A",
-          displayName: "Amplitude X",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v2",
-          name: "B",
-          displayName: "Amplitude Y",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v3",
-          name: "a",
-          displayName: "Freq X",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v4",
-          name: "b",
-          displayName: "Freq Y",
-          description: "",
-          value: 4,
-          defaultValue: 4,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v5",
-          name: "d",
-          displayName: "Phase",
-          description: "",
-          value: Math.PI / 2,
-          defaultValue: Math.PI / 2,
-          min: 0,
-          max: Math.PI * 2,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Fourier") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "4/pi * (sin(x) + sin(3*x)/3 + sin(5*x)/5 + sin(7*x)/7)",
-          type: "function",
-          color: COLORS[2],
-          visible: true,
-        },
-      ]);
-      setVariables([]);
-    } else if (exampleName === "Wave") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "A * sin(k*x - w*t + phi)",
-          type: "function",
-          color: COLORS[3],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "A",
-          displayName: "Amplitude",
-          description: "",
-          value: 2,
-          defaultValue: 2,
-          min: 0,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v2",
-          name: "k",
-          displayName: "Wave Number",
-          description: "",
-          value: 2,
-          defaultValue: 2,
-          min: 0,
-          max: 10,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v3",
-          name: "w",
-          displayName: "Angular Freq",
-          description: "",
-          value: 3,
-          defaultValue: 3,
-          min: 0,
-          max: 10,
-          step: 0.1,
-          groupId: "default",
-        },
-        {
-          id: "v4",
-          name: "phi",
-          displayName: "Phase String",
-          description: "",
-          value: 0,
-          defaultValue: 0,
-          min: 0,
-          max: 6.28,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Geometry") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "A = [2, 3]",
-          type: "point",
-          color: COLORS[0],
-          visible: true,
-        },
-        {
-          id: "f2",
-          expr: "B = [-1, 2]",
-          type: "point",
-          color: COLORS[1],
-          visible: true,
-        },
-        {
-          id: "f3",
-          expr: "C = [1, -2]",
-          type: "point",
-          color: COLORS[2],
-          visible: true,
-        },
-        {
-          id: "f4",
-          expr: "[A, B, C]",
-          type: "polygon",
-          color: COLORS[3],
-          visible: true,
-        },
-        {
-          id: "f5",
-          expr: "v = A - B",
-          type: "vector",
-          color: COLORS[4],
-          visible: true,
-        },
-        {
-          id: "f6",
-          expr: "[r * cos(t), r * sin(t)]",
-          type: "parametric",
-          color: COLORS[5],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "r",
-          displayName: "Circle Radius",
-          description: "Radius of implicit circle",
-          value: 2,
-          defaultValue: 2,
-          min: 0.1,
-          max: 10,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Statistics") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "(1/(sigma * sqrt(2*pi))) * e^(-0.5 * ((x - mu)/sigma)^2)",
-          type: "function",
-          color: COLORS[4],
-          visible: true,
-        },
-      ]);
-      setVariables([
-        {
-          id: "v1",
-          name: "mu",
-          displayName: "Mean",
-          description: "Center of distribution",
-          value: 0,
-          defaultValue: 0,
-          min: -10,
-          max: 10,
-          step: 0.5,
-          groupId: "default",
-        },
-        {
-          id: "v2",
-          name: "sigma",
-          displayName: "Standard Dev",
-          description: "Spread of distribution",
-          value: 1,
-          defaultValue: 1,
-          min: 0.1,
-          max: 5,
-          step: 0.1,
-          groupId: "default",
-        },
-      ]);
-    } else if (exampleName === "Matrix") {
-      setFunctions([
-        {
-          id: "f1",
-          expr: "A = [2, 3]",
-          type: "point",
-          color: COLORS[0],
-          visible: true,
-          isDraggable: true,
-        },
-        {
-          id: "f2",
-          expr: "B = [-2, -1]",
-          type: "point",
-          color: COLORS[1],
-          visible: true,
-          isDraggable: true,
-        },
-        {
-          id: "f3",
-          expr: "[[x, y, 1], [A[1], A[2], 1], [B[1], B[2], 1]] = 0",
-          type: "implicit",
-          color: COLORS[2],
-          visible: true,
-        },
-      ]);
-      setVariables([]);
+
+    const exampleData = MATH_EXAMPLES[exampleName];
+    if (exampleData) {
+      setFunctions(exampleData.functions);
+      setVariables(exampleData.variables);
     }
   };
 
@@ -3072,9 +2548,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                             prev.map((fn) =>
                                               fn.id === f.id
                                                 ? {
-                                                    ...fn,
-                                                    label: fn.latex || fn.expr || "",
-                                                  }
+                                                  ...fn,
+                                                  label: fn.latex || fn.expr || "",
+                                                }
                                                 : fn,
                                             ),
                                           );
@@ -7143,7 +6619,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               parsedAxisStep={parsedAxisStep}
               axisStepStr={axisStepStr}
               axisFilter={axisFilter}
-              getAxisLabel={getAxisLabel}
+              axisDecimals={axisDecimals}
+              axisThousandsSep={axisThousandsSep}
+              axisPrefix={axisPrefix}
+              axisSuffix={axisSuffix}
+              customAxisFilter={customAxisFilter}
+              customAxisMapping={customAxisMapping}
             />
 
             {(() => {
@@ -7863,8 +7344,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       xy={(t: number) => {
                                         try {
                                           const scope = Object.create(baseScope);
-                                            scope.t = t;
-                                            const res = f.compiled.evaluate(scope);
+                                          scope.t = t;
+                                          const res = f.compiled.evaluate(scope);
                                           const arr =
                                             res && res.toArray
                                               ? res.toArray()
@@ -7933,13 +7414,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       (f.type === "implicit" ? "=" : "<")
                                     }
                                     baseScope={baseScope}
-                                    dependenciesHash={`${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${
-                                      /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
+                                    dependenciesHash={`${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
                                       (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
                                       (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
-                                        ? `time:${time}_fTime:${fTime}`
-                                        : "static"
-                                    }`}
+                                      ? `time:${time}_fTime:${fTime}`
+                                      : "static"
+                                      }`}
                                     color={f.color}
                                     fillColor={f.fillColor}
                                     fillOpacity={
@@ -8216,8 +7696,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       xy={(t) => {
                                         try {
                                           const scope = Object.create(baseScope);
-                                            scope.x = t;
-                                            const res = f.compiled.evaluate(scope);
+                                          scope.x = t;
+                                          const res = f.compiled.evaluate(scope);
                                           if (
                                             res &&
                                             typeof res === "object" &&
