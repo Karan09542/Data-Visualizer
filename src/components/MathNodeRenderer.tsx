@@ -111,6 +111,136 @@ import {
   ImplicitPlot
 } from "./math-node";
 
+const toSuperscript = (num: string) => {
+  const map: Record<string, string> = {
+    '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+    '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻', '.': '·'
+  };
+  return num.split('').map(c => map[c] || c).join('');
+};
+
+function getNiceStep(targetSpacing: number): number {
+  const exponent = Math.floor(Math.log10(targetSpacing));
+  const fraction = targetSpacing / Math.pow(10, exponent);
+  
+  let niceFraction: number;
+  if (fraction <= 1.5) niceFraction = 1;
+  else if (fraction <= 3.5) niceFraction = 2;
+  else if (fraction <= 7.5) niceFraction = 5;
+  else niceFraction = 10;
+
+  return niceFraction * Math.pow(10, exponent);
+}
+
+const formatAdaptiveLabel = (n: number, step: number) => {
+  // Ensure we only label on the major nice steps
+  const isLabelStep = Math.abs((n / step) - Math.round(n / step)) < 1e-4;
+  if (!isLabelStep) return "";
+  
+  const absN = Math.abs(n);
+  if (absN === 0) return 0;
+  
+  if (absN >= 1e6 || (absN < 1e-4 && absN > 0)) {
+    const str = absN.toExponential();
+    const [coef, exp] = str.split('e');
+    const cleanCoef = parseFloat(coef);
+    const sign = n < 0 ? "-" : "";
+    const supExp = toSuperscript(parseInt(exp, 10).toString());
+    return `${sign}${cleanCoef === 1 ? '' : cleanCoef + '×'}10${supExp}`;
+  }
+  
+  return parseFloat(n.toPrecision(12));
+};
+
+const AdaptiveGrid = ({
+  gridType,
+  gridSubdivisions,
+  parsedAxisStep,
+  axisStepStr,
+  axisFilter,
+  getAxisLabel,
+}: {
+  gridType: string;
+  gridSubdivisions: number;
+  parsedAxisStep: number;
+  axisStepStr: string;
+  axisFilter: string;
+  getAxisLabel: (n: number, adaptiveStep?: number) => React.ReactNode;
+}) => {
+  const pane = usePaneContext();
+  const { viewTransform } = useTransformContext();
+  
+  const scaleX = viewTransform[0];
+  const scaleY = viewTransform[4];
+
+  let xStep = parsedAxisStep;
+  let yStep = parsedAxisStep;
+  
+  let dynamicLabelsX: ((n: number) => React.ReactNode) | false = (n) => getAxisLabel(n, parsedAxisStep);
+  let dynamicLabelsY: ((n: number) => React.ReactNode) | false = (n) => getAxisLabel(n, parsedAxisStep);
+
+  // We want labels approximately 80 pixels apart (major grid lines)
+  const targetMathSpacingX = 80 / scaleX;
+  const targetMathSpacingY = 80 / Math.abs(scaleY);
+  
+  const niceStepX = getNiceStep(targetMathSpacingX);
+  const niceStepY = getNiceStep(targetMathSpacingY);
+  
+  const userSpecifiedStep = axisStepStr.trim() !== "";
+  const effectiveStepX = userSpecifiedStep ? parsedAxisStep : niceStepX;
+  const effectiveStepY = userSpecifiedStep ? parsedAxisStep : niceStepY;
+  
+  // Grid lines rendered automatically with subdivisions of the major step
+  xStep = effectiveStepX;
+  yStep = effectiveStepY;
+
+  dynamicLabelsX = (n: number) => {
+    const isLabelStep = Math.abs((n / effectiveStepX) - Math.round(n / effectiveStepX)) < 1e-4;
+    if (!isLabelStep) return "";
+    return getAxisLabel(n, effectiveStepX);
+  };
+
+  dynamicLabelsY = (n: number) => {
+    const isLabelStep = Math.abs((n / effectiveStepY) - Math.round(n / effectiveStepY)) < 1e-4;
+    if (!isLabelStep) return "";
+    return getAxisLabel(n, effectiveStepY);
+  };
+
+  if (gridType === "cartesian") {
+    return (
+      <Coordinates.Cartesian
+        xAxis={{ lines: xStep, labels: dynamicLabelsX }}
+        yAxis={{ lines: yStep, labels: dynamicLabelsY }}
+        subdivisions={gridSubdivisions || 5}
+      />
+    );
+  }
+  
+  if (gridType === "polar") {
+    // We want labels approximately 80 pixels apart (major grid lines)
+    const targetMathSpacing = 80 / scaleX;
+    const niceStep = getNiceStep(targetMathSpacing);
+    const effectiveStep = userSpecifiedStep ? parsedAxisStep : niceStep;
+
+    const dynamicLabelsPolar = (n: number) => {
+      const isLabelStep = Math.abs((n / effectiveStep) - Math.round(n / effectiveStep)) < 1e-4;
+      if (!isLabelStep) return "";
+      return getAxisLabel(n, effectiveStep);
+    };
+
+    return (
+      <Coordinates.Polar
+        xAxis={{ labels: dynamicLabelsPolar }}
+        yAxis={{ labels: dynamicLabelsPolar }}
+        lines={effectiveStep}
+        subdivisions={gridSubdivisions || 5}
+      />
+    );
+  }
+
+  return null;
+}
+
 export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   nodeId,
   data,
@@ -855,14 +985,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     };
   }, [data?.path]);
 
-  const getAxisLabel = (n: number) => {
+  const getAxisLabel = (rawN: number, adaptiveStep?: number) => {
+    // Keep floating point math from destroying readability globally
+    let n = parseFloat(rawN.toPrecision(12));
+    
+    // Clamp microscopic floats to zero
+    if (Math.abs(n) < 1e-12) n = 0;
+
     if (n === 0 && axisFilter !== "custom_mapping" && axisFilter !== "custom")
       return 0;
 
     let baseLabel: React.ReactNode = "";
 
     if (axisFilter === "all") {
-      baseLabel = n % 1 === 0 ? n : "";
+      baseLabel = n;
     } else if (axisFilter === "even") {
       baseLabel = n % 2 === 0 ? n : "";
     } else if (axisFilter === "odd") {
@@ -897,28 +1033,11 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       else if (Math.abs(rounded + 1) < 0.001) baseLabel = "-π";
       else baseLabel = `${rounded}π`;
     } else if (axisFilter === "euler") {
-      const superscriptMap: Record<string, string> = {
-        "0": "⁰",
-        "1": "¹",
-        "2": "²",
-        "3": "³",
-        "4": "⁴",
-        "5": "⁵",
-        "6": "⁶",
-        "7": "⁷",
-        "8": "⁸",
-        "9": "⁹",
-        "-": "⁻",
-      };
       if (n === 0) baseLabel = "0";
       else if (n === 1) baseLabel = "e";
       else if (n === -1) baseLabel = "e⁻¹";
       else {
-        const supN = n
-          .toString()
-          .split("")
-          .map((c) => superscriptMap[c] || c)
-          .join("");
+        const supN = toSuperscript(n.toString());
         baseLabel = `e${supN}`;
       }
     } else if (axisFilter === "complex") {
@@ -935,23 +1054,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       else {
         const [m, eStr] = n.toExponential(axisDecimals).split("e");
         const exponent = eStr.replace("+", "");
-        const superscriptMap: Record<string, string> = {
-          "0": "⁰",
-          "1": "¹",
-          "2": "²",
-          "3": "³",
-          "4": "⁴",
-          "5": "⁵",
-          "6": "⁶",
-          "7": "⁷",
-          "8": "⁸",
-          "9": "⁹",
-          "-": "⁻",
-        };
-        const supExp = exponent
-          .split("")
-          .map((c) => superscriptMap[c] || c)
-          .join("");
+        const supExp = toSuperscript(exponent);
         baseLabel = `${m} × 10${supExp}`;
       }
     } else if (axisFilter === "fractions") {
@@ -966,12 +1069,34 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       }
     } else {
       // "numeric"
-      const rounded = +(
-        Math.round(Number(n + "e+" + axisDecimals)) +
-        "e-" +
-        axisDecimals
-      );
+      let effectiveDecimals = axisDecimals;
+      if (adaptiveStep !== undefined && adaptiveStep > 0) {
+        const stepLog = Math.log10(adaptiveStep);
+        if (stepLog < 0) {
+          const requiredDecimals = Math.ceil(Math.abs(stepLog));
+          effectiveDecimals = Math.max(axisDecimals, requiredDecimals);
+        }
+      }
+      
+      const rounded = Number(n.toFixed(effectiveDecimals));
       baseLabel = axisThousandsSep ? rounded.toLocaleString() : rounded;
+    }
+    
+    // Apply scientific notation for ALL formats if the number is extraordinarily large or small
+    // (Desmos-like behavior) except when custom mapping or explicit scientific/fractions are chosen
+    if (typeof baseLabel === "number" || (axisFilter === "all" || axisFilter === "numeric" || axisFilter === "even" || axisFilter === "odd")) {
+       const absN = Math.abs(n);
+       if (baseLabel !== "" && absN > 0 && (absN >= 1e6 || absN <= 1e-4)) {
+         const str = absN.toExponential();
+         const [coef, exp] = str.split('e');
+         const cleanCoef = parseFloat(coef);
+         const sign = n < 0 ? "-" : "";
+         const supExp = toSuperscript(parseInt(exp, 10).toString());
+         baseLabel = `${sign}${cleanCoef === 1 ? '' : cleanCoef + '×'}10${supExp}`;
+       } else if (typeof baseLabel === "number") {
+         // Keep floating point math from destroying readability
+         baseLabel = parseFloat(baseLabel.toPrecision(12));
+       }
     }
 
     if (baseLabel === "") return "";
@@ -7012,19 +7137,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             preserveAspectRatio="contain"
             pan={true}
           >
-            {gridType === "cartesian" && (
-              <Coordinates.Cartesian
-                xAxis={{ lines: parsedAxisStep, labels: getAxisLabel }}
-                yAxis={{ lines: parsedAxisStep, labels: getAxisLabel }}
-                subdivisions={gridSubdivisions}
-              />
-            )}
-            {gridType === "polar" && (
-              <Coordinates.Polar
-                lines={parsedAxisStep}
-                subdivisions={gridSubdivisions}
-              />
-            )}
+            <AdaptiveGrid
+              gridType={gridType}
+              gridSubdivisions={gridSubdivisions}
+              parsedAxisStep={parsedAxisStep}
+              axisStepStr={axisStepStr}
+              axisFilter={axisFilter}
+              getAxisLabel={getAxisLabel}
+            />
 
             {(() => {
               latestContextRef.current = {
