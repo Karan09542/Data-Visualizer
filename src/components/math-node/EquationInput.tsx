@@ -116,7 +116,6 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
     }
 
     let cancelled = false;
-    setIsComputingLatex(true);
 
     const computeLatex = async () => {
       const coloredVars: Record<string, string> = {};
@@ -153,12 +152,18 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       }
     };
 
-    computeLatex();
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setIsComputingLatex(true);
+        computeLatex();
+      }
+    }, 100);
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
-  }, [value, isFocused, forceEditMode, error, variables, expressionToLatexWithEval]); // Removed globalTime to prevent 60 FPS re-computations when timeline is active
+  }, [value, isFocused, forceEditMode, error, variables, expressionToLatexWithEval]);
 
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement | HTMLDivElement>,
