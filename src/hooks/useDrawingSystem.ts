@@ -224,7 +224,7 @@ export function useDrawingSystem(
         
         if (state.autoShapeDetection && (state.activeTool === 'pen' || state.activeTool === 'highlighter') && currentPoints.current.length > 5) {
           const detected = detectShape(currentPoints.current);
-          if (detected.type !== 'none' && detected.confidence > 0.75) {
+          if (detected.type !== 'none' && detected.confidence >= 0.65) {
             
             if (detected.pathPoints) {
               const startPoints = [...currentPoints.current];

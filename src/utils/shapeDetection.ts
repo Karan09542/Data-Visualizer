@@ -77,6 +77,13 @@ function getBoundingBox(points: Point[]) {
   return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
 }
 
+function getBoxControlPoints(box: { minX: number; maxX: number; minY: number; maxY: number }): Point[] {
+  return [
+    { x: box.minX, y: box.minY },
+    { x: box.maxX, y: box.maxY },
+  ];
+}
+
 function getPerimeterAndArea(points: Point[]) {
   let perimeter = 0, area = 0;
   for (let i = 0; i < points.length; i++) {
@@ -85,7 +92,7 @@ function getPerimeterAndArea(points: Point[]) {
     perimeter += distance(p1, p2);
     area += (p1.x * p2.y - p2.x * p1.y);
   }
-  return { perimeter, area: Math.abs(area) / 2 };
+  return { perimeter, area: Math.abs(area) / 2, signedArea: area / 2 };
 }
 
 function sampleLine(p1: Point, p2: Point, count: number): Point[] {
@@ -172,10 +179,21 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
 
   // ---------------------------------------
   // 3. CLOSED SHAPE PIPELINE
-  // ---------------------------------------
   if (isClosed) {
-    const { perimeter, area } = getPerimeterAndArea(processed);
+    const { perimeter, area, signedArea } = getPerimeterAndArea(processed);
     const circularity = perimeter > 0 ? (4 * Math.PI * area) / (perimeter * perimeter) : 0;
+    const isClockwise = signedArea >= 0;
+    const dir = isClockwise ? 1 : -1;
+
+    const cornerProbePts = [...processed];
+    cornerProbePts[cornerProbePts.length - 1] = cornerProbePts[0];
+    const cornerProbe = simplifyDouglasPeucker(cornerProbePts, Math.pow(Math.max(perimeter * 0.035, 4), 2));
+    cornerProbe.pop();
+    const isPolygonLikeStroke = cornerProbe.length >= 3 && cornerProbe.length <= 8;
+    const likelyEllipseAspect = aspect < 0.8 || aspect > 1.25;
+    const curveCircularityThreshold = likelyEllipseAspect
+      ? (isPolygonLikeStroke ? 0.86 : 0.68)
+      : (isPolygonLikeStroke ? 0.88 : 0.82);
     
     // -- Radial Variance Analysis (Circles / Ellipses)
     let radialSum = 0;
@@ -197,21 +215,21 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
        if (radii[i] > radii[i-1] && radii[i] > radii[i+1] && radii[i] > meanRadius * 1.1) radialPeaks++;
     }
 
-    if (normalizedVariance < 0.08 && circularity > 0.75) {
+    if (normalizedVariance < 0.08 && circularity > curveCircularityThreshold) {
       const confidence = Math.min(0.98, 0.8 + (0.08 - normalizedVariance) * 2.5);
-      const isEllipse = aspect < 0.8 || aspect > 1.25;
+      const isEllipse = likelyEllipseAspect;
       const type = isEllipse ? 'ellipse' : 'circle';
       const mapPts = [];
       const startAngle = Math.atan2(points[0].y - cy, points[0].x - cx);
       for (let i = 0; i < origCount; i++) {
-        const t = startAngle + (i / origCount) * Math.PI * 2;
+        const t = startAngle + dir * (i / origCount) * Math.PI * 2;
         if (isEllipse) mapPts.push({ x: cx + (box.width/2) * Math.cos(t), y: cy + (box.height/2) * Math.sin(t) });
         else mapPts.push({ x: cx + meanRadius * Math.cos(t), y: cy + meanRadius * Math.sin(t) });
       }
       updateBestMatch({
         type,
         points: type === 'ellipse' 
-          ? [{ x: cx, y: cy }, { x: cx + box.width, y: cy + box.height }] // bounding box info for renderer
+          ? [{ x: cx, y: cy }, { x: cx + box.width / 2, y: cy + box.height / 2 }]
           : [{ x: cx, y: cy }, { x: cx + Math.min(box.width, box.height)/2, y: cy }],
         pathPoints: mapPts,
         confidence
@@ -228,13 +246,13 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
       const startAngle = Math.atan2(points[0].y - cy, points[0].x - cx);
       for (let i = 0; i < numPoints; i++) {
          const r = i % 2 === 0 ? outerR : innerR;
-         const a = startAngle + (i / numPoints) * Math.PI * 2;
+         const a = startAngle + dir * (i / numPoints) * Math.PI * 2;
          starPts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
       }
       starPts.push(starPts[0]); // close the path mathematically for the map
       updateBestMatch({
         type: 'star',
-        points: starPts.slice(0, -1),
+        points: getBoxControlPoints(box),
         pathPoints: generatePolygonMap(origCount, starPts, false),
         confidence
       });
@@ -286,21 +304,22 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
           finalTool = (aspect > 0.85 && aspect < 1.15) ? 'square' : 'rectangle';
           confidence = 0.85 + (rectFill - 0.75);
           // Auto-align
-          polyPts = [
+          let basePolyPts = [
             { x: box.minX, y: box.minY },
             { x: box.maxX, y: box.minY },
             { x: box.maxX, y: box.maxY },
             { x: box.minX, y: box.maxY }
           ];
+          if (!isClockwise) basePolyPts.reverse();
           
           // Re-align so that polyPts[0] is closest to start
           let bestIdx = 0;
           let bestD = Infinity;
           for (let i = 0; i < 4; i++) {
-            const d = distance(start, polyPts[i]);
+            const d = distance(start, basePolyPts[i]);
             if (d < bestD) { bestD = d; bestIdx = i; }
           }
-          polyPts = [...polyPts.slice(bestIdx), ...polyPts.slice(0, bestIdx)];
+          polyPts = [...basePolyPts.slice(bestIdx), ...basePolyPts.slice(0, bestIdx)];
 
           if (circularity > 0.78 && finalTool === 'rectangle') {
             finalTool = 'rounded-rectangle';
@@ -316,20 +335,21 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
         } else if (rectFill < 0.65) {
           finalTool = 'diamond';
           confidence = 0.86;
-          polyPts = [
+          let basePolyPts = [
             { x: cx, y: box.minY },
             { x: box.maxX, y: cy },
             { x: cx, y: box.maxY },
             { x: box.minX, y: cy }
           ];
+          if (!isClockwise) basePolyPts.reverse();
           
           let bestIdx = 0;
           let bestD = Infinity;
           for (let i = 0; i < 4; i++) {
-            const d = distance(start, polyPts[i]);
+            const d = distance(start, basePolyPts[i]);
             if (d < bestD) { bestD = d; bestIdx = i; }
           }
-          polyPts = [...polyPts.slice(bestIdx), ...polyPts.slice(0, bestIdx)];
+          polyPts = [...basePolyPts.slice(bestIdx), ...basePolyPts.slice(0, bestIdx)];
         }
       }
       else if (nCorners === 5) { finalTool = 'pentagon'; confidence = 0.85; }
@@ -341,7 +361,7 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
         if (bestMatch.type === 'none' || confidence > bestMatch.confidence) {
           updateBestMatch({
             type: finalTool,
-            points: polyPts,
+            points: getBoxControlPoints(box),
             pathPoints: generatePolygonMap(origCount, [...polyPts, polyPts[0]]), // close it
             confidence
           });
@@ -452,27 +472,6 @@ export function detectShape(points: Point[], zoomLevel: number = 1): DetectedSha
   const confidenceThreshold = 0.65; // Lowered to allow more soft snapping
   if (bestMatch.confidence < confidenceThreshold) {
     return { type: 'none', points, confidence: bestMatch.confidence };
-  }
-
-  // 15. Soft Shape Assistance (Organic Blending)
-  // Default strength 0.35, scales up with very high confidence
-  let strength = 0.35 + Math.max(0, (bestMatch.confidence - 0.85) * 1.5);
-  strength = Math.min(0.9, Math.max(0.1, strength)); // Cap at 0.9 to always retain some hand-drawn feel
-  
-  if (bestMatch.pathPoints && bestMatch.pathPoints.length === origCount) {
-    const blended = [];
-    for (let i = 0; i < origCount; i++) {
-       const u = processed[i];
-       const v = bestMatch.pathPoints[i];
-       blended.push({
-         x: u.x + (v.x - u.x) * strength,
-         y: u.y + (v.y - u.y) * strength
-       });
-    }
-    // Set both to the organic blended path. 
-    // useDrawingSystem will animate to this, then set the tool type natively.
-    bestMatch.pathPoints = blended;
-    bestMatch.points = blended;
   }
 
   return bestMatch;

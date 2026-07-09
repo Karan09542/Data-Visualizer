@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAnnotationStore, DrawingTool, BrushStyle } from '../store/useAnnotationStore';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -191,6 +192,208 @@ const COLORS = [
   'transparent', // Transparent
 ];
 
+const COLOR_PICKER_SAFE_MARGIN = 12;
+const COLOR_PICKER_WIDTH = 224;
+
+const getColorSwatchStyle = (color: string): React.CSSProperties => {
+  if (color !== 'transparent') {
+    return { backgroundColor: color };
+  }
+
+  return {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundImage: 'linear-gradient(45deg, #e2e8f0 25%, transparent 25%, transparent 75%, #e2e8f0 75%, #e2e8f0), linear-gradient(45deg, #e2e8f0 25%, transparent 25%, transparent 75%, #e2e8f0 75%, #e2e8f0)',
+    backgroundSize: '8px 8px',
+    backgroundPosition: '0 0, 4px 4px',
+  };
+};
+
+function PortalColorPicker({
+  color,
+  onChange,
+  children,
+  triggerClassName,
+  triggerStyle,
+  triggerTitle = 'Custom Color',
+  align = 'center',
+  side = 'top',
+  sideOffset = 10,
+  showInput = false,
+  showPalette = true,
+  panelClassName = '',
+  pickerClassName = '',
+}: {
+  color: string;
+  onChange: (color: string) => void;
+  children?: React.ReactNode;
+  triggerClassName: string;
+  triggerStyle?: React.CSSProperties;
+  triggerTitle?: string;
+  align?: 'start' | 'center' | 'end';
+  side?: 'top' | 'bottom';
+  sideOffset?: number;
+  showInput?: boolean;
+  showPalette?: boolean;
+  panelClassName?: string;
+  pickerClassName?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [coords, setCoords] = useState({
+    top: 0,
+    left: 0,
+    opacity: 0,
+    placement: 'top' as 'top' | 'bottom',
+  });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      const content = contentRef.current;
+      if (!trigger || !content) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const contentRect = content.getBoundingClientRect();
+      const contentWidth = contentRect.width || COLOR_PICKER_WIDTH;
+      const contentHeight = contentRect.height || 280;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const topSpace = triggerRect.top - COLOR_PICKER_SAFE_MARGIN;
+      const bottomSpace = viewportHeight - triggerRect.bottom - COLOR_PICKER_SAFE_MARGIN;
+      let nextSide: 'top' | 'bottom' = side;
+
+      if (side === 'top' && topSpace < contentHeight + sideOffset && bottomSpace > topSpace) {
+        nextSide = 'bottom';
+      } else if (side === 'bottom' && bottomSpace < contentHeight + sideOffset && topSpace > bottomSpace) {
+        nextSide = 'top';
+      }
+
+      let top = nextSide === 'top'
+        ? triggerRect.top - contentHeight - sideOffset
+        : triggerRect.bottom + sideOffset;
+
+      let left = triggerRect.left;
+      if (align === 'center') {
+        left = triggerRect.left + triggerRect.width / 2 - contentWidth / 2;
+      } else if (align === 'end') {
+        left = triggerRect.right - contentWidth;
+      }
+
+      const maxLeft = Math.max(COLOR_PICKER_SAFE_MARGIN, viewportWidth - contentWidth - COLOR_PICKER_SAFE_MARGIN);
+      const maxTop = Math.max(COLOR_PICKER_SAFE_MARGIN, viewportHeight - contentHeight - COLOR_PICKER_SAFE_MARGIN);
+
+      setCoords({
+        top: Math.min(Math.max(top, COLOR_PICKER_SAFE_MARGIN), maxTop),
+        left: Math.min(Math.max(left, COLOR_PICKER_SAFE_MARGIN), maxLeft),
+        opacity: 1,
+        placement: nextSide,
+      });
+    };
+
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [align, isOpen, side, sideOffset]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || contentRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const picker = isOpen && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={contentRef}
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        left: coords.left,
+        zIndex: 10000,
+        opacity: coords.opacity,
+        transformOrigin: coords.placement === 'top' ? 'bottom center' : 'top center',
+      }}
+      className={`w-[224px] flex flex-col gap-3 p-3 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl transition-opacity ${panelClassName}`}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <HexAlphaColorPicker color={color} onChange={onChange} className={`!w-full ${pickerClassName}`} />
+      {showInput && (
+        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="w-6 h-6 rounded-md shadow-inner border border-white/10" style={getColorSwatchStyle(color)} />
+          <input
+            type="text"
+            value={color}
+            onChange={(e) => onChange(e.target.value)}
+            className="bg-transparent border-none outline-none text-xs font-mono w-full uppercase text-slate-800 dark:text-slate-200"
+          />
+        </div>
+      )}
+      {showPalette && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {COLORS.map(c => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => onChange(c)}
+              className={`w-5 h-5 rounded-full border-2 transition-all ${color === c ? 'border-white shadow-sm' : 'border-transparent hover:scale-110 hover:border-white/60'}`}
+              style={getColorSwatchStyle(c)}
+              aria-label={`Use ${c} color`}
+            />
+          ))}
+        </div>
+      )}
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        title={triggerTitle}
+        aria-label={triggerTitle}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsOpen(open => !open);
+        }}
+        className={triggerClassName}
+        style={triggerStyle}
+      >
+        {children}
+      </button>
+      {picker}
+    </>
+  );
+}
+
 const ARROW_TIP_PRESETS = [
   { label: 'Leaf', expr: 'size * cos(theta * 2.5)' },
   { label: 'Flower', expr: 'size * abs(sin(theta * 3))' },
@@ -277,6 +480,66 @@ const SUGGESTED_MATH_FUNCTIONS = [
   'exp', 'log', 'log10', 'log2', 'pow', 'sqrt', 'cbrt', 'abs', 'ceil', 'floor', 'round', 'fix', 'mod', 'sign',
   'min', 'max', 'mean', 'median', 'std', 'erf', 'gamma', 'factorial'
 ];
+
+const BrushPreview = ({ brushId, color }: { brushId: string, color: string }) => {
+  const strokeColor = color === 'transparent' ? 'currentColor' : color;
+
+  switch (brushId) {
+    case 'smooth-ink':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 12 C 18 2, 30 22, 42 12" fill="none" stroke={strokeColor} strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      );
+    case 'marker':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 12 L 42 12" fill="none" stroke={strokeColor} strokeWidth="6" strokeLinecap="round" opacity="0.85" />
+        </svg>
+      );
+    case 'neon-glow':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 12 C 18 4, 30 20, 42 12" fill="none" stroke={strokeColor} strokeWidth="3" strokeLinecap="round" style={{ filter: `drop-shadow(0px 0px 4px ${strokeColor})` }} />
+          <path d="M 6 12 C 18 4, 30 20, 42 12" fill="none" stroke="#fff" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+        </svg>
+      );
+    case 'pencil':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 13 L 14 11 L 22 13 L 30 11 L 38 13 L 42 12" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
+        </svg>
+      );
+    case 'dashed':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 12 L 42 12" fill="none" stroke={strokeColor} strokeWidth="2" strokeDasharray="6 4" strokeLinecap="round" />
+        </svg>
+      );
+    case 'rough-handdrawn':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 12 C 18 8, 30 16, 42 12" fill="none" stroke={strokeColor} strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 6 12.5 C 18 16, 30 8, 42 11.5" fill="none" stroke={strokeColor} strokeWidth="1" strokeLinecap="round" opacity="0.6" />
+          <path d="M 6 11.5 C 18 12, 30 12, 42 12.5" fill="none" stroke={strokeColor} strokeWidth="1" strokeLinecap="round" opacity="0.4" />
+        </svg>
+      );
+    case 'calligraphy':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 14 C 18 4, 30 20, 42 10 L 41 8 C 29 18, 17 2, 5 12 Z" fill={strokeColor} />
+        </svg>
+      );
+    case 'soft-highlighter':
+      return (
+        <svg width="48" height="24" viewBox="0 0 48 24" className="overflow-visible">
+          <path d="M 6 12 L 42 12" fill="none" stroke={strokeColor} strokeWidth="8" strokeLinecap="square" opacity="0.4" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   const store = useAnnotationStore();
@@ -470,14 +733,17 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                             }}
                           />
                         ))}
-                        <Popover>
-                          <PopoverTrigger className="relative shrink-0 w-7 h-7 rounded-full border border-slate-700 overflow-hidden flex items-center justify-center bg-[conic-gradient(from_90deg,#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000)] hover:scale-110 transition-transform">
-                            <div className="absolute inset-1 rounded-full bg-[#0b1120] flex items-center justify-center"></div>
-                          </PopoverTrigger>
-                          <PopoverContent side="top" sideOffset={10} className="w-auto p-3 bg-slate-900 border-slate-800 rounded-2xl z-[300]">
-                            <HexAlphaColorPicker color={store.color} onChange={store.setColor} />
-                          </PopoverContent>
-                        </Popover>
+                        <PortalColorPicker
+                          color={store.color}
+                          onChange={store.setColor}
+                          side="top"
+                          align="center"
+                          showPalette={false}
+                          panelClassName="bg-slate-900 dark:bg-slate-900 border-slate-800 dark:border-slate-800"
+                          triggerClassName="relative shrink-0 w-7 h-7 rounded-full border border-slate-700 overflow-hidden flex items-center justify-center bg-[conic-gradient(from_90deg,#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000)] hover:scale-110 transition-transform"
+                        >
+                          <div className="absolute inset-1 rounded-full bg-[#0b1120] flex items-center justify-center" />
+                        </PortalColorPicker>
                       </div>
                     </div>
 
@@ -548,22 +814,15 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                               </label>
                             </div>
                             {store.fillEnabled && (
-                              <Popover>
-                                <PopoverTrigger className="w-5 h-5 rounded-full border-[1.5px] border-white shadow-[0_0_0_2px_rgba(255,255,255,0.1)] transition-transform hover:scale-110" style={{ backgroundColor: store.fillColor }} />
-                                <PopoverContent className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" align="end" side="top" sideOffset={10}>
-                                  <div
-                                    className="flex flex-col gap-3 p-4 bg-[#121A2F] border border-slate-700 shadow-xl rounded-2xl transition-transform origin-bottom-right pointer-events-auto"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <HexAlphaColorPicker color={store.fillColor} onChange={(c) => store.setFillColor(c)} className="!w-full" />
-                                    <div className="flex items-center gap-1.5 flex-wrap max-w-[200px]">
-                                      {COLORS.map(c => (
-                                        <button key={c} onClick={() => store.setFillColor(c)} className="w-5 h-5 rounded-full border border-transparent hover:border-white shadow-sm" style={{ backgroundColor: c }} />
-                                      ))}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
+                              <PortalColorPicker
+                                color={store.fillColor}
+                                onChange={(c) => store.setFillColor(c)}
+                                side="top"
+                                align="end"
+                                panelClassName="bg-[#121A2F] dark:bg-[#121A2F] border-slate-700 dark:border-slate-700"
+                                triggerClassName="w-5 h-5 rounded-full border-[1.5px] border-white shadow-[0_0_0_2px_rgba(255,255,255,0.1)] transition-transform hover:scale-110"
+                                triggerStyle={getColorSwatchStyle(store.fillColor)}
+                              />
                             )}
                           </div>
                           {store.fillEnabled && (
@@ -901,30 +1160,12 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                             key={b.id}
                             title={b.label}
                             onClick={() => store.setBrushStyle(b.id)}
-                            className={`shrink-0 flex items-center justify-center w-[72px] h-[48px] rounded-xl transition-all border snap-start ${store.brushStyle === b.id
+                            className={`shrink-0 flex flex-col items-center justify-center w-[72px] h-[48px] rounded-xl transition-all border snap-start ${store.brushStyle === b.id
                                 ? 'bg-[#121A2F] border-blue-600 shadow-[0_0_10px_rgba(37,99,235,0.2)] text-blue-400'
                                 : 'bg-transparent border-slate-800 hover:bg-[#121A2F]/50 text-slate-500'
                               }`}
                           >
-                            {/* Simple brush preview SVG */}
-                            <svg width="48" height="24" viewBox="0 0 48 24">
-                              <path
-                                d="M 4 12 Q 12 4 24 12 T 44 12"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                style={{
-                                  strokeDasharray: b.id === 'dashed' ? '4 4' : 'none',
-                                  filter: b.id === 'neon-glow' ? 'drop-shadow(0px 0px 3px currentColor)' : 'none',
-                                  opacity: b.id === 'soft-highlighter' ? 0.6 : 1
-                                }}
-                              />
-                              {b.id === 'rough-handdrawn' && (
-                                <path d="M 4 11.5 Q 12 3 24 11 T 44 11.5" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.5" strokeLinecap="round" />
-                              )}
-                            </svg>
+                            <BrushPreview brushId={b.id} color="currentColor" />
                           </button>
                         ))}
                         <button className="shrink-0 flex items-center justify-center w-[48px] h-[48px] rounded-xl border border-slate-800 text-slate-400 hover:bg-[#121A2F]/50 transition-colors">
@@ -1599,40 +1840,19 @@ export default function DrawingToolbar() {
                       key={c}
                       onClick={() => store.setColor(c)}
                       className={`w-7 h-7 rounded-full transition-all ${store.color === c ? 'scale-110 ring-2 ring-white/50 ring-offset-2 ring-offset-[#0b1120] shadow-lg' : 'hover:scale-105 opacity-90 hover:opacity-100'}`}
-                      style={{ backgroundColor: c }}
+                      style={getColorSwatchStyle(c)}
                     />
                   ))}
-                  <Popover>
-                    <PopoverTrigger
-                      className="w-7 h-7 rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center cursor-pointer hover:border-slate-500 transition-colors"
-                      title="Custom Color"
-                    >
-                      <Plus size={14} className="text-slate-500" />
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none"
-                      align="center"
-                      side="top"
-                      sideOffset={10}
-                    >
-                      <div
-                        className="flex flex-col gap-3 p-4 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl transition-transform origin-bottom-center pointer-events-auto"
-                        style={{ transform: `scale(${localScale})` }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <HexAlphaColorPicker color={store.color} onChange={(c) => store.setColor(c)} className="!w-full" />
-                        <div className="flex items-center gap-2 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800">
-                          <div className="w-6 h-6 rounded-md shadow-inner" style={{ backgroundColor: store.color }} />
-                          <input
-                            type="text"
-                            value={store.color}
-                            onChange={(e) => store.setColor(e.target.value)}
-                            className="bg-transparent border-none outline-none text-xs font-mono w-24 uppercase text-slate-200"
-                          />
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                  <PortalColorPicker
+                    color={store.color}
+                    onChange={(c) => store.setColor(c)}
+                    side="top"
+                    align="center"
+                    showInput
+                    triggerClassName="w-7 h-7 rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center cursor-pointer hover:border-slate-500 transition-colors"
+                  >
+                    <Plus size={14} className="text-slate-500" />
+                  </PortalColorPicker>
                 </div>
               </div>
 
@@ -1709,19 +1929,27 @@ export default function DrawingToolbar() {
               </div>
 
               {/* Options Section */}
-              <div className={`flex flex-col gap-4 min-w-[140px] ${isVert ? 'pt-2' : ''}`}>
+              <div className={`flex flex-col gap-4 min-w-[160px] ${isVert ? 'pt-2' : ''}`}>
                 <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Style</span>
-                <select
-                  value={store.brushStyle}
-                  onChange={e => store.setBrushStyle(e.target.value as BrushStyle)}
-                  className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 outline-none text-xs rounded-lg px-3 py-2 text-slate-700 dark:text-slate-300 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%2364748b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%205%203%203%203-3%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_10px_center] bg-no-repeat pr-8"
-                >
+                <div className="grid grid-cols-2 gap-2">
                   {BRUSHES.map(b => (
-                    <option key={b.id} value={b.id} className="bg-white dark:bg-[#0b1120] text-slate-900 dark:text-slate-100">{b.label}</option>
+                    <button
+                      key={b.id}
+                      onClick={() => store.setBrushStyle(b.id)}
+                      title={b.label}
+                      className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${
+                        store.brushStyle === b.id
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-sm'
+                          : 'bg-white dark:bg-[#0b1120] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <BrushPreview brushId={b.id} color={store.brushStyle === b.id ? (document.documentElement.classList.contains('dark') ? '#60a5fa' : '#3b82f6') : 'currentColor'} />
+                      <span className="text-[9px] mt-1.5 font-medium text-center leading-tight">{b.label}</span>
+                    </button>
                   ))}
-                </select>
+                </div>
 
-                <div className="flex items-center gap-3 mt-2 group cursor-pointer" onClick={() => store.setAutoShapeDetection(!store.autoShapeDetection)}>
+                <div className="flex items-center gap-3 mt-2 group">
                   <Checkbox
                     id="auto-shape"
                     checked={store.autoShapeDetection}
@@ -1753,32 +1981,15 @@ export default function DrawingToolbar() {
                       </label>
                     </div>
                     {store.fillEnabled && (
-                      <Popover>
-                        <PopoverTrigger
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-5 h-5 rounded-full border border-slate-700 shadow-inner group-hover:border-slate-500 transition-all"
-                          style={{ backgroundColor: store.fillColor }}
-                        />
-                        <PopoverContent className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[9999] pointer-events-none" align="end" side="top" sideOffset={10}>
-                          <div
-                            className="flex flex-col gap-3 p-4 bg-[#0b1120] border border-slate-700 shadow-2xl rounded-2xl transition-transform origin-bottom-right pointer-events-auto"
-                            style={{ transform: `scale(${localScale})` }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <HexAlphaColorPicker color={store.fillColor} onChange={(c) => store.setFillColor(c)} className="!w-full" />
-                            <div className="flex items-center gap-2 flex-wrap max-w-[200px]">
-                              {COLORS.map(c => (
-                                <button
-                                  key={c}
-                                  onClick={() => store.setFillColor(c)}
-                                  className={`w-5 h-5 rounded-full border-2 transition-all ${store.fillColor === c ? 'border-white' : 'border-transparent hover:scale-110'}`}
-                                  style={{ backgroundColor: c }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+                      <PortalColorPicker
+                        color={store.fillColor}
+                        onChange={(c) => store.setFillColor(c)}
+                        side="top"
+                        align="end"
+                        panelClassName="bg-[#0b1120] dark:bg-[#0b1120] border-slate-700 dark:border-slate-700"
+                        triggerClassName="w-5 h-5 rounded-full border border-slate-700 shadow-inner group-hover:border-slate-500 transition-all"
+                        triggerStyle={getColorSwatchStyle(store.fillColor)}
+                      />
                     )}
                   </div>
                   {store.fillEnabled && (
