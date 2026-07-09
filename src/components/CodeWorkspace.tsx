@@ -40,7 +40,7 @@ import { PyPackagesPanel } from "./PyPackagesPanel";
 import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
 import { TodoWorkspace } from "./TodoWorkspace";
-import ImageWorkspace from "./ImageWorkspace";
+const ImageWorkspace = React.lazy(() => import("./image-workspace/ImageWorkspace"));
 import { SearchNodeWorkspace } from "./SearchNodeWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { useAssistantStore } from "../programming-assistant/stores/useAssistantStore";
@@ -1941,10 +1941,12 @@ declare const console: {
                 ) : isTodo ? (
                   <TodoWorkspace key={currentFilePath} path={currentFilePath} />
                 ) : isImg ? (
-                  <ImageWorkspace
-                    key={currentFilePath}
-                    path={currentFilePath}
-                  />
+                  <React.Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-400">Loading Image Workspace...</div>}>
+                    <ImageWorkspace
+                      key={currentFilePath}
+                      path={currentFilePath}
+                    />
+                  </React.Suspense>
                 ) : (
                   <SafeEditor
                     path={currentFilePath}

@@ -1,0 +1,211 @@
+const updateLayersList = useCallback(() => {
+    if (!fabricRef.current) return;
+    const items = fabricRef.current.getObjects();
+    setLayers([...items].reverse()); // Top layer first
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      if (!fabricRef.current) return;
+      try {
+        saveToDexie(path, artboardsRef.current, fabricRef.current).catch(err => {
+          console.error("Dexie save failed", err);
+        });
+
+        const activeBoard = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
+        let dataUrl = "";
+
+        if (activeBoard) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = activeBoard.width;
+            tempCanvas.height = activeBoard.height;
+            const ctx = tempCanvas.getContext('2d');
+            if (ctx) {
+                if (!activeBoard.transparent) {
+                  ctx.fillStyle = activeBoard.backgroundColor || "#ffffff";
+                  ctx.fillRect(0, 0, activeBoard.width, activeBoard.height);
+                } else {
+                  ctx.clearRect(0, 0, activeBoard.width, activeBoard.height);
+                }
+
+                ctx.save();
+                ctx.translate(-activeBoard.x, -activeBoard.y);
+                fabricRef.current.getObjects().forEach((obj) => {
+                  if (!obj.visible || obj.type === 'activeSelection') return;
+                  if ((obj as any).artboardId === activeBoard.id) obj.render(ctx);
+                });
+                ctx.restore();
+                dataUrl = tempCanvas.toDataURL('image/png');
+            } else {
+                dataUrl = fabricRef.current.toDataURL({ multiplier: 1, format: 'png' });
+            }
+        } else {
+            dataUrl = fabricRef.current.toDataURL({ multiplier: 1, format: 'png' });
+        }
+        const name = path.split('.').pop() || "edited_image";
+        const file = dataURLtoFile(dataUrl, `${name}.png`);
+        
+        importFile(file).then(({ assetId }) => {
+          updateNodeValue(path, assetId);
+        }).catch(err => {
+          console.error("Failed to save edited canvas as asset:", err);
+          updateNodeValue(path, dataUrl); // fallback
+        });
+      } catch (err) {
+        console.error("Error serializing image canvas:", err);
+      }
+    }, 850);
+  }, [path, updateNodeValue]);
+
+  const handleSelectionContext = useCallback((e: any) => {
+    const active = fabricRef.current?.getActiveObject();
+    if (active) {
+      if (active.type === 'activeSelection') {
+        const selObjects = (active as fabric.ActiveSelection).getObjects();
+        if (parentAlignmentObjRef.current && !selObjects.includes(parentAlignmentObjRef.current)) {
+          parentAlignmentObjRef.current = null;
+          setParentAlignmentObj(null);
+        }
+      } else {
+        parentAlignmentObjRef.current = null;
+        setParentAlignmentObj(null);
+      }
+
+      setSelectedLayerId((active as any).id);
+      const selType = active.get('isFrameGroup') ? 'frameGroup' : active.type;
+      setSelectionType(selType);
+
+      if (['rect', 'circle', 'triangle', 'line'].includes(selType || '')) {
+         setShapeFillColor(active.get('fill') as string || 'transparent');
+         const strokeVal = active.get('stroke') as string || '#000000';
+         setShapeStrokeColor(strokeVal === 'transparent' ? '#000000' : strokeVal);
+         setShapeStrokeWidth(active.get('strokeWidth') as number ?? 2);
+         setShapeOpacity(Math.round((active.get('opacity') ?? 1) * 100));
+         setShapeStrokeLineJoin((active.get('strokeLineJoin') as 'miter' | 'round' | 'bevel') || 'miter');
+         setShapeStrokeLineCap((active.get('strokeLineCap') as 'butt' | 'round' | 'square') || 'butt');
+
+         const dashArray = active.get('strokeDashArray');
+         if (!active.get('stroke') || active.get('stroke') === 'transparent' || active.get('strokeWidth') === 0) {
+            setShapeBorderStyle('none');
+         } else if (dashArray && dashArray.length > 0) {
+            setShapeBorderStyle('dashed');
+         } else {
+            setShapeBorderStyle('solid');
+         }
+
+         if (selType === 'rect') {
+            const obj = active as any;
+            const w = obj.width ?? 100;
+            const h = obj.height ?? 100;
+            const maxR = Math.min(w, h) / 2;
+
+            const uPercent = obj.cornerRoundingPercent !== undefined ? obj.cornerRoundingPercent : Math.round(((obj.rx || 0) / (maxR || 1)) * 100);
+            const tlPercent = obj.cornerTopLeftPercent !== undefined ? obj.cornerTopLeftPercent : uPercent;
+            const trPercent = obj.cornerTopRightPercent !== undefined ? obj.cornerTopRightPercent : uPercent;
+            const brPercent = obj.cornerBottomRightPercent !== undefined ? obj.cornerBottomRightPercent : uPercent;
+            const blPercent = obj.cornerBottomLeftPercent !== undefined ? obj.cornerBottomLeftPercent : uPercent;
+            const isIndiv = obj.useIndividualCorners ?? false;
+
+            setShapeCornerRadius(uPercent);
+            setShapeUseIndividualCorners(isIndiv);
+            setShapeCornerTL(tlPercent);
+            setShapeCornerTR(trPercent);
+            setShapeCornerBR(brPercent);
+            setShapeCornerBL(blPercent);
+         }
+      }
+      
+      if ((active as any).isCollageBlock) {
+        setCollageBgColor(active.get('fill') as string || '#333333');
+        const stroke = active.get('stroke') as string || '#555555';
+        setCollageBorderColor(stroke === 'transparent' ? '#555555' : stroke);
+        setCollageBorderWidth(active.get('strokeWidth') as number || 2);
+        
+        const obj = active as any;
+        const w = obj.width ?? 100;
+        const h = obj.height ?? 100;
+        const maxR = Math.min(w, h) / 2;
+        
+        const uPercent = obj.cornerRoundingPercent !== undefined ? obj.cornerRoundingPercent : Math.round(((obj.rx || 0) / (maxR || 1)) * 100);
+        const tlPercent = obj.cornerTopLeftPercent !== undefined ? obj.cornerTopLeftPercent : uPercent;
+        const trPercent = obj.cornerTopRightPercent !== undefined ? obj.cornerTopRightPercent : uPercent;
+        const brPercent = obj.cornerBottomRightPercent !== undefined ? obj.cornerBottomRightPercent : uPercent;
+        const blPercent = obj.cornerBottomLeftPercent !== undefined ? obj.cornerBottomLeftPercent : uPercent;
+        const isIndiv = obj.useIndividualCorners ?? false;
+
+        setCollageCornerRadius(uPercent);
+        setUseIndividualCorners(isIndiv);
+        setCollageCornerTL(tlPercent);
+        setCollageCornerTR(trPercent);
+        setCollageCornerBR(brPercent);
+        setCollageCornerBL(blPercent);
+
+        const dash = active.get('strokeDashArray');
+        if (stroke === 'transparent' || active.get('strokeWidth') === 0) {
+          setCollageBorderStyle('none');
+        } else if (dash && dash.length > 0) {
+          setCollageBorderStyle('dashed');
+        } else {
+          setCollageBorderStyle('solid');
+        }
+      }
+
+      if (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox') {
+        const textObj = active as any;
+        setTextProps({
+          textContent: textObj.text || "",
+          fontFamily: textObj.fontFamily || "Arial",
+          fontSize: textObj.fontSize || 40,
+          fontWeight: textObj.fontWeight || "normal",
+          fontStyle: textObj.fontStyle || "normal",
+          textAlign: textObj.textAlign || "left",
+          underline: textObj.underline || false,
+          overline: textObj.overline || false,
+          linethrough: textObj.linethrough || false,
+          charSpacing: textObj.charSpacing || 0,
+          lineHeight: textObj.lineHeight || 1.16,
+          angle: textObj.angle || 0,
+          flipX: textObj.flipX || false,
+          flipY: textObj.flipY || false,
+        });
+      } else if (active.type === 'image' || active.get('isFrameGroup')) {
+        let imgObj = active as any;
+        if (imgObj.get('isFrameGroup')) {
+           const frameType = imgObj.get('frameType');
+           const items = imgObj.getObjects();
+           
+           const rectObj = items.find((i: any) => i.type === 'rect');
+           if (rectObj) {
+              if (frameType === 'polaroid') {
+                  const contentObj = items.find((i: any) => i.type === 'image');
+                  if (contentObj) {
+                      setFrameBorderWidth(Math.round(rectObj.top - contentObj.getCenterPoint().y));
+                  }
+              } else {
+                  setFrameBorderWidth(Math.round(rectObj.strokeWidth || 20));
+              }
+           }
+           
+           imgObj = items.find((i: any) => i.type === 'image') || imgObj;
+        }
+        setImageFilters(imgObj.customFilters || []);
+        if (imgObj.lastFilterBenchmark) {
+          setBenchmarkInfo(imgObj.lastFilterBenchmark);
+        } else {
+          setBenchmarkInfo({
+            backend: (fabric as any).isWebglSupported && (fabric as any).isWebglSupported() ? "WebGL" : "Canvas2D",
+            filterTimeMs: "0.0",
+            outputWidth: imgObj.width ? Math.round(imgObj.width * (imgObj.scaleX || 1)) : 0,
+            outputHeight: imgObj.height ? Math.round(imgObj.height * (imgObj.scaleY || 1)) : 0
+          });
+        }
+      }
+    } else {
+      parentAlignmentObjRef.current = null;
+      setParentAlignmentObj(null);
+      setSelectedLayerId(null);
+      setSelectionType(null);
+    }
+  }, []);

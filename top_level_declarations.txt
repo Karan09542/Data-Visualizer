@@ -1,0 +1,45 @@
+const pngWasmUrl = "https://unpkg.com/@jsquash/png@3.1.1/codec/pkg/squoosh_png_bg.wasm";
+const jpegWasmUrl = "https://unpkg.com/@jsquash/jpeg@1.6.0/codec/enc/mozjpeg_enc.wasm";
+const webpWasmUrl = "https://unpkg.com/@jsquash/webp@1.5.0/codec/enc/webp_enc.wasm";
+const webpSimdWasmUrl = "https://unpkg.com/@jsquash/webp@1.5.0/codec/enc/webp_enc_simd.wasm";
+const avifWasmUrl = "https://unpkg.com/@jsquash/avif@2.1.1/codec/enc/avif_enc.wasm";
+const avifMtWasmUrl = "https://unpkg.com/@jsquash/avif@2.1.1/codec/enc/avif_enc_mt.wasm";
+const resizeWasmUrl = "https://unpkg.com/@jsquash/resize@2.1.1/lib/resize/pkg/squoosh_resize_bg.wasm";
+const loadWasmModule = async (url: string): Promise<WebAssembly.Module> => {
+const hasSimd = async (): Promise<boolean> => {
+const hasThreads = async (): Promise<boolean> => {
+interface ImageWorkspaceProps {
+const setOpacityOnHex = (colorString: string, opacityPercent: number): string => {
+const getBrushName = (type: string): string => {
+const createPatternSource = (type: string, color: string, size: number) => {
+interface Command {
+class MacroCommand implements Command {
+class AddObjectCommand implements Command {
+class DeleteObjectCommand implements Command {
+class TransformObjectsCommand implements Command {
+class PropertyChangeCommand implements Command {
+class StyleChangeCommand implements Command {
+class LayerReorderCommand implements Command {
+class FilterChangeCommand implements Command {
+export interface FilterConfig {
+export function rebuildFabricFilters(obj: any, filtersObj: any) {
+class FilterPipelineCommand implements Command {
+const BrushPreview = ({ type, color, size, opacity, hardness, flow }: any) => {
+interface Artboard {
+class ArtboardStateCommand implements Command {
+class DuplicateArtboardCommand implements Command {
+class DeleteArtboardCommand implements Command {
+class ArtboardPropertyCommand implements Command {
+const ModernCheckbox = ({ checked, onChange, label, labelLeft, className }: { checked: boolean, onChange: (val: boolean) => void, label?: string, labelLeft?: boolean, className?: string }) => (
+const ARTBOARD_PRESETS = [
+interface ImageWorkspaceProps {
+const ObjectDimensionsPanel = ({ fabricRef }: { fabricRef: React.RefObject<fabric.Canvas> }) => {
+export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
+function dataURLtoFile(dataurl: string, filename: string): File {
+const ColorPickerPortal = ({ 
+const ColorPickerTrigger = ({ 
+const ContextMenuItem = ({ icon: Icon, label, onClick, danger, shortcut, disabled }: any) => (
+const ToolBtn = ({ icon: Icon, tool, current, set, title }: any) => {
+const TabBtn = ({ tab, active, set, label, icon: Icon }: any) => {
+const BtnSelect = ({ label, active, onClick }: any) => (
+const FilterSlider = ({ label, min, max, step, onChange, value }: any) => {

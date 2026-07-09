@@ -1,0 +1,303 @@
+import React, { useState } from 'react';
+import { 
+  SquareDashed, Plus, X, Copy, Trash2, Layout, Maximize, ChevronDown
+} from 'lucide-react';
+import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
+import { useCanvas } from '../../contexts/CanvasContext';
+import { useHistory } from '../../contexts/HistoryContext';
+import { ARTBOARD_PRESETS } from '../../types/artboards';
+import { ModernCheckbox } from '../shared/ModernCheckbox';
+import { PRESET_REGISTRY } from '../../../../lib/imagePresets';
+import { ColorPickerTrigger } from '../shared/ColorPickers';
+
+export const ArtboardsTab: React.FC = () => {
+  const { 
+    artboards, setArtboards, activeArtboardId, setActiveArtboardId,
+    createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
+    updateArtboardProp, onArtboardPropStart, onArtboardPropCommit
+  } = useWorkspaceUI();
+
+  const { updateArtboardPropDirect, fabricRef, setZoomPercent } = useCanvas();
+  const { executeCommand } = useHistory();
+
+  const [draggedArtboardIdx, setDraggedArtboardIdx] = useState<number | null>(null);
+  const [dragOverArtboardIdx, setDragOverArtboardIdx] = useState<number | null>(null);
+
+  const moveArtboard = (sourceIndex: number, destIndex: number) => {
+    if (sourceIndex === destIndex) return;
+    const newArtboards = [...artboards];
+    const [removed] = newArtboards.splice(sourceIndex, 1);
+    newArtboards.splice(destIndex, 0, removed);
+    
+    // Command history integration
+    const cmd = {
+       name: "Reorder Artboards",
+       execute: () => { setArtboards(newArtboards); },
+       undo: () => {
+          const revertArtboards = [...newArtboards];
+          const [popped] = revertArtboards.splice(destIndex, 1);
+          revertArtboards.splice(sourceIndex, 0, popped);
+          setArtboards(revertArtboards);
+       }
+    };
+    executeCommand(cmd as any);
+  };
+
+  return (
+    <>
+<div className="flex flex-col h-full overflow-hidden text-white font-sans selection:bg-blue-500/30">
+                   {/* Header & Create */}
+                   <div className="p-3 md:p-4 shrink-0 border-b border-[#2C2C2C] bg-[#1A1A1A] z-10 shadow-sm flex flex-col gap-3 md:gap-4 pb-4 md:pb-5">
+                      <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-2">
+                            <SquareDashed size={14} className="text-blue-400 opacity-80 md:w-4 md:h-4"/>
+                            <span className="text-xs md:text-sm font-semibold text-[#EEEEEE] tracking-tight">Artboards</span>
+                         </div>
+                         <span className="text-[10px] bg-[#222] text-[#888] border border-[#333] px-1.5 py-0.5 rounded font-mono font-medium">{artboards.length} Boards</span>
+                      </div>
+                      <div className="flex gap-2 relative">
+                         <div className="flex-1 group">
+                            <button className="w-full h-8 bg-[#222] hover:bg-[#2A2A2A] text-[#CCC] rounded text-[11px] font-semibold transition border border-[#333] overflow-hidden flex items-center justify-center gap-1">
+                               Presets <ChevronDown size={12} className="opacity-70" />
+                            </button>
+                            <div className="absolute top-full left-0 w-[240px] mt-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-50 flex flex-col max-h-[400px] overflow-y-auto custom-scrollbar">
+                                {Array.from(new Set(PRESET_REGISTRY.map(p => p.category))).map(category => (
+                                  <div key={category} className="flex flex-col">
+                                    <div className="sticky top-0 bg-[#222]/95 backdrop-blur-sm px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-[#888] border-b border-[#333] z-10 capitalize">
+                                      {category.replace('_', ' ')}
+                                    </div>
+                                    {PRESET_REGISTRY.filter(p => p.category === category).map((preset) => (
+                                      <button 
+                                        key={preset.id}
+                                        onClick={() => createArtboardFromPreset(preset.id)}
+                                        className="text-[10px] text-left text-[#C0C0C0] px-3 py-2 hover:bg-blue-600 hover:text-white transition whitespace-nowrap flex flex-col gap-0.5 group/btn border-b border-[#222] last:border-b-0"
+                                      >
+                                        <div className="flex justify-between items-center w-full">
+                                          <span className="font-medium">{preset.name}</span>
+                                          <span className="opacity-40 text-[9px] font-mono group-hover/btn:text-blue-200">{preset.width}x{preset.height} {preset.unit}</span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                ))}
+                            </div>
+                         </div>
+                         <button 
+                           onClick={() => createArtboard()}
+                           className="flex-1 h-8 bg-blue-600/90 hover:bg-blue-500 text-white rounded text-[11px] font-semibold transition shadow"
+                         >
+                            + Custom
+                         </button>
+                      </div>
+                   </div>
+
+                   {/* List existing artboards */}
+                   <div className="flex-1 overflow-y-auto w-full no-scrollbar px-2 py-3 bg-[#111] md:bg-[#151515]">
+                     {artboards.length === 0 && (
+                        <div className="text-center p-6 text-xs text-[#6A6A6A] italic">No artboards created yet.</div>
+                     )}
+                     <div className="space-y-1.5 pb-24">
+                         {artboards.map((board, idx) => {
+                           const isActive = board.id === activeArtboardId;
+                           const objCount = fabricRef.current ? fabricRef.current.getObjects().filter(o => (o as any).artboardId === board.id).length : 0;
+                           const isDragOver = dragOverArtboardIdx === idx;
+                           const isDragging = draggedArtboardIdx === idx;
+                           
+                           return (
+                             <div 
+                               key={board.id}
+                               draggable
+                               onDragStart={(e) => {
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  setDraggedArtboardIdx(idx);
+                               }}
+                               onDragOver={(e) => {
+                                  e.preventDefault();
+                                  setDragOverArtboardIdx(idx);
+                               }}
+                               onDrop={(e) => {
+                                  e.preventDefault();
+                                  if (draggedArtboardIdx !== null && dragOverArtboardIdx !== null) {
+                                     moveArtboard(draggedArtboardIdx, dragOverArtboardIdx);
+                                  }
+                                  setDraggedArtboardIdx(null);
+                                  setDragOverArtboardIdx(null);
+                               }}
+                               onDragEnd={() => {
+                                  setDraggedArtboardIdx(null);
+                                  setDragOverArtboardIdx(null);
+                               }}
+                               onClick={() => setActiveArtboardId(board.id)} 
+                               onDoubleClick={() => {
+                                  setActiveArtboardId(board.id);
+                                  if (fabricRef.current) {
+                                    const cw = fabricRef.current.width!;
+                                    const ch = fabricRef.current.height!;
+                                    const zoom = Math.min(cw / (board.width + 100), ch / (board.height + 100), 2);
+                                    fabricRef.current.setZoom(zoom);
+                                    
+                                    const vpt = fabricRef.current.viewportTransform!;
+                                    const newVpt = vpt.slice() as any;
+                                    newVpt[4] = cw / 2 - (board.x + board.width / 2) * zoom;
+                                    newVpt[5] = ch / 2 - (board.y + board.height / 2) * zoom;
+                                    fabricRef.current.setViewportTransform(newVpt);
+                                    setZoomPercent(Math.round(zoom * 100));
+                                  }
+                               }}
+                               className={`
+                                 relative p-2.5 rounded-lg cursor-pointer border select-none transition-colors group
+                                 ${isActive ? 'bg-blue-600/10 border-blue-500/80 shadow-[0_0_0_1px_rgba(59,130,246,0.2)_inset]' : 'bg-[#1C1C1C] border-[#2C2C2C] hover:border-[#4A4A4A]'} 
+                                 ${isDragging ? 'opacity-30 border-dashed' : 'opacity-100'}
+                                 ${isDragOver && draggedArtboardIdx !== null && draggedArtboardIdx > idx ? 'border-t-2 border-t-blue-400' : ''}
+                                 ${isDragOver && draggedArtboardIdx !== null && draggedArtboardIdx < idx ? 'border-b-2 border-b-blue-400' : ''}
+                               `}
+                             >
+                                <div className="flex gap-3 items-center">
+                                   {/* Preview Thumbnail placeholder */}
+                                   <div 
+                                      className="w-10 h-10 shrink-0 border border-[#3A3A3A] rounded flex items-center justify-center overflow-hidden"
+                                      style={{ backgroundColor: board.backgroundColor || '#fff', ...(!board.transparent ? {} : { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' }) }}
+                                   >
+                                      {board.transparent && <div className="w-full h-full bg-black/10"></div>}
+                                      {/* Scaled minimap of objects inside this artboard could go here eventually */}
+                                   </div>
+                                   
+                                   <div className="flex-1 w-0 min-w-0 flex flex-col justify-center">
+                                      <div className="flex items-center justify-between mb-0.5">
+                                        <span className={`text-[11px] font-semibold truncate ${isActive ? 'text-blue-300' : 'text-[#E0E0E0]'}`}>{board.name}</span>
+                                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                                            <span className="text-[8px] bg-[#222] text-[#888] px-1.5 py-0.5 rounded-sm font-mono border border-[#333]">{objCount}</span>
+                                        </div>
+                                      </div>
+                                      <div className="text-[9px] text-[#777] font-mono flex items-center gap-1.5">
+                                         <span>{board.width}<span className="opacity-40">x</span>{board.height}</span>
+                                         <span className="opacity-30">|</span>
+                                         <span className={`${board.orientation === 'landscape' ? 'text-cyan-600/80' : 'text-purple-600/80'} uppercase tracking-tight`}>{board.orientation === 'landscape' ? 'LND' : 'PRT'}</span>
+                                      </div>
+                                   </div>
+                                   
+                                   {/* Quick actions */}
+                                   <div className={`flex flex-col gap-0.5 shrink-0 transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 md:group-hover:opacity-100 opacity-100 md:opacity-0'}`}>
+                                      <button title="Duplicate" onClick={(e) => { e.stopPropagation(); duplicateArtboard(board); }} className="w-5 h-5 flex items-center justify-center hover:bg-white/10 text-[#888] hover:text-white rounded transition-colors">
+                                        <Copy size={10} />
+                                      </button>
+                                      <button title="Delete" onClick={(e) => { e.stopPropagation(); deleteArtboard(board.id); }} className="w-5 h-5 flex items-center justify-center hover:bg-red-900/30 text-[#888] hover:text-red-400 rounded transition-colors">
+                                        <Trash2 size={10} />
+                                      </button>
+                                   </div>
+                                </div>
+                                
+                                {/* Active Artboard Properties Expansion */}
+                                {isActive && (
+                                   <div className="mt-3 pt-3 border-t border-[#333] space-y-3 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
+                                      {/* Edit Name */}
+                                      <div className="flex items-center gap-2">
+                                         <input 
+                                           type="text" 
+                                           className="flex-1 h-7 bg-[#111] border border-[#333] rounded px-2 text-[10px] text-[#CCC] outline-none focus:border-blue-500 focus:text-white transition-colors" 
+                                           value={board.name} 
+                                           onFocus={() => onArtboardPropStart(board.name)}
+                                           onChange={(e) => updateArtboardProp(board.id, "name", e.target.value)} 
+                                           onBlur={(e) => onArtboardPropCommit(board.id, "name", e.target.value)}
+                                           placeholder="Artboard Name"
+                                         />
+                                      </div>
+
+                                      {/* Dimensions & Orientation */}
+                                      <div className="flex gap-2">
+                                         <div className="flex-1 flex flex-col gap-1">
+                                            <span className="text-[9px] text-[#666] uppercase font-bold tracking-wider">W</span>
+                                            <input 
+                                              type="number" 
+                                              className="w-full h-7 bg-[#111] border border-[#333] rounded px-1.5 text-[10px] font-mono text-[#CCC] outline-none focus:border-blue-500 transition-colors" 
+                                              value={board.width} 
+                                              onFocus={() => onArtboardPropStart(board.width)}
+                                              onChange={(e) => updateArtboardProp(board.id, "width", Math.max(10, Number(e.target.value)))} 
+                                              onBlur={(e) => onArtboardPropCommit(board.id, "width", Math.max(10, Number(e.target.value)))}
+                                            />
+                                         </div>
+                                         <div className="flex items-end pb-1.5 shrink-0 opacity-40">
+                                            <X size={10} />
+                                         </div>
+                                         <div className="flex-1 flex flex-col gap-1">
+                                            <span className="text-[9px] text-[#666] uppercase font-bold tracking-wider">H</span>
+                                            <input 
+                                              type="number" 
+                                              className="w-full h-7 bg-[#111] border border-[#333] rounded px-1.5 text-[10px] font-mono text-[#CCC] outline-none focus:border-blue-500 transition-colors" 
+                                              value={board.height} 
+                                              onFocus={() => onArtboardPropStart(board.height)}
+                                              onChange={(e) => updateArtboardProp(board.id, "height", Math.max(10, Number(e.target.value)))} 
+                                              onBlur={(e) => onArtboardPropCommit(board.id, "height", Math.max(10, Number(e.target.value)))}
+                                            />
+                                         </div>
+                                         <div className="flex flex-col gap-1 shrink-0 ml-1">
+                                            <span className="text-[9px] text-transparent uppercase font-bold tracking-wider">.</span>
+                                            <div className="flex bg-[#111] border border-[#333] rounded p-0.5 h-7">
+                                               <button 
+                                                 onClick={() => updateArtboardPropDirect(board.id, "orientation", "portrait", true)}
+                                                 className={`w-6 flex items-center justify-center rounded-[2px] transition ${board.orientation === "portrait" ? "bg-[#333] text-white" : "text-[#666] hover:text-[#CCC]"}`}
+                                                 title="Portrait"
+                                               >
+                                                  <div className="w-2.5 h-3.5 border-2 border-current rounded-sm"></div>
+                                               </button>
+                                               <button 
+                                                 onClick={() => updateArtboardPropDirect(board.id, "orientation", "landscape", true)}
+                                                 className={`w-6 flex items-center justify-center rounded-[2px] transition ${board.orientation === "landscape" ? "bg-[#333] text-white" : "text-[#666] hover:text-[#CCC]"}`}
+                                                 title="Landscape"
+                                               >
+                                                  <div className="w-3.5 h-2.5 border-2 border-current rounded-sm"></div>
+                                               </button>
+                                            </div>
+                                         </div>
+                                      </div>
+
+                                      {/* Background */}
+                                      <div className="flex items-center gap-2">
+                                         <div className="relative shrink-0">
+                                           <ColorPickerTrigger 
+                                              color={board.backgroundColor || "#ffffff"}
+                                              onChange={(newColor) => updateArtboardProp(board.id, "backgroundColor", newColor)}
+                                              onStart={(initialColor) => onArtboardPropStart(initialColor)}
+                                              onCommit={(initialColor, finalColor) => {
+                                                 onArtboardPropStart(initialColor);
+                                                 onArtboardPropCommit(board.id, "backgroundColor", finalColor);
+                                              }}
+                                              label="Background"
+                                              className="w-7 h-7 rounded border border-[#333]"
+                                           />
+                                         </div>
+                                         <input 
+                                            type="text" 
+                                            className="h-7 bg-[#111] border border-[#333] rounded px-2 text-[10px] text-[#CCC] w-16 uppercase font-mono outline-none focus:border-blue-500 transition-colors" 
+                                            value={board.backgroundColor || "#FFFFFF"} 
+                                            onFocus={() => onArtboardPropStart(board.backgroundColor || "#ffffff")}
+                                            onChange={(e) => updateArtboardProp(board.id, "backgroundColor", e.target.value)} 
+                                            onBlur={(e) => onArtboardPropCommit(board.id, "backgroundColor", e.target.value)}
+                                         />
+                                         <div className="ml-auto">
+                                           <ModernCheckbox 
+                                             label="Transp"
+                                             checked={!!board.transparent} 
+                                             onChange={(val) => updateArtboardPropDirect(board.id, "transparent", val, true)} 
+                                           />
+                                         </div>
+                                      </div>
+
+                                      {/* Guides toggle */}
+                                      <div className="pt-2 border-t border-[#333] grid grid-cols-2 gap-1.5 opacity-80">
+                                         <ModernCheckbox label="Show Grid" checked={!!board.showGrid} onChange={val => updateArtboardPropDirect(board.id, "showGrid", val, true)} />
+                                         <ModernCheckbox label="Safe Area" checked={!!board.showSafeArea} onChange={val => updateArtboardPropDirect(board.id, "showSafeArea", val, true)} />
+                                         <ModernCheckbox label="Margins" checked={!!board.showMargins} onChange={val => updateArtboardPropDirect(board.id, "showMargins", val, true)} />
+                                         <ModernCheckbox label="Center Guide" checked={!!board.showCenter} onChange={val => updateArtboardPropDirect(board.id, "showCenter", val, true)} />
+                                      </div>
+                                   </div>
+                                )}
+                             </div>
+                           )
+                         })}
+                     </div>
+                   </div>
+                </div>
+    </>
+  );
+};
