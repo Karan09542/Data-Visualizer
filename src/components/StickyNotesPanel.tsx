@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { X, Search, SortAsc, SortDesc, Trash2, Edit3, Plus, ExternalLink, Calendar, List, CopyPlus } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -121,7 +121,7 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd 
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 md:opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleRestore(note)}
                     className="p-2 hover:bg-yellow-500/10 text-yellow-500 rounded-lg transition-colors"

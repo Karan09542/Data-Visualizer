@@ -7,6 +7,7 @@ import StickyNotesPanel from './StickyNotesPanel';
 import { useStore } from '../store/useStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
+import { getMinNoteWidth } from '../utils/NoteUtils';
 
 export default function StickyNotesManager() {
   const { stickyNotesEnabled } = useStore();
@@ -47,7 +48,7 @@ export default function StickyNotesManager() {
       content: '',
       x: Math.random() * Math.max(80, window.innerWidth - 420) + 50,
       y: Math.random() * (window.innerHeight - 300) + 50,
-      width: 360,
+      width: getMinNoteWidth(),
       height: 280,
       color: '#fef08a',
       fontFamily: 'Hind',

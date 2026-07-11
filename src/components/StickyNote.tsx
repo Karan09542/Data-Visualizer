@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Maximize2, Minimize2, Trash2, GripVertical, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check, Eraser, ListTodo, Square, CheckSquare, Type, Minus, Plus, ChevronDown, MoreVertical } from 'lucide-react';
 import type { StickyNote as IStickyNote } from '../lib/db';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
+import { getMinNoteWidth } from '../utils/NoteUtils';
 
 const CHECKLIST_REGEX = /^(\s*[-*]\s+\[)([ xX])(\]\s*)(.*)$/;
 const CHECKLIST_TOGGLE_REGEX = /^(\s*[-*]\s+\[)([ xX])(\]\s*.*)$/;
@@ -18,16 +19,6 @@ const MAX_FONT_SIZE = 28;
 const STICKY_FONT_IDS = ['hind', 'mukta', 'poppins', 'inter', 'tirodevanagari', 'martel', 'baloo2', 'opensans'];
 const STICKY_FONT_OPTIONS = FONTS.filter(font => STICKY_FONT_IDS.includes(font.id));
 const getStickyFontStack = (fontFamily: string) => `"${fontFamily}", "Noto Sans Devanagari", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-
-const MOBILE_BREAKPOINT = 640;
-
-const getMinNoteWidth = () => {
-  if (typeof window === 'undefined') return 360;
-
-  return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`).matches
-    ? 300
-    : 360;
-};
 
 interface Props {
   note: IStickyNote;
