@@ -166,19 +166,22 @@ export function syncWorkspaceModelsToMonaco(monaco: any, parsedData: any) {
     const uri = monaco.Uri.file(path);
     availableUris.add(uri.toString());
 
+    let lang = "plaintext";
+    if (path.endsWith(".ts")) lang = "typescript";
+    else if (path.endsWith(".js")) lang = "javascript";
+    else if (path.endsWith(".json")) lang = "json";
+    else if (path.endsWith(".py")) lang = "python";
+    else if (path.endsWith(".md")) lang = "markdown";
+    else if (path.endsWith(".html")) lang = "html";
+    else if (path.endsWith(".css")) lang = "css";
+
     let model = monaco.editor.getModel(uri);
     if (!model) {
-      let lang = "plaintext";
-      if (path.endsWith(".ts")) lang = "typescript";
-      else if (path.endsWith(".js")) lang = "javascript";
-      else if (path.endsWith(".json")) lang = "json";
-      else if (path.endsWith(".py")) lang = "python";
-      else if (path.endsWith(".md")) lang = "markdown";
-      else if (path.endsWith(".html")) lang = "html";
-      else if (path.endsWith(".css")) lang = "css";
-
       model = monaco.editor.createModel(content, lang, uri);
     } else {
+      if (model.getLanguageId?.() !== lang) {
+        monaco.editor.setModelLanguage(model, lang);
+      }
       if (model.getValue() !== content) {
         model.setValue(content);
       }
@@ -247,7 +250,7 @@ export function registerWorkspaceIntelliSense(monaco: any, editor: any) {
   if (isRegistered || !monaco) return;
   isRegistered = true;
 
-  const languages = ["javascript", "typescript", "python"];
+  const languages = ["javascript", "typescript"];
 
   // 1. Completion Provider for Import Paths
   languages.forEach((lang) => {

@@ -132,28 +132,33 @@ export function runDiagnostics(model: any, monaco: any) {
   diagnosticsDebounceTimers.set(modelUriStr, timer);
 }
 
-let isPyIntelliSenseRegistered = false;
+const registeredPyMonacos = new WeakSet<object>();
+let isPyPackageSubscriptionRegistered = false;
 
 export function registerPyIntelliSense(monaco: any) {
-  if (isPyIntelliSenseRegistered || !monaco) return;
-  isPyIntelliSenseRegistered = true;
+  if (!monaco) return;
+  if (registeredPyMonacos.has(monaco)) return;
+  registeredPyMonacos.add(monaco);
 
   // console.log("[PyIntelliSense]: Registering Python language assistance providers on Monaco...");
 
   // Subscribe to packaging store revisions to synchronize completions dynamically inside background threads
-  try {
-    usePyPackageStore.subscribe((state) => {
-      const readyPkgs = state.installedPackages
-        .filter((p) => p.status === "installed")
-        .map((p) => p.name);
-      
-      // Notify Jedi background worker of dynamic changes
-      sendWorkerRequest("sync_packages", { packages: readyPkgs }).catch((err) => {
-        console.warn("[PyIntelliSense]: Syncing packages error:", err);
+  if (!isPyPackageSubscriptionRegistered) {
+    try {
+      usePyPackageStore.subscribe((state) => {
+        const readyPkgs = state.installedPackages
+          .filter((p) => p.status === "installed")
+          .map((p) => p.name);
+
+        // Notify Jedi background worker of dynamic changes
+        sendWorkerRequest("sync_packages", { packages: readyPkgs }).catch((err) => {
+          console.warn("[PyIntelliSense]: Syncing packages error:", err);
+        });
       });
-    });
-  } catch (err) {
-    console.warn("[PyIntelliSense]: Zustand subscriber linkage error:", err);
+      isPyPackageSubscriptionRegistered = true;
+    } catch (err) {
+      console.warn("[PyIntelliSense]: Zustand subscriber linkage error:", err);
+    }
   }
 
   // 1. Completion Provider

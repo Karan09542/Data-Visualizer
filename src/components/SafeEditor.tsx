@@ -138,6 +138,13 @@ function SafeEditor(props: EditorProps) {
 
   const handleOnMount = (editor: any, monaco: any) => {
     const model = editor.getModel();
+    if (model && lang && model.getLanguageId?.() !== lang) {
+      try {
+        monaco.editor.setModelLanguage(model, lang);
+      } catch (err) {
+        console.warn("Error setting Monaco model language", err);
+      }
+    }
     if (lang === "python") {
       try {
         registerPyIntelliSense(monaco);

@@ -1949,7 +1949,7 @@ declare const console: {
                   <SafeEditor
                     path={currentFilePath}
                     height="100%"
-                    defaultLanguage="javascript"
+                    defaultLanguage={editorLanguage}
                     language={editorLanguage}
                     theme={
                       codeEditorOptions.theme ||
