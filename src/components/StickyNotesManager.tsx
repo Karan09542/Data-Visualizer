@@ -12,10 +12,10 @@ export default function StickyNotesManager() {
   const { stickyNotesEnabled } = useStore();
   const notes = useLiveQuery(() => db.stickyNotes.toArray()) || [];
   const [showPanel, setShowPanel] = useState(false);
-  
+
   // Floating button position source of truth
   const [buttonPos, setButtonPos] = useState({ x: window.innerWidth - 80, y: 80 });
-  
+
   // Motion values for smoother dragging and persistence
   const x = useMotionValue(buttonPos.x);
   const y = useMotionValue(buttonPos.y);
@@ -113,7 +113,7 @@ export default function StickyNotesManager() {
         style={{ x, y }}
         animate={{ opacity: 1, scale: 1 }}
         onDragEnd={() => {
-           setButtonPos({ x: x.get(), y: y.get() });
+          setButtonPos({ x: x.get(), y: y.get() });
         }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -121,7 +121,7 @@ export default function StickyNotesManager() {
         }}
         className="fixed w-14 h-14 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-[0_10px_40px_rgba(234,179,8,0.3)] flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing border-4 border-white/30 group"
       >
-        <button 
+        <button
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -133,7 +133,7 @@ export default function StickyNotesManager() {
         >
           <Plus size={28} className="group-hover:rotate-90 transition-transform duration-300" />
         </button>
-        
+
         {/* Panel Button */}
         <button
           onClick={(e) => {
@@ -169,8 +169,8 @@ export default function StickyNotesManager() {
       <AnimatePresence>
         {activeNotes.map(note => (
           <div key={note.id} className="pointer-events-auto">
-            <StickyNote 
-              note={note} 
+            <StickyNote
+              note={note}
               onDelete={handleDelete}
               onUpdate={handleUpdate}
               onDuplicate={handleDuplicate}
@@ -183,7 +183,7 @@ export default function StickyNotesManager() {
       {/* Show All Notes Panel */}
       <AnimatePresence>
         {showPanel && (
-          <StickyNotesPanel 
+          <StickyNotesPanel
             onClose={() => setShowPanel(false)}
             onFocus={(n) => {
               handleFocus(n.id);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, Minimize2, Trash2, GripVertical, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check, Eraser, ListTodo, Square, CheckSquare, Type, Minus, Plus, ChevronDown } from 'lucide-react';
+import { X, Maximize2, Minimize2, Trash2, GripVertical, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check, Eraser, ListTodo, Square, CheckSquare, Type, Minus, Plus, ChevronDown, MoreVertical } from 'lucide-react';
 import type { StickyNote as IStickyNote } from '../lib/db';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
 
@@ -12,13 +12,22 @@ const LIST_CONTINUATION_REGEX = /^(\s*)([-*])\s+(?:\[([ xX])\]\s*)?(.*)$/;
 const DEFAULT_STICKY_FONT = 'Hind';
 const DEFAULT_FONT_SIZE = 15;
 const FULLSCREEN_DEFAULT_FONT_SIZE = 18;
-const MIN_NOTE_WIDTH = 360;
 const MIN_NOTE_HEIGHT = 180;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 28;
 const STICKY_FONT_IDS = ['hind', 'mukta', 'poppins', 'inter', 'tirodevanagari', 'martel', 'baloo2', 'opensans'];
 const STICKY_FONT_OPTIONS = FONTS.filter(font => STICKY_FONT_IDS.includes(font.id));
 const getStickyFontStack = (fontFamily: string) => `"${fontFamily}", "Noto Sans Devanagari", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+
+const MOBILE_BREAKPOINT = 640;
+
+const getMinNoteWidth = () => {
+  if (typeof window === 'undefined') return 360;
+
+  return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`).matches
+    ? 300
+    : 360;
+};
 
 interface Props {
   note: IStickyNote;
@@ -57,6 +66,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
 
   const [showColors, setShowColors] = useState(false);
   const [showTypography, setShowTypography] = useState(false);
+  const [showMobileActions, setShowMobileActions] = useState(false);
   const [isFontMenuOpen, setIsFontMenuOpen] = useState(false);
   const [previewFontFamily, setPreviewFontFamily] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState(false);
@@ -112,6 +122,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
   const changeColor = (color: string) => {
     onUpdate({ ...note, content, color, updatedAt: Date.now() });
     setShowColors(false);
+    setShowMobileActions(false);
   };
 
   const changeFontFamily = useCallback((fontFamily: string) => {
@@ -145,14 +156,14 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
 
     const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const startWidth = Math.max(note.width, MIN_NOTE_WIDTH);
+    const startWidth = Math.max(note.width, getMinNoteWidth());
     const startHeight = Math.max(note.height, MIN_NOTE_HEIGHT);
 
     const onMove = (moveEvent: MouseEvent | TouchEvent) => {
       const currentX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
       const currentY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
 
-      const newWidth = Math.max(MIN_NOTE_WIDTH, startWidth + (currentX - startX));
+      const newWidth = Math.max(getMinNoteWidth(), startWidth + (currentX - startX));
       const newHeight = Math.max(MIN_NOTE_HEIGHT, startHeight + (currentY - startY));
 
       onUpdate({ ...note, content, width: newWidth, height: newHeight, updatedAt: Date.now() });
@@ -181,6 +192,16 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
     setDuplicateStatus(true);
     onDuplicate({ ...note, content });
     setTimeout(() => setDuplicateStatus(false), 500);
+  };
+
+  const handleMobileCopy = () => {
+    handleCopy(content);
+    setShowMobileActions(false);
+  };
+
+  const handleMobileDuplicateClick = () => {
+    handleDuplicateClick();
+    setShowMobileActions(false);
   };
 
   const handleClearContent = useCallback(() => {
@@ -310,9 +331,8 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
               )}
             </button>
             <span
-              className={`min-w-0 transition-all duration-200 ${
-                isChecked ? 'line-through opacity-45' : ''
-              }`}
+              className={`min-w-0 transition-all duration-200 ${isChecked ? 'line-through opacity-45' : ''
+                }`}
             >
               {text || <br />}
             </span>
@@ -350,14 +370,13 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
         scale: 1,
         x: isMax ? 0 : note.x,
         y: isMax ? 0 : note.y,
-        width: isMax ? '100vw' : Math.max(note.width, MIN_NOTE_WIDTH),
+        width: isMax ? '100vw' : Math.max(note.width, getMinNoteWidth()),
         height: isMax ? '100dvh' : Math.max(note.height, MIN_NOTE_HEIGHT),
         zIndex: isMax ? 10000 : (note.zIndex || 5000),
       }}
       transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      className={`fixed shadow-2xl overflow-hidden flex flex-col group border border-black/10 dark:border-white/10 ${
-        isMax ? 'rounded-none' : 'rounded-2xl'
-      }`}
+      className={`fixed shadow-2xl overflow-hidden flex flex-col group border border-black/10 dark:border-white/10 ${isMax ? 'rounded-none' : 'rounded-2xl'
+        }`}
       style={{
         backgroundColor: note.color,
         backgroundImage: `linear-gradient(to bottom right, rgba(255,255,255,0.2), transparent)`,
@@ -368,7 +387,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
     >
       {/* Header / Drag Handle */}
       <div className={`h-11 flex items-center justify-between pl-2 pr-3 cursor-grab active:cursor-grabbing shrink-0 bg-black/5 group-hover:bg-black/[0.08] transition-colors border-b border-black/5 ${isMax ? 'cursor-default' : ''}`}>
-        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
           {!isMax && (
             <span className="flex h-8 w-6 items-center justify-center rounded-md opacity-35 transition-opacity group-hover:opacity-55" title="Drag note">
               <GripVertical size={16} />
@@ -396,6 +415,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             onClick={() => {
               setShowTypography(prev => !prev);
               setShowColors(false);
+              setShowMobileActions(false);
             }}
             className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
             title="Typography"
@@ -408,8 +428,9 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             onClick={() => {
               setShowColors(!showColors);
               setShowTypography(false);
+              setShowMobileActions(false);
             }}
-            className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
+            className="hidden sm:flex p-1.5 hover:bg-black/10 rounded-lg transition-colors"
             title="Change Color"
           >
             <Palette size={16} className="opacity-70" />
@@ -418,7 +439,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             type="button"
             onPointerDown={handleActionPointerDown}
             onClick={() => handleCopy(content)}
-            className="p-1.5 hover:bg-black/10 rounded-lg transition-colors relative"
+            className="hidden sm:flex p-1.5 hover:bg-black/10 rounded-lg transition-colors relative"
             title="Copy to Clipboard"
           >
             <AnimatePresence mode="wait">
@@ -437,12 +458,25 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             type="button"
             onPointerDown={handleActionPointerDown}
             onClick={handleDuplicateClick}
-            className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
+            className="hidden sm:flex p-1.5 hover:bg-black/10 rounded-lg transition-colors"
             title="Duplicate Note"
           >
             <motion.div animate={duplicateStatus ? { scale: 1.2, rotate: 5 } : { scale: 1, rotate: 0 }}>
               <CopyPlus size={16} className="opacity-70" />
             </motion.div>
+          </button>
+          <button
+            type="button"
+            onPointerDown={handleActionPointerDown}
+            onClick={() => {
+              setShowMobileActions(prev => !prev);
+              setShowColors(false);
+              setShowTypography(false);
+            }}
+            className="p-1.5 hover:bg-black/10 rounded-lg transition-colors sm:hidden order-last"
+            title="More Actions"
+          >
+            <MoreVertical size={16} className="opacity-70" />
           </button>
           <button
             type="button"
@@ -482,6 +516,50 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showMobileActions && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -4 }}
+            className="absolute top-12 right-2 z-30 w-48 max-w-[calc(100%-1rem)] rounded-xl border border-black/[0.10] bg-[#fffbe8]/95 p-2 shadow-[0_12px_28px_rgba(0,0,0,0.16)] backdrop-blur-xl sm:hidden"
+            onPointerDown={handleActionPointerDown}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-black/35">Color</div>
+            <div className="grid grid-cols-7 gap-1.5 pb-1.5">
+              {COLORS.map(c => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => changeColor(c)}
+                  className={`h-5 w-5 rounded-full border border-black/10 shadow-sm transition-all hover:scale-110 active:scale-95 ${note.color === c ? 'ring-2 ring-black/20 ring-offset-1 ring-offset-[#fffbe8]' : ''}`}
+                  style={{ backgroundColor: c }}
+                  title="Change Color"
+                />
+              ))}
+            </div>
+            <div className="my-1 h-px bg-black/[0.08]" />
+            <button
+              type="button"
+              onClick={handleMobileCopy}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-black/75 transition-colors hover:bg-black/[0.06]"
+            >
+              {copyStatus ? <Check size={15} className="text-emerald-600" /> : <Clipboard size={15} className="opacity-70" />}
+              <span>Copy</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleMobileDuplicateClick}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-black/75 transition-colors hover:bg-black/[0.06]"
+            >
+              <CopyPlus size={15} className="opacity-70" />
+              <span>Duplicate</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showTypography && (
