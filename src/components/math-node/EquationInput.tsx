@@ -367,12 +367,12 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
 
   if (!isFocused && !forceEditMode && !error && value.trim()) {
     if (isComputingLatex) {
-       // Skeleton shimmer while computing LaTeX in worker
-       renderedContent = (
-         <div className="w-full px-2 py-2 flex items-center overflow-x-hidden">
-           <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 animate-pulse"></div>
-         </div>
-       );
+      // Skeleton shimmer while computing LaTeX in worker
+      renderedContent = (
+        <div className="w-full px-2 py-2 flex items-center overflow-x-hidden">
+          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 animate-pulse"></div>
+        </div>
+      );
     } else if (latexResult.latex) {
       try {
         const fullTex = latexResult.latex + (latexResult.evalResult ? ` \\mathbf{ = ${latexResult.evalResult.replace(/ /g, "\\ ")}}` : "");

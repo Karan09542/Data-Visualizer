@@ -4,6 +4,7 @@ import { MathScope } from "../types";
 
 export function createMathScope(base: Record<string, any> | MathScope): MathScope {
   const scope = {
+    theta: 0,
     ...base,
     ln: mathjs.log,
     log10: mathjs.log10,

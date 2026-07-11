@@ -94,15 +94,24 @@ export const parseAndAdjustForCompile = (exprStr: string): any => {
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
 
+const getNumericCoordinate = (val: any): number | null => {
+  while (Array.isArray(val) && val.length === 1) {
+    val = val[0];
+  }
+  return typeof val === "number" && Number.isFinite(val) ? val : null;
+};
+
 export const extractPointsFromValue = (val: any): [number, number][] => {
   if (val == null) return [];
 
-  // If it is a coordinate point [x, y]
-  if (Array.isArray(val) && val.length === 2 && typeof val[0] === "number" && typeof val[1] === "number") {
-    return [[Number(val[0]), Number(val[1])]];
+  if (Array.isArray(val) && val.length === 2) {
+    const x = getNumericCoordinate(val[0]);
+    const y = getNumericCoordinate(val[1]);
+    if (x !== null && y !== null) {
+      return [[x, y]];
+    }
   }
 
-  // If it's an array of elements (which could be points, lines, polygons, etc.)
   if (Array.isArray(val)) {
     const points: [number, number][] = [];
     for (const item of val) {
@@ -112,6 +121,14 @@ export const extractPointsFromValue = (val: any): [number, number][] => {
   }
 
   return [];
+};
+
+export const normalizeGeometryValue = (val: any): any => {
+  const resolved = resolveNestedValue(val);
+  const points = extractPointsFromValue(resolved);
+  if (points.length === 1) return points[0];
+  if (points.length > 1) return points;
+  return resolved;
 };
 
 export const deduplicatePoints = (pts: [number, number][]): [number, number][] => {

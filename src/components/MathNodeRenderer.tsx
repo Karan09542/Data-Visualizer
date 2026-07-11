@@ -80,6 +80,7 @@ import {
   decoupleGeometry,
   parseAndAdjustForCompile,
   indexHelper,
+  normalizeGeometryValue,
   resolveGeometryPoints,
   InsertAboveIcon,
   InsertBelowIcon,
@@ -954,6 +955,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     };
   }, [
     functions.map((f) => f.expr).join(","),
+    functions.map((f) => [f.type, f.name || "", f.label || "", f.operator || ""].join(":")).join(","),
     variables.map((v) => v.name).join(","),
     functions.some((f) => !("compiledKey" in f) && !("error" in f)),
   ]);
@@ -1129,14 +1131,16 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
         // Propagate variables defined in fScope to baseScope
         for (const key of Object.keys(fScope)) {
-          if (key !== "t" && key !== "time" && key !== "x" && key !== "y") {
+          if (key !== "t" && key !== "time" && key !== "theta" && key !== "x" && key !== "y") {
             baseScope[key] = fScope[key];
           }
         }
 
         const refName = f.label || f.name;
         if (refName) {
-          baseScope[refName] = val;
+          baseScope[refName] = ["point", "line", "vector", "polygon"].includes(f.type)
+            ? normalizeGeometryValue(val)
+            : val;
         }
       } catch (e) { }
     }
@@ -6627,12 +6631,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
               customAxisFilter={customAxisFilter}
               customAxisMapping={customAxisMapping}
             />
-            
-            <TraceOverlay 
-              functions={functions} 
-              baseScope={baseScope} 
+
+            <TraceOverlay
+              functions={functions}
+              baseScope={baseScope}
               time={time}
-              containerRef={graphContainerRef} 
+              containerRef={graphContainerRef}
             />
 
             {(() => {

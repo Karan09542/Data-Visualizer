@@ -11,7 +11,8 @@ function buildScope(context: any, payload: any) {
   }
   tempBaseScope.t = payload.time;
   tempBaseScope.time = payload.time;
-  
+  tempBaseScope.theta = 0;
+
   const scopeWithHelpers = context.createMathScope(tempBaseScope);
 
   payload.functions.forEach((f: any, idx: number) => {
@@ -139,7 +140,7 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
         const val = compiled.evaluate(fScope);
 
         for (const scopeKey of Object.keys(fScope)) {
-          if (scopeKey !== "t" && scopeKey !== "time" && scopeKey !== "x" && scopeKey !== "y") {
+          if (scopeKey !== "t" && scopeKey !== "time" && scopeKey !== "theta" && scopeKey !== "x" && scopeKey !== "y") {
             tempBaseScope[scopeKey] = fScope[scopeKey];
           }
         }
