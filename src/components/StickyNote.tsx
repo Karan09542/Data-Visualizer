@@ -24,11 +24,19 @@ const COLORS = [
 export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState(note.content);
+  const justSavedRef = useRef(false);
+
   useEffect(() => {
     if (!isEditing) {
-      setContent(note.content);
+      if (justSavedRef.current) {
+        if (note.content === content) {
+          justSavedRef.current = false;
+        }
+      } else {
+        setContent(note.content);
+      }
     }
-  }, [note.content, isEditing]);
+  }, [note.content, isEditing, content]);
   const [showColors, setShowColors] = useState(false);
   const [copyStatus, setCopyStatus] = useState(false);
   const [duplicateStatus, setDuplicateStatus] = useState(false);
@@ -44,19 +52,20 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
 
   const handleSave = () => {
     setIsEditing(false);
+    justSavedRef.current = true;
     onUpdate({ ...note, content, updatedAt: Date.now() });
   };
 
   const toggleMinimize = () => {
-    onUpdate({ ...note, isMinimized: !note.isMinimized, updatedAt: Date.now() });
+    onUpdate({ ...note, content, isMinimized: !note.isMinimized, updatedAt: Date.now() });
   };
 
   const toggleMaximize = () => {
-    onUpdate({ ...note, isMaximized: !note.isMaximized, updatedAt: Date.now() });
+    onUpdate({ ...note, content, isMaximized: !note.isMaximized, updatedAt: Date.now() });
   };
 
   const changeColor = (color: string) => {
-    onUpdate({ ...note, color, updatedAt: Date.now() });
+    onUpdate({ ...note, content, color, updatedAt: Date.now() });
     setShowColors(false);
   };
 
@@ -64,7 +73,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
     if (note.isMaximized) return;
     const newX = note.x + info.offset.x;
     const newY = note.y + info.offset.y;
-    onUpdate({ ...note, x: newX, y: newY, updatedAt: Date.now() });
+    onUpdate({ ...note, content, x: newX, y: newY, updatedAt: Date.now() });
   };
 
   const handleResize = (e: React.MouseEvent | React.TouchEvent) => {
@@ -83,7 +92,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
       const newWidth = Math.max(160, startWidth + (currentX - startX));
       const newHeight = Math.max(160, startHeight + (currentY - startY));
       
-      onUpdate({ ...note, width: newWidth, height: newHeight, updatedAt: Date.now() });
+      onUpdate({ ...note, content, width: newWidth, height: newHeight, updatedAt: Date.now() });
     };
 
     const onEnd = () => {
@@ -107,7 +116,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
 
   const handleDuplicateClick = () => {
     setDuplicateStatus(true);
-    onDuplicate(note);
+    onDuplicate({ ...note, content });
     setTimeout(() => setDuplicateStatus(false), 500);
   };
 
@@ -161,7 +170,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             <Palette size={16} className="opacity-70" />
           </button>
           <button 
-            onClick={() => handleCopy(note.content)}
+            onClick={() => handleCopy(content)}
             className="p-1.5 hover:bg-black/10 rounded-lg transition-colors relative"
             title="Copy to Clipboard"
           >
@@ -189,6 +198,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
           <button 
             onClick={() => {
               setContent('');
+              justSavedRef.current = true;
               onUpdate({ ...note, content: '', updatedAt: Date.now() });
             }}
             className="p-1.5 hover:bg-black/10 rounded-lg transition-colors"
