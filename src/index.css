@@ -81,6 +81,26 @@
   .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover, .dark select::-webkit-scrollbar-thumb:hover {
     background-color: #475569;
   }
+
+  .sticky-note-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+  }
+  .sticky-note-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .sticky-note-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sticky-note-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.14);
+    border-radius: 9999px;
+  }
+  .sticky-note-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.24);
+  }
   
   /* Utility to completely hide scrollbars */
   .scrollbar-none::-webkit-scrollbar {

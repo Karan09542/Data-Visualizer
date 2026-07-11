@@ -159,6 +159,8 @@ export interface StickyNote {
   width: number;
   height: number;
   color: string;
+  fontFamily?: string;
+  fontSize?: number;
   isMinimized: boolean;
   isMaximized?: boolean;
   zIndex?: number;
