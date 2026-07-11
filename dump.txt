@@ -1,0 +1,75 @@
+   };
+
+   const addArtboard = createArtboard; // Alias for context menu
+
+   const duplicateArtboard = (board: Artboard) => {
+      let maxX = 0;
+      artboards.forEach((b) => {
+         maxX = Math.max(maxX, b.x + b.width);
+      });
+      const x = maxX + 100;
+
+      const duplicated: Artboard = {
+         ...board,
+         id: "board_" + Date.now().toString() + Math.random().toString().substring(2, 6),
+         name: `${board.name} Copy`,
+         x,
+         y: board.y,
+      };
+
+      let canvasObjectsToClone: fabric.Object[] = [];
+      if (fabricRef.current) {
+         const activeObjs = fabricRef.current.getObjects();
+         activeObjs.forEach((o) => {
+            if ((o as any).artboardId === board.id) {
+               canvasObjectsToClone.push(o);
+            }
+         });
+      }
+
+      const cmd = new DuplicateArtboardCommand(
+         board,
+         duplicated,
+         canvasObjectsToClone,
+         setArtboards,
+         setActiveArtboardId,
+         updateLayersList
+      );
+      executeCommand(cmd);
+      setSelectedExportIds(prev => ({ ...prev, [duplicated.id]: true }));
+
+      // Center viewport on new board
+      if (fabricRef.current) {
+         const canvas = fabricRef.current;
+         const cw = canvas.width!;
+         const ch = canvas.height!;
+         const vpt = canvas.viewportTransform!;
+         vpt[4] = cw / 2 - (duplicated.x + duplicated.width / 2) * vpt[0];
+         vpt[5] = ch / 2 - (duplicated.y + duplicated.height / 2) * vpt[3];
+         canvas.requestRenderAll();
+      }
+   };
+
+   const deleteArtboard = (id: string) => {
+      const idx = artboards.findIndex(b => b.id === id);
+      if (idx === -1) return;
+      const boardToDelete = artboards[idx];
+      const prevActiveId = activeArtboardId;
+      let newActiveId = activeArtboardId;
+      if (activeArtboardId === id) {
+         const updated = artboards.filter(b => b.id !== id);
+         const nextActive = updated.length > 0 ? updated[idx === 0 ? 0 : idx - 1] : null;
+         newActiveId = nextActive ? nextActive.id : "artboard_default";
+      }
+
+      const cmd = new DeleteArtboardCommand(
+         boardToDelete,
+         prevActiveId,
+         newActiveId,
+         idx,
+         setArtboards,
+         setActiveArtboardId
+      );
+      executeCommand(cmd);
+   };
+

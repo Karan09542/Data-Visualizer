@@ -1,0 +1,70 @@
+      const activeObj = fabricRef.current?.getActiveObject();
+      if (!activeObj) return;
+
+      try {
+         if (format === 'svg') {
+            const clone = await activeObj.clone([]);
+            const bounds = clone.getBoundingRect();
+
+            const elElement = document.createElement('canvas');
+            const tempCanvas = new fabric.StaticCanvas(elElement, {
+               width: bounds.width,
+               height: bounds.height
+            });
+
+            clone.set({
+               left: (clone.left || 0) - bounds.left,
+               top: (clone.top || 0) - bounds.top
+            });
+            clone.setCoords();
+            tempCanvas.add(clone);
+
+            const svg = tempCanvas.toSVG();
+            tempCanvas.dispose();
+
+            await navigator.clipboard.writeText(svg);
+            setNotification({ message: 'Copied as SVG', type: 'success' });
+         } else {
+            const dataUrl = activeObj.toDataURL({ format });
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            await navigator.clipboard.write([
+               new ClipboardItem({ [blob.type]: blob })
+            ]);
+            setNotification({ message: `Copied as ${format.toUpperCase()}`, type: 'success' });
+         }
+      } catch (e) {
+         console.error('Failed to copy', e);
+         setNotification({ message: 'Failed to copy', type: 'error' });
+      }
+   };
+
+   const duplicateActiveObject = () => {
+      const activeObj = fabricRef.current?.getActiveObject();
+      if (activeObj) {
+         activeObj.clone(['id', 'artboardId']).then((cloned) => {
+            fabricRef.current?.discardActiveObject();
+            cloned.set({
+               left: cloned.left! + 20,
+               top: cloned.top! + 20,
+               id: Date.now().toString() + Math.random().toString(),
+               artboardId: (activeObj as any).artboardId || activeArtboardIdRef.current
+            });
+            if (cloned.type === 'activeSelection') {
+               cloned.canvas = fabricRef.current!;
+               (cloned as any).forEachObject((obj: any) => {
+                  obj.id = Date.now().toString() + Math.random().toString();
+                  obj.artboardId = obj.artboardId || activeArtboardIdRef.current;
+                  fabricRef.current?.add(obj);
+               });
+               cloned.setCoords();
+            } else {
+               fabricRef.current?.add(cloned);
+            }
+            const cmd = new AddObjectCommand("Duplicate Layer", cloned);
+            executeCommand(cmd);
+         });
+      }
+   };
+
+   const flipX = () => {
