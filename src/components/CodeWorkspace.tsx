@@ -105,12 +105,12 @@ interface WorkspaceSettings {
   showSlider: "always" | "mouseover";
   side: "right" | "left";
   editorTheme:
-    | "default"
-    | "one-dark-pro"
-    | "dracula"
-    | "night-owl"
-    | "github-dark"
-    | "synthwave-84";
+  | "default"
+  | "one-dark-pro"
+  | "dracula"
+  | "night-owl"
+  | "github-dark"
+  | "synthwave-84";
   sidebarWidth?: number;
   isSidebarOpen?: boolean;
 }
@@ -703,11 +703,11 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
           type: "log",
           args: [
             "Interactive Python Console Shell Commands:\n" +
-              "  pip install <pkgs>   - Install libraries from Pyodide prebuilds or PyPI\n" +
-              "  pip uninstall <pkg>  - Delete a package from the persisted workspace\n" +
-              "  pip list             - Display installed dependencies\n" +
-              "  python               - Run the active Python workbook file\n" +
-              "  clear                - Erase all terminal text",
+            "  pip install <pkgs>   - Install libraries from Pyodide prebuilds or PyPI\n" +
+            "  pip uninstall <pkg>  - Delete a package from the persisted workspace\n" +
+            "  pip list             - Display installed dependencies\n" +
+            "  python               - Run the active Python workbook file\n" +
+            "  clear                - Erase all terminal text",
           ],
           time: new Date().toISOString(),
         },
@@ -1182,7 +1182,7 @@ declare const console: {
     setPanelSize(320);
     try {
       localStorage.setItem("workspace_panel_size", "320");
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -1199,7 +1199,7 @@ declare const console: {
       setPanelSize(newSize);
       try {
         localStorage.setItem("workspace_panel_size", String(newSize));
-      } catch {}
+      } catch { }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -1431,11 +1431,10 @@ declare const console: {
                       editorRef.current ? editorRef.current.getValue() : code,
                     )
                   }
-                  className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded cursor-pointer transition-colors whitespace-nowrap ${
-                    isLoading
-                      ? "bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
-                      : "bg-[#2ea44f] text-white hover:bg-[#2c974b] active:bg-[#2a8f47]"
-                  }`}
+                  className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded cursor-pointer transition-colors whitespace-nowrap ${isLoading
+                    ? "bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
+                    : "bg-[#2ea44f] text-white hover:bg-[#2c974b] active:bg-[#2a8f47]"
+                    }`}
                 >
                   {isLoading ? (
                     <>
@@ -1461,11 +1460,10 @@ declare const console: {
                   <button
                     disabled={!isLoading}
                     onClick={onAbort}
-                    className={`p-1 rounded ml-1 transition-colors cursor-pointer ${
-                      isLoading
-                        ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-                        : "text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                    }`}
+                    className={`p-1 rounded ml-1 transition-colors cursor-pointer ${isLoading
+                      ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+                      : "text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                      }`}
                     title="Stop Execution"
                   >
                     <Square
@@ -1686,8 +1684,8 @@ declare const console: {
           {/* Side Drawer Panel */}
           {settings.isSidebarOpen !== false && (
             <div
-              style={{ width: `${settings.sidebarWidth || 260}px` }}
-              className="absolute md:relative top-0 bottom-0 left-0 max-w-[85vw] md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
+              style={{ "--sidebar-width": `${settings.sidebarWidth || 260}px` } as React.CSSProperties}
+              className="absolute md:relative top-0 bottom-0 left-0 w-full md:w-[var(--sidebar-width)] max-w-full md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
             >
               {/* Elegant Header Sidebar Tabs to switch between Files Explorer and Python Packages Panel */}
               {isPy ? (
@@ -1858,11 +1856,10 @@ declare const console: {
                         }
                       }}
                       onClick={() => openWorkspaceTab(tab.path, tab.isPreview)}
-                      className={`flex items-center gap-1.5 px-4 py-2 border-r border-r-slate-200 dark:border-r-slate-800 text-xs font-mono transition-colors cursor-pointer shrink-0 group border-t-2 ${
-                        isActive
-                          ? "bg-white dark:bg-[#0d1117] !border-t-blue-500 font-semibold text-slate-800 dark:text-slate-100"
-                          : "border-t-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
-                      }`}
+                      className={`flex items-center gap-1.5 px-4 py-2 border-r border-r-slate-200 dark:border-r-slate-800 text-xs font-mono transition-colors cursor-pointer shrink-0 group border-t-2 ${isActive
+                        ? "bg-white dark:bg-[#0d1117] !border-t-blue-500 font-semibold text-slate-800 dark:text-slate-100"
+                        : "border-t-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
+                        }`}
                     >
                       {getTabIcon(tab.path, isActive)}
                       <span
@@ -2200,8 +2197,8 @@ declare const console: {
                 terminalState === "maximized"
                   ? { flex: 1, width: "100%", height: "100%" }
                   : {
-                      [layoutMode === "bottom" ? "height" : "width"]: panelSize,
-                    }
+                    [layoutMode === "bottom" ? "height" : "width"]: panelSize,
+                  }
               }
             >
               {/* Panel Resizer Drag Bar Handle */}
@@ -2276,13 +2273,12 @@ declare const console: {
                           console.error("Failed to copy console logs", err);
                         }
                       }}
-                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
-                        copiedConsole
-                          ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold"
-                          : logCount > 0
-                            ? "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
-                            : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
-                      }`}
+                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${copiedConsole
+                        ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold"
+                        : logCount > 0
+                          ? "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                          : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                        }`}
                       title="Copy all console logs"
                       disabled={logCount === 0}
                     >
@@ -2308,11 +2304,10 @@ declare const console: {
                           setApiNodeError(currentFilePath, null);
                         }
                       }}
-                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${
-                        logCount > 0 || lastError
-                          ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
-                          : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
-                      }`}
+                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${logCount > 0 || lastError
+                        ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
+                        : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                        }`}
                       title="Clear console logs and errors"
                       disabled={logCount === 0 && !lastError}
                     >
@@ -2325,11 +2320,10 @@ declare const console: {
                   {activeTab === "console" && (
                     <button
                       onClick={() => setAutoClearLogs(!autoClearLogs)}
-                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${
-                        autoClearLogs
-                          ? "text-blue-600 dark:text-blue-400 bg-blue-550/10 hover:bg-blue-550/20"
-                          : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
-                      }`}
+                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${autoClearLogs
+                        ? "text-blue-600 dark:text-blue-400 bg-blue-550/10 hover:bg-blue-550/20"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                        }`}
                       title="Auto clear logs on execution run"
                     >
                       <Clock size={13} />
@@ -2397,14 +2391,14 @@ declare const console: {
                         <span className="flex-1 min-w-0">
                           {typeof lastError === "object" && lastError !== null
                             ? (lastError as any).userMessage ||
-                              (lastError as any).message
+                            (lastError as any).message
                             : String(lastError)}
                         </span>
                         <CopyButton
                           text={
                             typeof lastError === "object" && lastError !== null
                               ? (lastError as any).userMessage ||
-                                (lastError as any).message
+                              (lastError as any).message
                               : String(lastError)
                           }
                         />
@@ -2446,7 +2440,7 @@ declare const console: {
                             if (index === logCount && lastError) {
                               const errorStr =
                                 typeof lastError === "object" &&
-                                lastError !== null
+                                  lastError !== null
                                   ? (lastError as any).message
                                   : String(lastError);
                               return (
@@ -2509,11 +2503,10 @@ declare const console: {
                   {(isPy || !!currentPrompt) && (
                     <form
                       onSubmit={handleTerminalSubmit}
-                      className={`border-t px-4 py-2 flex items-center gap-3 font-mono text-xs shrink-0 select-text transition-colors duration-200 ${
-                        currentPrompt
-                          ? "bg-amber-500/10 dark:bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20"
-                          : "bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-slate-800 text-slate-455"
-                      }`}
+                      className={`border-t px-4 py-2 flex items-center gap-3 font-mono text-xs shrink-0 select-text transition-colors duration-200 ${currentPrompt
+                        ? "bg-amber-500/10 dark:bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20"
+                        : "bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-slate-800 text-slate-455"
+                        }`}
                     >
                       {currentPrompt ? (
                         <span className="text-amber-500 font-bold select-none shrink-0 flex items-center gap-1.5 animate-pulse">
@@ -2541,11 +2534,11 @@ declare const console: {
                               : currentPrompt.type === "alert"
                                 ? "Press Enter (or click OK) to acknowledge..."
                                 : "Type response and press Enter... " +
-                                  (currentPrompt.promptText &&
+                                (currentPrompt.promptText &&
                                   currentPrompt.promptText !==
-                                    "Python input requested"
-                                    ? `(${currentPrompt.promptText})`
-                                    : "")
+                                  "Python input requested"
+                                  ? `(${currentPrompt.promptText})`
+                                  : "")
                             : "pip install <package>, pip list, clear, help, python..."
                         }
                         className="flex-1 bg-transparent border-0 outline-none p-0 focus:outline-none focus:ring-0 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 leading-normal text-xs font-mono"
