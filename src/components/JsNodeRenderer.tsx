@@ -197,7 +197,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
           {/* Code Editor */}
           {visibility.code && (
             <div className="flex-1 min-h-[120px] relative border border-slate-200 dark:border-[#30363d] rounded-xl overflow-hidden bg-slate-50 dark:bg-[#0a0c10] shadow-inner group/editor flex flex-col shrink-0">
-              <div className="absolute top-3 right-3 z-10 opacity-0 group-hover/editor:opacity-100 transition-opacity">
+              <div className="absolute top-3 right-3 z-10 sm:opacity-0 group-hover/editor:opacity-100 transition-opacity">
                 <button
                   onClick={() => setExpandedJsNodeId(path)}
                   className="p-1.5 rounded-md bg-slate-200 dark:bg-[#21262d] text-slate-500 dark:text-[#8b949e] hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-[#30363d] shadow-sm transition-all"
@@ -268,7 +268,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                   </button>
                 </div>
               </div>
-              
+
               <div className={`p-3 font-mono text-[12px] text-slate-800 dark:text-[#e6edf3] flex flex-col gap-2 ${isPromptActive ? "h-[300px]" : "h-[160px]"} transition-all duration-200`}>
                 <div className="flex-1 min-h-0 relative">
                   {logCount === 0 && !error ? (
@@ -283,8 +283,8 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                         if (index === logCount && error) {
                           return (
                             <div className="text-red-500 dark:text-[#f85149] mt-2 flex gap-1.5 border-l-2 border-red-500 dark:border-[#f85149] pl-2 w-full whitespace-pre-wrap break-all">
-                               <span className="shrink-0">&gt;</span>
-                               <span className="break-all">{error}</span>
+                              <span className="shrink-0">&gt;</span>
+                              <span className="break-all">{error}</span>
                             </div>
                           );
                         }
@@ -298,9 +298,9 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                                 {log.args.map((a: any, idx: number) => (
                                   <span key={idx} className="mr-1 whitespace-pre-wrap break-all">
                                     {typeof a === 'string' ? (
-                                       <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
+                                      <span className={`${a.includes('Output') ? "text-[#58a6ff] font-semibold" : ""} whitespace-pre-wrap break-all`}>{a}</span>
                                     ) : (
-                                       <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{safeStringify(a)}</span>
+                                      <span className="text-[#d2a8ff] whitespace-pre-wrap break-all">{safeStringify(a)}</span>
                                     )}
                                   </span>
                                 ))}
@@ -338,8 +338,8 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
                 <span>{durationStr || "0ms"}</span>
               </div>
               <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-[#30363d] pl-4">
-                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
-                 <span>{lastRunStr}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                <span>{lastRunStr}</span>
               </div>
             </div>
           </div>
