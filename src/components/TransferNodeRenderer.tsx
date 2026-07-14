@@ -8,8 +8,8 @@ import { PdfViewer } from "./PdfViewer";
 import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
 import LZString from "lz-string";
-import { InteractiveZoomImage } from "./InteractiveZoomImage";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { InteractiveZoomImage } from "./InteractiveZoomImage";
 import JSZip from "jszip";
 
 const makeCRCTable = () => {
@@ -1040,7 +1040,7 @@ export const TransferNodeRenderer: React.FC<{
   >(null);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showFullscreenQR, setShowFullscreenQR] = useState(false);
+  const [fullscreenQRValue, setFullscreenQRValue] = useState<string | null>(null);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [copiedSDP, setCopiedSDP] = useState(false);
 
@@ -2415,8 +2415,8 @@ export const TransferNodeRenderer: React.FC<{
               <div className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none">
                 <div
                   className={`w-2 h-2 rounded-full border ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
-                      ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
-                      : "bg-transparent border-slate-400 dark:border-slate-600"
+                    ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                    : "bg-transparent border-slate-400 dark:border-slate-600"
                     }`}
                 /> P2P Secure Connection
               </div>
@@ -2431,14 +2431,14 @@ export const TransferNodeRenderer: React.FC<{
         <div className="flex items-center gap-2 relative">
           <div
             className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${connectionState === "connected"
-                ? "bg-emerald-500/10 text-emerald-500"
-                : connectionState === "transferring"
-                  ? "bg-blue-500/10 text-blue-500"
-                  : connectionState === "failed"
-                    ? "bg-red-500/10 text-red-500"
-                    : isDark
-                      ? "bg-white/5 text-slate-500"
-                      : "bg-slate-100 text-slate-500"
+              ? "bg-emerald-500/10 text-emerald-500"
+              : connectionState === "transferring"
+                ? "bg-blue-500/10 text-blue-500"
+                : connectionState === "failed"
+                  ? "bg-red-500/10 text-red-500"
+                  : isDark
+                    ? "bg-white/5 text-slate-500"
+                    : "bg-slate-100 text-slate-500"
               }`}
           >
             {connectionState === "pairing"
@@ -2454,10 +2454,10 @@ export const TransferNodeRenderer: React.FC<{
                 : (
                   <span className="flex items-center gap-1.5">
                     <div className={`w-1.5 h-1.5 rounded-full ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
-                        ? "bg-emerald-500 animate-pulse"
-                        : connectionState === "failed"
-                          ? "bg-red-500"
-                          : "bg-slate-400"
+                      ? "bg-emerald-500 animate-pulse"
+                      : connectionState === "failed"
+                        ? "bg-red-500"
+                        : "bg-slate-400"
                       }`} />
                     {connectionState}
                   </span>
@@ -2479,8 +2479,8 @@ export const TransferNodeRenderer: React.FC<{
                 setTransferProgress(0);
               }}
               className={`p-1.5 rounded-lg transition-colors ${isDark
-                  ? "hover:bg-red-500/10 text-slate-400 hover:text-red-400"
-                  : "hover:bg-red-50 text-slate-500 hover:text-red-500"
+                ? "hover:bg-red-500/10 text-slate-400 hover:text-red-400"
+                : "hover:bg-red-50 text-slate-500 hover:text-red-500"
                 }`}
               title="Disconnect & Exit"
             >
@@ -2491,12 +2491,12 @@ export const TransferNodeRenderer: React.FC<{
           <button
             onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
             className={`p-1.5 rounded-lg transition-colors ${showSettingsDropdown
-                ? isDark
-                  ? "bg-white/10 text-white"
-                  : "bg-slate-200 text-slate-900"
-                : isDark
-                  ? "hover:bg-white/5 text-slate-400 hover:text-white"
-                  : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+              ? isDark
+                ? "bg-white/10 text-white"
+                : "bg-slate-200 text-slate-900"
+              : isDark
+                ? "hover:bg-white/5 text-slate-400 hover:text-white"
+                : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
               }`}
           >
             <MoreVertical className="w-4 h-4" />
@@ -2515,8 +2515,8 @@ export const TransferNodeRenderer: React.FC<{
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   onClick={(e) => e.stopPropagation()}
                   className={`absolute top-full right-0 mt-2 w-64 p-4 rounded-2xl border shadow-2xl z-50 origin-top-right backdrop-blur-xl ${isDark
-                      ? "bg-[#111827]/95 border-white/10"
-                      : "bg-white/95 border-slate-200"
+                    ? "bg-[#111827]/95 border-white/10"
+                    : "bg-white/95 border-slate-200"
                     }`}
                 >
                   <div className="flex flex-col gap-4">
@@ -2532,10 +2532,10 @@ export const TransferNodeRenderer: React.FC<{
                             setPairingMode("local");
                           }}
                           className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${pairingMode === "local"
-                              ? isDark
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                                : "bg-white text-indigo-600 shadow-sm"
-                              : "text-slate-400 hover:text-slate-200"
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
                           Local
@@ -2545,10 +2545,10 @@ export const TransferNodeRenderer: React.FC<{
                             setPairingMode("universal");
                           }}
                           className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${pairingMode === "universal"
-                              ? isDark
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                                : "bg-white text-indigo-600 shadow-sm"
-                              : "text-slate-400 hover:text-slate-200"
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
                           Universal
@@ -2569,10 +2569,10 @@ export const TransferNodeRenderer: React.FC<{
                               setQrDensity(d);
                             }}
                             className={`flex-1 py-1.5 rounded-md text-[10px] font-bold transition-all ${qrDensity === d
-                                ? isDark
-                                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                                  : "bg-white text-indigo-600 shadow-sm"
-                                : "text-slate-400 hover:text-slate-200"
+                              ? isDark
+                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                                : "bg-white text-indigo-600 shadow-sm"
+                              : "text-slate-400 hover:text-slate-200"
                               }`}
                           >
                             {d}
@@ -2592,10 +2592,10 @@ export const TransferNodeRenderer: React.FC<{
                             key={s}
                             onClick={() => setQrSpeed(s)}
                             className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${qrSpeed === s
-                                ? isDark
-                                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                                  : "bg-white text-indigo-600 shadow-sm"
-                                : "text-slate-400 hover:text-slate-200"
+                              ? isDark
+                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                                : "bg-white text-indigo-600 shadow-sm"
+                              : "text-slate-400 hover:text-slate-200"
                               }`}
                           >
                             {s}
@@ -2611,10 +2611,10 @@ export const TransferNodeRenderer: React.FC<{
                         <button
                           onClick={() => setLargeFileMode(false)}
                           className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${!largeFileMode
-                              ? isDark
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                                : "bg-white text-indigo-600 shadow-sm"
-                              : "text-slate-400 hover:text-slate-200"
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
                           Memory (Default)
@@ -2628,10 +2628,10 @@ export const TransferNodeRenderer: React.FC<{
                             }
                           }}
                           className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${largeFileMode
-                              ? isDark
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                                : "bg-white text-indigo-600 shadow-sm"
-                              : "text-slate-400 hover:text-slate-200"
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
                             }`}
                         >
                           Stream to Disk
@@ -2672,8 +2672,8 @@ export const TransferNodeRenderer: React.FC<{
               <button
                 onClick={generateOffer}
                 className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${isDark
-                    ? "border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/5"
-                    : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50"
+                  ? "border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/5"
+                  : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50"
                   }`}
               >
                 <div
@@ -2689,8 +2689,8 @@ export const TransferNodeRenderer: React.FC<{
               <button
                 onClick={() => setScanMode("offer")}
                 className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${isDark
-                    ? "border-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
-                    : "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50"
+                  ? "border-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                  : "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50"
                   }`}
               >
                 <div
@@ -2731,10 +2731,10 @@ export const TransferNodeRenderer: React.FC<{
               <button
                 onClick={() => setPairingWorkflow("qr")}
                 className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "qr"
-                    ? isDark
-                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                      : "bg-white text-indigo-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-300"
+                  ? isDark
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                    : "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-300"
                   }`}
               >
                 <QrCode className="w-3.5 h-3.5" />
@@ -2743,10 +2743,10 @@ export const TransferNodeRenderer: React.FC<{
               <button
                 onClick={() => setPairingWorkflow("manual")}
                 className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "manual"
-                    ? isDark
-                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                      : "bg-white text-indigo-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-300"
+                  ? isDark
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                    : "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-300"
                   }`}
               >
                 <ClipboardPaste className="w-3.5 h-3.5" />
@@ -2861,72 +2861,29 @@ export const TransferNodeRenderer: React.FC<{
                       </div>
                     )}
                     <button
-                      onClick={() => setShowFullscreenQR(true)}
-                      className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
-                      title="View Fullscreen"
-                    >
-                      <Maximize className="w-3.5 h-3.5 text-slate-500" />
-                    </button>
-                    <button
                       onClick={() => setShowDiagnostics(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                      title="Diagnostics"
                     >
                       <Activity className="w-3.5 h-3.5 text-slate-500" />
                     </button>
                     {(broadcastFrames.length > 0 || offerQR || answerQR) && (
-                      <QRCodeSVG
-                        value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
-                        size={260}
-                        level={qrDensity}
-                        marginSize={2}
-                        className="w-full h-auto max-w-[280px]"
-                      />
-                    )}
-
-                    {showFullscreenQR && createPortal(
-                      <div className="fixed inset-0 z-[999999] bg-slate-900/90 backdrop-blur-md flex items-center justify-center pointer-events-auto">
+                      <>
                         <button
-                          onClick={() => setShowFullscreenQR(false)}
-                          className="absolute top-6 right-6 p-3 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full transition-all z-[100] shadow-2xl border border-slate-600/50 cursor-pointer"
+                          onClick={() => setFullscreenQRValue(broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR))}
+                          className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                          title="Fullscreen QR"
                         >
-                          <X size={24} />
+                          <Maximize className="w-3.5 h-3.5 text-slate-500" />
                         </button>
-
-                        <div className="w-full h-full relative cursor-move flex items-center justify-center">
-                          <TransformWrapper
-                            initialScale={1}
-                            minScale={0.5}
-                            maxScale={10}
-                            centerOnInit
-                            wheel={{
-                              step: 0.02,          // Much smaller than 0.1
-                              wheelDisabled: false,
-                              touchPadDisabled: false,
-
-                            }}
-                            pinch={{
-                              step: 5,
-                            }}
-                            doubleClick={{
-                              disabled: false,
-                              step: 1.5,
-                            }}
-                          >
-                            <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                              <div className="bg-white p-8 rounded-[2rem] shadow-[0_0_50px_rgba(255,255,255,0.1)]">
-                                <QRCodeSVG
-                                  value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
-                                  size={Math.min(window.innerWidth, window.innerHeight) * 0.7}
-                                  level={qrDensity}
-                                  marginSize={4}
-                                  className="max-w-[90vw] max-h-[90vh]"
-                                />
-                              </div>
-                            </TransformComponent>
-                          </TransformWrapper>
-                        </div>
-                      </div>,
-                      document.body
+                        <QRCodeSVG
+                          value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
+                          size={260}
+                          level={qrDensity}
+                          marginSize={2}
+                          className="w-full h-auto max-w-[280px]"
+                        />
+                      </>
                     )}
                   </div>
                 )}
@@ -2951,8 +2908,8 @@ export const TransferNodeRenderer: React.FC<{
                   <button
                     onClick={() => setScanMode(isHosting ? "answer" : "offer")}
                     className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap shadow-sm active:scale-95 ${isDark
-                        ? "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 shadow-indigo-500/10"
-                        : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
+                      ? "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 shadow-indigo-500/10"
+                      : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
                       }`}
                   >
                     <Scan className="w-3.5 h-3.5" /> Open Scanner
@@ -2969,12 +2926,12 @@ export const TransferNodeRenderer: React.FC<{
                     }}
                     disabled={!(offerQR || answerQR)}
                     className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${isDark
-                        ? copiedSDP
-                          ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
-                          : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
-                        : copiedSDP
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
+                      ? copiedSDP
+                        ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
+                        : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
+                      : copiedSDP
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
                       } disabled:opacity-50 disabled:pointer-events-none`}
                   >
                     {copiedSDP ? (
@@ -3001,10 +2958,10 @@ export const TransferNodeRenderer: React.FC<{
                       }
                     }}
                     className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${isHosting
-                        ? isDark
-                          ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30"
-                          : "bg-indigo-50 text-indigo-600 border border-indigo-200"
-                        : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
+                      ? isDark
+                        ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30"
+                        : "bg-indigo-50 text-indigo-600 border border-indigo-200"
+                      : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
                       }`}
                   >
                     <span>Initiator</span>
@@ -3022,10 +2979,10 @@ export const TransferNodeRenderer: React.FC<{
                       }
                     }}
                     className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${!isHosting
-                        ? isDark
-                          ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
-                          : "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                        : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
+                      ? isDark
+                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                        : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                      : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
                       }`}
                   >
                     <span>Responder</span>
@@ -3040,8 +2997,8 @@ export const TransferNodeRenderer: React.FC<{
                     const yourSdpSection = (
                       <div
                         className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${isDark
-                            ? "bg-white/5 border-white/10 hover:border-indigo-500/30"
-                            : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
+                          ? "bg-white/5 border-white/10 hover:border-indigo-500/30"
+                          : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
                           }`}
                       >
                         <div className="flex items-center justify-between mb-3">
@@ -3063,8 +3020,8 @@ export const TransferNodeRenderer: React.FC<{
                           {offerQR || answerQR ? (
                             <span
                               className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${isDark
-                                  ? "bg-emerald-500/10 text-emerald-400"
-                                  : "bg-emerald-50 text-emerald-600"
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "bg-emerald-50 text-emerald-600"
                                 }`}
                             >
                               Generated
@@ -3077,8 +3034,8 @@ export const TransferNodeRenderer: React.FC<{
                             {offerQR || answerQR ? (
                               <div
                                 className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${isDark
-                                    ? "bg-black/40 border border-white/5"
-                                    : "bg-slate-50 border border-slate-100"
+                                  ? "bg-black/40 border border-white/5"
+                                  : "bg-slate-50 border border-slate-100"
                                   }`}
                               >
                                 <div
@@ -3097,8 +3054,8 @@ export const TransferNodeRenderer: React.FC<{
                             ) : (
                               <div
                                 className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-3 text-center ${isDark
-                                    ? "border-white/5 bg-black/20"
-                                    : "border-slate-100 bg-slate-50/50"
+                                  ? "border-white/5 bg-black/20"
+                                  : "border-slate-100 bg-slate-50/50"
                                   }`}
                               >
                                 {isHosting ? (
@@ -3133,8 +3090,8 @@ export const TransferNodeRenderer: React.FC<{
                             }}
                             disabled={!(offerQR || answerQR)}
                             className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${copiedSDP
-                                ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white"
-                                : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
+                              ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white"
+                              : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
                               }`}
                           >
                             {copiedSDP ? (
@@ -3153,8 +3110,8 @@ export const TransferNodeRenderer: React.FC<{
                     const remoteSdpSection = (
                       <div
                         className={`p-4 rounded-[24px] border relative transition-all duration-300 ${isDark
-                            ? "bg-white/5 border-white/10"
-                            : "bg-white border-slate-200 shadow-sm"
+                          ? "bg-white/5 border-white/10"
+                          : "bg-white border-slate-200 shadow-sm"
                           }`}
                       >
                         <div className="flex items-center gap-2 mb-3">
@@ -3178,8 +3135,8 @@ export const TransferNodeRenderer: React.FC<{
                             <textarea
                               placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
                               className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${isDark
-                                  ? "bg-black/40 text-white placeholder-slate-600 border border-white/5"
-                                  : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
+                                ? "bg-black/40 text-white placeholder-slate-600 border border-white/5"
+                                : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
                                 }`}
                               value={
                                 isHosting ? copyPasteAnswer : copyPasteOffer
@@ -3199,8 +3156,8 @@ export const TransferNodeRenderer: React.FC<{
                                     : setCopyPasteOffer("")
                                 }
                                 className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${isDark
-                                    ? "text-slate-400 hover:text-white hover:bg-white/10"
-                                    : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
+                                  ? "text-slate-400 hover:text-white hover:bg-white/10"
+                                  : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
                                   }`}
                                 title="Clear input"
                               >
@@ -3240,8 +3197,8 @@ export const TransferNodeRenderer: React.FC<{
                                 }
                               }}
                               className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${isDark
-                                  ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400"
-                                  : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
+                                ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400"
+                                : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
                                 }`}
                             >
                               <ClipboardPaste className="w-3.5 h-3.5" />
@@ -3338,8 +3295,8 @@ export const TransferNodeRenderer: React.FC<{
               <button
                 onClick={resetState}
                 className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${isDark
-                    ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
-                    : "border-red-200 text-red-600 hover:bg-red-50"
+                  ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
+                  : "border-red-200 text-red-600 hover:bg-red-50"
                   }`}
               >
                 Cancel Pairing
@@ -3373,8 +3330,8 @@ export const TransferNodeRenderer: React.FC<{
             <button
               onClick={resetState}
               className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${isDark
-                  ? "border-white/10 bg-white/5 hover:bg-white/10 text-white"
-                  : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                ? "border-white/10 bg-white/5 hover:bg-white/10 text-white"
+                : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
                 }`}
             >
               <RefreshCw className="w-4 h-4" /> Reset & Try Again
@@ -3466,10 +3423,10 @@ export const TransferNodeRenderer: React.FC<{
                       <button
                         onClick={() => setViewMode("chat")}
                         className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-2 ${viewMode === "chat"
-                            ? isDark
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                              : "bg-white text-indigo-600 shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
+                          ? isDark
+                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                            : "bg-white text-indigo-600 shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
                           }`}
                       >
                         Chat
@@ -3480,10 +3437,10 @@ export const TransferNodeRenderer: React.FC<{
                       <button
                         onClick={() => setViewMode("media")}
                         className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === "media"
-                            ? isDark
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                              : "bg-white text-indigo-600 shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
+                          ? isDark
+                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                            : "bg-white text-indigo-600 shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
                           }`}
                       >
                         Media ({mediaMessages.length})
@@ -3494,10 +3451,10 @@ export const TransferNodeRenderer: React.FC<{
                       onClick={() => setAutoClipboardSync(!autoClipboardSync)}
                       title={autoClipboardSync ? "Auto Clipboard Sync: ON" : "Auto Clipboard Sync: OFF"}
                       className={`p-2.5 rounded-xl border transition-all ${autoClipboardSync
-                          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-500"
-                          : isDark
-                            ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400"
-                            : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-500"
+                        : isDark
+                          ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400"
+                          : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"
                         }`}
                     >
                       <Clipboard className="w-4 h-4" />
@@ -3642,12 +3599,12 @@ export const TransferNodeRenderer: React.FC<{
                                   });
                                 }}
                                 className={`group relative max-w-[85%] rounded-3xl p-1 transition-all duration-300 ${msg.sender === "me"
-                                    ? msg.type === "composite" || msg.type === "file"
-                                      ? isDark ? "bg-slate-800 text-white rounded-tr-sm shadow-xl" : "bg-slate-200 text-slate-800 rounded-tr-sm shadow-sm"
-                                      : "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
-                                    : isDark
-                                      ? "bg-[#161f30] text-slate-200 rounded-tl-sm border border-white/5"
-                                      : "bg-slate-100 text-slate-800 rounded-tl-sm"
+                                  ? msg.type === "composite" || msg.type === "file"
+                                    ? isDark ? "bg-slate-800 text-white rounded-tr-sm shadow-xl" : "bg-slate-200 text-slate-800 rounded-tr-sm shadow-sm"
+                                    : "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
+                                  : isDark
+                                    ? "bg-[#161f30] text-slate-200 rounded-tl-sm border border-white/5"
+                                    : "bg-slate-100 text-slate-800 rounded-tl-sm"
                                   }`}
                               >
                                 {msg.status === "sending" && (msg.type === "composite" || msg.type === "file" || msg.type === "text") && (
@@ -3667,8 +3624,8 @@ export const TransferNodeRenderer: React.FC<{
                                 {/* Hover Actions Bar - Desktop only */}
                                 <div
                                   className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 shadow-lg ${msg.sender === "me"
-                                      ? "right-full mr-2"
-                                      : "left-full ml-2"
+                                    ? "right-full mr-2"
+                                    : "left-full ml-2"
                                     }`}
                                 >
                                   <button
@@ -3706,10 +3663,10 @@ export const TransferNodeRenderer: React.FC<{
                                           scrollToMessage(msg.replyTo!.id)
                                         }
                                         className={`mx-1 mt-1 mb-0.5 p-2 rounded-2xl flex flex-col gap-0.5 text-left transition-all border-l-4 ${msg.sender === "me"
-                                            ? "bg-black/20 border-white/40 text-white/80 hover:bg-black/30"
-                                            : isDark
-                                              ? "bg-white/5 border-indigo-500/50 text-slate-400 hover:bg-white/10"
-                                              : "bg-black/5 border-indigo-400 text-slate-500 hover:bg-black/10"
+                                          ? "bg-black/20 border-white/40 text-white/80 hover:bg-black/30"
+                                          : isDark
+                                            ? "bg-white/5 border-indigo-500/50 text-slate-400 hover:bg-white/10"
+                                            : "bg-black/5 border-indigo-400 text-slate-500 hover:bg-black/10"
                                           }`}
                                       >
                                         <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
@@ -3920,8 +3877,8 @@ export const TransferNodeRenderer: React.FC<{
                                                 }
                                               }}
                                               className={`flex-1 py-1.5 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${msg.streamState === "transferring"
-                                                  ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500"
-                                                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
+                                                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500"
+                                                : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
                                                 }`}
                                             >
                                               {msg.streamState === "transferring" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
@@ -4038,10 +3995,10 @@ export const TransferNodeRenderer: React.FC<{
                                               href={msg.content}
                                               download={msg.fileName || "audio.mp3"}
                                               className={`p-2 rounded-lg transition-all ${msg.sender === "me"
-                                                  ? "hover:bg-white/20"
-                                                  : isDark
-                                                    ? "hover:bg-white/5"
-                                                    : "hover:bg-slate-200"
+                                                ? "hover:bg-white/20"
+                                                : isDark
+                                                  ? "hover:bg-white/5"
+                                                  : "hover:bg-slate-200"
                                                 }`}
                                               onClick={(e) => e.stopPropagation()}
                                             >
@@ -4055,8 +4012,8 @@ export const TransferNodeRenderer: React.FC<{
                                           msg.fileType === "text_file") && (
                                             <div
                                               className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${msg.sender === "me"
-                                                  ? "hover:bg-white/5"
-                                                  : "hover:bg-black/5"
+                                                ? "hover:bg-white/5"
+                                                : "hover:bg-black/5"
                                                 }`}
                                               onClick={() =>
                                                 (msg.fileType === "pdf" ||
@@ -4066,10 +4023,10 @@ export const TransferNodeRenderer: React.FC<{
                                             >
                                               <div
                                                 className={`p-3 rounded-xl ${msg.sender === "me"
-                                                    ? "bg-white/20 text-white"
-                                                    : isDark
-                                                      ? "bg-indigo-500/10 text-indigo-400"
-                                                      : "bg-indigo-50 text-indigo-600"
+                                                  ? "bg-white/20 text-white"
+                                                  : isDark
+                                                    ? "bg-indigo-500/10 text-indigo-400"
+                                                    : "bg-indigo-50 text-indigo-600"
                                                   }`}
                                               >
                                                 {msg.fileType === "pdf" ||
@@ -4098,10 +4055,10 @@ export const TransferNodeRenderer: React.FC<{
                                                 download={msg.fileName}
                                                 onClick={(e) => e.stopPropagation()}
                                                 className={`p-2.5 rounded-xl transition-all ${msg.sender === "me"
-                                                    ? "hover:bg-white/20"
-                                                    : isDark
-                                                      ? "hover:bg-white/5"
-                                                      : "hover:bg-slate-200"
+                                                  ? "hover:bg-white/20"
+                                                  : isDark
+                                                    ? "hover:bg-white/5"
+                                                    : "hover:bg-slate-200"
                                                   }`}
                                               >
                                                 <Download className="w-4 h-4" />
@@ -4285,8 +4242,8 @@ export const TransferNodeRenderer: React.FC<{
                           <div className="flex items-center gap-2">
                             <label
                               className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
-                                  ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
-                                  : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
+                                ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
+                                : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
                                 }`}
                             >
                               <Plus className="w-5 h-5" />
@@ -4316,8 +4273,8 @@ export const TransferNodeRenderer: React.FC<{
 
                             <div
                               className={`flex-1 flex items-center rounded-3xl p-1.5 border transition-all shadow-inner min-w-0 ${isDark
-                                  ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
-                                  : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
+                                ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
+                                : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
                                 }`}
                             >
                               <input
@@ -4836,6 +4793,53 @@ export const TransferNodeRenderer: React.FC<{
               : content;
           })()}
       </div>
+
+      {fullscreenQRValue && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/90 backdrop-blur-md"
+          onWheel={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setFullscreenQRValue(null); }}
+            className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all z-[100001]"
+          >
+            <X size={24} />
+          </button>
+          <div className="w-full h-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <TransformWrapper
+              initialScale={1}
+              minScale={0.5}
+              maxScale={10}
+              centerOnInit
+              wheel={{
+                step: 0.01,          // Much smaller than 0.1
+                wheelDisabled: false,
+                touchPadDisabled: false,
+              }}
+              pinch={{
+                step: 5,
+              }}
+              doubleClick={{
+                disabled: false,
+                step: 1.5,
+              }}
+            >
+              <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
+                <div className="p-8 bg-white rounded-3xl shadow-2xl">
+                  <QRCodeSVG
+                    value={fullscreenQRValue}
+                    size={400}
+                    level={qrDensity}
+                    marginSize={2}
+                    className="w-[80vw] h-[80vw] max-w-[400px] max-h-[400px] sm:max-w-[500px] sm:max-h-[500px]"
+                  />
+                </div>
+              </TransformComponent>
+            </TransformWrapper>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
