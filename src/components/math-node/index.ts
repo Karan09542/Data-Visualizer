@@ -13,3 +13,6 @@ export * from "./ImplicitPlot";
 export * from "./AdaptiveGrid";
 export * from "./examples";
 export * from "./TraceOverlay";
+
+export * from "./VariableManager";
+export * from "./Timeline";
