@@ -427,11 +427,11 @@ export interface StoreState {
     metadata: { filename: string; mimeType: string; size: number },
   ) => void;
 
-  notification: { message: string; type: "error" | "success" | "info" } | null;
+  notification: { message: string; type: "error" | "success" | "info" | "warning" } | null;
   setNotification: (
     notification: {
       message: string;
-      type: "error" | "success" | "info";
+      type: "error" | "success" | "info" | "warning";
     } | null,
   ) => void;
   isSavedDocsOpen: boolean;

@@ -249,7 +249,7 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
 interface Message {
   id: string;
   sender: "me" | "remote";
-  type: "text" | "file" | "composite" | "node" | "workspace";
+  type: "text" | "file" | "composite" | "node" | "workspace" | "file_offer";
   content: string;
   attachments?: Attachment[];
   fileName?: string;
@@ -270,6 +270,8 @@ interface Message {
   originalBlob?: Blob;
   isDeleted?: boolean;
   isEdited?: boolean;
+  streamState?: "offered" | "transferring" | "paused" | "canceled" | "completed" | "error";
+  streamProgress?: number;
 }
 
 export const blobRegistry = new Map<string, Blob>();
@@ -3832,8 +3834,8 @@ export const TransferNodeRenderer: React.FC<{
                                                 transition={{ duration: 0.1 }}
                                               />
                                             </div>
-                                          </div>
-                                        )}
+                                            </div>
+                                          )}
 
                                         {msg.streamState === "paused" && (
                                           <div className="flex flex-col gap-1 w-full mt-1 px-1">
