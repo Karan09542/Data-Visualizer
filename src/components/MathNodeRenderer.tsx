@@ -4950,6 +4950,17 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                   handleDeleteVar={handleDeleteVar}
                   setEditingVar={setEditingVar}
                   setShowVarEditor={setShowVarEditor}
+                  setGroups={setGroups}
+                  setVariables={setVariables}
+                  draggedVariableId={draggedVariableId}
+                  setDraggedVariableId={setDraggedVariableId}
+                  canDragVariableId={canDragVariableId}
+                  setCanDragVariableId={setCanDragVariableId}
+                  dragOverVariableId={dragOverVariableId}
+                  setDragOverVariableId={setDragOverVariableId}
+                  dragOverVariablePosition={dragOverVariablePosition}
+                  setDragOverVariablePosition={setDragOverVariablePosition}
+                  handleDropVariable={handleDropVariable}
                 />
 
                 {/* Timeline & Controls */}
