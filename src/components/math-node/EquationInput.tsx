@@ -22,6 +22,7 @@ interface EquationInputProps {
   variables: any[];
   hoveredVar?: string | null;
   error?: string;
+  warning?: string;
   onAddEnter?: () => void;
   onBlur?: () => void;
   globalTime?: number;
@@ -37,6 +38,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   variables,
   hoveredVar,
   error,
+  warning,
   onAddEnter,
   onBlur,
   globalTime = 1,
@@ -501,6 +503,13 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
         <div className="text-[10px] text-red-400 mt-1 ml-1 flex items-center gap-1 opacity-80">
           <span className="w-1 h-1 rounded-full bg-red-400 block" />
           {error}
+        </div>
+      )}
+
+      {!error && warning && (
+        <div className="text-[10px] text-amber-500 mt-1 ml-1 flex items-center gap-1 opacity-80">
+          <span className="w-1 h-1 rounded-full bg-amber-500 block" />
+          {warning}
         </div>
       )}
 
