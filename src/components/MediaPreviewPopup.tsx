@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Music, Video, Image as ImageIcon, FileText, Globe, Move, Box } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
-import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import { InteractiveZoomImage } from './InteractiveZoomImage';
 import SmartMediaRenderer from './SmartMediaRenderer';
 import { SmartFallbackMedia } from './SmartFallbackMedia';
 import { PdfViewer } from './PdfViewer';
@@ -12,7 +12,6 @@ import { resolveAssetUrl } from '../utils/assetManager';
 
 const MediaPreviewPopup: React.FC = () => {
   const { activePreviewMedia, setActivePreviewMedia } = useStore();
-  const transformComponentRef = useRef<ReactZoomPanPinchRef>(null);
 
   const [resolvedAssetUrl, setResolvedAssetUrl] = React.useState<string | null>(null);
 
@@ -34,10 +33,6 @@ const MediaPreviewPopup: React.FC = () => {
 
   if (!activePreviewMedia) return null;
 
-  const handleZoomIn = () => transformComponentRef.current?.zoomIn(0.5);
-  const handleZoomOut = () => transformComponentRef.current?.zoomOut(0.5);
-  const handleReset = () => transformComponentRef.current?.resetTransform();
-
   const renderContent = () => {
     const { type } = activePreviewMedia;
     const originalUrl = activePreviewMedia.url;
@@ -46,34 +41,12 @@ const MediaPreviewPopup: React.FC = () => {
 
     if (type === 'image') {
       return (
-        <div className="w-full h-full flex items-center justify-center overflow-hidden relative group/image">
-          <TransformWrapper
-            ref={transformComponentRef}
-            initialScale={1}
-            centerOnInit={true}
-            minScale={0.1}
-            maxScale={8}
-            wheel={{ step: 0.1 }}
-          >
-            <TransformComponent 
-              wrapperStyle={{ width: '100%', height: '100%' }}
-              contentStyle={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              <SmartFallbackMedia 
-                type="image"
-                src={originalUrl} 
-                alt="Preview" 
-                className="max-w-full max-h-[90vh] object-contain shadow-2xl rounded-lg"
-                draggable={false}
-              />
-            </TransformComponent>
-          </TransformWrapper>
-          
-          {/* Zoom Overlay Info */}
-          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 px-4 py-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/60 text-[10px] font-mono tracking-widest pointer-events-none opacity-0 group-hover/image:opacity-100 transition-opacity z-50">
-            <Move size={12} />
-            PAN & ZOOM ENABLED
-          </div>
+        <div className="w-full h-full flex items-center justify-center pointer-events-auto">
+          <InteractiveZoomImage 
+            src={resolvedUrl} 
+            alt="Preview" 
+            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" 
+          />
         </div>
       );
     }
@@ -200,22 +173,6 @@ const MediaPreviewPopup: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              {['image'].includes(activePreviewMedia.type) && (
-                <div className="flex items-center bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-700/50 p-1.5 shadow-xl mr-4">
-                  <button onClick={handleZoomOut} className="p-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all" title="Zoom Out">
-                    <ZoomOut size={20} />
-                  </button>
-                  <div className="w-[1px] h-5 bg-slate-700/50 mx-1" />
-                  <button onClick={handleZoomIn} className="p-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all" title="Zoom In">
-                    <ZoomIn size={20} />
-                  </button>
-                  <div className="w-[1px] h-5 bg-slate-700/50 mx-1" />
-                  <button onClick={handleReset} className="p-2.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all" title="Reset Zoom">
-                    <RotateCcw size={20} />
-                  </button>
-                </div>
-              )}
-              
               <button
                 onClick={() => setActivePreviewMedia(null)}
                 className="group/close relative p-3 bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-white rounded-2xl border border-slate-700/50 hover:border-slate-500 transition-all shadow-xl backdrop-blur-md"

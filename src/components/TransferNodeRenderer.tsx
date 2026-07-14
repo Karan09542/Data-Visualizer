@@ -8,6 +8,7 @@ import { PdfViewer } from "./PdfViewer";
 import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
 import LZString from "lz-string";
+import { InteractiveZoomImage } from "./InteractiveZoomImage";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import JSZip from "jszip";
 
@@ -35,7 +36,7 @@ const crc32 = (buffer: ArrayBuffer | Uint8Array, crc = 0) => {
   return (c ^ -1) >>> 0;
 };
 
-async function getFilesFromEntry(entry: any, path = ""): Promise<{file: File, path: string}[]> {
+async function getFilesFromEntry(entry: any, path = ""): Promise<{ file: File, path: string }[]> {
   if (entry.isFile) {
     return new Promise((resolve) => {
       entry.file((file: File) => resolve([{ file, path: path + file.name }]));
@@ -43,7 +44,7 @@ async function getFilesFromEntry(entry: any, path = ""): Promise<{file: File, pa
   } else if (entry.isDirectory) {
     const dirReader = entry.createReader();
     let entries: any[] = [];
-    
+
     const readEntries = async (): Promise<any[]> => {
       return new Promise((resolve) => {
         dirReader.readEntries(async (results: any[]) => {
@@ -57,8 +58,8 @@ async function getFilesFromEntry(entry: any, path = ""): Promise<{file: File, pa
       });
     };
     const allEntries = await readEntries();
-    
-    let files: {file: File, path: string}[] = [];
+
+    let files: { file: File, path: string }[] = [];
     for (const e of allEntries) {
       files = files.concat(await getFilesFromEntry(e, path + entry.name + "/"));
     }
@@ -124,12 +125,12 @@ export interface Attachment {
   originalBlob?: Blob;
 }
 
-const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer" }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: {id: string, status: string} | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid" }) => {
+const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer" }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: { id: string, status: string } | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid" }) => {
   const isFileObj = file instanceof File;
   const fileName = isFileObj ? file.name : (file as Attachment).fileName;
   const fileSize = isFileObj ? file.size : (file as Attachment).fileSize;
   const fType = isFileObj ? getFileType(file.name) : (file as Attachment).fileType;
-  
+
   const [localUrl, setLocalUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,13 +142,13 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
   }, [file]);
 
   const content = file instanceof File ? localUrl : (file as Attachment).content;
-  const sizeClasses = layout === "grid" 
+  const sizeClasses = layout === "grid"
     ? (fType === "image" || fType === "video" ? "w-full aspect-square" : "w-full p-2.5 flex items-center gap-3")
     : layout === "single-grid"
-    ? (fType === "image" || fType === "video" ? "w-full max-h-[350px]" : "w-full p-2.5 flex items-center gap-3")
-    : layout === "list"
-    ? "w-full p-2.5 flex items-center gap-3"
-    : (fType === "image" || fType === "video" ? "w-32 h-32" : "w-48 p-2.5 flex items-center gap-3");
+      ? (fType === "image" || fType === "video" ? "w-full max-h-[350px]" : "w-full p-2.5 flex items-center gap-3")
+      : layout === "list"
+        ? "w-full p-2.5 flex items-center gap-3"
+        : (fType === "image" || fType === "video" ? "w-32 h-32" : "w-48 p-2.5 flex items-center gap-3");
 
   return (
     <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 ${sizeClasses}`}>
@@ -234,7 +235,7 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
           </button>
         )}
       </div>
-      
+
       {/* Footer Info for Image/Video */}
       {(fType === "image" || fType === "video") && (
         <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/80 to-transparent">
@@ -354,10 +355,10 @@ const TextFileViewer: React.FC<{ url: string }> = ({ url }) => {
 const AudioPlayer = ({ media, isSelected }: { media: Message, isSelected: boolean }) => {
   const ref = useRef<HTMLAudioElement>(null);
   useEffect(() => {
-    if (isSelected) ref.current?.play().catch(() => {});
+    if (isSelected) ref.current?.play().catch(() => { });
     else ref.current?.pause();
   }, [isSelected]);
-  
+
   return (
     <div className="flex flex-col items-center gap-8 p-10 bg-white/5 rounded-[40px] border border-white/10 backdrop-blur-3xl">
       <div className="w-40 h-40 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
@@ -384,7 +385,7 @@ const VideoPlayer = ({ media, isSelected }: { media: Message; isSelected: boolea
 
   useEffect(() => {
     if (isSelected) {
-      ref.current?.play().catch(() => {});
+      ref.current?.play().catch(() => { });
     } else {
       ref.current?.pause();
       if (ref.current) {
@@ -464,7 +465,7 @@ export const TransferNodeRenderer: React.FC<{
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [zippingTasks, setZippingTasks] = useState<{id: string, folderName: string, progress?: number}[]>([]);
+  const [zippingTasks, setZippingTasks] = useState<{ id: string, folderName: string, progress?: number }[]>([]);
   const zipWorkerRef = useRef<Worker | null>(null);
 
   useEffect(() => {
@@ -504,7 +505,7 @@ export const TransferNodeRenderer: React.FC<{
       }
     >
   >({});
-  
+
   const outgoingStreamsRef = useRef<Record<string, {
     file: File;
     offset: number;
@@ -520,7 +521,7 @@ export const TransferNodeRenderer: React.FC<{
     total: number;
     checksum: number;
   }>>({});
-  
+
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<any>(null);
 
@@ -575,7 +576,7 @@ export const TransferNodeRenderer: React.FC<{
             let itemHandled = false;
             for (const type of item.types) {
               if (type === 'text/plain' || type === 'text/html') continue;
-              
+
               try {
                 const blob = await item.getType(type);
                 const sizeKey = `${blob.size}-${type}`;
@@ -584,19 +585,19 @@ export const TransferNodeRenderer: React.FC<{
                   let ext = type.split('/')[1] || 'bin';
                   if (ext === 'jpeg') ext = 'jpg';
                   if (ext === 'svg+xml') ext = 'svg';
-                  
+
                   const prefix = type.startsWith('image/') ? 'image' : 'file';
                   const file = new File([blob], `clipboard-${prefix}.${ext}`, { type });
                   newImageFiles.push(file);
                   hasNewData = true;
                   itemHandled = true;
                 }
-              } catch (e) {}
-              
+              } catch (e) { }
+
               if (itemHandled) break;
             }
           }
-        } catch(e) {
+        } catch (e) {
           // Ignore read errors
         }
 
@@ -609,71 +610,71 @@ export const TransferNodeRenderer: React.FC<{
             newText = text;
             hasNewData = true;
           }
-        } catch(e) {
+        } catch (e) {
           // Ignore read errors
         }
 
         if (hasNewData && dcRef.current && dcRef.current.readyState === "open") {
           if (newImageFiles.length > 0) {
-             const msgId = uuidv4();
-             const attachments: Attachment[] = [];
-             const compositePayloadAttachments: any[] = [];
-              
-             for (const file of newImageFiles) {
-               const fileContent = await new Promise<string>((resolve) => {
-                 const reader = new FileReader();
-                 reader.onload = (e) => resolve(e.target?.result as string);
-                 reader.readAsDataURL(file);
-               });
-                 
-               const fType = getFileType(file.name);
-               const objectUrl = URL.createObjectURL(file);
-               blobRegistry.set(objectUrl, file);
-                 
-               const attId = uuidv4();
-               attachments.push({
-                 id: attId,
-                 fileName: file.name,
-                 fileSize: file.size,
-                 fileType: fType,
-                 content: objectUrl,
-                 originalBlob: file
-               });
-                 
-               compositePayloadAttachments.push({
-                 id: attId,
-                 fileName: file.name,
-                 fileSize: file.size,
-                 fileType: fType,
-                 content: fileContent
-               });
-             }
-             
-             const compositePayload = {
-               content: newText,
-               attachments: compositePayloadAttachments
-             };
+            const msgId = uuidv4();
+            const attachments: Attachment[] = [];
+            const compositePayloadAttachments: any[] = [];
 
-             const localMsgOverride: Message = {
-               id: msgId,
-               sender: "me",
-               type: "composite",
-               content: newText,
-               attachments,
-               timestamp: Date.now(),
-               status: "sending",
-               chunksSent: 0,
-               chunksTotal: 0
-             };
+            for (const file of newImageFiles) {
+              const fileContent = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string);
+                reader.readAsDataURL(file);
+              });
 
-             await sendLargeMessage(
-               "composite",
-               JSON.stringify(compositePayload),
-               undefined,
-               undefined,
-               undefined,
-               localMsgOverride
-             );
+              const fType = getFileType(file.name);
+              const objectUrl = URL.createObjectURL(file);
+              blobRegistry.set(objectUrl, file);
+
+              const attId = uuidv4();
+              attachments.push({
+                id: attId,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: fType,
+                content: objectUrl,
+                originalBlob: file
+              });
+
+              compositePayloadAttachments.push({
+                id: attId,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: fType,
+                content: fileContent
+              });
+            }
+
+            const compositePayload = {
+              content: newText,
+              attachments: compositePayloadAttachments
+            };
+
+            const localMsgOverride: Message = {
+              id: msgId,
+              sender: "me",
+              type: "composite",
+              content: newText,
+              attachments,
+              timestamp: Date.now(),
+              status: "sending",
+              chunksSent: 0,
+              chunksTotal: 0
+            };
+
+            await sendLargeMessage(
+              "composite",
+              JSON.stringify(compositePayload),
+              undefined,
+              undefined,
+              undefined,
+              localMsgOverride
+            );
           } else if (newText.trim()) {
             await sendLargeMessage("text", newText);
           }
@@ -684,7 +685,7 @@ export const TransferNodeRenderer: React.FC<{
     };
 
     window.addEventListener("focus", syncClipboard);
-    
+
     // We can also poll gently while active, or rely on focus.
     const interval = setInterval(() => {
       if (document.hasFocus()) syncClipboard();
@@ -710,7 +711,7 @@ export const TransferNodeRenderer: React.FC<{
 
   const sendLocalNotification = (title: string, body: string) => {
     const isHidden = document.visibilityState === "hidden" || !document.hasFocus();
-    
+
     if (isHidden) {
       playNotificationSound();
     }
@@ -805,9 +806,9 @@ export const TransferNodeRenderer: React.FC<{
     };
     try {
       console.log("[Transfer Node Copy] Copy Requested:", { id: media.id, fileName: media.fileName, fileType: media.fileType });
-      
+
       let blob = media.originalBlob || blobRegistry.get(media.content);
-      
+
       if (!blob && media.type === "file" && media.content.startsWith("blob:")) {
         console.log("[Transfer Node Copy] Fallback Triggered: Fetching object URL");
         try {
@@ -849,127 +850,127 @@ export const TransferNodeRenderer: React.FC<{
       };
 
       if (media.fileType === "image") {
-         let supportsNative = false;
-         try {
-           if (typeof ClipboardItem !== "undefined" && ClipboardItem.supports) {
-             supportsNative = ClipboardItem.supports(blob.type);
-           }
-         } catch (e) {
-           supportsNative = false;
-         }
+        let supportsNative = false;
+        try {
+          if (typeof ClipboardItem !== "undefined" && ClipboardItem.supports) {
+            supportsNative = ClipboardItem.supports(blob.type);
+          }
+        } catch (e) {
+          supportsNative = false;
+        }
 
-         if (!supportsNative && (blob.type === "image/webp" || blob.type === "image/avif" || blob.type === "image/png" || blob.type === "image/jpeg")) {
-           console.log("[Transfer Node Copy] Fallback Triggered: Converting image format via JSquash...");
-           const convertToPng = async () => {
-              let imageData: ImageData | null = null;
-              const buffer = await blob.arrayBuffer();
-              try {
-                if (blob.type === "image/webp") {
-                    const decodeWebp = (await import("@jsquash/webp/decode")).default;
-                    imageData = await decodeWebp(buffer);
-                } else if (blob.type === "image/avif") {
-                    const decodeAvif = (await import("@jsquash/avif/decode")).default;
-                    imageData = await decodeAvif(buffer);
-                } else if (blob.type === "image/jpeg") {
-                    const decodeJpeg = (await import("@jsquash/jpeg/decode")).default;
-                    imageData = await decodeJpeg(buffer);
-                }
-              } catch (e) {
-                console.warn("[Transfer Node Copy] JSquash direct decode failed, falling back to canvas", e);
+        if (!supportsNative && (blob.type === "image/webp" || blob.type === "image/avif" || blob.type === "image/png" || blob.type === "image/jpeg")) {
+          console.log("[Transfer Node Copy] Fallback Triggered: Converting image format via JSquash...");
+          const convertToPng = async () => {
+            let imageData: ImageData | null = null;
+            const buffer = await blob.arrayBuffer();
+            try {
+              if (blob.type === "image/webp") {
+                const decodeWebp = (await import("@jsquash/webp/decode")).default;
+                imageData = await decodeWebp(buffer);
+              } else if (blob.type === "image/avif") {
+                const decodeAvif = (await import("@jsquash/avif/decode")).default;
+                imageData = await decodeAvif(buffer);
+              } else if (blob.type === "image/jpeg") {
+                const decodeJpeg = (await import("@jsquash/jpeg/decode")).default;
+                imageData = await decodeJpeg(buffer);
               }
-              
-              if (!imageData) {
-                  return await new Promise<Blob>((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => {
-                      const canvas = document.createElement("canvas");
-                      canvas.width = img.width;
-                      canvas.height = img.height;
-                      const ctx = canvas.getContext("2d");
-                      if (!ctx) return reject(new Error("No 2d context"));
-                      ctx.drawImage(img, 0, 0);
-                      canvas.toBlob((b) => {
-                        if (b) resolve(b);
-                        else reject(new Error("Canvas toBlob failed"));
-                      }, "image/png");
-                    };
-                    img.onerror = () => reject(new Error("Image load failed"));
-                    img.src = URL.createObjectURL(blob!);
-                  });
-              } else {
-                  const encodePng = (await import("@jsquash/png/encode")).default;
-                  const pngBuffer = await encodePng(imageData);
-                  return new Blob([pngBuffer], { type: "image/png" });
-              }
-           };
+            } catch (e) {
+              console.warn("[Transfer Node Copy] JSquash direct decode failed, falling back to canvas", e);
+            }
 
-           try {
-             const pngBlob = await convertToPng();
-             await writeToClipboard(pngBlob);
-             console.log("[Transfer Node Copy] Clipboard Write Success: PNG converted copy");
-             setNotification({ message: "Image copied to clipboard", type: "success" });
-             successDelay();
-             return;
-           } catch (convErr) {
-             console.error("[Transfer Node Copy] JSquash conversion failed:", convErr);
-             // Downstream catch handles the rest
-           }
-         }
+            if (!imageData) {
+              return await new Promise<Blob>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                  const canvas = document.createElement("canvas");
+                  canvas.width = img.width;
+                  canvas.height = img.height;
+                  const ctx = canvas.getContext("2d");
+                  if (!ctx) return reject(new Error("No 2d context"));
+                  ctx.drawImage(img, 0, 0);
+                  canvas.toBlob((b) => {
+                    if (b) resolve(b);
+                    else reject(new Error("Canvas toBlob failed"));
+                  }, "image/png");
+                };
+                img.onerror = () => reject(new Error("Image load failed"));
+                img.src = URL.createObjectURL(blob!);
+              });
+            } else {
+              const encodePng = (await import("@jsquash/png/encode")).default;
+              const pngBuffer = await encodePng(imageData);
+              return new Blob([pngBuffer], { type: "image/png" });
+            }
+          };
 
-         try {
-           await writeToClipboard(blob);
-           console.log("[Transfer Node Copy] Clipboard Write Success: Direct image copied");
-           setNotification({ message: "Image copied to clipboard", type: "success" });
-           successDelay();
-         } catch (directErr) {
-           console.log("[Transfer Node Copy] Fallback Triggered: Canvas fallback due to direct write error:", directErr);
-           try {
-             const canvasBlob = await new Promise<Blob>((resolve, reject) => {
-                 const img = new Image();
-                 img.onload = () => {
-                   const canvas = document.createElement("canvas");
-                   canvas.width = img.width;
-                   canvas.height = img.height;
-                   const ctx = canvas.getContext("2d");
-                   if (!ctx) return reject(new Error("No 2d context"));
-                   ctx.drawImage(img, 0, 0);
-                   canvas.toBlob((b) => {
-                     if (b) resolve(b);
-                     else reject(new Error("Canvas toBlob failed"));
-                   }, "image/png");
-                 };
-                 img.onerror = () => reject(new Error("Image load failed"));
-                 img.src = URL.createObjectURL(blob!);
-             });
-             await writeToClipboard(canvasBlob);
-             console.log("[Transfer Node Copy] Clipboard Write Success: Canvas fallback PNG copied");
-             setNotification({ message: "Image copied to clipboard", type: "success" });
-             successDelay();
-           } catch (fallbackErr) {
-             console.error("[Transfer Node Copy] Clipboard Write Failed: Direct copy and canvas both failed", fallbackErr);
-             setCopyStatus(null);
-             setNotification({ message: "Clipboard format not supported by your browser.", type: "error" });
-           }
-         }
+          try {
+            const pngBlob = await convertToPng();
+            await writeToClipboard(pngBlob);
+            console.log("[Transfer Node Copy] Clipboard Write Success: PNG converted copy");
+            setNotification({ message: "Image copied to clipboard", type: "success" });
+            successDelay();
+            return;
+          } catch (convErr) {
+            console.error("[Transfer Node Copy] JSquash conversion failed:", convErr);
+            // Downstream catch handles the rest
+          }
+        }
+
+        try {
+          await writeToClipboard(blob);
+          console.log("[Transfer Node Copy] Clipboard Write Success: Direct image copied");
+          setNotification({ message: "Image copied to clipboard", type: "success" });
+          successDelay();
+        } catch (directErr) {
+          console.log("[Transfer Node Copy] Fallback Triggered: Canvas fallback due to direct write error:", directErr);
+          try {
+            const canvasBlob = await new Promise<Blob>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) return reject(new Error("No 2d context"));
+                ctx.drawImage(img, 0, 0);
+                canvas.toBlob((b) => {
+                  if (b) resolve(b);
+                  else reject(new Error("Canvas toBlob failed"));
+                }, "image/png");
+              };
+              img.onerror = () => reject(new Error("Image load failed"));
+              img.src = URL.createObjectURL(blob!);
+            });
+            await writeToClipboard(canvasBlob);
+            console.log("[Transfer Node Copy] Clipboard Write Success: Canvas fallback PNG copied");
+            setNotification({ message: "Image copied to clipboard", type: "success" });
+            successDelay();
+          } catch (fallbackErr) {
+            console.error("[Transfer Node Copy] Clipboard Write Failed: Direct copy and canvas both failed", fallbackErr);
+            setCopyStatus(null);
+            setNotification({ message: "Clipboard format not supported by your browser.", type: "error" });
+          }
+        }
       } else {
-         try {
-           await writeToClipboard(blob);
-           console.log("[Transfer Node Copy] Clipboard Write Success: Direct Blob copied");
-           let typeStr = media.fileType?.toUpperCase() || "Asset";
-           if (media.fileType === "pdf") typeStr = "PDF";
-           else if (media.fileType === "audio") typeStr = "Audio";
-           else if (media.fileType === "video") typeStr = "Video";
-           setNotification({ message: `${typeStr} copied to clipboard`, type: "success" });
-           successDelay();
-         } catch (writeErr) {
-           console.error("[Transfer Node Copy] Clipboard Write Failed:", writeErr);
-           setCopyStatus(null);
-           if (media.fileType === "pdf") {
-              setNotification({ message: "PDF clipboard not supported by this browser. Use Download instead.", type: "error" });
-           } else {
-              setNotification({ message: "Cannot copy this file type in your browser. Use Download instead.", type: "error" });
-           }
-         }
+        try {
+          await writeToClipboard(blob);
+          console.log("[Transfer Node Copy] Clipboard Write Success: Direct Blob copied");
+          let typeStr = media.fileType?.toUpperCase() || "Asset";
+          if (media.fileType === "pdf") typeStr = "PDF";
+          else if (media.fileType === "audio") typeStr = "Audio";
+          else if (media.fileType === "video") typeStr = "Video";
+          setNotification({ message: `${typeStr} copied to clipboard`, type: "success" });
+          successDelay();
+        } catch (writeErr) {
+          console.error("[Transfer Node Copy] Clipboard Write Failed:", writeErr);
+          setCopyStatus(null);
+          if (media.fileType === "pdf") {
+            setNotification({ message: "PDF clipboard not supported by this browser. Use Download instead.", type: "error" });
+          } else {
+            setNotification({ message: "Cannot copy this file type in your browser. Use Download instead.", type: "error" });
+          }
+        }
       }
     } catch (e) {
       console.error("[Transfer Node Copy] Clipboard Write Failed with fatal error:", e);
@@ -1039,6 +1040,7 @@ export const TransferNodeRenderer: React.FC<{
   >(null);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showFullscreenQR, setShowFullscreenQR] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [copiedSDP, setCopiedSDP] = useState(false);
 
@@ -1254,7 +1256,7 @@ export const TransferNodeRenderer: React.FC<{
                 if (
                   isChunk ||
                   (scanHistory.length === 3 &&
-                  scanHistory.every((c) => c === code!.data))
+                    scanHistory.every((c) => c === code!.data))
                 ) {
                   setDiagnostics((prev) => ({
                     ...prev,
@@ -1300,18 +1302,18 @@ export const TransferNodeRenderer: React.FC<{
       const CHUNK_SIZE = 65536; // 64KB
       const slice = stream.file.slice(stream.offset, stream.offset + CHUNK_SIZE);
       const arrayBuffer = await slice.arrayBuffer();
-      
+
       const idBytes = new TextEncoder().encode(msgId);
       const chunkBuffer = new Uint8Array(arrayBuffer);
       const out = new Uint8Array(36 + chunkBuffer.length); // msgId is UUID, 36 bytes
       out.set(idBytes, 0);
       out.set(chunkBuffer, 36);
-      
+
       dcRef.current.send(out);
-      
+
       stream.checksum = crc32(chunkBuffer, stream.checksum);
       stream.offset += chunkBuffer.length;
-      
+
       const progress = Math.floor((stream.offset / stream.file.size) * 100);
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, streamProgress: progress } : m));
 
@@ -1320,7 +1322,7 @@ export const TransferNodeRenderer: React.FC<{
         // Can continue immediately
         setTimeout(() => processNextChunk(msgId), 0);
       }
-    } catch(err) {
+    } catch (err) {
       console.error("Streaming error", err);
       dcRef.current.send(JSON.stringify({ type: "stream_cancel", msgId }));
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: "error", streamState: "canceled" } : m));
@@ -1332,7 +1334,7 @@ export const TransferNodeRenderer: React.FC<{
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
     const msgId = uuidv4();
     const fType = getFileType(file.name);
-    
+
     outgoingStreamsRef.current[msgId] = {
       file,
       offset: 0,
@@ -1389,23 +1391,23 @@ export const TransferNodeRenderer: React.FC<{
     const objectUrl = type === "file" ? dataURItoBlobURL(payloadStr, fileName) : payloadStr;
     const finalBlob = fileBlob || (type === "file" && objectUrl ? blobRegistry.get(objectUrl) : undefined);
 
-    const initialMsg: Message = localMsgOverride 
+    const initialMsg: Message = localMsgOverride
       ? { ...localMsgOverride, chunksTotal: totalChunks }
       : {
-      id: msgId,
-      sender: "me",
-      type: type as any,
-      content: objectUrl,
-      fileName,
-      fileType: fileName ? getFileType(fileName) : undefined,
-      fileSize: payloadStr.length,
-      originalBlob: finalBlob,
-      timestamp: Date.now(),
-      status: "sending",
-      chunksSent: 0,
-      chunksTotal: totalChunks,
-      replyTo,
-    };
+        id: msgId,
+        sender: "me",
+        type: type as any,
+        content: objectUrl,
+        fileName,
+        fileType: fileName ? getFileType(fileName) : undefined,
+        fileSize: payloadStr.length,
+        originalBlob: finalBlob,
+        timestamp: Date.now(),
+        status: "sending",
+        chunksSent: 0,
+        chunksTotal: totalChunks,
+        replyTo,
+      };
     if (objectUrl && finalBlob) {
       blobRegistry.set(objectUrl, finalBlob);
     }
@@ -1523,13 +1525,13 @@ export const TransferNodeRenderer: React.FC<{
     const config: RTCConfiguration =
       pairingMode === "universal"
         ? {
-            iceServers: [
-              { urls: "stun:stun.l.google.com:19302" },
-              { urls: "stun:stun1.l.google.com:19302" },
-              { urls: "stun:stun2.l.google.com:19302" },
-              { urls: "stun:stun.services.mozilla.com" }
-            ]
-          }
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun.services.mozilla.com" }
+          ]
+        }
         : { iceServers: [] };
 
     const pc = new RTCPeerConnection(config);
@@ -1558,14 +1560,14 @@ export const TransferNodeRenderer: React.FC<{
     dcRef.current = dc;
     dc.binaryType = "arraybuffer";
     dc.bufferedAmountLowThreshold = 65536; // 64KB
-    
+
     dc.onbufferedamountlow = () => {
       Object.values(outgoingStreamsRef.current).forEach(stream => {
         if (!stream.paused && !stream.canceled) {
-           // We just need the ID. Wait, I didn't save ID inside the object, let's find it
-           // Actually, it's the key.
-           const msgId = Object.keys(outgoingStreamsRef.current).find(k => outgoingStreamsRef.current[k] === stream);
-           if (msgId) processNextChunk(msgId);
+          // We just need the ID. Wait, I didn't save ID inside the object, let's find it
+          // Actually, it's the key.
+          const msgId = Object.keys(outgoingStreamsRef.current).find(k => outgoingStreamsRef.current[k] === stream);
+          if (msgId) processNextChunk(msgId);
         }
       });
     };
@@ -1583,18 +1585,18 @@ export const TransferNodeRenderer: React.FC<{
         const msgIdBytes = data.slice(0, 36);
         const msgId = new TextDecoder().decode(msgIdBytes);
         const chunk = data.slice(36);
-        
+
         const stream = incomingStreamsRef.current[msgId];
         if (stream && stream.stream) {
           try {
             await stream.stream.write(chunk);
             stream.received += chunk.length;
             stream.checksum = crc32(chunk, stream.checksum);
-            
+
             const progress = Math.floor((stream.received / stream.total) * 100);
             setMessages(prev => prev.map(m => m.id === msgId ? { ...m, streamProgress: progress } : m));
             setTransferProgress(progress);
-          } catch(err) {
+          } catch (err) {
             console.error("Failed to write chunk", err);
           }
         }
@@ -1669,7 +1671,7 @@ export const TransferNodeRenderer: React.FC<{
           }
           const inStream = incomingStreamsRef.current[msg.msgId];
           if (inStream) {
-            try { inStream.stream.close(); } catch(e) {}
+            try { inStream.stream.close(); } catch (e) { }
             delete incomingStreamsRef.current[msg.msgId];
           }
           setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, streamState: "canceled" } : m));
@@ -1679,8 +1681,8 @@ export const TransferNodeRenderer: React.FC<{
           if (inStream) {
             try {
               await inStream.stream.close();
-            } catch(e) {}
-            
+            } catch (e) { }
+
             if (inStream.checksum !== msg.checksum) {
               setNotification({ message: "Checksum mismatch for streamed file.", type: "error" });
             } else {
@@ -1708,11 +1710,11 @@ export const TransferNodeRenderer: React.FC<{
           if (autoClipboardSyncRef.current) {
             try {
               navigator.clipboard.writeText(msg.content).then(() => {
-                 lastClipboardTextRef.current = msg.content;
+                lastClipboardTextRef.current = msg.content;
               }).catch(() => {
-                 // writeText requires user gesture if not focused
+                // writeText requires user gesture if not focused
               });
-            } catch (err) {}
+            } catch (err) { }
           }
 
           if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
@@ -1787,7 +1789,7 @@ export const TransferNodeRenderer: React.FC<{
                   message: "Received and loaded workspace!",
                   type: "success",
                 });
-              } catch (err) {}
+              } catch (err) { }
             } else if (chunkData.type === "msg_edit") {
               try {
                 const editPayload = JSON.parse(fullPayload);
@@ -1796,7 +1798,7 @@ export const TransferNodeRenderer: React.FC<{
                     m.id === editPayload.targetId ? { ...m, content: editPayload.content, isEdited: true } : m,
                   ),
                 );
-              } catch (err) {}
+              } catch (err) { }
             } else if (chunkData.type === "composite") {
               try {
                 const compositePayload = JSON.parse(fullPayload);
@@ -1870,11 +1872,11 @@ export const TransferNodeRenderer: React.FC<{
               if (autoClipboardSyncRef.current) {
                 try {
                   navigator.clipboard.writeText(fullPayload).then(() => {
-                     lastClipboardTextRef.current = fullPayload;
+                    lastClipboardTextRef.current = fullPayload;
                   }).catch(() => {
-                     // writeText requires user gesture if not focused
+                    // writeText requires user gesture if not focused
                   });
-                } catch (err) {}
+                } catch (err) { }
               }
 
               if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
@@ -1982,7 +1984,7 @@ export const TransferNodeRenderer: React.FC<{
         if (chunk.s && typeof chunk.t === "number" && typeof chunk.i === "number" && chunk.p) {
           setReceivedChunks((prev) => {
             if (prev && prev.sessionId === chunk.s && Object.keys(prev.chunks).length === prev.total) {
-                return prev; 
+              return prev;
             }
             const isNewSession = !prev || prev.sessionId !== chunk.s;
             const newState = isNewSession ? {
@@ -1990,13 +1992,13 @@ export const TransferNodeRenderer: React.FC<{
               total: chunk.t,
               chunks: {} as Record<number, string>
             } : { ...prev, chunks: { ...prev.chunks } };
-            
+
             if (!newState.chunks[chunk.i]) {
               newState.chunks[chunk.i] = chunk.p;
             }
-            
+
             if (Object.keys(newState.chunks).length === chunk.t) {
-              const fullPayload = Array.from({length: chunk.t}).map((_, idx) => newState.chunks[idx]).join("");
+              const fullPayload = Array.from({ length: chunk.t }).map((_, idx) => newState.chunks[idx]).join("");
               setCompleteScannedPayload(fullPayload);
             }
             return newState;
@@ -2004,7 +2006,7 @@ export const TransferNodeRenderer: React.FC<{
           return;
         }
       }
-    } catch(e) {}
+    } catch (e) { }
 
     // Legacy unchunked parsing fallback
     processCompleteScannedPayload(code);
@@ -2078,27 +2080,27 @@ export const TransferNodeRenderer: React.FC<{
 
     const replyData = replyingTo
       ? {
-          id: replyingTo.id,
-          sender: replyingTo.sender,
-          content: replyingTo.content,
-          type: replyingTo.type,
-          fileName: replyingTo.fileName,
-        }
+        id: replyingTo.id,
+        sender: replyingTo.sender,
+        content: replyingTo.content,
+        type: replyingTo.type,
+        fileName: replyingTo.fileName,
+      }
       : undefined;
 
     const textContent = chatInput;
     const filesToProcess = [...pendingFiles];
-    
+
     const totalPendingSize = filesToProcess.reduce((acc, curr) => acc + curr.size, 0);
     if (totalPendingSize > MAX_FILE_SIZE) {
-       setNotification({ message: "Total size of attached files exceeds 100MB limit. Please remove some files.", type: "error" });
-       return;
+      setNotification({ message: "Total size of attached files exceeds 100MB limit. Please remove some files.", type: "error" });
+      return;
     }
-    
+
     setChatInput("");
     setPendingFiles([]);
     setReplyingTo(null);
-    
+
     if (editingMessage) {
       setEditingMessage(null);
       // Optimistically update locally
@@ -2114,30 +2116,30 @@ export const TransferNodeRenderer: React.FC<{
 
     if (filesToProcess.length > 0) {
       if (largeFileMode) {
-         for (const file of filesToProcess) {
-            startFileStream(file, replyData);
-         }
-         if (textContent.trim()) {
-            await sendLargeMessage("text", textContent, undefined, replyData);
-         }
-         return;
+        for (const file of filesToProcess) {
+          startFileStream(file, replyData);
+        }
+        if (textContent.trim()) {
+          await sendLargeMessage("text", textContent, undefined, replyData);
+        }
+        return;
       }
 
       const msgId = uuidv4();
       const attachments: Attachment[] = [];
       const compositePayloadAttachments: any[] = [];
-      
+
       for (const file of filesToProcess) {
         const fileContent = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result as string);
           reader.readAsDataURL(file);
         });
-        
+
         const fType = getFileType(file.name);
         const objectUrl = URL.createObjectURL(file);
         blobRegistry.set(objectUrl, file);
-        
+
         const attId = uuidv4();
         attachments.push({
           id: attId,
@@ -2147,7 +2149,7 @@ export const TransferNodeRenderer: React.FC<{
           content: objectUrl,
           originalBlob: file
         });
-        
+
         compositePayloadAttachments.push({
           id: attId,
           fileName: file.name,
@@ -2171,7 +2173,7 @@ export const TransferNodeRenderer: React.FC<{
         timestamp: Date.now(),
         status: "sending",
         chunksSent: 0,
-        chunksTotal: 0, 
+        chunksTotal: 0,
         replyTo: replyData
       };
 
@@ -2211,12 +2213,12 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const isDark = appTheme === "dark";
-  
+
   const renderContentWithLinks = (text: string) => {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = text.split(urlRegex);
-    
+
     return parts.map((part, i) => {
       if (part.match(urlRegex)) {
         return (
@@ -2411,12 +2413,11 @@ export const TransferNodeRenderer: React.FC<{
             </h3>
             <div className="flex flex-col gap-1.5 mt-2">
               <div className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none">
-                <div 
-                  className={`w-2 h-2 rounded-full border ${
-                    (connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
+                <div
+                  className={`w-2 h-2 rounded-full border ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
                       ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
                       : "bg-transparent border-slate-400 dark:border-slate-600"
-                  }`} 
+                    }`}
                 /> P2P Secure Connection
               </div>
               <div className="flex items-center">
@@ -2429,8 +2430,7 @@ export const TransferNodeRenderer: React.FC<{
         </div>
         <div className="flex items-center gap-2 relative">
           <div
-            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-              connectionState === "connected"
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${connectionState === "connected"
                 ? "bg-emerald-500/10 text-emerald-500"
                 : connectionState === "transferring"
                   ? "bg-blue-500/10 text-blue-500"
@@ -2439,7 +2439,7 @@ export const TransferNodeRenderer: React.FC<{
                     : isDark
                       ? "bg-white/5 text-slate-500"
                       : "bg-slate-100 text-slate-500"
-            }`}
+              }`}
           >
             {connectionState === "pairing"
               ? isHosting
@@ -2453,13 +2453,12 @@ export const TransferNodeRenderer: React.FC<{
                 ? "Ready To Pair"
                 : (
                   <span className="flex items-center gap-1.5">
-                    <div className={`w-1.5 h-1.5 rounded-full ${
-                      (connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
+                    <div className={`w-1.5 h-1.5 rounded-full ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
                         ? "bg-emerald-500 animate-pulse"
                         : connectionState === "failed"
                           ? "bg-red-500"
                           : "bg-slate-400"
-                    }`} />
+                      }`} />
                     {connectionState}
                   </span>
                 )}
@@ -2479,11 +2478,10 @@ export const TransferNodeRenderer: React.FC<{
                 setIsHosting(false);
                 setTransferProgress(0);
               }}
-              className={`p-1.5 rounded-lg transition-colors ${
-                isDark
+              className={`p-1.5 rounded-lg transition-colors ${isDark
                   ? "hover:bg-red-500/10 text-slate-400 hover:text-red-400"
                   : "hover:bg-red-50 text-slate-500 hover:text-red-500"
-              }`}
+                }`}
               title="Disconnect & Exit"
             >
               <LogOut className="w-4 h-4" />
@@ -2492,15 +2490,14 @@ export const TransferNodeRenderer: React.FC<{
 
           <button
             onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-            className={`p-1.5 rounded-lg transition-colors ${
-              showSettingsDropdown
+            className={`p-1.5 rounded-lg transition-colors ${showSettingsDropdown
                 ? isDark
                   ? "bg-white/10 text-white"
                   : "bg-slate-200 text-slate-900"
                 : isDark
                   ? "hover:bg-white/5 text-slate-400 hover:text-white"
                   : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
-            }`}
+              }`}
           >
             <MoreVertical className="w-4 h-4" />
           </button>
@@ -2517,11 +2514,10 @@ export const TransferNodeRenderer: React.FC<{
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   onClick={(e) => e.stopPropagation()}
-                  className={`absolute top-full right-0 mt-2 w-64 p-4 rounded-2xl border shadow-2xl z-50 origin-top-right backdrop-blur-xl ${
-                    isDark
+                  className={`absolute top-full right-0 mt-2 w-64 p-4 rounded-2xl border shadow-2xl z-50 origin-top-right backdrop-blur-xl ${isDark
                       ? "bg-[#111827]/95 border-white/10"
                       : "bg-white/95 border-slate-200"
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col gap-4">
                     <div>
@@ -2535,13 +2531,12 @@ export const TransferNodeRenderer: React.FC<{
                           onClick={() => {
                             setPairingMode("local");
                           }}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                            pairingMode === "local"
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${pairingMode === "local"
                               ? isDark
                                 ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                                 : "bg-white text-indigo-600 shadow-sm"
                               : "text-slate-400 hover:text-slate-200"
-                          }`}
+                            }`}
                         >
                           Local
                         </button>
@@ -2549,13 +2544,12 @@ export const TransferNodeRenderer: React.FC<{
                           onClick={() => {
                             setPairingMode("universal");
                           }}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                            pairingMode === "universal"
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${pairingMode === "universal"
                               ? isDark
                                 ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                                 : "bg-white text-indigo-600 shadow-sm"
                               : "text-slate-400 hover:text-slate-200"
-                          }`}
+                            }`}
                         >
                           Universal
                         </button>
@@ -2574,13 +2568,12 @@ export const TransferNodeRenderer: React.FC<{
                             onClick={() => {
                               setQrDensity(d);
                             }}
-                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold transition-all ${
-                              qrDensity === d
+                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold transition-all ${qrDensity === d
                                 ? isDark
                                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                                   : "bg-white text-indigo-600 shadow-sm"
                                 : "text-slate-400 hover:text-slate-200"
-                            }`}
+                              }`}
                           >
                             {d}
                           </button>
@@ -2598,13 +2591,12 @@ export const TransferNodeRenderer: React.FC<{
                           <button
                             key={s}
                             onClick={() => setQrSpeed(s)}
-                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                              qrSpeed === s
+                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${qrSpeed === s
                                 ? isDark
                                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                                   : "bg-white text-indigo-600 shadow-sm"
                                 : "text-slate-400 hover:text-slate-200"
-                            }`}
+                              }`}
                           >
                             {s}
                           </button>
@@ -2618,13 +2610,12 @@ export const TransferNodeRenderer: React.FC<{
                       <div className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
                         <button
                           onClick={() => setLargeFileMode(false)}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                            !largeFileMode
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${!largeFileMode
                               ? isDark
                                 ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                                 : "bg-white text-indigo-600 shadow-sm"
                               : "text-slate-400 hover:text-slate-200"
-                          }`}
+                            }`}
                         >
                           Memory (Default)
                         </button>
@@ -2636,13 +2627,12 @@ export const TransferNodeRenderer: React.FC<{
                               setNotification({ message: "File System API not supported in this browser.", type: "error" });
                             }
                           }}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                            largeFileMode
+                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${largeFileMode
                               ? isDark
                                 ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                                 : "bg-white text-indigo-600 shadow-sm"
                               : "text-slate-400 hover:text-slate-200"
-                          }`}
+                            }`}
                         >
                           Stream to Disk
                         </button>
@@ -2656,7 +2646,7 @@ export const TransferNodeRenderer: React.FC<{
         </div>
       </div>
 
-      <div 
+      <div
         className="flex-1 px-5 pb-5 flex flex-col nodrag nowheel"
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
@@ -2681,11 +2671,10 @@ export const TransferNodeRenderer: React.FC<{
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={generateOffer}
-                className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${
-                  isDark
+                className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${isDark
                     ? "border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/5"
                     : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50"
-                }`}
+                  }`}
               >
                 <div
                   className={`p-3 rounded-full transition-colors ${isDark ? "bg-white/5 group-hover:bg-indigo-500/20" : "bg-slate-100 group-hover:bg-indigo-100"}`}
@@ -2699,11 +2688,10 @@ export const TransferNodeRenderer: React.FC<{
 
               <button
                 onClick={() => setScanMode("offer")}
-                className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${
-                  isDark
+                className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${isDark
                     ? "border-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
                     : "border-slate-200 hover:border-emerald-500 hover:bg-emerald-50"
-                }`}
+                  }`}
               >
                 <div
                   className={`p-3 rounded-full transition-colors ${isDark ? "bg-white/5 group-hover:bg-emerald-500/20" : "bg-slate-100 group-hover:bg-emerald-100"}`}
@@ -2742,26 +2730,24 @@ export const TransferNodeRenderer: React.FC<{
             >
               <button
                 onClick={() => setPairingWorkflow("qr")}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  pairingWorkflow === "qr"
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "qr"
                     ? isDark
                       ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                       : "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-300"
-                }`}
+                  }`}
               >
                 <QrCode className="w-3.5 h-3.5" />
                 QR Scan
               </button>
               <button
                 onClick={() => setPairingWorkflow("manual")}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  pairingWorkflow === "manual"
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "manual"
                     ? isDark
                       ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                       : "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-300"
-                }`}
+                  }`}
               >
                 <ClipboardPaste className="w-3.5 h-3.5" />
                 Manual SDP
@@ -2866,30 +2852,83 @@ export const TransferNodeRenderer: React.FC<{
                     </div>
                   </div>
                 ) : (
-                    <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center min-h-[300px] min-w-[300px] w-full max-w-[340px]">
-                      {broadcastFrames.length > 0 && (
-                        <div className="absolute top-2 left-2 z-[10]">
-                          <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
-                            {currentFrameIndex + 1} / {broadcastFrames.length}
-                          </div>
+                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center min-h-[300px] min-w-[300px] w-full max-w-[340px]">
+                    {broadcastFrames.length > 0 && (
+                      <div className="absolute top-2 left-2 z-[10]">
+                        <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
+                          {currentFrameIndex + 1} / {broadcastFrames.length}
                         </div>
-                      )}
-                      <button
-                        onClick={() => setShowDiagnostics(true)}
-                        className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
-                      >
-                        <Activity className="w-3.5 h-3.5 text-slate-500" />
-                      </button>
-                      {(broadcastFrames.length > 0 || offerQR || answerQR) && (
-                        <QRCodeSVG
-                          value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
-                          size={260}
-                          level={qrDensity}
-                          marginSize={2}
-                          className="w-full h-auto max-w-[280px]"
-                        />
-                      )}
-                    </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => setShowFullscreenQR(true)}
+                      className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                      title="View Fullscreen"
+                    >
+                      <Maximize className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                    <button
+                      onClick={() => setShowDiagnostics(true)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                    >
+                      <Activity className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                    {(broadcastFrames.length > 0 || offerQR || answerQR) && (
+                      <QRCodeSVG
+                        value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
+                        size={260}
+                        level={qrDensity}
+                        marginSize={2}
+                        className="w-full h-auto max-w-[280px]"
+                      />
+                    )}
+
+                    {showFullscreenQR && createPortal(
+                      <div className="fixed inset-0 z-[999999] bg-slate-900/90 backdrop-blur-md flex items-center justify-center pointer-events-auto">
+                        <button
+                          onClick={() => setShowFullscreenQR(false)}
+                          className="absolute top-6 right-6 p-3 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white rounded-full transition-all z-[100] shadow-2xl border border-slate-600/50 cursor-pointer"
+                        >
+                          <X size={24} />
+                        </button>
+
+                        <div className="w-full h-full relative cursor-move flex items-center justify-center">
+                          <TransformWrapper
+                            initialScale={1}
+                            minScale={0.5}
+                            maxScale={10}
+                            centerOnInit
+                            wheel={{
+                              step: 0.02,          // Much smaller than 0.1
+                              wheelDisabled: false,
+                              touchPadDisabled: false,
+
+                            }}
+                            pinch={{
+                              step: 5,
+                            }}
+                            doubleClick={{
+                              disabled: false,
+                              step: 1.5,
+                            }}
+                          >
+                            <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
+                              <div className="bg-white p-8 rounded-[2rem] shadow-[0_0_50px_rgba(255,255,255,0.1)]">
+                                <QRCodeSVG
+                                  value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
+                                  size={Math.min(window.innerWidth, window.innerHeight) * 0.7}
+                                  level={qrDensity}
+                                  marginSize={4}
+                                  className="max-w-[90vw] max-h-[90vh]"
+                                />
+                              </div>
+                            </TransformComponent>
+                          </TransformWrapper>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
                 )}
 
                 <div className="text-center space-y-1">
@@ -2911,11 +2950,10 @@ export const TransferNodeRenderer: React.FC<{
                 <div className="flex gap-2 w-full max-w-[250px]">
                   <button
                     onClick={() => setScanMode(isHosting ? "answer" : "offer")}
-                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap shadow-sm active:scale-95 ${
-                      isDark
+                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap shadow-sm active:scale-95 ${isDark
                         ? "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 shadow-indigo-500/10"
                         : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
-                    }`}
+                      }`}
                   >
                     <Scan className="w-3.5 h-3.5" /> Open Scanner
                   </button>
@@ -2930,15 +2968,14 @@ export const TransferNodeRenderer: React.FC<{
                       });
                     }}
                     disabled={!(offerQR || answerQR)}
-                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${
-                      isDark
+                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${isDark
                         ? copiedSDP
                           ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
                           : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
                         : copiedSDP
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                           : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
-                    } disabled:opacity-50 disabled:pointer-events-none`}
+                      } disabled:opacity-50 disabled:pointer-events-none`}
                   >
                     {copiedSDP ? (
                       <Check className="w-3 h-3" />
@@ -2963,13 +3000,12 @@ export const TransferNodeRenderer: React.FC<{
                         setIsHosting(true);
                       }
                     }}
-                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${
-                      isHosting
+                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${isHosting
                         ? isDark
                           ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30"
                           : "bg-indigo-50 text-indigo-600 border border-indigo-200"
                         : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
-                    }`}
+                      }`}
                   >
                     <span>Initiator</span>
                     <span className="text-[7px] tracking-tight opacity-70">
@@ -2985,13 +3021,12 @@ export const TransferNodeRenderer: React.FC<{
                         setIsHosting(false);
                       }
                     }}
-                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${
-                      !isHosting
+                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${!isHosting
                         ? isDark
                           ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
                           : "bg-emerald-50 text-emerald-600 border border-emerald-200"
                         : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
-                    }`}
+                      }`}
                   >
                     <span>Responder</span>
                     <span className="text-[7px] tracking-tight opacity-70">
@@ -3004,11 +3039,10 @@ export const TransferNodeRenderer: React.FC<{
                   {(() => {
                     const yourSdpSection = (
                       <div
-                        className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${
-                          isDark
+                        className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${isDark
                             ? "bg-white/5 border-white/10 hover:border-indigo-500/30"
                             : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
@@ -3028,11 +3062,10 @@ export const TransferNodeRenderer: React.FC<{
                           </div>
                           {offerQR || answerQR ? (
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${
-                                isDark
+                              className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${isDark
                                   ? "bg-emerald-500/10 text-emerald-400"
                                   : "bg-emerald-50 text-emerald-600"
-                              }`}
+                                }`}
                             >
                               Generated
                             </span>
@@ -3043,11 +3076,10 @@ export const TransferNodeRenderer: React.FC<{
                           <div className="flex-1 min-w-0">
                             {offerQR || answerQR ? (
                               <div
-                                className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${
-                                  isDark
+                                className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${isDark
                                     ? "bg-black/40 border border-white/5"
                                     : "bg-slate-50 border border-slate-100"
-                                }`}
+                                  }`}
                               >
                                 <div
                                   className={`text-[11px] font-mono truncate leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}
@@ -3064,11 +3096,10 @@ export const TransferNodeRenderer: React.FC<{
                               </div>
                             ) : (
                               <div
-                                className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-3 text-center ${
-                                  isDark
+                                className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-3 text-center ${isDark
                                     ? "border-white/5 bg-black/20"
                                     : "border-slate-100 bg-slate-50/50"
-                                }`}
+                                  }`}
                               >
                                 {isHosting ? (
                                   <button
@@ -3101,11 +3132,10 @@ export const TransferNodeRenderer: React.FC<{
                               });
                             }}
                             disabled={!(offerQR || answerQR)}
-                            className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${
-                              copiedSDP
+                            className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${copiedSDP
                                 ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white"
                                 : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
-                            }`}
+                              }`}
                           >
                             {copiedSDP ? (
                               <Check className="w-4 h-4" />
@@ -3122,11 +3152,10 @@ export const TransferNodeRenderer: React.FC<{
 
                     const remoteSdpSection = (
                       <div
-                        className={`p-4 rounded-[24px] border relative transition-all duration-300 ${
-                          isDark
+                        className={`p-4 rounded-[24px] border relative transition-all duration-300 ${isDark
                             ? "bg-white/5 border-white/10"
                             : "bg-white border-slate-200 shadow-sm"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2 mb-3">
                           <div
@@ -3148,11 +3177,10 @@ export const TransferNodeRenderer: React.FC<{
                           <div className="relative">
                             <textarea
                               placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
-                              className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${
-                                isDark
+                              className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${isDark
                                   ? "bg-black/40 text-white placeholder-slate-600 border border-white/5"
                                   : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
-                              }`}
+                                }`}
                               value={
                                 isHosting ? copyPasteAnswer : copyPasteOffer
                               }
@@ -3170,11 +3198,10 @@ export const TransferNodeRenderer: React.FC<{
                                     ? setCopyPasteAnswer("")
                                     : setCopyPasteOffer("")
                                 }
-                                className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${
-                                  isDark
+                                className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${isDark
                                     ? "text-slate-400 hover:text-white hover:bg-white/10"
                                     : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
-                                }`}
+                                  }`}
                                 title="Clear input"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -3212,11 +3239,10 @@ export const TransferNodeRenderer: React.FC<{
                                   });
                                 }
                               }}
-                              className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${
-                                isDark
+                              className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${isDark
                                   ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400"
                                   : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
-                              }`}
+                                }`}
                             >
                               <ClipboardPaste className="w-3.5 h-3.5" />
                               <span className="text-[9px] font-bold uppercase tracking-wider">
@@ -3273,11 +3299,11 @@ export const TransferNodeRenderer: React.FC<{
                                     onClick={() => {
                                       isHosting
                                         ? setCopyPasteAnswer(
-                                            clipboardDetectedSdp,
-                                          )
+                                          clipboardDetectedSdp,
+                                        )
                                         : setCopyPasteOffer(
-                                            clipboardDetectedSdp,
-                                          );
+                                          clipboardDetectedSdp,
+                                        );
                                       setClipboardDetectedSdp(null);
                                     }}
                                     className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.1em] transition-all"
@@ -3311,11 +3337,10 @@ export const TransferNodeRenderer: React.FC<{
             <div className="w-full flex gap-2">
               <button
                 onClick={resetState}
-                className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${
-                  isDark
+                className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${isDark
                     ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
                     : "border-red-200 text-red-600 hover:bg-red-50"
-                }`}
+                  }`}
               >
                 Cancel Pairing
               </button>
@@ -3347,11 +3372,10 @@ export const TransferNodeRenderer: React.FC<{
             </div>
             <button
               onClick={resetState}
-              className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${
-                isDark
+              className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-wider transition-all border ${isDark
                   ? "border-white/10 bg-white/5 hover:bg-white/10 text-white"
                   : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-              }`}
+                }`}
             >
               <RefreshCw className="w-4 h-4" /> Reset & Try Again
             </button>
@@ -3441,13 +3465,12 @@ export const TransferNodeRenderer: React.FC<{
                     >
                       <button
                         onClick={() => setViewMode("chat")}
-                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-2 ${
-                          viewMode === "chat"
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center gap-2 ${viewMode === "chat"
                             ? isDark
                               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                               : "bg-white text-indigo-600 shadow-sm"
                             : "text-slate-400 hover:text-slate-200"
-                        }`}
+                          }`}
                       >
                         Chat
                         {unreadCount > 0 && viewMode !== "chat" && (
@@ -3456,13 +3479,12 @@ export const TransferNodeRenderer: React.FC<{
                       </button>
                       <button
                         onClick={() => setViewMode("media")}
-                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${
-                          viewMode === "media"
+                        className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === "media"
                             ? isDark
                               ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                               : "bg-white text-indigo-600 shadow-sm"
                             : "text-slate-400 hover:text-slate-200"
-                        }`}
+                          }`}
                       >
                         Media ({mediaMessages.length})
                       </button>
@@ -3471,13 +3493,12 @@ export const TransferNodeRenderer: React.FC<{
                     <button
                       onClick={() => setAutoClipboardSync(!autoClipboardSync)}
                       title={autoClipboardSync ? "Auto Clipboard Sync: ON" : "Auto Clipboard Sync: OFF"}
-                      className={`p-2.5 rounded-xl border transition-all ${
-                        autoClipboardSync
+                      className={`p-2.5 rounded-xl border transition-all ${autoClipboardSync
                           ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-500"
                           : isDark
-                          ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400"
-                          : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"
-                      }`}
+                            ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400"
+                            : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"
+                        }`}
                     >
                       <Clipboard className="w-4 h-4" />
                     </button>
@@ -3495,7 +3516,7 @@ export const TransferNodeRenderer: React.FC<{
                   </div>
                 </div>
 
-                <div 
+                <div
                   className="flex-1 relative overflow-hidden bg-transparent flex flex-col nodrag nowheel"
                   onPointerDown={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
@@ -3509,7 +3530,7 @@ export const TransferNodeRenderer: React.FC<{
                     e.preventDefault();
                     e.stopPropagation();
                     const items = Array.from(e.dataTransfer.items);
-                    
+
                     const newFiles: File[] = [];
                     let hasLarge = false;
                     for (const item of items) {
@@ -3521,9 +3542,9 @@ export const TransferNodeRenderer: React.FC<{
                           if (totalSize > MAX_FILE_SIZE) {
                             hasLarge = true;
                           } else if (filesInDir.length > 0) {
-                             const id = uuidv4();
-                             setZippingTasks(prev => [...prev, { id, folderName: entry.name }]);
-                             zipWorkerRef.current?.postMessage({ id, files: filesInDir, folderName: entry.name });
+                            const id = uuidv4();
+                            setZippingTasks(prev => [...prev, { id, folderName: entry.name }]);
+                            zipWorkerRef.current?.postMessage({ id, files: filesInDir, folderName: entry.name });
                           }
                         } else {
                           const f = item.getAsFile();
@@ -3620,15 +3641,14 @@ export const TransferNodeRenderer: React.FC<{
                                     y: e.clientY,
                                   });
                                 }}
-                                className={`group relative max-w-[85%] rounded-3xl p-1 transition-all duration-300 ${
-                                  msg.sender === "me"
-                                    ? msg.type === "composite" || msg.type === "file" 
+                                className={`group relative max-w-[85%] rounded-3xl p-1 transition-all duration-300 ${msg.sender === "me"
+                                    ? msg.type === "composite" || msg.type === "file"
                                       ? isDark ? "bg-slate-800 text-white rounded-tr-sm shadow-xl" : "bg-slate-200 text-slate-800 rounded-tr-sm shadow-sm"
                                       : "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
                                     : isDark
                                       ? "bg-[#161f30] text-slate-200 rounded-tl-sm border border-white/5"
                                       : "bg-slate-100 text-slate-800 rounded-tl-sm"
-                                }`}
+                                  }`}
                               >
                                 {msg.status === "sending" && (msg.type === "composite" || msg.type === "file" || msg.type === "text") && (
                                   <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm rounded-[inherit] flex flex-col items-center justify-center p-4">
@@ -3636,7 +3656,7 @@ export const TransferNodeRenderer: React.FC<{
                                     <div className="text-[10px] font-bold text-white uppercase tracking-wider whitespace-nowrap">Sending...</div>
                                     {(msg.chunksTotal ?? 0) > 0 && (
                                       <div className="w-full max-w-[120px] h-1.5 bg-white/20 rounded-full mt-3 overflow-hidden">
-                                        <div 
+                                        <div
                                           className="h-full bg-indigo-400 rounded-full transition-all duration-300"
                                           style={{ width: `${((msg.chunksSent ?? 0) / (msg.chunksTotal ?? 1)) * 100}%` }}
                                         />
@@ -3646,11 +3666,10 @@ export const TransferNodeRenderer: React.FC<{
                                 )}
                                 {/* Hover Actions Bar - Desktop only */}
                                 <div
-                                  className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 shadow-lg ${
-                                    msg.sender === "me"
+                                  className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 shadow-lg ${msg.sender === "me"
                                       ? "right-full mr-2"
                                       : "left-full ml-2"
-                                  }`}
+                                    }`}
                                 >
                                   <button
                                     onClick={() =>
@@ -3682,421 +3701,415 @@ export const TransferNodeRenderer: React.FC<{
                                 ) : (
                                   <>
                                     {msg.replyTo && (
-                                  <button
-                                    onClick={() =>
-                                      scrollToMessage(msg.replyTo!.id)
-                                    }
-                                    className={`mx-1 mt-1 mb-0.5 p-2 rounded-2xl flex flex-col gap-0.5 text-left transition-all border-l-4 ${
-                                      msg.sender === "me"
-                                        ? "bg-black/20 border-white/40 text-white/80 hover:bg-black/30"
-                                        : isDark
-                                          ? "bg-white/5 border-indigo-500/50 text-slate-400 hover:bg-white/10"
-                                          : "bg-black/5 border-indigo-400 text-slate-500 hover:bg-black/10"
-                                    }`}
-                                  >
-                                    <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
-                                      {msg.replyTo.sender === "me"
-                                        ? "You"
-                                        : "Remote"}
-                                    </span>
-                                    <span className="text-[10px] font-bold line-clamp-1">
-                                      {msg.replyTo.type === "file"
-                                        ? `📄 ${msg.replyTo.fileName}`
-                                        : msg.replyTo.content}
-                                    </span>
-                                  </button>
-                                )}
-                                {msg.type === "text" && (
-                                  <div className="px-4 py-2.5 text-xs font-medium select-text">
-                                    {renderContentWithLinks(msg.content)}
-                                  </div>
-                                )}
-                                {msg.type === "composite" && (
-                                  <div className="flex flex-col gap-1 p-1">
-                                    {(() => {
-                                      const visuals = msg.attachments?.filter(att => att.fileType === "image" || att.fileType === "video") || [];
-                                      const others = msg.attachments?.filter(att => att.fileType !== "image" && att.fileType !== "video") || [];
-                                      
-                                      return (
-                                        <>
-                                          {visuals.length > 0 && (
-                                            <div className={`grid gap-1 ${visuals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                                              {visuals.map((att, i) => (
-                                                <div key={i} className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`} onClick={() => setSelectedMedia({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}>
-                                                  <FilePreviewCard 
-                                                    file={att} 
-                                                    readonly 
-                                                    layout={visuals.length === 1 ? "single-grid" : "grid"}
-                                                    copyStatusObj={copyStatus}
-                                                    onCopy={() => handleMediaCopy({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}
-                                                  />
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                          {others.length > 0 && (
-                                            <div className="flex flex-col gap-1">
-                                              {others.map((att, i) => (
-                                                <div key={i} className="cursor-pointer" onClick={() => setSelectedMedia({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}>
-                                                  <FilePreviewCard 
-                                                    file={att} 
-                                                    readonly 
-                                                    layout="list"
-                                                    copyStatusObj={copyStatus}
-                                                    onCopy={() => handleMediaCopy({...att, sender: msg.sender, timestamp: msg.timestamp} as any)}
-                                                  />
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </>
-                                      );
-                                    })()}
-                                    {msg.content && (
-                                      <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text">
+                                      <button
+                                        onClick={() =>
+                                          scrollToMessage(msg.replyTo!.id)
+                                        }
+                                        className={`mx-1 mt-1 mb-0.5 p-2 rounded-2xl flex flex-col gap-0.5 text-left transition-all border-l-4 ${msg.sender === "me"
+                                            ? "bg-black/20 border-white/40 text-white/80 hover:bg-black/30"
+                                            : isDark
+                                              ? "bg-white/5 border-indigo-500/50 text-slate-400 hover:bg-white/10"
+                                              : "bg-black/5 border-indigo-400 text-slate-500 hover:bg-black/10"
+                                          }`}
+                                      >
+                                        <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
+                                          {msg.replyTo.sender === "me"
+                                            ? "You"
+                                            : "Remote"}
+                                        </span>
+                                        <span className="text-[10px] font-bold line-clamp-1">
+                                          {msg.replyTo.type === "file"
+                                            ? `📄 ${msg.replyTo.fileName}`
+                                            : msg.replyTo.content}
+                                        </span>
+                                      </button>
+                                    )}
+                                    {msg.type === "text" && (
+                                      <div className="px-4 py-2.5 text-xs font-medium select-text">
                                         {renderContentWithLinks(msg.content)}
                                       </div>
                                     )}
-                                  </div>
-                                )}
-                                {msg.type === "file_offer" && (
-                                  <div className="flex flex-col gap-2 p-1 w-[280px]">
-                                    <div className={`p-3 rounded-2xl flex items-center gap-3 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white border"}`}>
-                                      <div className={`p-2 rounded-xl flex-shrink-0 ${msg.sender === "me" ? "bg-white/20" : "bg-indigo-500/10 text-indigo-500"}`}>
-                                        <FileIcon className="w-6 h-6" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-bold truncate">{msg.fileName}</div>
-                                        <div className="text-[10px] font-medium opacity-70">
-                                          {formatFileSize(msg.fileSize || 0)}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    
-                                    {msg.streamState === "offered" && msg.sender === "remote" && (
-                                      <button 
-                                        onClick={async () => {
-                                          if (!('showSaveFilePicker' in window)) {
-                                            // Fallback to memory
-                                            setNotification({ message: "File System API not supported. Falling back to memory buffering. Large files may crash.", type: "warning" });
-                                            
-                                            // Create a mock stream-like object that accumulates chunks in memory
-                                            const memoryBuffer: Uint8Array[] = [];
-                                            const streamMock = {
-                                              write: async (chunk: Uint8Array) => {
-                                                memoryBuffer.push(new Uint8Array(chunk));
-                                              },
-                                              close: async () => {
-                                                const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
-                                                const combined = new Uint8Array(totalLength);
-                                                let offset = 0;
-                                                for (const chunk of memoryBuffer) {
-                                                  combined.set(chunk, offset);
-                                                  offset += chunk.length;
-                                                }
-                                                const blob = new Blob([combined]);
-                                                const url = URL.createObjectURL(blob);
-                                                
-                                                // Convert this message to a normal file message so it renders the media
-                                                setMessages(prev => prev.map(m => m.id === msg.id ? { 
-                                                  ...m, 
-                                                  type: "file" as any, 
-                                                  content: url,
-                                                  originalBlob: blob,
-                                                  streamState: "completed"
-                                                } : m));
-                                              }
-                                            };
-                                            
-                                            incomingStreamsRef.current[msg.id] = { 
-                                              handle: null, 
-                                              stream: streamMock, 
-                                              received: 0, 
-                                              total: msg.fileSize || 0, 
-                                              checksum: 0 
-                                            };
-                                            
-                                            dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: msg.id }));
-                                            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
-                                            return;
-                                          }
-                                          try {
-                                            const handle = await (window as any).showSaveFilePicker({ suggestedName: msg.fileName });
-                                            const stream = await handle.createWritable();
-                                            incomingStreamsRef.current[msg.id] = { handle, stream, received: 0, total: msg.fileSize || 0, checksum: 0 };
-                                            dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: msg.id }));
-                                            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
-                                          } catch(e: any) {
-                                            if (e.name !== "AbortError") {
-                                              setNotification({ message: "Could not open file: " + e.message, type: "error" });
-                                            }
-                                          }
-                                        }}
-                                        className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
-                                      >
-                                        <Download className="w-4 h-4" />
-                                        {'showSaveFilePicker' in window ? 'Accept File (Save to Disk)' : 'Accept File (Memory Fallback)'}
-                                      </button>
-                                    )}
-                                    
-                                    {msg.streamState === "offered" && msg.sender === "me" && (
-                                      <div className="text-[10px] text-center font-bold opacity-60 italic">Waiting for receiver to accept...</div>
-                                    )}
+                                    {msg.type === "composite" && (
+                                      <div className="flex flex-col gap-1 p-1">
+                                        {(() => {
+                                          const visuals = msg.attachments?.filter(att => att.fileType === "image" || att.fileType === "video") || [];
+                                          const others = msg.attachments?.filter(att => att.fileType !== "image" && att.fileType !== "video") || [];
 
-                                    {msg.streamState === "transferring" && (
-                                      <div className="flex flex-col gap-1 w-full mt-1 px-1">
-                                        <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
-                                          <span>Transferring...</span>
-                                          <span>{msg.streamProgress || 0}%</span>
-                                        </div>
-                                        <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
-                                          <motion.div
-                                            className="h-full bg-emerald-400"
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${msg.streamProgress || 0}%` }}
-                                            transition={{ duration: 0.1 }}
-                                          />
-                                        </div>
-                                      </div>
-                                    )}
-                                    
-                                    {msg.streamState === "paused" && (
-                                      <div className="flex flex-col gap-1 w-full mt-1 px-1">
-                                        <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
-                                          <span>Paused</span>
-                                          <span>{msg.streamProgress || 0}%</span>
-                                        </div>
-                                        <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
-                                          <div className="h-full bg-amber-400" style={{ width: `${msg.streamProgress || 0}%` }} />
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {(msg.streamState === "completed" || msg.streamState === "canceled") && (
-                                      <div className={`text-[10px] text-center font-bold uppercase tracking-widest ${msg.streamState === "completed" ? "text-emerald-500" : "text-red-500"}`}>
-                                        {msg.streamState}
-                                      </div>
-                                    )}
-
-                                    {(msg.streamState === "transferring" || msg.streamState === "paused") && (
-                                       <div className="flex gap-2 w-full mt-1">
-                                         <button 
-                                          onClick={() => {
-                                            if (msg.streamState === "transferring") {
-                                              dcRef.current?.send(JSON.stringify({ type: "stream_pause", msgId: msg.id }));
-                                              setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "paused" } : m));
-                                              if (msg.sender === "me") {
-                                                const outStream = outgoingStreamsRef.current[msg.id];
-                                                if (outStream) outStream.paused = true;
-                                              }
-                                            } else {
-                                              dcRef.current?.send(JSON.stringify({ type: "stream_resume", msgId: msg.id }));
-                                              setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
-                                              if (msg.sender === "me") {
-                                                const outStream = outgoingStreamsRef.current[msg.id];
-                                                if (outStream) {
-                                                  outStream.paused = false;
-                                                  processNextChunk(msg.id);
-                                                }
-                                              }
-                                            }
-                                          }}
-                                          className={`flex-1 py-1.5 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${
-                                            msg.streamState === "transferring" 
-                                              ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500" 
-                                              : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
-                                          }`}
-                                        >
-                                          {msg.streamState === "transferring" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                                          {msg.streamState === "transferring" ? "Pause" : "Resume"}
-                                        </button>
-
-                                        <button 
-                                          onClick={() => {
-                                            dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: msg.id }));
-                                            // Process cancellation locally
-                                            if (msg.sender === "remote") {
-                                              const inStream = incomingStreamsRef.current[msg.id];
-                                              if (inStream) {
-                                                try { inStream.stream.close(); } catch(e) {}
-                                                delete incomingStreamsRef.current[msg.id];
-                                              }
-                                            } else {
-                                              const outStream = outgoingStreamsRef.current[msg.id];
-                                              if (outStream) {
-                                                outStream.canceled = true;
-                                                delete outgoingStreamsRef.current[msg.id];
-                                              }
-                                            }
-                                            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "canceled" } : m));
-                                          }}
-                                          className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1"
-                                        >
-                                          <X className="w-3 h-3" /> Cancel
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                {msg.type === "file" && (
-                                  <div className="flex flex-col gap-1">
-                                    {msg.fileType === "image" && (
-                                      <button
-                                        onClick={() => setSelectedMedia(msg)}
-                                        className="relative rounded-2xl overflow-hidden group/img transition-transform active:scale-[0.98]"
-                                      >
-                                        <img
-                                          src={msg.content}
-                                          alt={msg.fileName}
-                                          className="w-full max-h-[300px] object-cover"
-                                        />
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                          <Eye className="w-8 h-8 text-white" />
-                                        </div>
-                                      </button>
-                                    )}
-
-                                    {msg.fileType === "video" && (
-                                      <div className="relative rounded-2xl overflow-hidden bg-black group/vid w-full min-w-[200px] sm:min-w-[280px]">
-                                        <video
-                                          key={msg.content}
-                                          src={msg.content}
-                                          controls
-                                          preload="metadata"
-                                          playsInline
-                                          className="w-full h-auto max-h-[400px] block object-contain mx-auto"
-                                          onLoadedMetadata={(e) => {
-                                            const video = e.target as HTMLVideoElement;
-                                            if (
-                                              video.videoHeight >
-                                              video.videoWidth * 1.5
-                                            ) {
-                                              video.style.maxHeight = "500px";
-                                            }
-                                          }}
-                                        />
-                                        <button
-                                          onClick={() => setSelectedMedia(msg)}
-                                          className="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity z-10"
-                                          title="Expand Video"
-                                        >
-                                          <Maximize className="w-4 h-4" />
-                                        </button>
-                                      </div>
-                                    )}
-
-                                    {msg.fileType === "audio" && (
-                                      <div
-                                        className={`p-3 rounded-2xl min-w-[240px] flex items-center gap-4 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white"}`}
-                                      >
-                                        <button
-                                          onClick={() => setSelectedMedia(msg)}
-                                          className="p-2.5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:scale-110 active:scale-95 transition-all"
-                                        >
-                                          <Play className="w-4 h-4 fill-current" />
-                                        </button>
-                                        <div className="flex-1 flex flex-col gap-1.5">
-                                          <div className="flex items-center space-x-1">
-                                            {[...Array(20)].map((_, i) => (
-                                              <div
-                                                key={i}
-                                                className="w-0.5 bg-current opacity-30"
-                                                style={{
-                                                  height: `${10 + Math.random() * 80}%`,
-                                                  minHeight: "4px",
-                                                }}
-                                              />
-                                            ))}
-                                          </div>
-                                          <div className="flex justify-between items-center text-[9px] font-bold opacity-80 tracking-widest leading-none">
-                                            <span>AUDIO PREVIEW</span>
-                                            <span>
-                                              {formatFileSize(
-                                                msg.fileSize || 0,
+                                          return (
+                                            <>
+                                              {visuals.length > 0 && (
+                                                <div className={`grid gap-1 ${visuals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                                  {visuals.map((att, i) => (
+                                                    <div key={i} className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`} onClick={() => setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}>
+                                                      <FilePreviewCard
+                                                        file={att}
+                                                        readonly
+                                                        layout={visuals.length === 1 ? "single-grid" : "grid"}
+                                                        copyStatusObj={copyStatus}
+                                                        onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
+                                                      />
+                                                    </div>
+                                                  ))}
+                                                </div>
                                               )}
-                                            </span>
+                                              {others.length > 0 && (
+                                                <div className="flex flex-col gap-1">
+                                                  {others.map((att, i) => (
+                                                    <div key={i} className="cursor-pointer" onClick={() => setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}>
+                                                      <FilePreviewCard
+                                                        file={att}
+                                                        readonly
+                                                        layout="list"
+                                                        copyStatusObj={copyStatus}
+                                                        onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
+                                                      />
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
+                                        {msg.content && (
+                                          <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text">
+                                            {renderContentWithLinks(msg.content)}
                                           </div>
-                                        </div>
-                                        <a
-                                          href={msg.content}
-                                          download={msg.fileName || "audio.mp3"}
-                                          className={`p-2 rounded-lg transition-all ${
-                                            msg.sender === "me"
-                                              ? "hover:bg-white/20"
-                                              : isDark
-                                                ? "hover:bg-white/5"
-                                                : "hover:bg-slate-200"
-                                          }`}
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <Download className="w-3.5 h-3.5" />
-                                        </a>
+                                        )}
                                       </div>
                                     )}
-
-                                    {(msg.fileType === "file" ||
-                                      msg.fileType === "pdf" ||
-                                      msg.fileType === "text_file") && (
-                                      <div
-                                        className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${
-                                          msg.sender === "me"
-                                            ? "hover:bg-white/5"
-                                            : "hover:bg-black/5"
-                                        }`}
-                                        onClick={() =>
-                                          (msg.fileType === "pdf" ||
-                                            msg.fileType === "text_file") &&
-                                          setSelectedMedia(msg)
-                                        }
-                                      >
-                                        <div
-                                          className={`p-3 rounded-xl ${
-                                            msg.sender === "me"
-                                              ? "bg-white/20 text-white"
-                                              : isDark
-                                                ? "bg-indigo-500/10 text-indigo-400"
-                                                : "bg-indigo-50 text-indigo-600"
-                                          }`}
-                                        >
-                                          {msg.fileType === "pdf" ||
-                                          msg.fileType === "text_file" ? (
-                                            <FileText className="w-6 h-6" />
-                                          ) : (
+                                    {msg.type === "file_offer" && (
+                                      <div className="flex flex-col gap-2 p-1 w-[280px]">
+                                        <div className={`p-3 rounded-2xl flex items-center gap-3 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white border"}`}>
+                                          <div className={`p-2 rounded-xl flex-shrink-0 ${msg.sender === "me" ? "bg-white/20" : "bg-indigo-500/10 text-indigo-500"}`}>
                                             <FileIcon className="w-6 h-6" />
-                                          )}
-                                        </div>
-                                        <div className="flex flex-col min-w-0 flex-1">
-                                          <span className="text-xs font-black truncate leading-tight mb-1">
-                                            {msg.fileName}
-                                          </span>
-                                          <div className="flex items-center gap-2 text-[9px] font-bold opacity-70 uppercase tracking-widest">
-                                            <span>
-                                              {formatFileSize(
-                                                msg.fileSize || 0,
-                                              )}
-                                            </span>
-                                            <span className="w-1 h-1 rounded-full bg-current opacity-40" />
-                                            <span>{msg.fileType}</span>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-bold truncate">{msg.fileName}</div>
+                                            <div className="text-[10px] font-medium opacity-70">
+                                              {formatFileSize(msg.fileSize || 0)}
+                                            </div>
                                           </div>
                                         </div>
-                                        <a
-                                          href={msg.content}
-                                          download={msg.fileName}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className={`p-2.5 rounded-xl transition-all ${
-                                            msg.sender === "me"
-                                              ? "hover:bg-white/20"
-                                              : isDark
-                                                ? "hover:bg-white/5"
-                                                : "hover:bg-slate-200"
-                                          }`}
-                                        >
-                                          <Download className="w-4 h-4" />
-                                        </a>
+
+                                        {msg.streamState === "offered" && msg.sender === "remote" && (
+                                          <button
+                                            onClick={async () => {
+                                              if (!('showSaveFilePicker' in window)) {
+                                                // Fallback to memory
+                                                setNotification({ message: "File System API not supported. Falling back to memory buffering. Large files may crash.", type: "warning" });
+
+                                                // Create a mock stream-like object that accumulates chunks in memory
+                                                const memoryBuffer: Uint8Array[] = [];
+                                                const streamMock = {
+                                                  write: async (chunk: Uint8Array) => {
+                                                    memoryBuffer.push(new Uint8Array(chunk));
+                                                  },
+                                                  close: async () => {
+                                                    const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
+                                                    const combined = new Uint8Array(totalLength);
+                                                    let offset = 0;
+                                                    for (const chunk of memoryBuffer) {
+                                                      combined.set(chunk, offset);
+                                                      offset += chunk.length;
+                                                    }
+                                                    const blob = new Blob([combined]);
+                                                    const url = URL.createObjectURL(blob);
+
+                                                    // Convert this message to a normal file message so it renders the media
+                                                    setMessages(prev => prev.map(m => m.id === msg.id ? {
+                                                      ...m,
+                                                      type: "file" as any,
+                                                      content: url,
+                                                      originalBlob: blob,
+                                                      streamState: "completed"
+                                                    } : m));
+                                                  }
+                                                };
+
+                                                incomingStreamsRef.current[msg.id] = {
+                                                  handle: null,
+                                                  stream: streamMock,
+                                                  received: 0,
+                                                  total: msg.fileSize || 0,
+                                                  checksum: 0
+                                                };
+
+                                                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: msg.id }));
+                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
+                                                return;
+                                              }
+                                              try {
+                                                const handle = await (window as any).showSaveFilePicker({ suggestedName: msg.fileName });
+                                                const stream = await handle.createWritable();
+                                                incomingStreamsRef.current[msg.id] = { handle, stream, received: 0, total: msg.fileSize || 0, checksum: 0 };
+                                                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: msg.id }));
+                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
+                                              } catch (e: any) {
+                                                if (e.name !== "AbortError") {
+                                                  setNotification({ message: "Could not open file: " + e.message, type: "error" });
+                                                }
+                                              }
+                                            }}
+                                            className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
+                                          >
+                                            <Download className="w-4 h-4" />
+                                            {'showSaveFilePicker' in window ? 'Accept File (Save to Disk)' : 'Accept File (Memory Fallback)'}
+                                          </button>
+                                        )}
+
+                                        {msg.streamState === "offered" && msg.sender === "me" && (
+                                          <div className="text-[10px] text-center font-bold opacity-60 italic">Waiting for receiver to accept...</div>
+                                        )}
+
+                                        {msg.streamState === "transferring" && (
+                                          <div className="flex flex-col gap-1 w-full mt-1 px-1">
+                                            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
+                                              <span>Transferring...</span>
+                                              <span>{msg.streamProgress || 0}%</span>
+                                            </div>
+                                            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+                                              <motion.div
+                                                className="h-full bg-emerald-400"
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${msg.streamProgress || 0}%` }}
+                                                transition={{ duration: 0.1 }}
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {msg.streamState === "paused" && (
+                                          <div className="flex flex-col gap-1 w-full mt-1 px-1">
+                                            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
+                                              <span>Paused</span>
+                                              <span>{msg.streamProgress || 0}%</span>
+                                            </div>
+                                            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+                                              <div className="h-full bg-amber-400" style={{ width: `${msg.streamProgress || 0}%` }} />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {(msg.streamState === "completed" || msg.streamState === "canceled") && (
+                                          <div className={`text-[10px] text-center font-bold uppercase tracking-widest ${msg.streamState === "completed" ? "text-emerald-500" : "text-red-500"}`}>
+                                            {msg.streamState}
+                                          </div>
+                                        )}
+
+                                        {(msg.streamState === "transferring" || msg.streamState === "paused") && (
+                                          <div className="flex gap-2 w-full mt-1">
+                                            <button
+                                              onClick={() => {
+                                                if (msg.streamState === "transferring") {
+                                                  dcRef.current?.send(JSON.stringify({ type: "stream_pause", msgId: msg.id }));
+                                                  setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "paused" } : m));
+                                                  if (msg.sender === "me") {
+                                                    const outStream = outgoingStreamsRef.current[msg.id];
+                                                    if (outStream) outStream.paused = true;
+                                                  }
+                                                } else {
+                                                  dcRef.current?.send(JSON.stringify({ type: "stream_resume", msgId: msg.id }));
+                                                  setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
+                                                  if (msg.sender === "me") {
+                                                    const outStream = outgoingStreamsRef.current[msg.id];
+                                                    if (outStream) {
+                                                      outStream.paused = false;
+                                                      processNextChunk(msg.id);
+                                                    }
+                                                  }
+                                                }
+                                              }}
+                                              className={`flex-1 py-1.5 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${msg.streamState === "transferring"
+                                                  ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500"
+                                                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
+                                                }`}
+                                            >
+                                              {msg.streamState === "transferring" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                                              {msg.streamState === "transferring" ? "Pause" : "Resume"}
+                                            </button>
+
+                                            <button
+                                              onClick={() => {
+                                                dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: msg.id }));
+                                                // Process cancellation locally
+                                                if (msg.sender === "remote") {
+                                                  const inStream = incomingStreamsRef.current[msg.id];
+                                                  if (inStream) {
+                                                    try { inStream.stream.close(); } catch (e) { }
+                                                    delete incomingStreamsRef.current[msg.id];
+                                                  }
+                                                } else {
+                                                  const outStream = outgoingStreamsRef.current[msg.id];
+                                                  if (outStream) {
+                                                    outStream.canceled = true;
+                                                    delete outgoingStreamsRef.current[msg.id];
+                                                  }
+                                                }
+                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "canceled" } : m));
+                                              }}
+                                              className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1"
+                                            >
+                                              <X className="w-3 h-3" /> Cancel
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
                                     )}
-                                  </div>
-                                )}
+                                    {msg.type === "file" && (
+                                      <div className="flex flex-col gap-1">
+                                        {msg.fileType === "image" && (
+                                          <button
+                                            onClick={() => setSelectedMedia(msg)}
+                                            className="relative rounded-2xl overflow-hidden group/img transition-transform active:scale-[0.98]"
+                                          >
+                                            <img
+                                              src={msg.content}
+                                              alt={msg.fileName}
+                                              className="w-full max-h-[300px] object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                              <Eye className="w-8 h-8 text-white" />
+                                            </div>
+                                          </button>
+                                        )}
+
+                                        {msg.fileType === "video" && (
+                                          <div className="relative rounded-2xl overflow-hidden bg-black group/vid w-full min-w-[200px] sm:min-w-[280px]">
+                                            <video
+                                              key={msg.content}
+                                              src={msg.content}
+                                              controls
+                                              preload="metadata"
+                                              playsInline
+                                              className="w-full h-auto max-h-[400px] block object-contain mx-auto"
+                                              onLoadedMetadata={(e) => {
+                                                const video = e.target as HTMLVideoElement;
+                                                if (
+                                                  video.videoHeight >
+                                                  video.videoWidth * 1.5
+                                                ) {
+                                                  video.style.maxHeight = "500px";
+                                                }
+                                              }}
+                                            />
+                                            <button
+                                              onClick={() => setSelectedMedia(msg)}
+                                              className="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity z-10"
+                                              title="Expand Video"
+                                            >
+                                              <Maximize className="w-4 h-4" />
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        {msg.fileType === "audio" && (
+                                          <div
+                                            className={`p-3 rounded-2xl min-w-[240px] flex items-center gap-4 ${msg.sender === "me" ? "bg-white/10" : isDark ? "bg-white/5" : "bg-white"}`}
+                                          >
+                                            <button
+                                              onClick={() => setSelectedMedia(msg)}
+                                              className="p-2.5 rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 hover:scale-110 active:scale-95 transition-all"
+                                            >
+                                              <Play className="w-4 h-4 fill-current" />
+                                            </button>
+                                            <div className="flex-1 flex flex-col gap-1.5">
+                                              <div className="flex items-center space-x-1">
+                                                {[...Array(20)].map((_, i) => (
+                                                  <div
+                                                    key={i}
+                                                    className="w-0.5 bg-current opacity-30"
+                                                    style={{
+                                                      height: `${10 + Math.random() * 80}%`,
+                                                      minHeight: "4px",
+                                                    }}
+                                                  />
+                                                ))}
+                                              </div>
+                                              <div className="flex justify-between items-center text-[9px] font-bold opacity-80 tracking-widest leading-none">
+                                                <span>AUDIO PREVIEW</span>
+                                                <span>
+                                                  {formatFileSize(
+                                                    msg.fileSize || 0,
+                                                  )}
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <a
+                                              href={msg.content}
+                                              download={msg.fileName || "audio.mp3"}
+                                              className={`p-2 rounded-lg transition-all ${msg.sender === "me"
+                                                  ? "hover:bg-white/20"
+                                                  : isDark
+                                                    ? "hover:bg-white/5"
+                                                    : "hover:bg-slate-200"
+                                                }`}
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <Download className="w-3.5 h-3.5" />
+                                            </a>
+                                          </div>
+                                        )}
+
+                                        {(msg.fileType === "file" ||
+                                          msg.fileType === "pdf" ||
+                                          msg.fileType === "text_file") && (
+                                            <div
+                                              className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${msg.sender === "me"
+                                                  ? "hover:bg-white/5"
+                                                  : "hover:bg-black/5"
+                                                }`}
+                                              onClick={() =>
+                                                (msg.fileType === "pdf" ||
+                                                  msg.fileType === "text_file") &&
+                                                setSelectedMedia(msg)
+                                              }
+                                            >
+                                              <div
+                                                className={`p-3 rounded-xl ${msg.sender === "me"
+                                                    ? "bg-white/20 text-white"
+                                                    : isDark
+                                                      ? "bg-indigo-500/10 text-indigo-400"
+                                                      : "bg-indigo-50 text-indigo-600"
+                                                  }`}
+                                              >
+                                                {msg.fileType === "pdf" ||
+                                                  msg.fileType === "text_file" ? (
+                                                  <FileText className="w-6 h-6" />
+                                                ) : (
+                                                  <FileIcon className="w-6 h-6" />
+                                                )}
+                                              </div>
+                                              <div className="flex flex-col min-w-0 flex-1">
+                                                <span className="text-xs font-black truncate leading-tight mb-1">
+                                                  {msg.fileName}
+                                                </span>
+                                                <div className="flex items-center gap-2 text-[9px] font-bold opacity-70 uppercase tracking-widest">
+                                                  <span>
+                                                    {formatFileSize(
+                                                      msg.fileSize || 0,
+                                                    )}
+                                                  </span>
+                                                  <span className="w-1 h-1 rounded-full bg-current opacity-40" />
+                                                  <span>{msg.fileType}</span>
+                                                </div>
+                                              </div>
+                                              <a
+                                                href={msg.content}
+                                                download={msg.fileName}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className={`p-2.5 rounded-xl transition-all ${msg.sender === "me"
+                                                    ? "hover:bg-white/20"
+                                                    : isDark
+                                                      ? "hover:bg-white/5"
+                                                      : "hover:bg-slate-200"
+                                                  }`}
+                                              >
+                                                <Download className="w-4 h-4" />
+                                              </a>
+                                            </div>
+                                          )}
+                                      </div>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -4252,7 +4265,7 @@ export const TransferNodeRenderer: React.FC<{
                                         <span>Zipping {task.progress !== undefined ? `${Math.round(task.progress)}%` : '...'}</span>
                                       </div>
                                     </div>
-                                    <div 
+                                    <div
                                       className="absolute bottom-0 left-0 h-1 bg-indigo-500 transition-all duration-300 ease-linear"
                                       style={{ width: `${task.progress || 0}%` }}
                                     />
@@ -4271,11 +4284,10 @@ export const TransferNodeRenderer: React.FC<{
                           </AnimatePresence>
                           <div className="flex items-center gap-2">
                             <label
-                              className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${
-                                isDark
+                              className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
                                   ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
                                   : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
-                              }`}
+                                }`}
                             >
                               <Plus className="w-5 h-5" />
                               <input
@@ -4303,11 +4315,10 @@ export const TransferNodeRenderer: React.FC<{
                             </label>
 
                             <div
-                              className={`flex-1 flex items-center rounded-3xl p-1.5 border transition-all shadow-inner min-w-0 ${
-                                isDark
+                              className={`flex-1 flex items-center rounded-3xl p-1.5 border transition-all shadow-inner min-w-0 ${isDark
                                   ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
                                   : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
-                              }`}
+                                }`}
                             >
                               <input
                                 type="text"
@@ -4319,7 +4330,7 @@ export const TransferNodeRenderer: React.FC<{
                                     .filter(item => item.kind === 'file')
                                     .map(item => item.getAsFile())
                                     .filter((f): f is File => f !== null);
-                                  
+
                                   const validFiles = [];
                                   let hasLarge = false;
                                   for (const f of files) {
@@ -4505,10 +4516,10 @@ export const TransferNodeRenderer: React.FC<{
                                   {msg.type === "text" && copyStatus?.id === msg.id && copyStatus?.status === "success"
                                     ? "Copied"
                                     : msg.type === "text"
-                                    ? "Copy Text"
-                                    : msg.fileType === "video"
-                                      ? "Play / Open"
-                                      : "Open"}
+                                      ? "Copy Text"
+                                      : msg.fileType === "video"
+                                        ? "Play / Open"
+                                        : "Open"}
                                 </button>
                                 {msg.type === "text" && (
                                   <button
@@ -4540,7 +4551,7 @@ export const TransferNodeRenderer: React.FC<{
                                       <Copy className="w-4 h-4" />
                                     )}
                                     {copyStatus?.id === msg.id && copyStatus.status === "success"
-                                      ? "Copied" 
+                                      ? "Copied"
                                       : msg.fileType === "image" ? "Copy Image" : msg.fileType === "text_file" ? "Copy Content" : "Copy Asset"}
                                   </button>
                                 )}
@@ -4638,174 +4649,162 @@ export const TransferNodeRenderer: React.FC<{
                           handlePointerMoveChrome();
                         }}
                       >
-                      <AnimatePresence>
-                        {showChrome && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute top-0 inset-x-0 z-[12010] flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
-                          >
-                            <div className="flex items-center gap-3 w-1/3">
-                              <button
-                                onClick={() => setSelectedMedia(null)}
-                                className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md"
-                              >
-                                <ChevronLeft className="w-5 h-5 sm:hidden" />
-                                <X className="w-5 h-5 hidden sm:block" />
-                              </button>
-                            </div>
-                            
-                            <div className="flex flex-col items-center justify-center text-white max-w-[calc(100%-100px)] w-1/3 text-center">
-                              <p className="text-sm sm:text-base font-black mb-0.5 truncate w-full px-4">
-                                {selectedMedia.fileName}
-                              </p>
-                              <div className="flex items-center gap-2 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
-                                <span className="hidden sm:inline">
-                                  {formatFileSize(selectedMedia.fileSize || 0)}
-                                </span>
-                                <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
-                                <span className="truncate hidden sm:inline">
-                                  {new Date(selectedMedia.timestamp).toLocaleString()}
-                                </span>
-                                <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
-                                <span>
-                                  {selectedMediaIdx + 1} / {mediaMsgs.length}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-end gap-2 w-1/3">
-                              <button
-                                onClick={() => handleMediaCopy(selectedMedia)}
-                                className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === selectedMedia.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
-                                title="Copy"
-                              >
-                                {copyStatus?.id === selectedMedia.id && copyStatus.status === "success" ? (
-                                  <Check className="w-4 h-4" />
-                                ) : (
-                                  <Copy className="w-4 h-4" />
-                                )}
-                              </button>
-                              <a
-                                href={selectedMedia.content}
-                                download={selectedMedia.fileName || "download"}
-                                className="p-3 bg-indigo-600 rounded-full hover:bg-indigo-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
-                                title="Download"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <AnimatePresence>
-                        {showChrome && hasPrevMedia && (
-                          <motion.button
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -10 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedMedia(mediaMsgs[selectedMediaIdx - 1]);
-                            }}
-                            className="absolute left-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block pointer-events-auto"
-                          >
-                            <ChevronLeft className="w-8 h-8" />
-                          </motion.button>
-                        )}
-                      </AnimatePresence>
-
-                      <AnimatePresence>
-                        {showChrome && hasNextMedia && (
-                          <motion.button
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 10 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedMedia(mediaMsgs[selectedMediaIdx + 1]);
-                            }}
-                            className="absolute right-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block pointer-events-auto"
-                          >
-                            <ChevronRight className="w-8 h-8" />
-                          </motion.button>
-                        )}
-                      </AnimatePresence>
-
-                      <div className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]">
-                        {mediaMsgs.map((media) => {
-                          if (!viewedMediaIds.has(media.id)) return null;
-                          const isSelected = media.id === selectedMedia.id;
-
-                          return (
+                        <AnimatePresence>
+                          {showChrome && (
                             <motion.div
-                              key={media.id}
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: isSelected ? 1 : 0, scale: isSelected ? 1 : 0.95, pointerEvents: isSelected ? "auto" : "none" }}
-                              exit={{ opacity: 0, scale: 1.05 }}
-                              transition={{ duration: 0.2, ease: "easeOut" }}
-                              className="w-full h-full absolute inset-0 flex items-center justify-center p-0 sm:p-0"
-                              style={{ display: isSelected ? "flex" : "none" }}
+                              initial={{ opacity: 0, y: -20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -20 }}
+                              transition={{ duration: 0.2 }}
+                              className="absolute top-0 inset-x-0 z-[12010] flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
                             >
-                              {media.fileType === "image" && (
-                                <div className="w-full h-full relative cursor-move touch-none flex items-center justify-center">
-                                  <TransformWrapper
-                                    initialScale={1}
-                                    minScale={0.5}
-                                    maxScale={10}
-                                    centerOnInit={true}
-                                    wheel={{ step: 0.1 }}
-                                    doubleClick={{ disabled: false, step: 2 }}
-                                    pinch={{ step: 5 }}
-                                  >
-                                    <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                                      <img
-                                        src={media.content}
-                                        className="max-w-full max-h-full object-contain pointer-events-auto rounded-xl shadow-2xl"
-                                        draggable={false}
-                                      />
-                                    </TransformComponent>
-                                  </TransformWrapper>
+                              <div className="flex items-center gap-3 w-1/3">
+                                <button
+                                  onClick={() => setSelectedMedia(null)}
+                                  className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md"
+                                >
+                                  <ChevronLeft className="w-5 h-5 sm:hidden" />
+                                  <X className="w-5 h-5 hidden sm:block" />
+                                </button>
+                              </div>
+
+                              <div className="flex flex-col items-center justify-center text-white max-w-[calc(100%-100px)] w-1/3 text-center">
+                                <p className="text-sm sm:text-base font-black mb-0.5 truncate w-full px-4">
+                                  {selectedMedia.fileName}
+                                </p>
+                                <div className="flex items-center gap-2 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
+                                  <span className="hidden sm:inline">
+                                    {formatFileSize(selectedMedia.fileSize || 0)}
+                                  </span>
+                                  <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                                  <span className="truncate hidden sm:inline">
+                                    {new Date(selectedMedia.timestamp).toLocaleString()}
+                                  </span>
+                                  <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                                  <span>
+                                    {selectedMediaIdx + 1} / {mediaMsgs.length}
+                                  </span>
                                 </div>
-                              )}
-                              {media.fileType === "video" && (
-                                <VideoPlayer media={media} isSelected={isSelected} />
-                              )}
-                              {media.fileType === "audio" && (
-                                <AudioPlayer media={media} isSelected={isSelected} />
-                              )}
-                              {media.fileType === "pdf" && (
-                                <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
-                                  <PdfViewer url={media.content} />
-                                </div>
-                              )}
-                              {media.fileType === "text_file" && (
-                                <div className="w-[90%] h-[90%] max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-[12005]">
-                                  <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
-                                    <TextFileViewer url={media.content} />
-                                  </div>
-                                </div>
-                              )}
-                              {media.fileType === "file" && (
-                                <div className="max-w-sm w-full bg-[#161f30] rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center p-8 border border-white/5 text-center">
-                                  <FileIcon className="w-20 h-20 text-indigo-500 mb-6" />
-                                  <h3 className="text-lg font-bold text-white mb-2 break-all line-clamp-3">{media.fileName}</h3>
-                                  <p className="text-slate-400 text-[10px] mb-8 uppercase tracking-widest font-bold">{media.fileSize ? formatFileSize(media.fileSize) : "Unknown Size"}</p>
-                                  <a href={media.content} download={media.fileName} className="px-6 py-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
-                                    <Download className="w-4 h-4" />
-                                    Download File
-                                  </a>
-                                </div>
-                              )}
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2 w-1/3">
+                                <button
+                                  onClick={() => handleMediaCopy(selectedMedia)}
+                                  className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === selectedMedia.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                                  title="Copy"
+                                >
+                                  {copyStatus?.id === selectedMedia.id && copyStatus.status === "success" ? (
+                                    <Check className="w-4 h-4" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <a
+                                  href={selectedMedia.content}
+                                  download={selectedMedia.fileName || "download"}
+                                  className="p-3 bg-indigo-600 rounded-full hover:bg-indigo-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
+                                  title="Download"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </a>
+                              </div>
                             </motion.div>
-                          );
-                        })}
+                          )}
+                        </AnimatePresence>
+
+                        <AnimatePresence>
+                          {showChrome && hasPrevMedia && (
+                            <motion.button
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -10 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedMedia(mediaMsgs[selectedMediaIdx - 1]);
+                              }}
+                              className="absolute left-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block pointer-events-auto"
+                            >
+                              <ChevronLeft className="w-8 h-8" />
+                            </motion.button>
+                          )}
+                        </AnimatePresence>
+
+                        <AnimatePresence>
+                          {showChrome && hasNextMedia && (
+                            <motion.button
+                              initial={{ opacity: 0, x: 10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 10 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedMedia(mediaMsgs[selectedMediaIdx + 1]);
+                              }}
+                              className="absolute right-6 top-1/2 -translate-y-1/2 p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md hidden sm:block pointer-events-auto"
+                            >
+                              <ChevronRight className="w-8 h-8" />
+                            </motion.button>
+                          )}
+                        </AnimatePresence>
+
+                        <div className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]">
+                          {mediaMsgs.map((media) => {
+                            if (!viewedMediaIds.has(media.id)) return null;
+                            const isSelected = media.id === selectedMedia.id;
+
+                            return (
+                              <motion.div
+                                key={media.id}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: isSelected ? 1 : 0, scale: isSelected ? 1 : 0.95, pointerEvents: isSelected ? "auto" : "none" }}
+                                exit={{ opacity: 0, scale: 1.05 }}
+                                transition={{ duration: 0.2, ease: "easeOut" }}
+                                className="w-full h-full absolute inset-0 flex items-center justify-center p-0 sm:p-0"
+                                style={{ display: isSelected ? "flex" : "none" }}
+                              >
+                                {media.fileType === "image" && (
+                                  <div className="w-full h-full relative flex items-center justify-center pointer-events-auto">
+                                    <InteractiveZoomImage
+                                      src={media.content}
+                                      alt={media.name || "Preview"}
+                                      className="rounded-xl shadow-2xl"
+                                    />
+                                  </div>
+                                )}
+                                {media.fileType === "video" && (
+                                  <VideoPlayer media={media} isSelected={isSelected} />
+                                )}
+                                {media.fileType === "audio" && (
+                                  <AudioPlayer media={media} isSelected={isSelected} />
+                                )}
+                                {media.fileType === "pdf" && (
+                                  <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
+                                    <PdfViewer url={media.content} />
+                                  </div>
+                                )}
+                                {media.fileType === "text_file" && (
+                                  <div className="w-[90%] h-[90%] max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-[12005]">
+                                    <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
+                                      <TextFileViewer url={media.content} />
+                                    </div>
+                                  </div>
+                                )}
+                                {media.fileType === "file" && (
+                                  <div className="max-w-sm w-full bg-[#161f30] rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center p-8 border border-white/5 text-center">
+                                    <FileIcon className="w-20 h-20 text-indigo-500 mb-6" />
+                                    <h3 className="text-lg font-bold text-white mb-2 break-all line-clamp-3">{media.fileName}</h3>
+                                    <p className="text-slate-400 text-[10px] mb-8 uppercase tracking-widest font-bold">{media.fileSize ? formatFileSize(media.fileSize) : "Unknown Size"}</p>
+                                    <a href={media.content} download={media.fileName} className="px-6 py-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
+                                      <Download className="w-4 h-4" />
+                                      Download File
+                                    </a>
+                                  </div>
+                                )}
+                              </motion.div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                   </AnimatePresence>,
                   document.body
                 )}
@@ -4814,26 +4813,26 @@ export const TransferNodeRenderer: React.FC<{
 
             return isFullscreen
               ? createPortal(
+                <div
+                  className={`fixed inset-0 z-[10000] backdrop-blur-sm p-0 sm:p-2 flex items-center justify-center nodrag nowheel ${isDark ? "bg-black/90" : "bg-slate-900/50"}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onMouseUp={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchMove={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                  onWheel={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div
-                    className={`fixed inset-0 z-[10000] backdrop-blur-sm p-0 sm:p-2 flex items-center justify-center nodrag nowheel ${isDark ? "bg-black/90" : "bg-slate-900/50"}`}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onPointerUp={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onMouseUp={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onTouchMove={(e) => e.stopPropagation()}
-                    onTouchEnd={(e) => e.stopPropagation()}
-                    onWheel={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
+                    className={`w-full h-full sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col ${isDark ? "bg-[#0a0c10] border-white/5" : "bg-white border-slate-200"}`}
                   >
-                    <div
-                      className={`w-full h-full sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col ${isDark ? "bg-[#0a0c10] border-white/5" : "bg-white border-slate-200"}`}
-                    >
-                      {content}
-                    </div>
-                  </div>,
-                  document.body,
-                )
+                    {content}
+                  </div>
+                </div>,
+                document.body,
+              )
               : content;
           })()}
       </div>
