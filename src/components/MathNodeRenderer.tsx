@@ -340,6 +340,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
   const [editingVar, setEditingVar] = useState<MathVariable | null>(null);
   const [showVarEditor, setShowVarEditor] = useState(false);
   const [missingVars, setMissingVars] = useState<string[]>([]);
+  const [noSolutionMap, setNoSolutionMap] = useState<Record<string, boolean>>({});
+
+  const handleNoSolution = useCallback((id: string, hasNoSolution: boolean) => {
+    setNoSolutionMap((prev) => {
+      if (prev[id] === hasNoSolution) return prev;
+      return { ...prev, [id]: hasNoSolution };
+    });
+  }, []);
 
   // Drag and Drop States for Functions & Variables
   const [draggedFunctionId, setDraggedFunctionId] = useState<string | null>(
@@ -1738,6 +1746,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 hoveredVar={hoveredVar}
                                 setHoveredVar={setHoveredVar}
                                 error={f.error}
+                                warning={noSolutionMap[f.id] ? "This particular equation has no zero or solutions in the current view" : undefined}
                                 onAddEnter={handleAddFunction}
                                 globalTime={time}
                                 forceEditMode={activeVisualEditorId === f.id}
@@ -7426,7 +7435,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       (f.type === "implicit" ? "=" : "<")
                                     }
                                     baseScope={baseScope}
-                                    dependenciesHash={`${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
+                                    dependenciesHash={`${functions.map(fn => fn.expr).join("__")}__${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
                                       (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
                                       (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
                                       ? `time:${time}_fTime:${fTime}`
@@ -7451,6 +7460,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     px={px}
                                     py={py}
                                     lineStyle={f.lineStyle}
+                                    id={f.id}
+                                    onNoSolution={handleNoSolution}
                                     weight={
                                       hoveredVar &&
                                         new RegExp(`\\b${hoveredVar}\\b`).test(

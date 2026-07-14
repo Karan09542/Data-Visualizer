@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import { usePaneContext, useTransformContext } from "mafs";
 import { det } from "mathjs";
 import { getStrokeDasharray } from "./mathTypes";
@@ -28,6 +28,7 @@ interface InequalityPlotProps {
   samplingDepth?: number;
   id?: string;
   dependenciesHash?: string;
+  onNoSolution?: (id: string, noSolution: boolean) => void;
 }
 
 export const InequalityPlot: React.FC<InequalityPlotProps> = ({
@@ -54,6 +55,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
   samplingDepth = 14,
   id,
   dependenciesHash,
+  onNoSolution,
 }) => {
   let xRange: [number, number] = [-10, 10];
   let yRange: [number, number] = [-10, 10];
@@ -229,6 +231,12 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
     xRange[0], xRange[1], yRange[0], yRange[1],
     tx, ty, px, py, rot, scaleX, scaleY,
   ]);
+
+  useEffect(() => {
+    if (onNoSolution && id) {
+      onNoSolution(id, !paths.fill && !paths.boundary);
+    }
+  }, [paths, onNoSolution, id]);
 
   const customDashPattern = lineStyle && lineStyle !== "solid" ? getStrokeDasharray(lineStyle) : undefined;
   const isStrict = operator === "<" || operator === ">";
