@@ -96,7 +96,9 @@ import {
   AdaptiveGrid,
   createAxisLabelFormatter,
   MATH_EXAMPLES,
-  TraceOverlay
+  TraceOverlay,
+  VariableManager,
+  Timeline
 } from "./math-node";
 
 
@@ -297,8 +299,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     ];
   });
 
-  const [searchVar, setSearchVar] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [hoveredVar, setHoveredVar] = useState<string | null>(null);
   const [editingVar, setEditingVar] = useState<MathVariable | null>(null);
   const [showVarEditor, setShowVarEditor] = useState(false);
@@ -434,7 +435,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
     speed: 1,
     direction: 1,
   });
-  const [showTimeSettings, setShowTimeSettings] = useState(false);
   const [tracePoints, setTracePoints] = useState(false);
   const initialGridSettings = useMemo(() => {
     let settings: any = {};
@@ -2528,8 +2528,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                   ...fn,
                                                   label: fn.latex || fn.expr || "",
                                                 }
-                                                : fn,
-                                            ),
+                                                : fn
+                                            )
                                           );
                                         }}
                                         title="Inject current equation"
@@ -3853,7 +3853,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                                 activeColorPickerType === "fill"
                                               ) {
                                                 setActiveColorPickerFnId(null);
-                                                setActiveColorPickerType(null);
+                                                setActiveColorPickerType(
+                                                  null,
+                                                );
                                                 setActiveColorPickerTriggerEl(
                                                   null,
                                                 );
@@ -4934,549 +4936,47 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                 </div>
 
                 {/* Variables */}
-                <div className="flex flex-col gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-xs text-slate-400 uppercase tracking-wider">
-                      Variables Manager
-                    </h3>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setShowSearch(!showSearch)}
-                        className={`p-1 rounded text-slate-500 dark:text-slate-300 transition-colors ${showSearch ? "bg-slate-200 dark:bg-slate-700" : "hover:bg-slate-200 dark:hover:bg-slate-700"}`}
-                        title="Search Variables"
-                      >
-                        <Search size={14} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingVar(null);
-                          setShowVarEditor(true);
-                        }}
-                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 transition-colors"
-                        title="Add Variable"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {showSearch && (
-                    <input
-                      type="text"
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 text-xs text-slate-800 dark:text-slate-200 mt-[-8px] outline-none focus:border-blue-500 transition-all"
-                      placeholder="Search variables..."
-                      value={searchVar}
-                      onChange={(e) => setSearchVar(e.target.value)}
-                    />
-                  )}
-
-                  {missingVars.length > 0 && (
-                    <div className="bg-blue-900/20 border border-blue-500/30 p-2.5 rounded-lg flex flex-col gap-2">
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-blue-400">
-                        Detected missing variables
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {missingVars.map((mv) => (
-                          <button
-                            key={mv}
-                            className="bg-blue-600/80 hover:bg-blue-500 text-white px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 shadow-sm"
-                            onClick={() => handleAutoAddVar(mv)}
-                          >
-                            <Plus size={10} /> {mv}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-5">
-                    {groups.map((group) => {
-                      const groupVars = variables.filter(
-                        (v) =>
-                          v.groupId === group.id &&
-                          (v.name
-                            .toLowerCase()
-                            .includes(searchVar.toLowerCase()) ||
-                            (v.displayName &&
-                              v.displayName
-                                .toLowerCase()
-                                .includes(searchVar.toLowerCase()))),
-                      );
-
-                      // Hide empty groups ONLY when there is an active search query
-                      if (groupVars.length === 0 && searchVar) return null;
-                      const isEmpty = groupVars.length === 0;
-
-                      return (
-                        <div key={group.id} className="flex flex-col gap-2">
-                          <div className="flex items-center justify-between group/header text-[10px] font-semibold text-slate-500 uppercase select-none">
-                            <div
-                              className="flex items-center gap-1 cursor-pointer hover:text-slate-705 dark:hover:text-slate-350"
-                              onClick={() =>
-                                setGroups(
-                                  groups.map((g) =>
-                                    g.id === group.id
-                                      ? { ...g, isCollapsed: !g.isCollapsed }
-                                      : g,
-                                  ),
-                                )
-                              }
-                            >
-                              {group.isCollapsed ? (
-                                <ChevronRight size={12} />
-                              ) : (
-                                <ChevronDown size={12} />
-                              )}
-                              <span>{group.name}</span>
-                            </div>
-
-                            {/* Allow deletion of empty custom groups */}
-                            {group.id !== "default" && isEmpty && (
-                              <button
-                                onClick={() => {
-                                  setGroups((prev) =>
-                                    prev.filter((g) => g.id !== group.id),
-                                  );
-                                }}
-                                className="text-slate-400 hover:text-red-500 opacity-0 group-hover/header:opacity-100 transition-opacity p-0.5"
-                                title="Delete empty group"
-                              >
-                                <Trash2 size={10} />
-                              </button>
-                            )}
-                          </div>
-
-                          {!group.isCollapsed && isEmpty && (
-                            <div
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                // Set drop indicator for this group
-                                setDragOverVariableId(`empty_${group.id}`);
-                              }}
-                              onDragLeave={() => {
-                                if (
-                                  dragOverVariableId === `empty_${group.id}`
-                                ) {
-                                  setDragOverVariableId(null);
-                                }
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                if (draggedVariableId) {
-                                  // Drop into this group
-                                  setVariables((prev) =>
-                                    prev.map((v) =>
-                                      v.id === draggedVariableId
-                                        ? { ...v, groupId: group.id }
-                                        : v,
-                                    ),
-                                  );
-                                }
-                                setDragOverVariableId(null);
-                                setDraggedVariableId(null);
-                              }}
-                              className={`border-2 border-dashed rounded-lg p-3 text-center text-xs transition-all flex flex-col items-center justify-center gap-1 min-h-[64px] ${dragOverVariableId === `empty_${group.id}`
-                                ? "border-blue-500 bg-blue-500/10 text-blue-500"
-                                : "border-slate-200 dark:border-slate-800/60 text-slate-400 dark:text-slate-500 hover:border-slate-350 dark:hover:border-slate-700"
-                                }`}
-                            >
-                              <Folder className="opacity-30" size={14} />
-                              <span>Empty. Drag variables here.</span>
-                            </div>
-                          )}
-
-                          {!group.isCollapsed &&
-                            groupVars.map((v) => (
-                              <div
-                                key={v.id}
-                                draggable={canDragVariableId === v.id}
-                                onDragStart={(e) => {
-                                  setDraggedVariableId(v.id);
-                                  e.dataTransfer.effectAllowed = "move";
-                                }}
-                                onDragEnd={() => {
-                                  setDraggedVariableId(null);
-                                  setDragOverVariableId(null);
-                                  setDragOverVariablePosition(null);
-                                  setCanDragVariableId(null);
-                                }}
-                                onDragOver={(e) => {
-                                  e.preventDefault();
-                                  const rect =
-                                    e.currentTarget.getBoundingClientRect();
-                                  const relativeY = e.clientY - rect.top;
-                                  const isTop = relativeY < rect.height / 2;
-                                  setDragOverVariableId(v.id);
-                                  setDragOverVariablePosition(
-                                    isTop ? "top" : "bottom",
-                                  );
-                                }}
-                                onDragLeave={() => {
-                                  if (dragOverVariableId === v.id) {
-                                    setDragOverVariableId(null);
-                                    setDragOverVariablePosition(null);
-                                  }
-                                }}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  if (
-                                    dragOverVariableId &&
-                                    dragOverVariablePosition
-                                  ) {
-                                    handleDropVariable(
-                                      v.id,
-                                      group.id,
-                                      dragOverVariablePosition,
-                                    );
-                                  }
-                                }}
-                                className={`flex flex-col gap-2 bg-white dark:bg-slate-900/50 p-3 rounded-lg border group transition-all relative ${hoveredVar === v.name
-                                  ? "border-blue-500/50"
-                                  : "border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600"
-                                  } ${draggedVariableId === v.id ? "opacity-40" : ""} ${draggedVariableId !== null ? "[&>*]:pointer-events-none" : ""} ${""} ${""}`}
-                                onMouseEnter={() => setHoveredVar(v.name)}
-                                onMouseLeave={() => setHoveredVar(null)}
-                              >
-                                {/* Real-time drop insertion line boundary indicator */}
-                                {dragOverVariableId === v.id &&
-                                  dragOverVariablePosition && (
-                                    <div
-                                      className={`absolute left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400 z-50 rounded-full transition-all ${dragOverVariablePosition === "top"
-                                        ? "-top-[1px]"
-                                        : "-bottom-[1px]"
-                                        }`}
-                                    />
-                                  )}
-                                <div className="flex items-start justify-between">
-                                  <div className="flex items-center gap-1.5">
-                                    {/* Grip Handle */}
-                                    <div
-                                      onMouseDown={() =>
-                                        setCanDragVariableId(v.id)
-                                      }
-                                      onMouseUp={() =>
-                                        setCanDragVariableId(null)
-                                      }
-                                      onTouchStart={() =>
-                                        setCanDragVariableId(v.id)
-                                      }
-                                      onTouchEnd={() =>
-                                        setCanDragVariableId(null)
-                                      }
-                                      className="cursor-grab active:cursor-grabbing text-slate-450 dark:text-slate-605 hover:text-slate-650 dark:hover:text-slate-350 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                                      title="Drag to reorder"
-                                    >
-                                      <GripVertical size={12} />
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <div className="flex items-baseline gap-2">
-                                        <span
-                                          className="text-sm font-mono font-semibold"
-                                          style={{ color: getVarColor(v.name) }}
-                                        >
-                                          {v.name}
-                                        </span>
-                                        <span className="text-[10px] font-mono text-slate-500">
-                                          =
-                                        </span>
-                                        <input
-                                          type="number"
-                                          value={v.value}
-                                          onChange={(e) =>
-                                            handleUpdateVar(v.id, {
-                                              value:
-                                                parseFloat(e.target.value) || 0,
-                                            })
-                                          }
-                                          className="w-16 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-mono px-1.5 py-0.5 rounded outline-none border border-slate-200 dark:border-transparent focus:border-blue-500"
-                                        />
-                                      </div>
-                                      {v.displayName && (
-                                        <span className="text-xs text-slate-400 mt-0.5">
-                                          {v.displayName}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="absolute right-2 top-2 nodrag shrink-0 z-20 flex items-center">
-                                    {/* Mobile toggle button */}
-                                    <button
-                                      className={`md:hidden p-1.5 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all flex items-center justify-center ${activeActionMenuId === v.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionMenuId(
-                                          activeActionMenuId === v.id
-                                            ? null
-                                            : v.id,
-                                        );
-                                      }}
-                                    >
-                                      <MoreVertical size={16} />
-                                    </button>
-
-                                    {/* Button group */}
-                                    <div
-                                      className={`items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 ${activeActionMenuId === v.id ? "flex absolute right-8 top-0" : "hidden md:opacity-0 md:group-hover:opacity-100 md:flex"} transition-opacity`}
-                                    >
-                                      <button
-                                        className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-455 hover:text-blue-500 dark:hover:text-blue-400 rounded flex items-center justify-center transition-all opacity-100"
-                                        onClick={() => {
-                                          setActiveActionMenuId(null);
-                                          handleAddVariableAt(v.id, "above");
-                                        }}
-                                        title="Insert Variable Above"
-                                      >
-                                        <InsertAboveIcon size={14} />
-                                      </button>
-                                      <button
-                                        className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-455 hover:text-blue-500 dark:hover:text-blue-400 rounded flex items-center justify-center transition-all opacity-100"
-                                        onClick={() => {
-                                          setActiveActionMenuId(null);
-                                          handleAddVariableAt(v.id, "below");
-                                        }}
-                                        title="Insert Variable Below"
-                                      >
-                                        <InsertBelowIcon size={14} />
-                                      </button>
-                                      <button
-                                        className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100"
-                                        onClick={() => {
-                                          setActiveActionMenuId(null);
-                                          handleUpdateVar(v.id, {
-                                            value: v.defaultValue,
-                                          });
-                                        }}
-                                        title="Reset"
-                                      >
-                                        <RotateCcw size={12} />
-                                      </button>
-                                      <button
-                                        className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100"
-                                        onClick={() => {
-                                          setActiveActionMenuId(null);
-                                          setEditingVar(v);
-                                          setShowVarEditor(true);
-                                        }}
-                                        title="Edit"
-                                      >
-                                        <Edit2 size={12} />
-                                      </button>
-                                      <button
-                                        className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100"
-                                        onClick={() => {
-                                          setActiveActionMenuId(null);
-                                          setEditingVar({
-                                            ...v,
-                                            id: generateSafeId(),
-                                            name: v.name + "_copy",
-                                          });
-                                          setShowVarEditor(true);
-                                        }}
-                                        title="Duplicate"
-                                      >
-                                        <Copy size={12} />
-                                      </button>
-                                      <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700 mx-0.5 transition-opacity hidden md:block"></div>
-                                      <button
-                                        className="p-1.5 md:p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded flex items-center justify-center transition-all opacity-100"
-                                        onClick={() => {
-                                          setActiveActionMenuId(null);
-                                          handleDeleteVar(v.id);
-                                        }}
-                                        title="Delete"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {v.description && (
-                                  <div className="text-[10px] text-slate-500 italic leading-tight">
-                                    {v.description}
-                                  </div>
-                                )}
-
-                                {v.showSlider !== false && (
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-[10px] text-slate-500 font-mono w-6 text-right select-none">
-                                      {v.min}
-                                    </span>
-                                    <input
-                                      type="range"
-                                      min={v.min}
-                                      max={v.max}
-                                      step={v.step}
-                                      value={v.value}
-                                      onChange={(e) =>
-                                        handleUpdateVar(v.id, {
-                                          value: parseFloat(e.target.value),
-                                        })
-                                      }
-                                      className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer hover:bg-slate-305 dark:hover:bg-slate-600 transition-colors flex-1"
-                                      style={{
-                                        accentColor: getVarColor(v.name),
-                                      }}
-                                    />
-                                    <span className="text-[10px] text-slate-500 font-mono w-6 text-left select-none">
-                                      {v.max}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <VariableManager
+                  variables={variables}
+                  groups={groups}
+                  missingVars={missingVars}
+                  hoveredVar={hoveredVar}
+                  setHoveredVar={setHoveredVar}
+                  activeActionMenuId={activeActionMenuId}
+                  setActiveActionMenuId={setActiveActionMenuId}
+                  handleAutoAddVar={handleAutoAddVar}
+                  handleAddVariableAt={handleAddVariableAt}
+                  handleUpdateVar={handleUpdateVar}
+                  handleDeleteVar={handleDeleteVar}
+                  setEditingVar={setEditingVar}
+                  setShowVarEditor={setShowVarEditor}
+                  setGroups={setGroups}
+                  setVariables={setVariables}
+                  draggedVariableId={draggedVariableId}
+                  setDraggedVariableId={setDraggedVariableId}
+                  canDragVariableId={canDragVariableId}
+                  setCanDragVariableId={setCanDragVariableId}
+                  dragOverVariableId={dragOverVariableId}
+                  setDragOverVariableId={setDragOverVariableId}
+                  dragOverVariablePosition={dragOverVariablePosition}
+                  setDragOverVariablePosition={setDragOverVariablePosition}
+                  handleDropVariable={handleDropVariable}
+                />
 
                 {/* Timeline & Controls */}
-                <div className="flex flex-col gap-3 mt-auto pt-4 border-t border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Timeline (t)
-                    </h3>
-                    <button
-                      onClick={() => setTracePoints(!tracePoints)}
-                      className={`p-1.5 rounded transition-colors text-xs flex items-center gap-1 ${tracePoints ? "bg-emerald-500/20 dark:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"}`}
-                      title="Trace Points"
-                    >
-                      <Crosshair size={12} /> Trace
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2 justify-center bg-slate-50 dark:bg-slate-900/50 py-2 rounded-lg border border-slate-200 dark:border-slate-800/50 shadow-xs">
-                    <button
-                      onClick={() => {
-                        setTime(timeBounds.min);
-                        timeRef.current = timeBounds.min;
-                      }}
-                      className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 hover:text-slate-905 dark:hover:text-white transition-colors"
-                      title="Reset Time"
-                    >
-                      <SkipBack size={16} />
-                    </button>
-                    <button
-                      onClick={() => setIsPlaying(!isPlaying)}
-                      className={`p-2.5 rounded-full text-white shadow-md transition-transform hover:scale-105 ${isPlaying ? "bg-slate-600 hover:bg-slate-500" : "bg-blue-600 hover:bg-blue-500"}`}
-                    >
-                      {isPlaying ? (
-                        <Pause size={16} />
-                      ) : (
-                        <Play size={16} fill="currentColor" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowTimeSettings(!showTimeSettings)}
-                      className={`p-1.5 rounded transition-colors ${showTimeSettings ? "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}`}
-                      title="Timeline Settings"
-                    >
-                      <Settings size={16} />
-                    </button>
-                  </div>
-
-                  {showTimeSettings && (
-                    <div className="flex flex-col gap-2 p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded text-xs text-slate-705 dark:text-slate-300">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-slate-500 dark:text-slate-400">
-                          Range
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="number"
-                            value={timeBounds.min}
-                            onChange={(e) =>
-                              setTimeBounds((prev) => ({
-                                ...prev,
-                                min: Number(e.target.value),
-                              }))
-                            }
-                            className="w-12 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-750 text-slate-800 dark:text-slate-100 rounded px-1 py-0.5 outline-none focus:border-blue-500"
-                            title="Start Time"
-                          />
-                          <span className="text-slate-500 text-[10px]">to</span>
-                          <input
-                            type="number"
-                            value={timeBounds.max}
-                            onChange={(e) =>
-                              setTimeBounds((prev) => ({
-                                ...prev,
-                                max: Number(e.target.value),
-                              }))
-                            }
-                            className="w-12 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-750 text-slate-800 dark:text-slate-100 rounded px-1 py-0.5 outline-none focus:border-blue-500"
-                            title="End Time"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-slate-500 dark:text-slate-400">
-                          Mode
-                        </span>
-                        <div className="flex gap-1 bg-slate-200 dark:bg-slate-800 p-0.5 rounded border border-slate-300 dark:border-slate-700">
-                          {(["continuous", "loop", "bounce"] as const).map(
-                            (m) => (
-                              <button
-                                key={m}
-                                onClick={() => setTimeMode(m)}
-                                className={`px-2 py-0.5 rounded capitalize ${timeMode === m ? "bg-blue-600 text-white shadow-xs" : "hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400"}`}
-                              >
-                                {m}
-                              </button>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-slate-500 dark:text-slate-400">
-                          Speed
-                        </span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={timeBounds.speed}
-                          onChange={(e) =>
-                            setTimeBounds((prev) => ({
-                              ...prev,
-                              speed: Number(e.target.value),
-                            }))
-                          }
-                          className="w-16 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-750 text-slate-800 dark:text-slate-100 rounded px-1 py-0.5 outline-none focus:border-blue-500"
-                          title="Playback Speed"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-900/50 py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-800/50 shadow-xs">
-                    <div className="flex items-center justify-between text-sm text-slate-700 dark:text-slate-300 font-mono">
-                      <span className="text-slate-500 font-semibold uppercase text-[10px] tracking-wider">
-                        time
-                      </span>
-                      <span>{time.toFixed(2)}</span>
-                    </div>
-
-                    {timeMode !== "continuous" && (
-                      <div className="w-full flex items-center justify-center">
-                        <input
-                          type="range"
-                          min={timeBounds.min}
-                          max={timeBounds.max}
-                          step={(timeBounds.max - timeBounds.min) / 1000}
-                          value={time}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            setTime(val);
-                            timeRef.current = val;
-                          }}
-                          onMouseDown={() => setIsPlaying(false)}
-                          className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors accent-blue-500"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <Timeline
+                  tracePoints={tracePoints}
+                  setTracePoints={setTracePoints}
+                  timeBounds={timeBounds}
+                  setTimeBounds={setTimeBounds}
+                  time={time}
+                  setTime={setTime}
+                  timeRef={timeRef}
+                  isPlaying={isPlaying}
+                  setIsPlaying={setIsPlaying}
+                  timeMode={timeMode}
+                  setTimeMode={setTimeMode}
+                />
               </div>
             </div>
           )}
@@ -5798,6 +5298,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                 time,
                 geomCacheRef,
                 samplingDepth,
+                variables,
               };
 
               if (!MathNodesLayerRef.current) {
@@ -5824,7 +5325,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                     time,
                     geomCacheRef,
                     samplingDepth,
+                    variables,
                   } = ctx;
+
+                  const variablesHash = variables?.map((v: any) => `${v.name}:${v.value}`).join(",") || "";
 
                   return functions
                     .filter((f) => f.visible)
@@ -5864,10 +5368,15 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                           );
                           if (points.length === 0) return null;
                         } else if (f.isDraggable || f.isTransformable) {
-                          const cacheId = f.id + f.expr;
+                          const cacheId = `${f.id}__${f.expr}__${variablesHash}__${fTime}`;
                           if (geomCacheRef.current[cacheId]) {
                             points = geomCacheRef.current[cacheId];
                           } else {
+                            for (const key in geomCacheRef.current) {
+                               if (key.startsWith(f.id + "__")) {
+                                  delete geomCacheRef.current[key];
+                               }
+                            }
                             let pt: [number, number] = [0, 0];
                             if (f.type === "function") {
                               for (let x of [0, 1, -1, 2, -2, 3, -3]) {
@@ -6492,6 +6001,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         );
                                       })()}
                                     <Plot.Parametric
+                                      key={`${f.id}-parametric-${variablesHash}-${fTime}`}
                                       minSamplingDepth={Math.max(
                                         8,
                                         Math.min(10, samplingDepth),
@@ -6565,6 +6075,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 (f.type === "inequality" ||
                                   f.type === "implicit") && (
                                   <InequalityPlot
+                                    key={`${f.id}-ineq-${variablesHash}-${fTime}`}
+                                    id={f.id}
                                     compiledLHS={f.compiled}
                                     compiledRHS={f.compiled2}
                                     operator={
@@ -6699,6 +6211,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         );
                                       })()}
                                     <Plot.Parametric
+                                      key={`${f.id}-polar-${variablesHash}-${fTime}`}
                                       minSamplingDepth={Math.max(
                                         8,
                                         Math.min(10, samplingDepth),
@@ -6842,6 +6355,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                         );
                                       })()}
                                     <Plot.Parametric
+                                      key={`${f.id}-function-${variablesHash}-${fTime}`}
                                       minSamplingDepth={Math.max(
                                         8,
                                         Math.min(10, samplingDepth),
