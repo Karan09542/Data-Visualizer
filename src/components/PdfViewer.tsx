@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Download, Loader2, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Download, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
 
 // Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
@@ -25,10 +25,64 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
   const renderTaskRef = useRef<any>(null);
   const [showControls, setShowControls] = useState(true);
 
+  // New features state
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'thumbnails' | 'search'>('thumbnails');
+  const [pageInput, setPageInput] = useState<string>("1");
+  const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
+  const [thumbnailsGenerating, setThumbnailsGenerating] = useState(false);
+  const [thumbnailsGenerated, setThumbnailsGenerated] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const workerRef = useRef<Worker | null>(null);
+  const pdfBufferRef = useRef<ArrayBuffer | null>(null);
+  const pdfPasswordRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    // Setup worker (lightweight – no PDF loaded yet)
+    const worker = new Worker(new URL('../workers/pdfWorker.ts', import.meta.url), { type: 'module' });
+    workerRef.current = worker;
+
+    worker.onmessage = (e) => {
+      const { action, payload } = e.data;
+      if (action === 'THUMBNAIL_GENERATED') {
+        const blob = new Blob([payload.buffer], { type: 'image/jpeg' });
+        const objectUrl = URL.createObjectURL(blob);
+        setThumbnails(prev => ({ ...prev, [payload.pageNumber]: objectUrl }));
+      } else if (action === 'THUMBNAILS_COMPLETE') {
+        setThumbnailsGenerating(false);
+        setThumbnailsGenerated(true);
+      } else if (action === 'SEARCH_RESULT_FOUND') {
+        setSearchResults(prev => [...prev, payload]);
+      } else if (action === 'SEARCH_COMPLETE') {
+        setIsSearching(false);
+      } else if (action === 'ERROR') {
+        console.error('PDF Worker error:', payload);
+        setThumbnailsGenerating(false);
+        setIsSearching(false);
+      }
+    };
+
+    worker.onerror = (err) => {
+      console.error('PDF Worker fatal error:', err);
+      setThumbnailsGenerating(false);
+      setIsSearching(false);
+    };
+
+    return () => {
+      worker.terminate();
+      setThumbnails((prev) => {
+        Object.values(prev).forEach(URL.revokeObjectURL);
+        return {};
+      });
+    };
+  }, []);
+
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     if (showControls) {
-      timeout = setTimeout(() => setShowControls(false), 3000);
+      timeout = setTimeout(() => setShowControls(false), 4000);
     }
     return () => clearTimeout(timeout);
   }, [showControls, scale, currentPage]);
@@ -43,6 +97,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
     setLoading(true);
     setError(null);
     setUseIframeFallback(false);
+    setThumbnails({});
+    setSearchResults([]);
+    pdfBufferRef.current = null;
 
     const cleanUrl = url.replace(/#.*$/, "");
 
@@ -52,11 +109,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
       // Attempt 1: Direct Fetch
       try {
-        // console.log("PDF loading attempt 0: Direct fetch...");
         const response = await fetch(cleanUrl);
         if (response.ok) {
           arrayBuffer = await response.arrayBuffer();
-          // console.log("PDF loaded directly as ArrayBuffer!");
         } else {
           throw new Error(`Server returned status code: ${response.status} (${response.statusText || "Forbidden/CORS Block"})`);
         }
@@ -69,11 +124,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
       if (!arrayBuffer && active) {
         try {
           const proxyUrl = `https://go.data-visualizer.workers.dev/?url=${encodeURIComponent(cleanUrl)}`;
-          // console.log("PDF loading attempt 1: Proxy go.data-visualizer.workers.dev...");
           const response = await fetch(proxyUrl);
           if (response.ok) {
             arrayBuffer = await response.arrayBuffer();
-            // console.log("PDF loaded via go.data-visualizer.workers.dev proxy!");
           } else {
             throw new Error(`Workers proxy returned status code: ${response.status} (${response.statusText})`);
           }
@@ -86,6 +139,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
       // If we successfully received the byte buffer, let's load it in PDF.js
       if (arrayBuffer && active) {
         try {
+          // Store the buffer for later lazy use by the worker (thumbnails/search)
+          pdfBufferRef.current = arrayBuffer.slice(0);
+          pdfPasswordRef.current = currentPassword;
+
           const loadingTask = pdfjsLib.getDocument({
             data: new Uint8Array(arrayBuffer),
             useSystemFonts: true,
@@ -97,6 +154,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
           setPdfDoc(pdf);
           setTotalPages(pdf.numPages);
           setCurrentPage(1);
+          setPageInput("1");
           setLoading(false);
           setPasswordRequired(false);
           return;
@@ -194,15 +252,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
     };
   }, [pdfDoc, currentPage, scale]);
 
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage((prev) => prev - 1);
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      setPageInput(String(page));
     }
   };
 
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage((prev) => prev + 1);
+  const handlePrevPage = () => goToPage(currentPage - 1);
+  const handleNextPage = () => goToPage(currentPage + 1);
+
+  const handlePageSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const page = parseInt(pageInput, 10);
+    if (!isNaN(page)) {
+      if (page < 1) goToPage(1);
+      else if (page > totalPages) goToPage(totalPages);
+      else goToPage(page);
+    } else {
+      setPageInput(String(currentPage));
     }
   };
 
@@ -225,20 +293,39 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password) {
-      setReloadKey(prev => prev + 1);
-    }
+    if (password) setReloadKey(prev => prev + 1);
   };
 
   const submitPassword = () => {
-    if (password) {
-      setReloadKey(prev => prev + 1);
-    }
+    if (password) setReloadKey(prev => prev + 1);
+  };
+
+  const startThumbnailGeneration = () => {
+    if (!workerRef.current || thumbnailsGenerating || !pdfBufferRef.current) return;
+    setThumbnailsGenerating(true);
+    // Send a copy of the buffer (transferred, zero-copy) so the worker can lazy-init
+    const bufferCopy = pdfBufferRef.current.slice(0);
+    workerRef.current.postMessage(
+      { action: 'GENERATE_THUMBNAILS', payload: { data: bufferCopy, password: pdfPasswordRef.current } },
+      [bufferCopy]
+    );
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!workerRef.current || !searchQuery.trim() || !pdfBufferRef.current) return;
+    setIsSearching(true);
+    setSearchResults([]);
+    const bufferCopy = pdfBufferRef.current.slice(0);
+    workerRef.current.postMessage(
+      { action: 'SEARCH_TEXT', payload: { query: searchQuery, data: bufferCopy, password: pdfPasswordRef.current } },
+      [bufferCopy]
+    );
   };
 
   if (passwordRequired) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 h-full bg-slate-900/30 dark:bg-slate-950/40 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
+      <div className="flex flex-col items-center justify-center p-4 sm:p-8 h-full bg-slate-900/30 dark:bg-slate-950/40 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
         <AlertCircle className="h-10 w-10 text-amber-500 mb-4" />
         <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Password Protected PDF</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 text-center max-w-xs">
@@ -269,7 +356,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-8 h-64 bg-slate-900/30 dark:bg-slate-950/40 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
-        <Loader2 className="h-8 w-8 text-blue-500 animate-spin mb-3" />
+        <Loader2 className="h-8 w-8 text-indigo-400 animate-spin mb-3" />
         <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Rendering PDF content...</p>
         <p className="text-xs text-slate-400 mt-1">Caching pages directly in the viewer</p>
       </div>
@@ -278,34 +365,31 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center bg-rose-500/5 dark:bg-rose-500/10 rounded-xl border border-rose-200 dark:border-rose-900/30">
-        <AlertCircle className="h-8 w-8 text-rose-500 mb-3" />
+      <div className="flex flex-col items-center justify-center p-4 sm:p-8 text-center bg-rose-500/5 dark:bg-rose-500/10 rounded-xl border border-rose-200 dark:border-rose-900/30 overflow-auto">
+        <AlertCircle className="h-8 w-8 text-rose-500 mb-3 flex-shrink-0" />
         <h4 className="text-sm font-semibold text-rose-700 dark:text-rose-400">PDF Rendering Blocked</h4>
         <p className="text-xs text-slate-400 mt-1 max-w-sm">
           Failed to fetch or render the PDF file directly due to CORS settings or target server blocks.
         </p>
-        <p className="text-xs text-slate-600 dark:text-slate-300 mt-2.5 max-w-sm gap-1 flex flex-col font-mono bg-slate-950/20 dark:bg-slate-950/40 p-2.5 rounded border border-rose-500/20 break-all text-left">
-          <span className="font-sans font-semibold text-rose-500/80 dark:text-rose-400/80 block">Error details:</span>
-          {error}
-        </p>
-        <div className="flex flex-wrap gap-2 mt-4.5 justify-center">
+        <div className="mt-2.5 max-w-sm w-full font-mono bg-slate-950/20 dark:bg-slate-950/40 p-2.5 rounded border border-rose-500/20 break-all text-left overflow-auto max-h-32">
+          <span className="font-sans font-semibold text-rose-500/80 dark:text-rose-400/80 block text-xs mb-1">Error details:</span>
+          <span className="text-[10px] text-slate-600 dark:text-slate-300">{error}</span>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4 justify-center">
           <button
-            onClick={() => {
-              setReloadKey((prev) => prev + 1);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition shadow-sm cursor-pointer"
+            onClick={() => setReloadKey((prev) => prev + 1)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
           >
-            Retry Interactive Parse
+            Retry Parse
           </button>
           <button
             onClick={() => {
               setError(null);
               setUseIframeFallback(true);
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition shadow-sm cursor-pointer"
-            title="Attempts to embed the PDF using Google Docs server rendering bypass"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
           >
-            Try Google Docs Reader
+            Google Docs Fallback
           </button>
           <a
             href={url}
@@ -314,15 +398,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700 shadow-sm"
           >
             <ExternalLink size={12} />
-            Open in New Tab
+            Open Tab
           </a>
-          <button
-            onClick={downloadFile}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700"
-          >
-            <Download size={12} />
-            Download PDF
-          </button>
         </div>
       </div>
     );
@@ -346,18 +423,132 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
   return (
     <div
-      className="flex flex-col h-full w-full bg-transparent overflow-hidden relative"
+      className="flex h-full w-full bg-transparent overflow-hidden relative"
       onPointerMove={handlePointerMoveControls}
       onClick={handlePointerMoveControls}
       onTouchStart={handlePointerMoveControls}
     >
-      {/* Canvas container with scrollbars */}
+      {/* Sidebar for Thumbnails / Search */}
+      {showSidebar && (
+        <div className="absolute left-0 top-0 bottom-0 z-20 w-64 sm:w-72 bg-slate-900 border-r border-slate-700 shadow-2xl flex flex-col md:relative transition-all duration-300">
+          <div className="flex items-center justify-between p-2 border-b border-slate-800">
+            <div className="flex items-center gap-1 bg-slate-950/50 p-1 rounded-lg">
+              <button
+                onClick={() => setSidebarTab('thumbnails')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  sidebarTab === 'thumbnails' ? 'bg-indigo-500/20 text-indigo-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                }`}
+              >
+                <LayoutGrid size={14} />
+                Pages
+              </button>
+              <button
+                onClick={() => setSidebarTab('search')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  sidebarTab === 'search' ? 'bg-indigo-500/20 text-indigo-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                }`}
+              >
+                <Search size={14} />
+                Search
+              </button>
+            </div>
+            <button
+              onClick={() => setShowSidebar(false)}
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-rose-500/20 rounded-md transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 relative">
+            {sidebarTab === 'thumbnails' && (
+              <div className="flex flex-col gap-4">
+                {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && (
+                  <div className="flex flex-col items-center justify-center p-6 text-center h-48 border border-slate-800 rounded-lg bg-slate-950/30">
+                    <LayoutGrid size={24} className="text-slate-500 mb-2" />
+                    <p className="text-xs text-slate-400 mb-4">Generate thumbnails for faster visual navigation.</p>
+                    <button
+                      onClick={startThumbnailGeneration}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-lg flex items-center gap-2 transition-colors active:scale-95"
+                    >
+                      <Play size={14} /> Generate Now
+                    </button>
+                  </div>
+                )}
+                
+                {thumbnailsGenerating && (
+                  <div className="flex items-center gap-2 text-xs text-indigo-400 font-medium mb-2 justify-center bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
+                    <Loader2 size={14} className="animate-spin" />
+                    Generating in background...
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.entries(thumbnails).map(([pageNum, url]) => (
+                    <div
+                      key={pageNum}
+                      onClick={() => goToPage(Number(pageNum))}
+                      className={`flex flex-col gap-1 cursor-pointer group ${currentPage === Number(pageNum) ? 'opacity-100' : 'opacity-70 hover:opacity-100'} transition-opacity`}
+                    >
+                      <div className={`border-2 rounded overflow-hidden aspect-[1/1.4] bg-white ${currentPage === Number(pageNum) ? 'border-indigo-500 shadow-md shadow-indigo-500/20' : 'border-transparent group-hover:border-slate-500'}`}>
+                        <img src={url} alt={`Page ${pageNum}`} className="w-full h-full object-contain bg-white" loading="lazy" />
+                      </div>
+                      <span className={`text-[10px] text-center font-semibold ${currentPage === Number(pageNum) ? 'text-indigo-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                        Page {pageNum}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sidebarTab === 'search' && (
+              <div className="flex flex-col gap-4">
+                <form onSubmit={handleSearch} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search in PDF..."
+                    className="flex-1 bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSearching || !searchQuery.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white p-2 rounded-lg transition-colors"
+                  >
+                    {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  </button>
+                </form>
+
+                <div className="flex flex-col gap-2 pb-4">
+                  {searchResults.length === 0 && !isSearching && searchQuery && (
+                    <p className="text-xs text-slate-500 text-center py-4">No results found.</p>
+                  )}
+                  {searchResults.map((result, i) => (
+                    <div
+                      key={`${result.pageNumber}-${i}`}
+                      onClick={() => goToPage(result.pageNumber)}
+                      className="p-3 bg-slate-950/50 hover:bg-indigo-500/10 border border-slate-800 hover:border-indigo-500/30 rounded-lg cursor-pointer transition-colors"
+                    >
+                      <div className="text-[10px] font-bold text-indigo-400 mb-1">Page {result.pageNumber}</div>
+                      <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{result.snippet}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main Canvas Area */}
       <div className="flex-1 w-full h-full overflow-auto custom-scrollbar p-2 sm:p-6 flex items-start justify-center touch-pan-x touch-pan-y relative z-0" style={{ overscrollBehavior: 'contain' }}>
-        <div className="shadow-2xl border border-white/10 rounded-lg bg-white overflow-visible flex-shrink-0 relative">
+        <div className="shadow-2xl border border-slate-700/50 rounded-lg bg-white overflow-hidden flex-shrink-0 relative">
           <canvas ref={canvasRef} className="block" />
           {rendering && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[2px]">
-              <Loader2 size={32} className="animate-spin text-indigo-500" />
+              <Loader2 size={32} className="animate-spin text-indigo-600" />
             </div>
           )}
         </div>
@@ -365,48 +556,71 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
       {/* Floating Controls */}
       <div
-        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-black/60 dark:bg-[#0f172a]/80 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full text-white z-10 shadow-2xl transition-all duration-300 ${
+        className={`absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-4 bg-slate-950/80 backdrop-blur-md border border-slate-700/80 px-3 sm:px-5 py-2 rounded-2xl text-slate-200 z-10 shadow-2xl transition-all duration-300 max-w-[95%] overflow-x-auto custom-scrollbar ${
           showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
       >
-        <div className="flex items-center gap-1">
+        <button
+          onClick={() => setShowSidebar(!showSidebar)}
+          className={`p-1.5 sm:p-2 rounded-lg transition-colors ${showSidebar ? 'bg-indigo-500 text-white' : 'hover:bg-slate-800'}`}
+          title="Toggle Sidebar"
+        >
+          <Sidebar size={16} />
+        </button>
+        
+        <div className="w-px h-6 bg-slate-700 mx-1 flex-shrink-0" />
+
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={handlePrevPage}
             disabled={currentPage <= 1 || rendering}
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/20 disabled:opacity-40 transition-all font-bold"
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Previous Page"
           >
             <ChevronLeft size={18} />
           </button>
-          <span className="text-xs font-mono px-2 font-medium min-w-[70px] text-center select-none font-bold">
-            {currentPage} / {totalPages}
-          </span>
+          
+          <form onSubmit={handlePageSubmit} className="flex items-center gap-1">
+            <input
+              type="text"
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onBlur={handlePageSubmit}
+              className="w-10 sm:w-12 bg-slate-900 border border-slate-700 text-center text-xs font-mono font-bold rounded-md px-1 py-1 sm:py-1.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+            />
+            <span className="text-xs font-mono px-1 font-medium select-none text-slate-400">
+              / {totalPages}
+            </span>
+          </form>
+
           <button
             onClick={handleNextPage}
             disabled={currentPage >= totalPages || rendering}
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/20 disabled:opacity-40 transition-all font-bold"
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Next Page"
           >
             <ChevronRight size={18} />
           </button>
         </div>
-        <div className="w-px h-6 bg-white/20 mx-1" />
-        <div className="flex items-center gap-1">
+
+        <div className="w-px h-6 bg-slate-700 mx-1 flex-shrink-0" />
+        
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={handleZoomOut}
             disabled={scale <= 0.5 || rendering}
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/20 disabled:opacity-40 transition-all"
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Zoom Out"
           >
             <ZoomOut size={16} />
           </button>
-          <span className="text-xs font-mono px-1 font-medium min-w-[40px] text-center select-none font-bold">
+          <span className="text-xs font-mono px-1 font-medium min-w-[36px] sm:min-w-[40px] text-center select-none text-slate-300">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={handleZoomIn}
             disabled={scale >= 3.0 || rendering}
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/20 disabled:opacity-40 transition-all"
+            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Zoom In"
           >
             <ZoomIn size={16} />
