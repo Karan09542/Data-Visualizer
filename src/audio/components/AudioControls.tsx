@@ -1,14 +1,23 @@
-import React from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Repeat, Shuffle } from 'lucide-react';
-import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import React from "react";
+import {
+  Play,
+  Pause,
+  SkipForward,
+  SkipBack,
+  Volume2,
+  VolumeX,
+  Repeat,
+  Shuffle,
+} from "lucide-react";
+import { useAudioPlayer } from "../hooks/useAudioPlayer";
 
 export const AudioControls: React.FC = () => {
-  const { 
-    isPlaying, 
-    togglePlay, 
-    next, 
-    previous, 
-    volume, 
+  const {
+    isPlaying,
+    togglePlay,
+    next,
+    previous,
+    volume,
     setVolume,
     isMuted,
     toggleMute,
@@ -18,13 +27,13 @@ export const AudioControls: React.FC = () => {
     toggleShuffle,
     progress,
     duration,
-    seek
+    seek,
   } = useAudioPlayer();
 
   const formatTime = (secs: number) => {
     const min = Math.floor(secs / 60);
     const sec = Math.floor(secs % 60);
-    return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+    return `${min}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,84 +45,92 @@ export const AudioControls: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col w-full max-w-xl mx-auto gap-4 p-4">
-      {/* Progress Bar */}
-      <div className="flex items-center gap-3 w-full text-xs text-slate-500 font-mono">
-        <span>{formatTime(progress)}</span>
-        <input 
-          type="range" 
-          min="0" 
-          max={duration || 100} 
-          value={progress} 
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-5 p-3 sm:p-4">
+      <div className="flex w-full items-center gap-3 text-[11px] font-bold tabular-nums text-slate-500">
+        <span className="w-10 text-right text-slate-500 dark:text-slate-400">{formatTime(progress)}</span>
+        <input
+          type="range"
+          min="0"
+          max={duration || 100}
+          value={progress}
           onChange={handleSeek}
-          className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+          aria-label="Audio progress"
+          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-800 accent-cyan-400 dark:accent-cyan-300"
         />
-        <span>{formatTime(duration)}</span>
+        <span className="w-10 text-slate-500 dark:text-slate-400">{formatTime(duration)}</span>
       </div>
 
-      {/* Controls Container */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-6 sm:gap-4 mt-2 sm:mt-0">
-        
-        {/* Playback Settings (Shuffle/Repeat) */}
-        <div className="flex items-center justify-center sm:justify-start gap-2 order-2 sm:order-1 w-full sm:w-auto">
-          <button 
-            onClick={toggleShuffle} 
+      <div className="flex flex-col items-center justify-between gap-5 sm:flex-row sm:gap-4">
+        <div className="order-2 flex w-full items-center justify-center gap-2 sm:order-1 sm:w-auto sm:justify-start">
+          <button
+            onClick={toggleShuffle}
             title="Shuffle"
-            className={`p-2 rounded-full transition-colors ${isShuffle ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+            className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-all ${
+              isShuffle
+                ? "border-cyan-400 bg-cyan-100 text-cyan-700 shadow-[0_0_18px_rgba(34,211,238,0.3)] dark:border-cyan-300/30 dark:bg-cyan-300/10 dark:text-cyan-200 dark:shadow-[0_0_18px_rgba(34,211,238,0.12)]"
+                : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-700 dark:hover:border-white/10 dark:hover:bg-white/5 dark:hover:text-slate-200"
+            }`}
           >
             <Shuffle size={18} />
           </button>
-          <button 
-            onClick={toggleLoop} 
+          <button
+            onClick={toggleLoop}
             title="Repeat"
-            className={`p-2 rounded-full transition-colors ${isLooping ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+            className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-all ${
+              isLooping
+                ? "border-amber-400 bg-amber-100 text-amber-700 shadow-[0_0_18px_rgba(251,191,36,0.3)] dark:border-amber-200/30 dark:bg-amber-200/10 dark:text-amber-100 dark:shadow-[0_0_18px_rgba(251,191,36,0.10)]"
+                : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-700 dark:hover:border-white/10 dark:hover:bg-white/5 dark:hover:text-slate-200"
+            }`}
           >
             <Repeat size={18} />
           </button>
         </div>
 
-        {/* Main Controls */}
-        <div className="flex items-center justify-center gap-6 sm:gap-4 w-full sm:w-auto order-1 sm:order-2">
-          <button 
+        <div className="order-1 flex w-full items-center justify-center gap-3 sm:order-2 sm:w-auto">
+          <button
             onClick={previous}
             title="Previous"
-            className="p-3 sm:p-2 text-slate-700 dark:text-slate-200 hover:text-indigo-500 transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
           >
-            <SkipBack size={28} className="sm:w-6 sm:h-6" fill="currentColor" />
+            <SkipBack size={22} fill="currentColor" />
           </button>
-          <button 
+          <button
             onClick={togglePlay}
             title={isPlaying ? "Pause" : "Play"}
-            className="p-5 sm:p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition-transform hover:scale-105 active:scale-95 shadow-md"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-cyan-400 dark:bg-cyan-300 text-slate-950 shadow-xl shadow-cyan-500/20 transition-all hover:bg-cyan-300 dark:hover:bg-cyan-200 hover:scale-[1.03] active:scale-95"
           >
-            {isPlaying ? <Pause size={32} className="sm:w-7 sm:h-7" fill="currentColor" /> : <Play size={32} className="sm:w-7 sm:h-7 ml-1" fill="currentColor" />}
+            {isPlaying ? (
+              <Pause size={30} fill="currentColor" />
+            ) : (
+              <Play size={30} className="ml-1" fill="currentColor" />
+            )}
           </button>
-          <button 
+          <button
             onClick={next}
             title="Next"
-            className="p-3 sm:p-2 text-slate-700 dark:text-slate-200 hover:text-indigo-500 transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
           >
-            <SkipForward size={28} className="sm:w-6 sm:h-6" fill="currentColor" />
+            <SkipForward size={22} fill="currentColor" />
           </button>
         </div>
 
-        {/* Desktop & Mobile Volume */}
-        <div className="flex items-center justify-center sm:justify-end gap-3 sm:gap-2 w-full sm:w-28 order-3 px-6 sm:px-0">
-          <button 
+        <div className="order-3 flex w-full items-center justify-center gap-3 px-2 sm:w-32 sm:justify-end sm:px-0">
+          <button
             onClick={toggleMute}
             title={isMuted || volume === 0 ? "Unmute" : "Mute"}
-            className="p-2 text-slate-500 hover:text-indigo-500 transition-colors"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/5 dark:hover:text-slate-100"
           >
-            {isMuted || volume === 0 ? <VolumeX size={20} className="sm:w-[18px] sm:h-[18px]" /> : <Volume2 size={20} className="sm:w-[18px] sm:h-[18px]" />}
+            {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
-          <input 
-            type="range" 
-            min="0" 
-            max="1" 
+          <input
+            type="range"
+            min="0"
+            max="1"
             step="0.01"
-            value={isMuted ? 0 : volume} 
+            value={isMuted ? 0 : volume}
             onChange={handleVolume}
-            className="w-full h-2 sm:h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            aria-label="Volume"
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-800 accent-emerald-400 dark:accent-emerald-300"
           />
         </div>
       </div>
