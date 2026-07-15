@@ -1202,6 +1202,9 @@ function NodeRenderer({
     if (!shapeStyle.maxWidth) {
       shapeStyle.maxWidth = isApiNode ? "340px" : isMedia ? "320px" : "260px";
     }
+    if (isMedia && !shapeStyle.minWidth) {
+      shapeStyle.minWidth = mediaType === "audio" ? "300px" : "280px";
+    }
   }
 
   if (nodeTheme === "custom") {
