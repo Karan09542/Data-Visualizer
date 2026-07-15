@@ -152,35 +152,37 @@ export default function YoutubeSearchPanel() {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Powered by youtube-search-api</p>
               </div>
 
-              <form onSubmit={handleSearch} className="flex w-full gap-2">
+              <form onSubmit={handleSearch} className="flex flex-col sm:flex-row w-full gap-2">
                 <input
                   ref={inputRef}
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search..."
-                  className="flex-1 px-4 py-2.5 text-base bg-white dark:bg-[#121212] border border-gray-300 dark:border-gray-700 rounded-lg text-black dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full sm:flex-1 px-4 py-2.5 text-base bg-white dark:bg-[#121212] border border-gray-300 dark:border-gray-700 rounded-lg text-black dark:text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setResults([]);
-                    setNextPageData(null);
-                    setHasSearched(false);
-                    setError(null);
-                    inputRef.current?.focus();
-                  }}
-                  className="px-4 py-2.5 bg-gray-100 dark:bg-[#272727] text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap"
-                >
-                  Clear
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-[#0f0f0f] dark:bg-gray-200 text-white dark:text-black font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-white transition-colors"
-                >
-                  Search
-                </button>
+                <div className="flex gap-2 w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('');
+                      setResults([]);
+                      setNextPageData(null);
+                      setHasSearched(false);
+                      setError(null);
+                      inputRef.current?.focus();
+                    }}
+                    className="flex-1 sm:flex-none px-4 py-2.5 bg-gray-100 dark:bg-[#272727] text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 sm:flex-none px-6 py-2.5 bg-[#0f0f0f] dark:bg-gray-200 text-white dark:text-black font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-white transition-colors whitespace-nowrap"
+                  >
+                    Search
+                  </button>
+                </div>
               </form>
             </div>
           </div>
