@@ -556,74 +556,74 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
       {/* Floating Controls */}
       <div
-        className={`absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-4 bg-slate-950/80 backdrop-blur-md border border-slate-700/80 px-3 sm:px-5 py-2 rounded-2xl text-slate-200 z-10 shadow-2xl transition-all duration-300 max-w-[95%] overflow-x-auto custom-scrollbar ${
+        className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-3 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl text-slate-200 z-10 shadow-2xl transition-all duration-300 ${
           showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
       >
         <button
           onClick={() => setShowSidebar(!showSidebar)}
-          className={`p-1.5 sm:p-2 rounded-lg transition-colors ${showSidebar ? 'bg-indigo-500 text-white' : 'hover:bg-slate-800'}`}
+          className={`p-1.5 rounded-md sm:rounded-lg transition-colors flex-shrink-0 ${showSidebar ? 'bg-indigo-500 text-white' : 'hover:bg-slate-800'}`}
           title="Toggle Sidebar"
         >
-          <Sidebar size={16} />
+          <Sidebar size={15} />
         </button>
         
-        <div className="w-px h-6 bg-slate-700 mx-1 flex-shrink-0" />
+        <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
 
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={handlePrevPage}
             disabled={currentPage <= 1 || rendering}
-            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Previous Page"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
           </button>
           
-          <form onSubmit={handlePageSubmit} className="flex items-center gap-1">
+          <form onSubmit={handlePageSubmit} className="flex items-center gap-0.5">
             <input
               type="text"
               value={pageInput}
               onChange={(e) => setPageInput(e.target.value)}
               onBlur={handlePageSubmit}
-              className="w-10 sm:w-12 bg-slate-900 border border-slate-700 text-center text-xs font-mono font-bold rounded-md px-1 py-1 sm:py-1.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+              className="w-8 sm:w-11 bg-slate-900 border border-slate-700 text-center text-[11px] sm:text-xs font-mono font-bold rounded px-0.5 py-0.5 sm:py-1 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
             />
-            <span className="text-xs font-mono px-1 font-medium select-none text-slate-400">
-              / {totalPages}
+            <span className="text-[11px] sm:text-xs font-mono font-medium select-none text-slate-400">
+              /{totalPages}
             </span>
           </form>
 
           <button
             onClick={handleNextPage}
             disabled={currentPage >= totalPages || rendering}
-            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Next Page"
           >
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
           </button>
         </div>
 
-        <div className="w-px h-6 bg-slate-700 mx-1 flex-shrink-0" />
+        <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
         
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={handleZoomOut}
             disabled={scale <= 0.5 || rendering}
-            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Zoom Out"
           >
-            <ZoomOut size={16} />
+            <ZoomOut size={14} />
           </button>
-          <span className="text-xs font-mono px-1 font-medium min-w-[36px] sm:min-w-[40px] text-center select-none text-slate-300">
+          <span className="text-[10px] sm:text-xs font-mono font-medium min-w-[28px] sm:min-w-[36px] text-center select-none text-slate-400">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={handleZoomIn}
             disabled={scale >= 3.0 || rendering}
-            className="p-1.5 sm:p-2 rounded-lg hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Zoom In"
           >
-            <ZoomIn size={16} />
+            <ZoomIn size={14} />
           </button>
         </div>
       </div>
