@@ -67,6 +67,9 @@ const RangePopup = ({
     if (left + popupRect.width > window.innerWidth + window.scrollX) {
       left = window.innerWidth + window.scrollX - popupRect.width - 10;
     }
+    if (left < window.scrollX + 10) {
+      left = window.scrollX + 10;
+    }
 
     popupRef.current.style.top = `${top}px`;
     popupRef.current.style.left = `${left}px`;
@@ -446,7 +449,8 @@ export const VariableManager: React.FC<VariableManagerProps> = ({
                             className="p-1.5 md:p-1 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded flex items-center justify-center transition-all opacity-100"
                             onClick={(e) => {
                               setActiveActionMenuId(null);
-                              setPopupAnchorEl(e.currentTarget);
+                              const anchor = e.currentTarget.closest('.group') as HTMLElement;
+                              setPopupAnchorEl(anchor || e.currentTarget);
                               setRangePopupVarId(v.id);
                             }}
                             title="Slider Range"

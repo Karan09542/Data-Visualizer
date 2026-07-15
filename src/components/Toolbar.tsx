@@ -290,6 +290,21 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     left: number;
   } | null>(null);
 
+  const [showExportPopover, setShowExportPopover] = useState(false);
+  const [exportPopoverCoords, setExportPopoverCoords] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  const handleExportClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setExportPopoverCoords({
+      top: rect.bottom + window.scrollY + 4,
+      left: Math.max(10, Math.min(rect.right - 220, window.innerWidth - 230)),
+    });
+    setShowExportPopover(!showExportPopover);
+  };
+
   const handleEdgeWidthButtonClick = (
     e: React.MouseEvent<HTMLButtonElement>,
   ) => {
@@ -1073,23 +1088,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </button>
               </div>
               <div className="flex items-center gap-1 pl-1">
-                <CustomSelect
-                  value=""
-                  onChange={(val) => {
-                    if (val) exportHDImage(val);
-                  }}
+                <button
+                  onClick={handleExportClick}
                   disabled={isExporting}
-                  placeholder="Export"
-                  icon={<Download size={14} />}
-                  options={[
-                    { label: "PNG (HD)", value: "png", icon: <FileImage size={12} /> },
-                    { label: "PNG (Transparent)", value: "png-transparent", icon: <FileImage size={12} className="opacity-50" /> },
-                    { label: "JPEG (HD)", value: "jpeg", icon: <FileImage size={12} /> },
-                    { label: "SVG Vector", value: "svg", icon: <FileType size={12} /> },
-                    { label: "SVG (Transparent)", value: "svg-transparent", icon: <FileType size={12} className="opacity-50" /> },
-                    { label: "WebP", value: "webp", icon: <FileImage size={12} /> },
-                  ]}
-                />
+                  className={`flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded border transition-all outline-none ${showExportPopover ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/50 dark:bg-blue-900/10" : "border-slate-200 dark:border-slate-800/60 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800"} text-slate-800 dark:text-slate-200 ${isExporting ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  <Download size={14} className="text-slate-400" />
+                  <span>Export</span>
+                  <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${showExportPopover ? "rotate-180" : ""}`} />
+                </button>
               </div>
             </div>
           </div>
@@ -1376,30 +1383,57 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               </div>
 
               <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 block">
                   Download & Export
                 </label>
-                <CustomSelect
-                  value=""
-                  onChange={(val) => {
-                    if (val) {
-                      exportHDImage(val);
-                      setIsMobileMenuOpen(false);
-                    }
-                  }}
-                  disabled={isExporting}
-                  placeholder="Export Image"
-                  icon={<Download size={14} />}
-                  options={[
-                    { label: "PNG Image", value: "png", icon: <FileImage size={12} /> },
-                    { label: "PNG Transparent", value: "png-transparent", icon: <FileImage size={12} className="opacity-50" /> },
-                    { label: "JPEG Image", value: "jpeg", icon: <FileImage size={12} /> },
-                    { label: "SVG Vector", value: "svg", icon: <FileType size={12} /> },
-                    { label: "SVG Transparent", value: "svg-transparent", icon: <FileType size={12} className="opacity-50" /> },
-                    { label: "WebP Image", value: "webp", icon: <FileImage size={12} /> },
-                  ]}
-                  className="w-full"
-                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => { exportHDImage("png"); setIsMobileMenuOpen(false); }} className="flex flex-col items-center justify-center gap-1 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors group">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-110 transition-transform">
+                      <FileImage size={16} />
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">PNG Image</span>
+                  </button>
+                  <button onClick={() => { exportHDImage("png-transparent"); setIsMobileMenuOpen(false); }} className="flex flex-col items-center justify-center gap-1 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors group">
+                    <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform">
+                      <div className="relative">
+                        <FileImage size={16} />
+                        <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-3 h-3 bg-slate-100 dark:bg-[#0f172a] group-hover:bg-indigo-50 dark:group-hover:bg-[#1e1b4b] transition-colors rounded-full">
+                          <div className="w-1.5 h-1.5 rounded-sm" style={{ backgroundImage: 'linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}></div>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">PNG (Transp.)</span>
+                  </button>
+                  <button onClick={() => { exportHDImage("jpeg"); setIsMobileMenuOpen(false); }} className="flex flex-col items-center justify-center gap-1 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors group">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
+                      <FileImage size={16} />
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">JPEG Image</span>
+                  </button>
+                  <button onClick={() => { exportHDImage("webp"); setIsMobileMenuOpen(false); }} className="flex flex-col items-center justify-center gap-1 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-purple-50 dark:hover:bg-purple-900/20 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors group">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-lg group-hover:scale-110 transition-transform">
+                      <FileImage size={16} />
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">WebP Image</span>
+                  </button>
+                  <button onClick={() => { exportHDImage("svg"); setIsMobileMenuOpen(false); }} className="flex flex-col items-center justify-center gap-1 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-amber-50 dark:hover:bg-amber-900/20 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors group">
+                    <div className="p-2 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
+                      <FileType size={16} />
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">SVG Vector</span>
+                  </button>
+                  <button onClick={() => { exportHDImage("svg-transparent"); setIsMobileMenuOpen(false); }} className="flex flex-col items-center justify-center gap-1 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-rose-50 dark:hover:bg-rose-900/20 border border-slate-200 dark:border-slate-800 rounded-xl transition-colors group">
+                    <div className="p-2 bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg group-hover:scale-110 transition-transform">
+                      <div className="relative">
+                        <FileType size={16} />
+                        <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-3 h-3 bg-slate-100 dark:bg-[#0f172a] group-hover:bg-rose-50 dark:group-hover:bg-[#4c0519] transition-colors rounded-full">
+                          <div className="w-1.5 h-1.5 rounded-sm" style={{ backgroundImage: 'linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}></div>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">SVG (Transp.)</span>
+                  </button>
+                </div>
               </div>
 
               <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-2 text-center text-sm font-medium">
@@ -1428,6 +1462,99 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   Terms
                 </Link>
               </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showExportPopover && exportPopoverCoords && (
+        <>
+          <div
+            className="fixed inset-0 z-[1000]"
+            onClick={() => setShowExportPopover(false)}
+          />
+          <div
+            style={{
+              top: `${exportPopoverCoords.top}px`,
+              left: `${exportPopoverCoords.left}px`,
+            }}
+            className="fixed w-[220px] bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl z-[1010] flex flex-col overflow-hidden"
+          >
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/50">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Export As</h3>
+            </div>
+            <div className="p-1.5 flex flex-col gap-0.5">
+              <button onClick={() => { exportHDImage("png"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
+                  <FileImage size={14} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">PNG Image</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">High quality raster</span>
+                </div>
+              </button>
+              
+              <button onClick={() => { exportHDImage("png-transparent"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
+                  <div className="relative flex items-center justify-center">
+                    <FileImage size={14} />
+                    <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-3 h-3 bg-white dark:bg-[#0f172a] group-hover:bg-slate-100 dark:group-hover:bg-slate-800 transition-colors rounded-full">
+                      <div className="w-1.5 h-1.5 rounded-sm" style={{ backgroundImage: 'linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">PNG Transparent</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">No background</span>
+                </div>
+              </button>
+              
+              <button onClick={() => { exportHDImage("jpeg"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform">
+                  <FileImage size={14} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">JPEG Image</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Smaller file size</span>
+                </div>
+              </button>
+
+              <button onClick={() => { exportHDImage("webp"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 group-hover:scale-105 transition-transform">
+                  <FileImage size={14} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">WebP Image</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Optimized for web</span>
+                </div>
+              </button>
+              
+              <div className="h-px bg-slate-200 dark:bg-slate-800/60 my-0.5 mx-2"></div>
+              
+              <button onClick={() => { exportHDImage("svg"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform">
+                  <FileType size={14} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">SVG Vector</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Scalable graphics</span>
+                </div>
+              </button>
+              
+              <button onClick={() => { exportHDImage("svg-transparent"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 group-hover:scale-105 transition-transform">
+                  <div className="relative flex items-center justify-center">
+                    <FileType size={14} />
+                    <div className="absolute -bottom-1 -right-1 flex items-center justify-center w-3 h-3 bg-white dark:bg-[#0f172a] group-hover:bg-slate-100 dark:group-hover:bg-slate-800 transition-colors rounded-full">
+                      <div className="w-1.5 h-1.5 rounded-sm" style={{ backgroundImage: 'linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)', backgroundSize: '4px 4px', backgroundPosition: '0 0, 0 2px, 2px -2px, -2px 0px' }}></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">SVG Transparent</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Vector w/o background</span>
+                </div>
+              </button>
             </div>
           </div>
         </>
