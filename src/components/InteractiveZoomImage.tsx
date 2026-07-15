@@ -5,9 +5,10 @@ interface InteractiveZoomImageProps {
   src: string;
   alt: string;
   className?: string;
+  rotation?: number;
 }
 
-export function InteractiveZoomImage({ src, alt, className = "" }: InteractiveZoomImageProps) {
+export function InteractiveZoomImage({ src, alt, className = "", rotation = 0 }: InteractiveZoomImageProps) {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -199,7 +200,7 @@ export function InteractiveZoomImage({ src, alt, className = "" }: InteractiveZo
         draggable={false}
         className={`max-w-full max-h-full object-contain shadow-md transition-transform duration-75 ease-out select-none pointer-events-none ${className}`}
         style={{
-          transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
+          transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
           transformOrigin: "center center",
         }}
       />

@@ -14,6 +14,7 @@ import {
   Music,
   Video,
   X,
+  RotateCw,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -72,12 +73,16 @@ const MediaPreviewPopup: React.FC = () => {
   const [resolvedAssetUrl, setResolvedAssetUrl] = React.useState<string | null>(null);
   const [isCopyingImage, setIsCopyingImage] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState(false);
+  const [rotation, setRotation] = React.useState(0);
 
   React.useEffect(() => {
     if (!activePreviewMedia?.url) {
       setResolvedAssetUrl(null);
+      setRotation(0);
       return;
     }
+
+    setRotation(0);
 
     let cancelled = false;
     const { url } = activePreviewMedia;
@@ -181,6 +186,7 @@ const MediaPreviewPopup: React.FC = () => {
           <InteractiveZoomImage
             src={resolvedUrl}
             alt={fileName}
+            rotation={rotation}
             className="w-full h-full max-w-full max-h-full object-contain rounded-md shadow-xl"
           />
         </div>
@@ -340,6 +346,15 @@ const MediaPreviewPopup: React.FC = () => {
             <div className="flex shrink-0 items-center gap-2">
               {activePreviewMedia.type === 'image' && (
                 <>
+                  <button
+                    onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                    disabled={isResolvingAsset}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-indigo-400/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Rotate image"
+                  >
+                    <RotateCw size={15} />
+                    <span className="hidden sm:inline">Rotate</span>
+                  </button>
                   <button
                     onClick={copyImage}
                     disabled={isCopyingImage || isResolvingAsset}

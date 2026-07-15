@@ -111,6 +111,7 @@ import {
   Scan,
   CornerDownRight,
   LogOut,
+  RotateCw,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -800,6 +801,11 @@ export const TransferNodeRenderer: React.FC<{
     return () => clearTimeout(timeout);
   }, [selectedMedia, showChrome]);
 
+  const [imageRotation, setImageRotation] = useState(0);
+  useEffect(() => {
+    setImageRotation(0);
+  }, [selectedMedia?.id]);
+
   const handleMediaCopy = async (media: Message) => {
     setCopyStatus({ id: media.id, status: "copying" });
     const successDelay = () => {
@@ -1042,7 +1048,7 @@ export const TransferNodeRenderer: React.FC<{
   >(null);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [fullscreenQRValue, setFullscreenQRValue] = useState<string | null>(null);
+  const [isFullscreenQR, setIsFullscreenQR] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [copiedSDP, setCopiedSDP] = useState(false);
 
@@ -2872,7 +2878,7 @@ export const TransferNodeRenderer: React.FC<{
                     {(broadcastFrames.length > 0 || offerQR || answerQR) && (
                       <>
                         <button
-                          onClick={() => setFullscreenQRValue(broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR))}
+                          onClick={() => setIsFullscreenQR(true)}
                           className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
                           title="Fullscreen QR"
                         >
@@ -4647,6 +4653,18 @@ export const TransferNodeRenderer: React.FC<{
                               </div>
 
                               <div className="flex items-center justify-end gap-2 w-1/3">
+                                {selectedMedia.fileType === "image" && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setImageRotation((r) => (r + 90) % 360);
+                                    }}
+                                    className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md flex items-center justify-center"
+                                    title="Rotate"
+                                  >
+                                    <RotateCw className="w-4 h-4" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleMediaCopy(selectedMedia)}
                                   className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === selectedMedia.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
@@ -4724,7 +4742,8 @@ export const TransferNodeRenderer: React.FC<{
                                   <div className="w-full h-full relative flex items-center justify-center pointer-events-auto">
                                     <InteractiveZoomImage
                                       src={media.content}
-                                      alt={media.name || "Preview"}
+                                      alt={media.fileName || "Preview"}
+                                      rotation={imageRotation}
                                       className="rounded-xl shadow-2xl"
                                     />
                                   </div>
@@ -4796,13 +4815,13 @@ export const TransferNodeRenderer: React.FC<{
           })()}
       </div>
 
-      {fullscreenQRValue && createPortal(
+      {isFullscreenQR && createPortal(
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/90 backdrop-blur-md"
           onWheel={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <button
-            onClick={(e) => { e.stopPropagation(); setFullscreenQRValue(null); }}
+            onClick={(e) => { e.stopPropagation(); setIsFullscreenQR(false); }}
             className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all z-[100001]"
           >
             <X size={24} />
@@ -4829,7 +4848,7 @@ export const TransferNodeRenderer: React.FC<{
               <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
                 <div className="p-8 bg-white rounded-3xl shadow-2xl">
                   <QRCodeSVG
-                    value={fullscreenQRValue}
+                    value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
                     size={400}
                     level={qrDensity}
                     marginSize={2}
