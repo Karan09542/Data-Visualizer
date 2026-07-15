@@ -499,7 +499,11 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
           <button
             type="button"
             onPointerDown={handleActionPointerDown}
-            onClick={() => onDelete(note.id)}
+            onClick={() => {
+              if (window.confirm('Are you sure you want to delete this note?')) {
+                onDelete(note.id);
+              }
+            }}
             className="p-1.5 hover:bg-red-500/20 text-red-700 rounded-lg transition-colors"
             title="Delete Note"
           >
