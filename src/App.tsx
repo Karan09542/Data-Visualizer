@@ -9,6 +9,7 @@ import DrawingToolbar from "./components/DrawingToolbar";
 import AdvancedPanel from "./components/AdvancedPanel";
 import ShortcutsPopup from "./components/ShortcutsPopup";
 import MathHelpPopup from "./components/MathHelpPopup";
+import YoutubeSearchPanel from "./components/YoutubeSearchPanel";
 import ShareDialog from "./components/ShareDialog";
 import SavedDocumentsModal from "./components/SavedDocumentsModal";
 import TextPreviewPopup from "./components/TextPreviewPopup";
@@ -493,6 +494,7 @@ export default function App() {
         </div>
       </div>
       <AdvancedPanel />
+      <YoutubeSearchPanel />
       <ShortcutsPopup />
       <MathHelpPopup
         isOpen={isMathHelpOpen}

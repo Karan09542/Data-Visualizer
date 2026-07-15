@@ -1,4 +1,4 @@
-import { X, Image as ImageIcon, Expand, Maximize, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, ChevronDown, ChevronUp, AlignLeft } from 'lucide-react';
+import { X, Image as ImageIcon, Expand, Maximize, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, ChevronDown, ChevronUp, AlignLeft, Youtube } from 'lucide-react';
 import { useStore, CanvasTheme, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { RgbaColorPicker } from 'react-colorful';
@@ -34,7 +34,8 @@ export default function AdvancedPanel() {
     canvasBackgroundBlur, setCanvasBackgroundBlur,
     resetAllSettings, setIsShortcutsOpen,
     isMathHelpOpen, setIsMathHelpOpen,
-    stickyNotesEnabled, setStickyNotesEnabled
+    stickyNotesEnabled, setStickyNotesEnabled,
+    isYoutubeSearchOpen, setIsYoutubeSearchOpen
   } = useStore();
 
   const {
@@ -680,6 +681,24 @@ export default function AdvancedPanel() {
               />
               <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-200 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-500"></div>
             </label>
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-500/10 text-red-500 rounded-md shrink-0">
+                <Youtube size={18} />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200">YouTube Search</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Global search and embed YouTube videos</div>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsYoutubeSearchOpen(true)}
+              className="px-3 py-1.5 ml-3 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              Open
+            </button>
           </div>
 
           <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800/50 rounded-lg border border-slate-300 dark:border-slate-700/50 text-slate-900 dark:text-slate-100">
