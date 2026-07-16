@@ -6,7 +6,6 @@ import {
   Square,
   RotateCcw,
   Maximize2,
-  MoreVertical,
   Trash2,
   ChevronDown,
   ChevronUp,
@@ -18,6 +17,7 @@ import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import { TerminalInputPrompt } from "./TerminalInputPrompt";
+import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 interface PyNodeRendererProps {
   path: string;
@@ -164,9 +164,7 @@ export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProp
               {error ? "ERROR" : hasData ? "STRING" : "NODE"}
             </span>
           </div>
-          <button className="text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">
-            <MoreVertical size={18} />
-          </button>
+          <NodeOptionsMenu path={path} iconSize={18} />
         </div>
 
         {/* Content Area */}

@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback, useEffect, Suspense } from "react";
+import React, { useState, useRef, useCallback, useEffect, Suspense, useMemo } from "react";
 import { Loader2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
 import SchemaVisualizer from "./components/SchemaVisualizer";
@@ -21,7 +22,9 @@ import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
 import { CodeWorkspace } from "./components/CodeWorkspace";
+import { IsolatedNodeView } from "./components/IsolatedNodeView";
 import { initDexieSync } from "./store/dexieSync";
+import { setupSyncSubscribers } from "./store/syncSubscribers";
 import { PyMissingPromptModal } from "./components/PyMissingPromptModal";
 import ProductivityLayer from "./components/ProductivityLayer";
 import StickyNotesManager from "./components/StickyNotesManager";
@@ -108,6 +111,35 @@ export default function App() {
   const jsNodeResponses = useStore((state) => state.jsNodeResponses);
   const parsedData = useStore((state) => state.parsedData);
 
+  const [searchParams] = useSearchParams();
+  const focusNodePath = searchParams.get('focusNode');
+
+  // We determine if focusNode is a "workspace" node based on naming conventions used by NodeRenderer
+  const focusNodeType = useMemo(() => {
+    if (!focusNodePath) return null;
+    const name = String(focusNodePath.split('.').pop() || '');
+
+    // Check if it's a workspace-supported node
+    const isJsNode = name.endsWith("_js_node");
+    const isTsNode = name.endsWith("_ts_node");
+    const isPyNode = name.endsWith("_py_node");
+    const isTodoNode = name.endsWith("_todo_node") || name.endsWith(".todo");
+    const isSearchNode = name.endsWith("_search_node") || name.endsWith(".search");
+
+    // CodeWorkspace handles these generically if we set expandedJsNodeId
+    if (isJsNode || isTsNode || isPyNode || isTodoNode || isSearchNode || name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".py") || name.endsWith(".json") || name.endsWith(".md") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") || name.endsWith(".gif")) {
+      return 'workspace';
+    }
+
+    return 'isolated';
+  }, [focusNodePath]);
+
+  useEffect(() => {
+    if (focusNodeType === 'workspace' && focusNodePath) {
+      setExpandedJsNodeId(focusNodePath);
+    }
+  }, [focusNodeType, focusNodePath, setExpandedJsNodeId]);
+
   const debounceMap = useRef<Record<string, NodeJS.Timeout>>({});
   const handleUpdateGlobalCode = useCallback((path: string, newCode: string) => {
     if (debounceMap.current[path]) {
@@ -125,8 +157,16 @@ export default function App() {
 
   // Restore state from URL on load
   useEffect(() => {
+    const cleanupSync = setupSyncSubscribers();
     initDexieSync();
-    
+
+    return () => {
+      cleanupSync();
+    };
+  }, []);
+
+  useEffect(() => {
+
     const sharedState = parseShareUrl();
     if (sharedState) {
       if (sharedState.code) setCode(sharedState.code);
@@ -272,15 +312,15 @@ export default function App() {
 
   useEffect(() => {
     let dragCounter = 0;
-    
+
     const handleDragEnter = (e: DragEvent) => {
       // Only react to file drops
       if ((window as any).__isInternalDrag) return;
       if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
-      
+
       e.preventDefault();
       dragCounter++;
-      
+
       const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
       if (isCustomZone) {
         setIsDragOver(false);
@@ -288,12 +328,12 @@ export default function App() {
         setIsDragOver(true);
       }
     };
-    
+
     const handleDragOver = (e: DragEvent) => {
       if ((window as any).__isInternalDrag) return;
       if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
       e.preventDefault();
-      
+
       const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
       if (isCustomZone) {
         setIsDragOver(false);
@@ -314,22 +354,22 @@ export default function App() {
 
     const handleDrop = async (e: DragEvent) => {
       if ((window as any).__isInternalDrag) return;
-      
+
       // Always reset state on drop
       dragCounter = 0;
       setIsDragOver(false);
-      
+
       const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
       if (isCustomZone) {
         return; // The custom zone will handle the file import itself
       }
-      
+
       if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
       e.preventDefault();
-      
+
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
-  
+
       try {
         const { processFiles } = await import("./utils/fileProcessor");
         processFiles(files);
@@ -421,125 +461,144 @@ export default function App() {
       <AutosaveManager />
       <NotificationToast />
 
-      <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
-      <div
-        ref={containerRef}
-        className="flex-1 w-full overflow-hidden flex relative z-0"
-      >
-        {isEditorPanelOpen && (
-          <>
-            {/* Desktop Editor */}
-            <div
-              style={{ width: `${editorWidth}%` }}
-              className="hidden md:block h-full flex-shrink-0 relative z-10"
-            >
-              <EditorPanel />
-            </div>
-
-            {/* Mobile Editor Overlay */}
-            <div className="md:hidden absolute top-0 bottom-0 left-0 w-full z-[300] shadow-2xl bg-white dark:bg-[#0d1117]">
-              <EditorPanel />
-            </div>
-
-            {/* Mobile Backdrop */}
-            <div
-              className="md:hidden absolute inset-0 z-[290] bg-black/20 dark:bg-black/40 backdrop-blur-sm"
-              onClick={() => setIsEditorPanelOpen(false)}
+      {focusNodePath ? (
+        <div className="w-full h-full relative">
+          {focusNodeType === 'workspace' ? (
+            <CodeWorkspace
+              path={focusNodePath}
+              onClose={() => {
+                window.close(); // Attempt to close tab if standalone
+                setExpandedJsNodeId(null);
+              }}
             />
-
-            {/* Desktop Resizer */}
-            <div
-              className="hidden md:flex w-1.5 h-full bg-slate-200 dark:bg-[#0d1117] border-x border-slate-300 dark:border-slate-800 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors cursor-col-resize z-20 items-center justify-center group flex-shrink-0 touch-none"
-              onMouseDown={startDragging}
-              onTouchStart={startDragging}
-            >
-              <div className="h-8 w-0.5 bg-slate-400 dark:bg-slate-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-300 rounded-full transition-colors" />
-            </div>
-          </>
-        )}
-
-        <div className="flex-1 h-full min-w-0 relative">
-          {/* Overlay to catch pointer events during resize so iframes don't steal mouse hover events */}
-          {isDragSplitting && (
-            <div className="absolute inset-0 z-[1000] bg-transparent cursor-col-resize" />
+          ) : (
+            <IsolatedNodeView path={focusNodePath} />
           )}
-          <DrawingToolbar />
-          <ErrorBoundary fallback={
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-md z-50 text-white p-6">
-              <div className="max-w-md text-center">
-                <svg className="w-16 h-16 text-yellow-500 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                </svg>
-                <h3 className="text-xl font-bold mb-2">Visualizer Render Interrupted</h3>
-                <p className="text-sm text-slate-400 mb-6">
-                  An unexpected layout error occurred while rendering the interactive visualization. Do you want to reload the application to reset the layout state?
-                </p>
-                <button
-                  onClick={() => {
-                    window.location.reload();
-                  }}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-xl transition duration-150 ease-in-out cursor-pointer"
+          <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
+        </div>
+      ) : (
+        <>
+          <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
+          <div
+            ref={containerRef}
+            className="flex-1 w-full overflow-hidden flex relative z-0"
+          >
+            {isEditorPanelOpen && (
+              <>
+                {/* Desktop Editor */}
+                <div
+                  style={{ width: `${editorWidth}%` }}
+                  className="hidden md:block h-full flex-shrink-0 relative z-10"
                 >
-                  Reload Application
-                </button>
+                  <EditorPanel />
+                </div>
+
+                {/* Mobile Editor Overlay */}
+                <div className="md:hidden absolute top-0 bottom-0 left-0 w-full z-[300] shadow-2xl bg-white dark:bg-[#0d1117]">
+                  <EditorPanel />
+                </div>
+
+                {/* Mobile Backdrop */}
+                <div
+                  className="md:hidden absolute inset-0 z-[290] bg-black/20 dark:bg-black/40 backdrop-blur-sm"
+                  onClick={() => setIsEditorPanelOpen(false)}
+                />
+
+                {/* Desktop Resizer */}
+                <div
+                  className="hidden md:flex w-1.5 h-full bg-slate-200 dark:bg-[#0d1117] border-x border-slate-300 dark:border-slate-800 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors cursor-col-resize z-20 items-center justify-center group flex-shrink-0 touch-none"
+                  onMouseDown={startDragging}
+                  onTouchStart={startDragging}
+                >
+                  <div className="h-8 w-0.5 bg-slate-400 dark:bg-slate-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-300 rounded-full transition-colors" />
+                </div>
+              </>
+            )}
+
+            <div className="flex-1 h-full min-w-0 relative">
+              {/* Overlay to catch pointer events during resize so iframes don't steal mouse hover events */}
+              {isDragSplitting && (
+                <div className="absolute inset-0 z-[1000] bg-transparent cursor-col-resize" />
+              )}
+              <DrawingToolbar />
+              <ErrorBoundary fallback={
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-md z-50 text-white p-6">
+                  <div className="max-w-md text-center">
+                    <svg className="w-16 h-16 text-yellow-500 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                    <h3 className="text-xl font-bold mb-2">Visualizer Render Interrupted</h3>
+                    <p className="text-sm text-slate-400 mb-6">
+                      An unexpected layout error occurred while rendering the interactive visualization. Do you want to reload the application to reset the layout state?
+                    </p>
+                    <button
+                      onClick={() => {
+                        window.location.reload();
+                      }}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold rounded-xl transition duration-150 ease-in-out cursor-pointer"
+                    >
+                      Reload Application
+                    </button>
+                  </div>
+                </div>
+              }>
+                {visualizerMode === "schema" ? (
+                  <SchemaVisualizer />
+                ) : (
+                  <GraphVisualizer />
+                )}
+              </ErrorBoundary>
+            </div>
+          </div>
+        </>
+      )}
+          <AdvancedPanel />
+          <YoutubeSearchPanel />
+          <ShortcutsPopup />
+          <MathHelpPopup
+            isOpen={isMathHelpOpen}
+            onClose={() => setIsMathHelpOpen(false)}
+          />
+          <ImportModal />
+          <SavedDocumentsModal
+            isOpen={isSavedDocsOpen}
+            onClose={() => setIsSavedDocsOpen(false)}
+          />
+          <ShareDialog
+            isOpen={isShareDialogOpen}
+            onClose={() => setIsShareDialogOpen(false)}
+          />
+          <TextPreviewPopup />
+          <MediaPreviewPopup />
+          <PyMissingPromptModal />
+          <ProductivityLayer />
+          <StickyNotesManager />
+
+          <Suspense fallback={null}>
+            <AudioPlayerModal />
+            <MiniPlayer />
+          </Suspense>
+
+          {isFileProcessing && (
+            <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+              <div className="flex flex-col items-center justify-center p-8 bg-white/90 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl">
+                <Loader2 className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mb-4" />
+                <h3 className="text-lg font-semibold text-slate-950 dark:text-white mb-1">
+                  Processing Uploaded File...
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Analyzing contents and formatting structure
+                </p>
               </div>
             </div>
-          }>
-            {visualizerMode === "schema" ? (
-              <SchemaVisualizer />
-            ) : (
-              <GraphVisualizer />
-            )}
-          </ErrorBoundary>
+          )}
+
+          {(!focusNodePath && expandedJsNodeId) && (
+            <CodeWorkspace
+              path={expandedJsNodeId}
+              onClose={() => setExpandedJsNodeId(null)}
+            />
+          )}
         </div>
-      </div>
-      <AdvancedPanel />
-      <YoutubeSearchPanel />
-      <ShortcutsPopup />
-      <MathHelpPopup
-        isOpen={isMathHelpOpen}
-        onClose={() => setIsMathHelpOpen(false)}
-      />
-      <ImportModal />
-      <SavedDocumentsModal
-        isOpen={isSavedDocsOpen}
-        onClose={() => setIsSavedDocsOpen(false)}
-      />
-      <ShareDialog
-        isOpen={isShareDialogOpen}
-        onClose={() => setIsShareDialogOpen(false)}
-      />
-      <TextPreviewPopup />
-      <MediaPreviewPopup />
-      <PyMissingPromptModal />
-      <ProductivityLayer />
-      <StickyNotesManager />
-
-      <Suspense fallback={null}>
-        <AudioPlayerModal />
-        <MiniPlayer />
-      </Suspense>
-
-      {isFileProcessing && (
-        <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="flex flex-col items-center justify-center p-8 bg-white/90 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl">
-            <Loader2 className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mb-4" />
-            <h3 className="text-lg font-semibold text-slate-950 dark:text-white mb-1">
-              Processing Uploaded File...
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Analyzing contents and formatting structure
-            </p>
-          </div>
-        </div>
-      )}
-
-      {expandedJsNodeId && (
-        <CodeWorkspace
-          path={expandedJsNodeId}
-          onClose={() => setExpandedJsNodeId(null)}
-        />
-      )}
-    </div>
-  );
+      );
 }

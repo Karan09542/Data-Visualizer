@@ -6,7 +6,6 @@ import {
   Square,
   RotateCcw,
   Maximize2,
-  MoreVertical,
   Trash2,
   ChevronDown,
   ChevronUp,
@@ -16,6 +15,7 @@ import { safeStringify } from "../utils/safeStringify";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
 import { Virtuoso } from "react-virtuoso";
 import { TerminalInputPrompt } from "./TerminalInputPrompt";
+import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 interface JsNodeRendererProps {
   path: string;
@@ -162,9 +162,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
               {error ? "ERROR" : hasData ? "STRING" : "NODE"}
             </span>
           </div>
-          <button className="text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">
-            <MoreVertical size={18} />
-          </button>
+          <NodeOptionsMenu path={path} iconSize={18} />
         </div>
 
         {/* Content Area */}

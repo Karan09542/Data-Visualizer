@@ -24,6 +24,8 @@ import {
   CornerDownRight,
   CornerLeftUp,
   PlusCircle,
+  Image as ImageIcon,
+  ExternalLink,
   GripVertical
 } from "lucide-react";
 import { setValueAtPath } from "../utils/pathUtils";
@@ -80,6 +82,29 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const [isTitleFocused, setIsTitleFocused] = useState(false);
   const [isFooterInputFocused, setIsFooterInputFocused] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+
+  useLayoutEffect(() => {
+    if (isMenuOpen && menuButtonRef.current && dropdownRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      const menuRect = dropdownRef.current.getBoundingClientRect();
+
+      let top = rect.bottom + 4;
+      let left = rect.right - menuRect.width;
+
+      if (top + menuRect.height > window.innerHeight) {
+        top = rect.top - menuRect.height - 4;
+      }
+      
+      setMenuStyle({
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        zIndex: 999999,
+      });
+    }
+  }, [isMenuOpen]);
 
   const serializedValue = typeof data?.value === "object" && data?.value !== null
     ? JSON.stringify(data.value)
@@ -686,6 +711,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           </button>
 
           <button
+            ref={menuButtonRef}
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-[#161B26]/60 hover:bg-slate-200 dark:hover:bg-[#1E2533] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
             title="Options Menu"
@@ -693,11 +719,25 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             <MoreVertical size={13} />
           </button>
 
-          {isMenuOpen && (
+          {isMenuOpen && createPortal(
             <div 
               ref={dropdownRef}
-              className="absolute right-0 top-10 w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 overflow-hidden"
+              style={menuStyle}
+              className="w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 overflow-hidden pointer-events-auto"
+              onMouseDown={(e) => e.stopPropagation()}
             >
+              <button
+                onClick={() => {
+                   setIsMenuOpen(false);
+                   const url = new URL(window.location.href);
+                   url.searchParams.set('focusNode', nodeId);
+                   window.open(url.toString(), '_blank');
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
+              >
+                <ExternalLink size={12} className="text-blue-500" />
+                <span>Open in New Tab</span>
+              </button>
               <button
                 onClick={addSampleTasks}
                 className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
@@ -740,7 +780,8 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                 <Trash2 size={12} className="text-rose-500" />
                 <span>Clear All Tasks</span>
               </button>
-            </div>
+            </div>,
+            document.body
           )}
         </div>
       </div>

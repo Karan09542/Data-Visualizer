@@ -4,6 +4,7 @@ import { X, Maximize2, Minimize2, Trash2, GripVertical, Edit2, Palette, Clipboar
 import type { StickyNote as IStickyNote } from '../lib/db';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
 import { getMinNoteWidth } from '../utils/NoteUtils';
+import { NodeOptionsMenu } from './NodeOptionsMenu';
 
 const CHECKLIST_REGEX = /^(\s*[-*]\s+\[)([ xX])(\]\s*)(.*)$/;
 const CHECKLIST_TOGGLE_REGEX = /^(\s*[-*]\s+\[)([ xX])(\]\s*.*)$/;
@@ -456,6 +457,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
               <CopyPlus size={16} className="opacity-70" />
             </motion.div>
           </button>
+          <NodeOptionsMenu path={note.id} iconSize={16} className="hidden sm:flex p-1.5 hover:bg-black/10 rounded-lg transition-colors" />
           <button
             type="button"
             onPointerDown={handleActionPointerDown}
