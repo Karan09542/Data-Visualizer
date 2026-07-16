@@ -176,7 +176,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                 Time
               </span>
               <span className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700/80 shadow-inner">
-                {time.toFixed(2)}
+                {!Number.isFinite(time) ? "∞" : Math.abs(time) >= 1e6 ? time.toExponential(2) : time.toFixed(2)}
               </span>
             </div>
             {timeMode !== "continuous" ? (

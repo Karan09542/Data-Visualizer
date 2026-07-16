@@ -1024,6 +1024,12 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           setTimeBounds((b) => ({ ...b, direction: newDirection }));
         }
 
+        // Clamp to safe finite range to prevent Infinity when speed is
+        // extremely high in continuous mode — 1e15 is practically unlimited
+        // but stays well within float64 precision.
+        const MAX_SAFE_TIME = 1e15;
+        newTime = Math.max(-MAX_SAFE_TIME, Math.min(MAX_SAFE_TIME, newTime));
+
         timeRef.current = newTime;
         setTime(newTime);
       }
@@ -1061,6 +1067,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                 }
               }
             }
+            // Clamp per-function time to safe range (same as global)
+            const MAX_SAFE_TIME = 1e15;
+            nextVal = Math.max(-MAX_SAFE_TIME, Math.min(MAX_SAFE_TIME, nextVal));
             return {
               ...f,
               time: nextVal,
