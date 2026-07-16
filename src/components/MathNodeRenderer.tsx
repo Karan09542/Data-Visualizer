@@ -652,7 +652,21 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           );
           if (newValStr !== lastSavedValue.current) {
             lastSavedValue.current = newValStr;
-            if (Array.isArray(parsed.functions)) setFunctions(parsed.functions);
+            if (Array.isArray(parsed.functions)) setFunctions(prev => {
+              // Preserve compiled data from existing functions to avoid
+              // shape disappearance during re-compilation window
+              const compiledMap = new Map(prev.map(f => [f.id, f]));
+              return parsed.functions.map((incomingF: any) => {
+                const existing = compiledMap.get(incomingF.id);
+                if (existing && existing.compiled) {
+                  // Only preserve compiled data if expression and type haven't changed
+                  if (existing.expr === incomingF.expr && existing.type === incomingF.type) {
+                    return { ...incomingF, compiled: existing.compiled, compiled2: existing.compiled2, compiledKey: existing.compiledKey };
+                  }
+                }
+                return incomingF;
+              });
+            });
             if (Array.isArray(parsed.variables)) setVariables(parsed.variables);
             if (Array.isArray(parsed.groups)) setGroups(parsed.groups);
             if (parsed.gridSettings) {
@@ -684,6 +698,14 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       } catch (e) { }
     }
   }, [serializedValue]);
+
+  // Stable serialization of functions for save-effect — excludes runtime-only
+  // fields (compiled, compiled2, error, compiledKey) so recompilation alone
+  // doesn't trigger a new save cycle.
+  const functionsSaveKey = useMemo(
+    () => JSON.stringify(stripFunctions(functions)),
+    [functions]
+  );
 
   useEffect(() => {
     if (!data || !data.path) return;
@@ -727,7 +749,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       };
     }
   }, [
-    functions,
+    functionsSaveKey,
     variables,
     groups,
     data.path,
@@ -912,7 +934,20 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           }
         });
 
-        setFunctions(newFunctions);
+        // Use functional update to prevent resurrecting deleted functions.
+        // If functions were added/removed during the async compile, merge
+        // compiled data into only the functions that still exist.
+        setFunctions(prev => {
+          const currentIds = new Set(prev.map(f => f.id));
+          const compiledById = new Map(newFunctions.map(f => [f.id, f]));
+          return prev.map(existingF => {
+            const compiled = compiledById.get(existingF.id);
+            if (compiled) {
+              return { ...existingF, compiled: compiled.compiled, compiled2: compiled.compiled2, compiledKey: compiled.compiledKey, error: compiled.error, operator: compiled.operator };
+            }
+            return existingF;
+          });
+        });
         setMissingVars(result.missingVars);
       } catch (e) {
         console.error("Worker compile failed", e);
