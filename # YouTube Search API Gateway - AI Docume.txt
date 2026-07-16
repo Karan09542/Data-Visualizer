@@ -1,0 +1,60 @@
+# YouTube Search API Gateway - AI Documentation
+
+This API provides a robust backend wrapper around the `youtube-search-api` npm package. 
+All responses are formatted consistently as JSON.
+
+## Global Response Format
+- **Success:** `{ "success": true, "data": <payload> }`
+- **Error:** `{ "success": false, "error": { "message": "string", "code": "string" } }`
+
+## Endpoints
+
+### 1. Search Videos
+- **URL:** `/api/search`
+- **Method:** `GET`
+- **Query Parameters:**
+  - `q` (required, string): The search keyword/query.
+  - `limit` (optional, number): Number of results per page (1-50).
+  - `withPlaylist` (optional, boolean): Whether to include playlists in the results.
+- **Success Data Payload:** `{ items: Array<Object>, nextPage: Object }`
+
+### 2. Fetch Next Page
+- **URL:** `/api/next`
+- **Method:** `POST`
+- **Body Requirements (JSON):**
+  - `nextPage` (required, object): The exact `nextPage` object returned from a previous `/api/search` or `/api/next` request.
+- **Success Data Payload:** `{ items: Array<Object>, nextPage: Object }`
+
+### 3. Get Video Details
+- **URL:** `/api/video/:id`
+- **Method:** `GET`
+- **URL Parameters:**
+  - `id` (required, string): The YouTube Video ID.
+- **Success Data Payload:** `Object` containing video metadata, statistics, and formats.
+
+### 4. Get Channel Details
+- **URL:** `/api/channel/:id`
+- **Method:** `GET`
+- **URL Parameters:**
+  - `id` (required, string): The YouTube Channel ID.
+- **Success Data Payload:** `Object` containing channel metadata and videos.
+
+### 5. Get Playlist Details
+- **URL:** `/api/playlist/:id`
+- **Method:** `GET`
+- **URL Parameters:**
+  - `id` (required, string): The YouTube Playlist ID.
+- **Success Data Payload:** `Object` containing playlist metadata and items.
+
+### 6. Get Search Suggestions
+- **URL:** `/api/suggestions`
+- **Method:** `GET`
+- **Success Data Payload:** `Array<string>` containing autocomplete suggestions.
+
+## Rate Limiting & Security
+- The API applies a rate limit of 100 requests per 15 minutes per IP.
+- Cross-Origin Resource Sharing (CORS) is enabled for all origins.
+- Security headers are applied via Helmet.
+
+## Integration Note for AI Agents
+When building a client or interacting with this API, never expose raw errors to the user. Always parse the standardized error format. Use the `nextPage` endpoint to handle pagination rather than attempting to construct YouTube pagination tokens manually.

@@ -4,6 +4,7 @@ import { useStore } from "../store/useStore";
 import { db } from "../lib/db";
 import { liveQuery } from "dexie";
 import { v4 as uuidv4 } from "uuid";
+import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 interface SearchNodeRendererProps {
   nodeId: string;
@@ -103,12 +104,15 @@ export function SearchNodeRenderer({ nodeId, data }: SearchNodeRendererProps) {
               <p className="text-[11px] text-slate-500 dark:text-slate-500 font-medium">Wikipedia Search Engine</p>
             </div>
           </div>
-          <button 
-            onClick={(e) => openSearchWorkspace(e)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/[0.03] hover:bg-slate-200 dark:hover:bg-white/[0.08] text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white transition-all active:scale-90 border border-transparent dark:border-white/5"
-          >
-            <Maximize2 size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={(e) => openSearchWorkspace(e)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/[0.03] hover:bg-slate-200 dark:hover:bg-white/[0.08] text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white transition-all active:scale-90 border border-transparent dark:border-white/5"
+            >
+              <Maximize2 size={14} />
+            </button>
+            <NodeOptionsMenu path={data.path} iconSize={14} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/[0.03] hover:bg-slate-200 dark:hover:bg-white/[0.08] text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white transition-all active:scale-90 border border-transparent dark:border-white/5" />
+          </div>
         </div>
 
         {/* Direct Key Name Display */}

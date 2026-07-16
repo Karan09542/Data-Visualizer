@@ -100,6 +100,7 @@ import {
   VariableManager,
   Timeline
 } from "./math-node";
+import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 
 export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
@@ -998,28 +999,33 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
       lastTimeRef.current = timestamp;
 
       if (isPlaying) {
-        setTime((prevTime) => {
-          let newTime = prevTime + dt * timeBounds.speed * timeBounds.direction;
+        let newTime = timeRef.current + dt * timeBounds.speed * timeBounds.direction;
+        let newDirection = timeBounds.direction;
 
-          if (timeMode !== "continuous") {
-            if (newTime >= timeBounds.max) {
-              if (timeMode === "loop") newTime = timeBounds.min;
-              else if (timeMode === "bounce") {
-                newTime = timeBounds.max;
-                setTimeBounds((b) => ({ ...b, direction: -1 }));
-              }
-            } else if (newTime <= timeBounds.min) {
-              if (timeMode === "loop") newTime = timeBounds.max;
-              else if (timeMode === "bounce") {
-                newTime = timeBounds.min;
-                setTimeBounds((b) => ({ ...b, direction: 1 }));
-              }
+        if (timeMode !== "continuous") {
+          if (newTime >= timeBounds.max) {
+            if (timeMode === "loop") {
+              newTime = timeBounds.min;
+            } else if (timeMode === "bounce") {
+              newTime = timeBounds.max;
+              newDirection = -1;
+            }
+          } else if (newTime <= timeBounds.min) {
+            if (timeMode === "loop") {
+              newTime = timeBounds.max;
+            } else if (timeMode === "bounce") {
+              newTime = timeBounds.min;
+              newDirection = 1;
             }
           }
+        }
 
-          timeRef.current = newTime;
-          return newTime;
-        });
+        if (newDirection !== timeBounds.direction) {
+          setTimeBounds((b) => ({ ...b, direction: newDirection }));
+        }
+
+        timeRef.current = newTime;
+        setTime(newTime);
       }
 
       // Also update any individual custom timelines!
@@ -1405,6 +1411,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
           >
             {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
+          <NodeOptionsMenu path={nodeId} iconSize={16} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 shrink-0" />
         </div>
       </div>
 
@@ -6120,7 +6127,13 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       (f.type === "implicit" ? "=" : "<")
                                     }
                                     baseScope={baseScope}
-                                    dependenciesHash={`${functions.map(fn => fn.expr).join("__")}__${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
+                                    dependenciesHash={`${f.expr}__${f.expr2 || ""}__${f.operator || ""}__${functions
+                                      .filter(fn => fn.id !== f.id && fn.name && (
+                                        new RegExp(`\\b${fn.name}\\b`).test(f.expr || "") ||
+                                        (f.expr2 && new RegExp(`\\b${fn.name}\\b`).test(f.expr2))
+                                      ))
+                                      .map(fn => fn.expr)
+                                      .join("__")}__${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
                                       (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
                                       (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
                                       ? `time:${time}_fTime:${fTime}`

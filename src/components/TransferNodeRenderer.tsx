@@ -112,10 +112,12 @@ import {
   CornerDownRight,
   LogOut,
   RotateCw,
+  Settings,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "../lib/db";
+import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 export interface Attachment {
   id: string;
@@ -2507,8 +2509,10 @@ export const TransferNodeRenderer: React.FC<{
                 : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
               }`}
           >
-            <MoreVertical className="w-4 h-4" />
+            <Settings className="w-4 h-4" />
           </button>
+          
+          <NodeOptionsMenu path={node.data.path} iconSize={16} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-white/5 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'}`} />
 
           <AnimatePresence>
             {showSettingsDropdown && (
