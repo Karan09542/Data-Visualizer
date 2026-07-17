@@ -60,25 +60,25 @@ export const IsolatedNodeView: React.FC<IsolatedNodeViewProps> = ({ path }) => {
         <div className={`w-full h-full flex relative ${isFullScreen ? '' : 'max-w-5xl max-h-[90vh] shadow-2xl rounded-[20px] overflow-hidden bg-white dark:bg-[#161b22] border border-slate-200 dark:border-white/5'}`}>
           {isMathNode ? (
             <div className="w-full h-full flex relative">
-               <MathNodeRenderer nodeId={path} data={nodeData} isExpanded={true} width={1200} height={800} />
+              <MathNodeRenderer nodeId={path} data={nodeData} isExpanded={true} width={1200} height={800} />
             </div>
           ) : isTransferNode ? (
             <div className={`w-full h-full relative ${appTheme === 'dark' ? 'bg-[#0d1117]' : 'bg-slate-50'}`}>
-               <ReactFlow 
-                  nodes={flowNodes} 
-                  nodeTypes={transferNodeTypes} 
-                  fitView 
-                  fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-                  minZoom={0.2} 
-                  maxZoom={2}
-               >
-                 <Background color={appTheme === 'dark' ? '#ffffff' : '#000000'} gap={20} size={1} style={{ opacity: 0.05 }} />
-                 <Controls showInteractive={false} />
-               </ReactFlow>
+              <ReactFlow
+                nodes={flowNodes}
+                nodeTypes={transferNodeTypes}
+                fitView
+                fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+                minZoom={0.2}
+                maxZoom={2}
+              >
+                <Background color={appTheme === 'dark' ? '#ffffff' : '#000000'} gap={20} size={1} style={{ opacity: 1 }} />
+                <Controls showInteractive={false} />
+              </ReactFlow>
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center p-8 text-slate-500">
-               Preview not supported for this node type.
+              Preview not supported for this node type.
             </div>
           )}
         </div>

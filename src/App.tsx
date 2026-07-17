@@ -3,34 +3,34 @@ import { Loader2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
-import SchemaVisualizer from "./components/SchemaVisualizer";
-import { ImportModal } from "./components/ImportModal";
 import Toolbar from "./components/Toolbar";
-import DrawingToolbar from "./components/DrawingToolbar";
-import AdvancedPanel from "./components/AdvancedPanel";
-import ShortcutsPopup from "./components/ShortcutsPopup";
-import MathHelpPopup from "./components/MathHelpPopup";
-import YoutubeSearchPanel from "./components/YoutubeSearchPanel";
-import ShareDialog from "./components/ShareDialog";
-import SavedDocumentsModal from "./components/SavedDocumentsModal";
-import TextPreviewPopup from "./components/TextPreviewPopup";
-import MediaPreviewPopup from "./components/MediaPreviewPopup";
 import AutosaveManager from "./components/AutosaveManager";
 import { NotificationToast } from "./components/NotificationToast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useStore } from "./store/useStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
-import { CodeWorkspace } from "./components/CodeWorkspace";
-import { IsolatedNodeView } from "./components/IsolatedNodeView";
 import { initDexieSync } from "./store/dexieSync";
 import { setupSyncSubscribers } from "./store/syncSubscribers";
-import { PyMissingPromptModal } from "./components/PyMissingPromptModal";
-import ProductivityLayer from "./components/ProductivityLayer";
-import StickyNotesManager from "./components/StickyNotesManager";
 import { ServiceWorkerUpdater } from "./components/ServiceWorkerUpdater";
 import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcuts";
 
+const ImportModal = React.lazy(() => import("./components/ImportModal").then(module => ({ default: module.ImportModal })));
+const IsolatedNodeView = React.lazy(() => import("./components/IsolatedNodeView").then(module => ({ default: module.IsolatedNodeView })));
+const SchemaVisualizer = React.lazy(() => import("./components/SchemaVisualizer"));
+const DrawingToolbar = React.lazy(() => import("./components/DrawingToolbar"));
+const AdvancedPanel = React.lazy(() => import("./components/AdvancedPanel"));
+const ShortcutsPopup = React.lazy(() => import("./components/ShortcutsPopup"));
+const MathHelpPopup = React.lazy(() => import("./components/MathHelpPopup"));
+const YoutubeSearchPanel = React.lazy(() => import("./components/YoutubeSearchPanel"));
+const ShareDialog = React.lazy(() => import("./components/ShareDialog"));
+const SavedDocumentsModal = React.lazy(() => import("./components/SavedDocumentsModal"));
+const TextPreviewPopup = React.lazy(() => import("./components/TextPreviewPopup"));
+const MediaPreviewPopup = React.lazy(() => import("./components/MediaPreviewPopup"));
+const CodeWorkspace = React.lazy(() => import("./components/CodeWorkspace").then(module => ({ default: module.CodeWorkspace })));
+const PyMissingPromptModal = React.lazy(() => import("./components/PyMissingPromptModal").then(module => ({ default: module.PyMissingPromptModal })));
+const ProductivityLayer = React.lazy(() => import("./components/ProductivityLayer"));
+const StickyNotesManager = React.lazy(() => import("./components/StickyNotesManager"));
 const AudioPlayerModal = React.lazy(() => import("./audio/components/AudioPlayerModal"));
 const MiniPlayer = React.lazy(() => import("./audio/components/MiniPlayer"));
 
@@ -464,15 +464,19 @@ export default function App() {
       {focusNodePath ? (
         <div className="w-full h-full relative">
           {focusNodeType === 'workspace' ? (
-            <CodeWorkspace
-              path={focusNodePath}
-              onClose={() => {
-                window.close(); // Attempt to close tab if standalone
-                setExpandedJsNodeId(null);
-              }}
-            />
+            <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>}>
+              <CodeWorkspace
+                path={focusNodePath}
+                onClose={() => {
+                  window.close(); // Attempt to close tab if standalone
+                  setExpandedJsNodeId(null);
+                }}
+              />
+            </Suspense>
           ) : (
-            <IsolatedNodeView path={focusNodePath} />
+            <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>}>
+              <IsolatedNodeView path={focusNodePath} />
+            </Suspense>
           )}
           <Toolbar onOpenShare={() => setIsShareDialogOpen(true)} />
         </div>
@@ -520,7 +524,7 @@ export default function App() {
               {isDragSplitting && (
                 <div className="absolute inset-0 z-[1000] bg-transparent cursor-col-resize" />
               )}
-              <DrawingToolbar />
+              <Suspense fallback={null}><DrawingToolbar /></Suspense>
               <ErrorBoundary fallback={
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-md z-50 text-white p-6">
                   <div className="max-w-md text-center">
@@ -543,7 +547,9 @@ export default function App() {
                 </div>
               }>
                 {visualizerMode === "schema" ? (
-                  <SchemaVisualizer />
+                  <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>}>
+                    <SchemaVisualizer />
+                  </Suspense>
                 ) : (
                   <GraphVisualizer />
                 )}
@@ -552,53 +558,57 @@ export default function App() {
           </div>
         </>
       )}
-          <AdvancedPanel />
-          <YoutubeSearchPanel />
-          <ShortcutsPopup />
-          <MathHelpPopup
-            isOpen={isMathHelpOpen}
-            onClose={() => setIsMathHelpOpen(false)}
-          />
-          <ImportModal />
-          <SavedDocumentsModal
-            isOpen={isSavedDocsOpen}
-            onClose={() => setIsSavedDocsOpen(false)}
-          />
-          <ShareDialog
-            isOpen={isShareDialogOpen}
-            onClose={() => setIsShareDialogOpen(false)}
-          />
-          <TextPreviewPopup />
-          <MediaPreviewPopup />
-          <PyMissingPromptModal />
-          <ProductivityLayer />
-          <StickyNotesManager />
+      <Suspense fallback={null}>
+        <AdvancedPanel />
+        <YoutubeSearchPanel />
+        <ShortcutsPopup />
+        <MathHelpPopup
+          isOpen={isMathHelpOpen}
+          onClose={() => setIsMathHelpOpen(false)}
+        />
+        <ImportModal />
+        <SavedDocumentsModal
+          isOpen={isSavedDocsOpen}
+          onClose={() => setIsSavedDocsOpen(false)}
+        />
+        <ShareDialog
+          isOpen={isShareDialogOpen}
+          onClose={() => setIsShareDialogOpen(false)}
+        />
+        <TextPreviewPopup />
+        <MediaPreviewPopup />
+        <PyMissingPromptModal />
+        <ProductivityLayer />
+        <StickyNotesManager />
+      </Suspense>
 
-          <Suspense fallback={null}>
-            <AudioPlayerModal />
-            <MiniPlayer />
-          </Suspense>
+      <Suspense fallback={null}>
+        <AudioPlayerModal />
+        <MiniPlayer />
+      </Suspense>
 
-          {isFileProcessing && (
-            <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-              <div className="flex flex-col items-center justify-center p-8 bg-white/90 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl">
-                <Loader2 className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mb-4" />
-                <h3 className="text-lg font-semibold text-slate-950 dark:text-white mb-1">
-                  Processing Uploaded File...
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Analyzing contents and formatting structure
-                </p>
-              </div>
-            </div>
-          )}
-
-          {(!focusNodePath && expandedJsNodeId) && (
-            <CodeWorkspace
-              path={expandedJsNodeId}
-              onClose={() => setExpandedJsNodeId(null)}
-            />
-          )}
+      {isFileProcessing && (
+        <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="flex flex-col items-center justify-center p-8 bg-white/90 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl">
+            <Loader2 className="w-12 h-12 text-indigo-600 dark:text-indigo-400 animate-spin mb-4" />
+            <h3 className="text-lg font-semibold text-slate-950 dark:text-white mb-1">
+              Processing Uploaded File...
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Analyzing contents and formatting structure
+            </p>
+          </div>
         </div>
-      );
+      )}
+
+      {(!focusNodePath && expandedJsNodeId) && (
+        <Suspense fallback={null}>
+          <CodeWorkspace
+            path={expandedJsNodeId}
+            onClose={() => setExpandedJsNodeId(null)}
+          />
+        </Suspense>
+      )}
+    </div>
+  );
 }

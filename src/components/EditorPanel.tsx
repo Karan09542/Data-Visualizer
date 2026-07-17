@@ -1,6 +1,6 @@
 import { useStore } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   Play,
   Code,
@@ -18,9 +18,9 @@ import {
   SmartFetchOptions,
   SmartFetchResult,
 } from "../utils/smartJsonFetch";
-import SmartFetchErrorUI from "./SmartFetchErrorUI";
-import GuiEditorPanel from "./GuiEditorPanel";
-import FileExplorerPanel from "./FileExplorerPanel";
+const SmartFetchErrorUI = lazy(() => import("./SmartFetchErrorUI"));
+const GuiEditorPanel = lazy(() => import("./GuiEditorPanel"));
+const FileExplorerPanel = lazy(() => import("./FileExplorerPanel"));
 
 export default function EditorPanel() {
   const {
@@ -468,11 +468,17 @@ export default function EditorPanel() {
 
         {activeTab === "explorer" && (
           <div className="absolute inset-0">
-            <FileExplorerPanel />
+            <Suspense fallback={<div className="flex items-center justify-center p-8 h-full w-full"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>}>
+              <FileExplorerPanel />
+            </Suspense>
           </div>
         )}
 
-        {activeTab === "gui" && <GuiEditorPanel />}
+        {activeTab === "gui" && (
+          <Suspense fallback={<div className="flex items-center justify-center p-8 h-full w-full"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>}>
+            <GuiEditorPanel />
+          </Suspense>
+        )}
 
         {activeTab === "api" && (
           <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4 text-slate-800 dark:text-slate-200">
@@ -598,7 +604,9 @@ export default function EditorPanel() {
               )}
 
               {fetchResult && !fetchResult.success && (
-                <SmartFetchErrorUI result={fetchResult} onRetry={handleFetch} />
+                <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>}>
+                  <SmartFetchErrorUI result={fetchResult} onRetry={handleFetch} />
+                </Suspense>
               )}
 
               {apiError && !fetchResult && (
