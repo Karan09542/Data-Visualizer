@@ -118,6 +118,8 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
     }
 
     let cancelled = false;
+    let timeoutId: any;
+    let safetyTimeoutId: any;
 
     const computeLatex = async () => {
       const coloredVars: Record<string, string> = {};
@@ -145,25 +147,34 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
         if (!cancelled) {
           setLatexResult({ latex: result.latex, evalResult: result.evalResult });
           setIsComputingLatex(false);
+          clearTimeout(safetyTimeoutId);
         }
       } catch (e) {
         if (!cancelled) {
           setLatexResult({});
           setIsComputingLatex(false);
+          clearTimeout(safetyTimeoutId);
         }
       }
     };
 
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (!cancelled) {
         setIsComputingLatex(true);
         computeLatex();
+        // Add a safety timeout to avoid permanent skeleton if worker hangs
+        safetyTimeoutId = setTimeout(() => {
+          if (!cancelled) {
+            setIsComputingLatex(false);
+          }
+        }, 1500);
       }
     }, 100);
 
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
+      clearTimeout(safetyTimeoutId);
     };
   }, [value, isFocused, forceEditMode, error, variables, expressionToLatexWithEval]);
 
