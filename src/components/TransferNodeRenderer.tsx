@@ -2282,7 +2282,7 @@ export const TransferNodeRenderer: React.FC<{
 
   return (
     <div
-      className={`w-[400px] min-h-[340px] rounded-2xl overflow-hidden border shadow-2xl flex flex-col nowheel ${isDark ? "bg-[#111829] border-white/10 text-slate-300" : "bg-white border-slate-200 text-slate-800"}`}
+      className={`w-[340px] sm:w-[400px] min-h-[340px] rounded-2xl overflow-hidden border shadow-2xl flex flex-col nowheel shrink-0 ${isDark ? "bg-[#111829] border-white/10 text-slate-300" : "bg-white border-slate-200 text-slate-800"}`}
       onKeyDown={(e) => e.stopPropagation()}
       onKeyUp={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
@@ -2408,37 +2408,37 @@ export const TransferNodeRenderer: React.FC<{
       )}
 
       {/* Header */}
-      <div className="p-5 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="p-4 sm:p-5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0 shrink">
           <div
-            className={`p-2.5 rounded-xl ${isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
+            className={`p-2 sm:p-2.5 rounded-xl shrink-0 ${isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
           >
-            <Share2 className="w-5 h-5" />
+            <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h3
-              className={`font-bold tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}
+              className={`font-bold tracking-tight truncate ${isDark ? "text-white" : "text-slate-900"}`}
             >
               Direct Transfer
             </h3>
             <div className="flex flex-col gap-1.5 mt-2">
-              <div className="text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none truncate">
                 <div
-                  className={`w-2 h-2 rounded-full border ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
+                  className={`w-2 h-2 shrink-0 rounded-full border ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
                     ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
                     : "bg-transparent border-slate-400 dark:border-slate-600"
                     }`}
-                /> P2P Secure Connection
+                /> <span className="truncate">P2P Secure Connection</span>
               </div>
               <div className="flex items-center">
-                <span className={`px-2 py-0.5 rounded-md border text-[9.5px] font-mono tracking-wide whitespace-nowrap leading-none ${isDark ? "bg-[#161b22]/50 border-white/5 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
+                <span className={`px-2 py-0.5 rounded-md border text-[9px] sm:text-[9.5px] font-mono tracking-wide truncate leading-none ${isDark ? "bg-[#161b22]/50 border-white/5 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
                   {nodeKey}
                 </span>
               </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 relative">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
           <div
             className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${connectionState === "connected"
               ? "bg-emerald-500/10 text-emerald-500"
