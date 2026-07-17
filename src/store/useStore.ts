@@ -3,7 +3,7 @@ import { startTransition } from "react";
 import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree } from "../utils/transformer";
-import { deleteUnusedAssets } from "../utils/assetManager";
+
 import { sanitizeWorkspaceData } from "../utils/workspaceSanitizer";
 import SearchWorker from "../utils/searchWorker?worker";
 
@@ -1213,10 +1213,7 @@ export const useStore = create<StoreState>()(
           newCode = JSON.stringify(newData, null, 2);
         }
 
-        // Run asset garbage collection in the background
-        deleteUnusedAssets(newData).catch((err) => {
-          console.error("Asset GC failed", err);
-        });
+        // Asset garbage collection is handled centrally in App.tsx observer
 
         setCode(newCode);
       },

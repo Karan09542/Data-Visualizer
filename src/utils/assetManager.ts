@@ -257,9 +257,23 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
 /**
  * Garbage-collects/deletes any IndexedDB assets that are no longer referenced in the graph state.
  */
-export async function deleteUnusedAssets(parsedData: any): Promise<number> {
+export async function deleteUnusedAssets(parsedData: any, historyCodes: string[] = []): Promise<number> {
   try {
     const referencedIds = collectReferencedAssetIds(parsedData);
+    
+    // Also include IDs from undo/redo history to prevent breaking undo!
+    const assetIdRegex = /(img_|thumb_)[a-zA-Z0-9_.-]+/g;
+    for (const codeStr of historyCodes) {
+      if (!codeStr) continue;
+      const matches = codeStr.match(assetIdRegex);
+      if (matches) {
+        for (const match of matches) {
+          // Clean up potential trailing quotes or commas if regex matched too much
+          const cleanedMatch = match.replace(/["',}\]]/g, "");
+          referencedIds.add(cleanedMatch);
+        }
+      }
+    }
     const allAssets = await db.assets.toArray();
     
     const toDelete: string[] = [];

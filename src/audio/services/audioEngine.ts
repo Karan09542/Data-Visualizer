@@ -200,3 +200,10 @@ class AudioEngine {
 }
 
 export const audioEngine = new AudioEngine();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('audio-stop-track', () => {
+    audioEngine.stop();
+  });
+}
+

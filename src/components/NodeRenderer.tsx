@@ -68,15 +68,15 @@ export const getMediaType = (val: string) => {
   if (
     val.startsWith("data:audio/") ||
     (val.startsWith("blob:http") && val.includes("audio")) ||
-    val.match(/\.(mp3|wav|ogg|aac|flac)(\?.*)?$/i) ||
-    val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac|flac)/i)
+    val.match(/\.(mp3|wav|ogg|aac|flac|m4a)(\?.*)?$/i) ||
+    val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac|flac|m4a)/i)
   )
     return "audio";
   if (
     val.startsWith("data:video/") ||
     (val.startsWith("blob:http") && val.includes("video")) ||
-    val.match(/\.(mp4|webm|ogv|mov)(\?.*)?$/i) ||
-    val.match(/^https?:\/\/.*\.(mp4|webm|ogv|mov)/i)
+    val.match(/\.(mp4|webm|ogv|mov|mkv)(\?.*)?$/i) ||
+    val.match(/^https?:\/\/.*\.(mp4|webm|ogv|mov|mkv)/i)
   )
     return "video";
   if (
@@ -89,7 +89,11 @@ export const getMediaType = (val: string) => {
     return "3d-model";
 
   if (val.startsWith("img_") || val.startsWith("thumb_")) {
-    return "image";
+    const hasExtension = val.match(/\.[a-zA-Z0-9]+$/);
+    if (!hasExtension) {
+      return "image"; // Legacy fallback for IDs without extensions
+    }
+    return null; // Don't blindly assume 'image' if it has a non-image extension (like .csv, .txt)
   }
 
   // Use inspector for youtube, vimoe, spotfiy, or any http url

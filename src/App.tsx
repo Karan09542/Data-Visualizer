@@ -160,8 +160,30 @@ export default function App() {
     const cleanupSync = setupSyncSubscribers();
     initDexieSync();
 
+    let gcTimeout: number | null = null;
+    const unsub = useStore.subscribe((state, prevState) => {
+      if (state.parsedData !== prevState.parsedData) {
+        if (gcTimeout) clearTimeout(gcTimeout);
+        gcTimeout = window.setTimeout(async () => {
+          try {
+            const historyCodes = [...state.undoStack, ...state.redoStack].map(s => s.code);
+            const { deleteUnusedAssets } = await import("./utils/assetManager");
+            await deleteUnusedAssets(state.parsedData, historyCodes);
+            
+            const { discoverAudio } = await import("./audio/services/audioDiscovery");
+            const tracks = await discoverAudio();
+            window.dispatchEvent(new CustomEvent('audio-library-updated', { detail: tracks }));
+          } catch (err) {
+            console.error("GC/Audio sync failed", err);
+          }
+        }, 1000);
+      }
+    });
+
     return () => {
       cleanupSync();
+      unsub();
+      if (gcTimeout) clearTimeout(gcTimeout);
     };
   }, []);
 

@@ -21,6 +21,18 @@ export const useAudioLibrary = () => {
 
   useEffect(() => {
     loadLibrary();
+
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<AudioTrack[]>;
+      if (customEvent.detail) {
+        setTracks(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('audio-library-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('audio-library-updated', handleUpdate);
+    };
   }, []);
 
   const filteredTracks = tracks.filter(t => 
