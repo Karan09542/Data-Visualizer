@@ -12,31 +12,47 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "" }: NodeOpt
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
-
   useLayoutEffect(() => {
-    if (isOpen && buttonRef.current && menuRef.current) {
+    if (!isOpen || !buttonRef.current || !menuRef.current) return;
+
+    let rafId: number;
+
+    const updatePosition = () => {
+      if (!buttonRef.current || !menuRef.current) return;
+
       const rect = buttonRef.current.getBoundingClientRect();
-      const menuRect = menuRef.current.getBoundingClientRect();
+      const actualWidth = buttonRef.current.offsetWidth || 1;
+      const zoom = rect.width / actualWidth;
 
-      let top = rect.bottom + 4;
-      let left = rect.right - menuRect.width;
+      const actualMenuWidth = menuRef.current.offsetWidth || 1;
+      const actualMenuHeight = menuRef.current.offsetHeight || 1;
 
-      if (top + menuRect.height > window.innerHeight) {
-        top = rect.top - menuRect.height - 4;
+      let transformOrigin = 'top right';
+      let top = rect.bottom + (4 * zoom);
+      let left = rect.right - actualMenuWidth;
+
+      if (top + (actualMenuHeight * zoom) > window.innerHeight) {
+        top = rect.top - actualMenuHeight - (4 * zoom);
+        transformOrigin = 'bottom right';
       }
       
-      setMenuStyle({
-        position: 'fixed',
-        top: `${top}px`,
-        left: `${left}px`,
-        zIndex: 999999,
-      });
-    }
+      menuRef.current.style.position = 'fixed';
+      menuRef.current.style.top = `${top}px`;
+      menuRef.current.style.left = `${left}px`;
+      menuRef.current.style.transform = `scale(${zoom})`;
+      menuRef.current.style.transformOrigin = transformOrigin;
+      menuRef.current.style.zIndex = '999999';
+
+      rafId = requestAnimationFrame(updatePosition);
+    };
+
+    updatePosition();
+
+    return () => cancelAnimationFrame(rafId);
   }, [isOpen]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (
         buttonRef.current && !buttonRef.current.contains(event.target as Node) &&
         menuRef.current && !menuRef.current.contains(event.target as Node)
@@ -66,8 +82,9 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "" }: NodeOpt
     <div className={`relative inline-flex items-center justify-center ${className}`} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
       <button 
         ref={buttonRef}
-        onClick={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
+          e.preventDefault();
           setIsOpen(!isOpen);
         }}
         className="text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer rounded-md outline-none"
@@ -79,7 +96,6 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "" }: NodeOpt
       {isOpen && createPortal(
         <div 
           ref={menuRef}
-          style={menuStyle}
           className="min-w-[180px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-lg shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] py-1 overflow-hidden pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
