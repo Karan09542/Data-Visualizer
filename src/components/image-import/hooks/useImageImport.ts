@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import * as fabric from 'fabric';
 import { ClipboardImportResult } from '../clipboard/clipboardImporter';
 import { placeImagesSmartly } from '../services/imagePlacement';
+import { importFile } from '../../../utils/assetManager';
 
 export function useImageImport(
   fabricRef: React.MutableRefObject<fabric.Canvas | null>, 
@@ -40,6 +41,18 @@ export function useImageImport(
     const fabricObjects: fabric.Object[] = [];
 
     for (const asset of assets) {
+      let finalAssetId = asset.assetId;
+      
+      if (asset.blob && !finalAssetId) {
+         try {
+             const fileToSave = asset.blob instanceof File ? asset.blob : new File([asset.blob], asset.name || "pasted_image.png", { type: asset.blob.type });
+             const { assetId } = await importFile(fileToSave);
+             finalAssetId = assetId;
+         } catch(e) {
+             console.error("Failed to save pasted asset to IndexedDB", e);
+         }
+      }
+
       if (asset.type === 'svg') {
         try {
           const { objects, options } = await fabric.loadSVGFromURL(asset.url);
@@ -59,11 +72,15 @@ export function useImageImport(
         try {
           const img = await fabric.Image.fromURL(asset.url, { crossOrigin: 'anonymous' });
           if (img) {
-            img.set({
+            const props: any = {
               id: 'img_' + Date.now() + Math.random().toString(36).substring(2, 9),
               name: asset.name || 'Imported Image',
               artboardId: activeArtboardId
-            } as any);
+            };
+            if (finalAssetId) {
+               props.assetId = finalAssetId;
+            }
+            img.set(props);
             fabricObjects.push(img);
           }
         } catch(e) {

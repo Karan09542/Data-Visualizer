@@ -14,7 +14,7 @@ export const useFilterPipeline = (
 ) => {
   const applyFilterStack = (newStack: FilterConfig[], description = "Update Filter Studio Pipeline") => {
     const obj = getTargetImageForFilters();
-    if (obj && obj.type === 'image') {
+    if (obj && (obj.type === 'image' || obj.isCollageBlock)) {
       const beforeStack = obj.customFilters || [];
       const cmd = new FilterPipelineCommand(description, obj, beforeStack, newStack);
       executeCommand(cmd);

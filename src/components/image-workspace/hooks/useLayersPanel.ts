@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as fabric from 'fabric';
-import { LayerReorderCommand } from '../../commands/layer/LayerReorderCommand';
+import { LayerReorderCommand } from '../commands/layer/LayerReorderCommand';
 
 export const useLayersPanel = (
   fabricRef: React.RefObject<fabric.Canvas | null>,

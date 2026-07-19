@@ -1,5 +1,5 @@
 import * as fabric from 'fabric';
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 import { getAbsoluteBoundingRect } from '../../../utils/fabric-utils';
 import { Command } from '../commands/base/Command';
 import { TransformObjectsCommand } from '../commands/object/TransformCommand';

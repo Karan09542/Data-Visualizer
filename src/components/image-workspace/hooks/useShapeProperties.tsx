@@ -1,8 +1,18 @@
-import { useState } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
 
+const ShapePropertiesContext = createContext<any>(null);
 
-export const useShapeProperties = () => {
-const [shapeFillColor, setShapeFillColor] = useState<string>('transparent');
+export const ShapePropertiesProvider: React.FC<{
+  value: any;
+  children: ReactNode;
+}> = ({ value, children }) => (
+  <ShapePropertiesContext.Provider value={value}>
+    {children}
+  </ShapePropertiesContext.Provider>
+);
+
+export const useShapePropertiesState = () => {
+  const [shapeFillColor, setShapeFillColor] = useState<string>('transparent');
   const [shapeStrokeColor, setShapeStrokeColor] = useState<string>('#000000');
   const [shapeStrokeWidth, setShapeStrokeWidth] = useState<number>(2);
   const [shapeBorderStyle, setShapeBorderStyle] = useState<'solid' | 'dashed' | 'none'>('solid');
@@ -31,4 +41,12 @@ const [shapeFillColor, setShapeFillColor] = useState<string>('transparent');
     shapeStrokeLineJoin, setShapeStrokeLineJoin,
     shapeStrokeLineCap, setShapeStrokeLineCap
   };
+};
+
+export const useShapeProperties = () => {
+  const context = useContext(ShapePropertiesContext);
+  if (!context) {
+    throw new Error('useShapeProperties must be used within a ShapePropertiesProvider');
+  }
+  return context;
 };

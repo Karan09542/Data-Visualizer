@@ -18,7 +18,7 @@ export const FilterStudioTab: React.FC = () => {
     imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo
   } = useWorkspaceUI();
 
-  const { selectionType } = useSelection();
+  const { selectionType, isCollageSelected } = useSelection();
   const { fabricRef } = useCanvas();
   const { executeCommand } = useHistory();
 
@@ -39,6 +39,11 @@ export const FilterStudioTab: React.FC = () => {
 
   const getTargetImageForFilters = () => {
     let targetImage = fabricRef.current?.getActiveObject();
+    if (targetImage && targetImage.type === 'activeSelection') {
+       // Filter the first valid filterable object
+       const objects = (targetImage as fabric.ActiveSelection).getObjects();
+       targetImage = objects.find(o => o.type === 'image' || (o as any).isCollageBlock) || targetImage;
+    }
     if (targetImage && targetImage.get('isFrameGroup')) {
         const items = (targetImage as any).getObjects();
         targetImage = items.find((i: any) => i.type === 'image') || targetImage;
@@ -58,11 +63,11 @@ export const FilterStudioTab: React.FC = () => {
     <>
 {/* FILTER STUDIO PANEL */}
              <div className="p-4 space-y-6 text-[#C0C0C0]">
-                   {selectionType !== 'image' && selectionType !== 'frameGroup' ? (
+                   {selectionType !== 'image' && selectionType !== 'frameGroup' && !isCollageSelected ? (
                       <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
                          <Sparkles size={32} className="mb-4 text-amber-500 animate-pulse" />
                          <span className="text-sm font-semibold text-white">Filter Studio</span>
-                         <span className="text-xs mt-2 w-48 text-[#8A8A8A]">Select an Image layer on the canvas to utilize the professional filter pipeline.</span>
+                         <span className="text-xs mt-2 w-48 text-[#8A8A8A]">Select an Image or Collage Block layer to utilize the professional filter pipeline.</span>
                       </div>
                    ) : (
                       <div className="space-y-6 flex flex-col h-full">

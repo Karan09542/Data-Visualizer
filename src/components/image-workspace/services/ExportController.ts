@@ -1,4 +1,4 @@
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 import { ExportSettings } from '../../../types/export';
 import { optimizePixelBuffer, generateArtboardPixelBuffer } from './exportUtils';
 import JSZip from 'jszip';

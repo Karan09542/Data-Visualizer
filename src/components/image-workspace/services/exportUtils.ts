@@ -1,5 +1,6 @@
 import * as fabric from 'fabric';
-import { Artboard, ExportSettings } from '../../../types/export';
+import { ExportSettings } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 import ImageWorker from "../../../utils/imageWorker?worker";
 import { 
    hasSimd, hasThreads, 

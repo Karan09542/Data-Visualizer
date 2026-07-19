@@ -260,6 +260,19 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
 export async function deleteUnusedAssets(parsedData: any): Promise<number> {
   try {
     const referencedIds = collectReferencedAssetIds(parsedData);
+    
+    // Also protect assets that are being used internally by ImageWorkspace canvases
+    try {
+      const workspaceObjects = await db.objects.toArray();
+      for (const obj of workspaceObjects) {
+         if (obj.data && obj.data.assetId) {
+            referencedIds.add(obj.data.assetId);
+         }
+      }
+    } catch (e) {
+      console.warn("Failed to check workspace objects for asset references", e);
+    }
+    
     const allAssets = await db.assets.toArray();
     
     const toDelete: string[] = [];

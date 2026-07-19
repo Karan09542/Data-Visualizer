@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { AlignmentController, AlignmentMode } from '../services/AlignmentController';
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 
 interface AlignmentContextValue {
    alignSelection: (mode: AlignmentMode) => void;

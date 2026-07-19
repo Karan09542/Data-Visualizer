@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Settings, SquareDashed, Activity, Sparkles, Layers, History, Download, AlignLeft, AlignCenter, AlignRight, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter, AlignVerticalSpaceBetween, AlignHorizontalSpaceBetween, MousePointer2, Copy, Trash2, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine, Keyboard, Upload, Library, Link, Plus, Type, Grid, X, Edit2 } from 'lucide-react';
+import { BringToFront, SendToBack, Settings, SquareDashed, Activity, Sparkles, Layers, History, Download, AlignLeft, AlignCenter, AlignRight, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter, AlignVerticalSpaceBetween, AlignHorizontalSpaceBetween, MousePointer2, Copy, Trash2, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine, Keyboard, Upload, Library, Link, Plus, Type, Grid, X, Edit2 } from 'lucide-react';
 import { TabBtn } from './shared/TabBtn';
 import { PropertiesTab } from './panels/PropertiesTab';
 import { ArtboardsTab } from './panels/ArtboardsTab';
@@ -10,6 +10,12 @@ import { ContextMenuItem } from './shared/ContextMenuItem';
 import { processPasteEvent } from '../../image-import/clipboard/clipboardImporter';
 
 export interface WorkspacePanelsProps {
+  fabricRef: any;
+  updateLayersList: any;
+  deleteActiveObject: any;
+  activeContextMenu: any;
+  handleLayerOrder: any;
+  fabric: any;
   isMobile: any;
   panelWidth: any;
   showMobilePanel: any;
@@ -37,7 +43,7 @@ export interface WorkspacePanelsProps {
   setShowShortcuts: any;
 }
 
-export const WorkspacePanels: React.FC<WorkspacePanelsProps> = ({ isMobile, panelWidth, showMobilePanel, setShowMobilePanel, isResizingPanel, activeTab, setActiveTab, selectionType, createArtboard, setRenamingArtboard, renamingArtboard, activeArtboardId, setActiveArtboardId, artboards, closeContextMenu, setShowAssetGallery, setShowUrlPrompt, addText, processPasteEvent, importAssets, showMobileArtboardsGallery, setShowMobileArtboardsGallery, updateArtboardPropDirect, showShortcuts, setShowShortcuts }) => {
+export const WorkspacePanels: React.FC<WorkspacePanelsProps> = ({ fabricRef, updateLayersList, deleteActiveObject, activeContextMenu, handleLayerOrder, fabric, isMobile, panelWidth, showMobilePanel, setShowMobilePanel, isResizingPanel, activeTab, setActiveTab, selectionType, createArtboard, setRenamingArtboard, renamingArtboard, activeArtboardId, setActiveArtboardId, artboards, closeContextMenu, setShowAssetGallery, setShowUrlPrompt, addText, processPasteEvent, importAssets, showMobileArtboardsGallery, setShowMobileArtboardsGallery, updateArtboardPropDirect, showShortcuts, setShowShortcuts }) => {
   return (
     <>
       {/* Right Sidebar - Logic Panels */}
@@ -464,7 +470,7 @@ export const WorkspacePanels: React.FC<WorkspacePanelsProps> = ({ isMobile, pane
                                                    }))
                                                 );
                                                 // We actually already have a processClipboardItems function for exactly this!
-                                                const { processClipboardItems } = await import('../image-import/clipboard/clipboardImporter');
+                                                const { processClipboardItems } = await import('../../image-import/clipboard/clipboardImporter');
                                                 const results = await processClipboardItems(items as any);
                                                 if (results.length > 0) importAssets(results);
                                              } catch (e) { }

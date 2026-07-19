@@ -1,5 +1,5 @@
 import * as fabric from 'fabric';
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 
 export class ViewportController {
    private canvas: fabric.Canvas | null = null;
@@ -122,7 +122,7 @@ export class ViewportController {
       }
    }
 
-   public handleWheelZoom(opt: fabric.IEvent<WheelEvent>) {
+   public handleWheelZoom(opt: fabric.TEvent<WheelEvent>): void {
       if (!this.canvas) return;
       const e = opt.e;
       e.preventDefault();

@@ -225,7 +225,7 @@ export function rebuildFabricFilters(obj: any, filtersObj: any) {
   const endTime = performance.now();
   obj.lastFilterBenchmark = {
     filterTimeMs: (endTime - startTime).toFixed(1),
-    backend: (fabric as any).isWebglSupported && (fabric as any).isWebglSupported() ? "WebGL" : "Canvas2D",
+    backend: (fabric as any)['isWebglSupported'] && (fabric as any)['isWebglSupported']() ? "WebGL" : "Canvas2D",
     outputWidth: obj.width ? Math.round(obj.width * (obj.scaleX || 1)) : 0,
     outputHeight: obj.height ? Math.round(obj.height * (obj.scaleY || 1)) : 0
   };

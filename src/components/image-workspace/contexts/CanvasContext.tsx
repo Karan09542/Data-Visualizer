@@ -21,10 +21,11 @@ interface CanvasContextType {
   duplicateActiveObject: () => void;
   deleteActiveObject: () => void;
   updateArtboardPropDirect: (id: string, prop: string, val: any, saveHistory?: boolean) => void;
-  generateSmartCollage: (preset: number) => void;
-  generateBleed: () => void;
+  generateSmartCollage: (type: string) => void;
+  generateBleed: (isNegative?: boolean) => void;
   updateCollageBlockStyleProperty: (prop: string, val: any) => void;
   fillCollageBlockWithImage: (file: File) => void;
+  fitCollageToArtboard: () => void;
   setZoomPercent: (zoom: number) => void;
 }
 

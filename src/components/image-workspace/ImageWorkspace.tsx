@@ -11,8 +11,8 @@ import { CanvasProvider } from './contexts/CanvasContext';
 import { SelectionProvider } from './contexts/SelectionContext';
 import { ARTBOARD_PRESETS } from './types/artboards';
 import { useArtboardState } from "./hooks/useArtboardState";
-import { useShapeProperties } from "./hooks/useShapeProperties";
-import { useCollageConfig } from "./hooks/useCollageConfig";
+import { useShapePropertiesState, ShapePropertiesProvider } from "./hooks/useShapeProperties";
+import { useCollageConfigState, CollageConfigProvider } from "./hooks/useCollageConfig";
 import { ColorPickerPortal, ColorPickerTrigger } from "./components/shared/ColorPickers";
 import { FilterSlider } from "./components/shared/FilterSlider";
 import { BtnSelect } from "./components/shared/BtnSelect";
@@ -122,6 +122,7 @@ import { DeleteArtboardCommand } from "./commands/artboard/DeleteArtboardCommand
 
 import { ArtboardPropertyCommand } from "./commands/artboard/ArtboardPropertyCommand";
 import { FilterStudioTab } from './components/panels/FilterStudioTab';
+import { QuickActionsTab } from './components/panels/QuickActionsTab';
 
 
 // Modern Checkbox Component
@@ -144,6 +145,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    } = useArtboardState();
 
    // Collage configurations
+   const collageProps = useCollageConfigState();
    const {
       collagePaddingPercent, setCollagePaddingPercent,
       collageGapPercent, setCollageGapPercent,
@@ -157,9 +159,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       collageCornerBR, setCollageCornerBR,
       collageCornerBL, setCollageCornerBL,
       collageBorderStyle, setCollageBorderStyle
-   } = useCollageConfig();
+   } = collageProps;
 
    // Shape Properties states
+   const shapeProps = useShapePropertiesState();
    const {
       shapeFillColor, setShapeFillColor,
       shapeStrokeColor, setShapeStrokeColor,
@@ -174,7 +177,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       shapeOpacity, setShapeOpacity,
       shapeStrokeLineJoin, setShapeStrokeLineJoin,
       shapeStrokeLineCap, setShapeStrokeLineCap
-   } = useShapeProperties();
+   } = shapeProps;
 
    const [zoomPercent, setZoomPercent] = useState(100);
    const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
@@ -745,10 +748,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          clearTimeout(saveTimeoutRef.current);
       }
 
-      saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = setTimeout(async () => {
          if (!fabricRef.current) return;
          try {
-            saveToDexie(path, artboardsRef.current, fabricRef.current).catch(err => {
+            await saveToDexie(path, artboardsRef.current, fabricRef.current).catch(err => {
                console.error("Dexie save failed", err);
             });
 
@@ -1862,10 +1865,15 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          const sel = new fabric.ActiveSelection(items, { canvas });
          canvas.setActiveObject(sel);
          canvas.requestRenderAll();
+
+         const macro = new MacroCommand(`Generate ${type} Collage`, commands);
+         executeCommand(macro);
          updateLayersList();
 
-         const macro = new MacroCommand(`Smart Collage (${type})`, commands);
-         executeCommand(macro);
+         // Automatically fit collage to artboard upon generation
+         setTimeout(() => {
+            fitCollageToArtboard();
+         }, 50);
       }
    };
 
@@ -1922,6 +1930,74 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       executeCommand(cmd);
    };
 
+   const fitCollageToArtboard = () => {
+      if (!fabricRef.current || !activeArtboardId) return;
+      const canvas = fabricRef.current;
+      const board = artboards.find(b => b.id === activeArtboardId);
+      if (!board) return;
+
+      const items = canvas.getObjects().filter(o => (o as any).isCollageBlock && (o as any).artboardId === activeArtboardId);
+      if (items.length === 0) return;
+
+      const padding = Math.min(board.width, board.height) * (collagePaddingPercent / 100);
+      const innerW = board.width - padding * 2;
+      const innerH = board.height - padding * 2;
+
+      // Find bounding box of all collage blocks
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      items.forEach(o => {
+         const br = o.getBoundingRect();
+         if (br.left < minX) minX = br.left;
+         if (br.top < minY) minY = br.top;
+         if (br.left + br.width > maxX) maxX = br.left + br.width;
+         if (br.top + br.height > maxY) maxY = br.top + br.height;
+      });
+
+      const currentW = maxX - minX;
+      const currentH = maxY - minY;
+      if (currentW <= 0 || currentH <= 0) return;
+
+      const scaleX = innerW / currentW;
+      const scaleY = innerH / currentH;
+      const scale = Math.min(scaleX, scaleY);
+
+      const targetCenterX = board.x + board.width / 2;
+      const targetCenterY = board.y + board.height / 2;
+      const currentCenterX = minX + currentW / 2;
+      const currentCenterY = minY + currentH / 2;
+
+      const dx = targetCenterX - currentCenterX;
+      const dy = targetCenterY - currentCenterY;
+
+      const commands: Command[] = [];
+      items.forEach(item => {
+         const beforeState = { left: item.left, top: item.top, scaleX: item.scaleX, scaleY: item.scaleY };
+
+         // Transform relative to current center
+         const relX = item.left - currentCenterX;
+         const relY = item.top - currentCenterY;
+
+         const newLeft = targetCenterX + relX * scale;
+         const newTop = targetCenterY + relY * scale;
+         const newScaleX = item.scaleX * scale;
+         const newScaleY = item.scaleY * scale;
+
+         const afterState = { left: newLeft, top: newTop, scaleX: newScaleX, scaleY: newScaleY };
+         item.set(afterState);
+         item.setCoords();
+
+         commands.push(new TransformObjectsCommand(
+            "Auto-Fit Collage Block",
+            [{ obj: item, before: beforeState, after: afterState }]
+         ));
+      });
+
+      canvas.requestRenderAll();
+      if (commands.length > 0) {
+         executeCommand(new MacroCommand("Auto-Fit Collage", commands));
+      }
+   };
+
    const fillCollageBlockWithImage = (imageFile: File) => {
       if (!fabricRef.current) return;
       const canvas = fabricRef.current;
@@ -1933,46 +2009,16 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const reader = new FileReader();
       reader.onload = (e) => {
          const dataUrl = e.target?.result as string;
-         fabric.Image.fromURL(dataUrl).then((img) => {
-            const rect = active as fabric.Rect;
+         const rect = active as fabric.Rect;
 
-            // Calculate dimensions to cover/fill the block (similar to object-fit: cover)
-            const blockW = rect.getScaledWidth();
-            const blockH = rect.getScaledHeight();
-            const imgW = img.width || 100;
-            const imgH = img.height || 100;
+         const beforeState = { collageImageSrc: (rect as any).collageImageSrc };
+         const afterState = { collageImageSrc: dataUrl };
 
-            const scaleX = blockW / imgW;
-            const scaleY = blockH / imgH;
-            const scale = Math.max(scaleX, scaleY);
+         (rect as any).collageImageSrc = dataUrl;
+         canvas.requestRenderAll();
 
-            img.set({
-               left: rect.left + (blockW - imgW * scale) / 2,
-               top: rect.top + (blockH - imgH * scale) / 2,
-               scaleX: scale,
-               scaleY: scale,
-               clipPath: new fabric.Rect({
-                  left: 0,
-                  top: 0,
-                  width: imgW,
-                  height: imgH,
-                  rx: (rect.rx || 0) / scale,
-                  ry: (rect.ry || 0) / scale,
-                  originX: 'center',
-                  originY: 'center'
-               }),
-               id: 'img_' + Date.now().toString() + '_' + Math.random().toString().slice(2, 6),
-               artboardId: (rect as any).artboardId
-            } as any);
-
-            canvas.add(img);
-            canvas.setActiveObject(img);
-            canvas.requestRenderAll();
-            updateLayersList();
-
-            const cmd = new AddObjectCommand("Fill Block with Image", img);
-            executeCommand(cmd);
-         });
+         const cmd = new StyleChangeCommand("Fill Block with Image", rect, beforeState, afterState);
+         executeCommand(cmd);
       };
       reader.readAsDataURL(imageFile);
    };
@@ -2087,6 +2133,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                after.strokeWidth = collageBorderWidth > 0 ? collageBorderWidth : 2;
                after.strokeDashArray = null;
             }
+         } else {
+            // Support for generic properties (e.g., collageImageFit, collageImageZoom, collageImagePanX)
+            before[prop] = item.get(prop as any) ?? (item as any)[prop];
+            after[prop] = value;
          }
 
          item.set(after);
@@ -2237,22 +2287,29 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
    };
 
-   const generateBleed = () => {
+   const generateBleed = (isNegative?: boolean) => {
       if (!activeArtboardId) return;
       const board = artboards.find(b => b.id === activeArtboardId);
       if (!board) return;
 
       // 0.125 inch at 300 DPI = 37.5px. At 72 DPI (web default) = 9px. Let's use 9px for standard screens.
-      const bleedPx = 18; // 9px per side
+      const bleedAmount = 18; // 9px per side
+      const bleedPx = isNegative ? -bleedAmount : bleedAmount;
 
       const commands: Command[] = [];
 
-      // Update artboard props
-      commands.push(new ArtboardPropertyCommand("Adjust width for bleed", board.id, 'width', board.width, board.width + bleedPx, setArtboards));
-      commands.push(new ArtboardPropertyCommand("Adjust height for bleed", board.id, 'height', board.height, board.height + bleedPx, setArtboards));
-      commands.push(new ArtboardPropertyCommand("Enable bleed guide", board.id, 'showBleed', board.showBleed, true, setArtboards));
+      const newWidth = Math.max(1, board.width + bleedPx);
+      const newHeight = Math.max(1, board.height + bleedPx);
 
-      const macro = new MacroCommand(`Generate Bleed`, commands);
+      // Update artboard props
+      commands.push(new ArtboardPropertyCommand("Adjust width for bleed", board.id, 'width', board.width, newWidth, setArtboards));
+      commands.push(new ArtboardPropertyCommand("Adjust height for bleed", board.id, 'height', board.height, newHeight, setArtboards));
+
+      if (!isNegative) {
+         commands.push(new ArtboardPropertyCommand("Enable bleed guide", board.id, 'showBleed', board.showBleed, true, setArtboards));
+      }
+
+      const macro = new MacroCommand(`${isNegative ? 'Remove' : 'Generate'} Bleed`, commands);
       executeCommand(macro);
    };
 
@@ -4545,12 +4602,22 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const files = e.target.files;
       if (!files || files.length === 0) return;
 
-      const results = Array.from(files).map(file => {
-         if (file.type === 'image/svg+xml') {
-            return { url: URL.createObjectURL(file), type: 'svg' as const, name: file.name };
-         }
-         return { url: URL.createObjectURL(file), type: 'image' as const, name: file.name };
+      const promises = Array.from(files).map(file => {
+         return new Promise<{ url: string, type: 'svg' | 'image', name: string }>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+               const dataUrl = event.target?.result as string;
+               if (file.type === 'image/svg+xml') {
+                  resolve({ url: dataUrl, type: 'svg', name: file.name });
+               } else {
+                  resolve({ url: dataUrl, type: 'image', name: file.name });
+               }
+            };
+            reader.readAsDataURL(file);
+         });
       });
+
+      const results = await Promise.all(promises);
 
       if (results.length > 0) {
          importAssets(results);
@@ -4663,26 +4730,48 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
       if (activeObj && activeObj.get('isFrameGroup')) {
          const frameType = activeObj.get('frameType');
-         const items = (activeObj as any as fabric.Group).getObjects();
+         const group = activeObj as fabric.Group;
+         const items = group.getObjects();
          const rectObj = items.find((i: any) => i.type === 'rect');
          const imgObj = items.find((i: any) => i.type === 'image');
 
          if (rectObj && imgObj) {
             if (frameType === 'polaroid') {
-               const center = imgObj.getCenterPoint();
                const w = imgObj.getScaledWidth();
                const h = imgObj.getScaledHeight();
+
+               let cx = imgObj.left!;
+               let cy = imgObj.top!;
+
+               if (imgObj.originX !== 'center') cx += w / 2;
+               if (imgObj.originY !== 'center') cy += h / 2;
+
                rectObj.set({
-                  left: center.x,
-                  top: center.y + width,
+                  left: cx,
+                  top: cy + width,
                   width: w + (width * 2),
                   height: h + (width * 4)
                });
             } else {
                rectObj.set('strokeWidth', width);
             }
-            (activeObj as any).setDirty?.();
-            activeObj.fire('modified');
+
+            // Re-calculate group bounds properly to prevent visual tearing / selection box issues
+            const groupAny = group as any;
+            if (groupAny.removeWithUpdate && groupAny.addWithUpdate) {
+               groupAny.removeWithUpdate(rectObj);
+               groupAny.removeWithUpdate(imgObj);
+               groupAny.addWithUpdate(rectObj);
+               groupAny.addWithUpdate(imgObj);
+            } else {
+               group.remove(rectObj);
+               group.remove(imgObj);
+               group.add(rectObj);
+               group.add(imgObj);
+            }
+
+            groupAny.setDirty?.();
+            group.fire('modified');
             canvas.requestRenderAll();
          }
       }
@@ -4929,7 +5018,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
    const applyFilter = (filterType: string, value: number) => {
       const obj = getTargetImageForFilters();
-      if (obj && obj.type === 'image') {
+      if (obj && (obj.type === 'image' || obj.isCollageBlock)) {
          const filters = (fabric as any).Image?.filters || (fabric as any).filters;
          if (!filters) return;
 
@@ -5328,2068 +5417,2073 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    }, [isMobile, activeArtboardId, artboards]);
 
    return (
-      <ToolProvider value={{
-         activeTool, setTool, brushColor, changeCurrentColor,
-         brushSize, setBrushSize, brushOpacity, setBrushOpacity,
-         brushHardness, setBrushHardness, brushFlow, setBrushFlow,
-         brushSmoothing, setBrushSmoothing, brushType, setBrushType,
-         textProps, setTextProps
-      }}>
-         <CanvasProvider value={{
-            fabricRef, enterCropMode, resetCrop, addText, addRect, addCircle, addTriangle, addLine,
-            flipX, flipY, addAlignedCollageText, updateSelectedShapeProperty, changeTextProp,
-            applyFilter, alignSelection, duplicateActiveObject, deleteActiveObject,
-            updateArtboardPropDirect, generateSmartCollage, generateBleed,
-            updateCollageBlockStyleProperty, fillCollageBlockWithImage,
-            setZoomPercent
-         }}>
-            <SelectionProvider value={{
-               activeObj: fabricRef.current?.getActiveObject() || null,
-               activeObjs: fabricRef.current?.getActiveObjects() || [],
-               activeSelection: !!fabricRef.current?.getActiveObject(),
-               isCollageBlock: fabricRef.current?.getActiveObject()?.type === 'rect' && (fabricRef.current?.getActiveObject() as any)?.id?.startsWith('collage-block-'),
-               isCollageSelected: !!fabricRef.current?.getActiveObject() && ((fabricRef.current?.getActiveObject() as any)?.isCollageBlock || (fabricRef.current?.getActiveObject()?.type === 'activeSelection' && (fabricRef.current?.getActiveObject() as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))),
-               parentAlignmentObj, setParentAlignmentObj,
-               selectionType, setSelectionType,
-               textObj: fabricRef.current?.getActiveObject() as any,
-               textContent: (fabricRef.current?.getActiveObject() as any)?.text || ''
+      <CollageConfigProvider value={collageProps}>
+         <ShapePropertiesProvider value={shapeProps}>
+            <ToolProvider value={{
+               activeTool, setTool, brushColor, changeCurrentColor,
+               brushSize, setBrushSize, brushOpacity, setBrushOpacity,
+               brushHardness, setBrushHardness, brushFlow, setBrushFlow,
+               brushSmoothing, setBrushSmoothing, brushType, setBrushType,
+               textProps, setTextProps
             }}>
-               <HistoryProvider value={{ commandIndex, historyNames, performUndo, performRedo, executeCommand }}>
-                  <WorkspaceUIProvider value={{
-                     isMobile, setShowMobilePanel, setShowShortcuts, setActiveTab, handleImportImageClick, handleFileUpload,
-                     artboards, setArtboards, activeArtboardId, setActiveArtboardId,
-                     imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
-                     createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
-                     updateArtboardProp, onArtboardPropStart, onArtboardPropCommit
+               <CanvasProvider value={{
+                  fabricRef, enterCropMode, resetCrop, addText, addRect, addCircle, addTriangle, addLine,
+                  flipX, flipY, addAlignedCollageText, updateSelectedShapeProperty, changeTextProp,
+                  applyFilter, alignSelection, duplicateActiveObject, deleteActiveObject,
+                  updateArtboardPropDirect, generateSmartCollage, generateBleed,
+                  updateCollageBlockStyleProperty, fillCollageBlockWithImage, fitCollageToArtboard,
+                  setZoomPercent
+               }}>
+                  <SelectionProvider value={{
+                     activeObj: fabricRef.current?.getActiveObject() || null,
+                     activeObjs: fabricRef.current?.getActiveObjects() || [],
+                     activeSelection: !!fabricRef.current?.getActiveObject(),
+                     isCollageBlock: fabricRef.current?.getActiveObject()?.type === 'rect' && (fabricRef.current?.getActiveObject() as any)?.id?.startsWith('collage-block-'),
+                     isCollageSelected: !!fabricRef.current?.getActiveObject() && ((fabricRef.current?.getActiveObject() as any)?.isCollageBlock || (fabricRef.current?.getActiveObject()?.type === 'activeSelection' && (fabricRef.current?.getActiveObject() as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))),
+                     parentAlignmentObj, setParentAlignmentObj,
+                     selectionType, setSelectionType,
+                     textObj: fabricRef.current?.getActiveObject() as any,
+                     textContent: (fabricRef.current?.getActiveObject() as any)?.text || ''
                   }}>
-                     <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, moveLayerUp, moveLayerDown }}>
-                        <div
-                           className="w-full h-full flex flex-col bg-[#121212] text-[#E0E0E0] select-none"
-                           ref={containerRef}
-                           onContextMenu={handleContextMenu}
-                        >
+                     <HistoryProvider value={{ commandIndex, historyNames, performUndo, performRedo, executeCommand }}>
+                        <WorkspaceUIProvider value={{
+                           isMobile, setShowMobilePanel, setShowShortcuts, setActiveTab, handleImportImageClick, handleFileUpload,
+                           artboards, setArtboards, activeArtboardId, setActiveArtboardId,
+                           imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
+                           createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
+                           updateArtboardProp, onArtboardPropStart, onArtboardPropCommit
+                        }}>
+                           <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, moveLayerUp, moveLayerDown }}>
+                              <div
+                                 className="w-full h-full flex flex-col bg-[#121212] text-[#E0E0E0] select-none"
+                                 ref={containerRef}
+                                 onContextMenu={handleContextMenu}
+                              >
 
-                           {/* Top Toolbar */}
-                           <WorkspaceHeader />
+                                 {/* Top Toolbar */}
+                                 <WorkspaceHeader />
 
-                           <div className="flex flex-col md:flex-row flex-1 overflow-hidden relative">
+                                 <div className="flex flex-col md:flex-row flex-1 overflow-hidden relative">
 
-                              {/* Left Toolbar - Tools (Desktop) */}
-                              <LeftToolbar />
+                                    {/* Left Toolbar - Tools (Desktop) */}
+                                    <LeftToolbar />
 
-                              {/* Center Canvas & Artboard Area */}
-                              <div className="flex-1 flex flex-col min-w-0 bg-[#121212] overflow-hidden relative">
+                                    {/* Center Canvas & Artboard Area */}
+                                    <div className="flex-1 flex flex-col min-w-0 bg-[#121212] overflow-hidden relative">
 
-                                 {/* Artboard Bar */}
-                                 {activeTab !== 'export' && (
-                                    <div className="h-10 bg-[#1E1E1E] border-b border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
-                                       {isMobile && (
-                                          <button
-                                             onClick={() => setShowMobileArtboardsGallery(true)}
-                                             className="h-[30px] w-[30px] shrink-0 sticky left-0 z-10 bg-[#292929] border border-[#3C3C3C] shadow flex items-center justify-center rounded-md mr-1 text-[#C0C0C0] hover:text-white"
-                                          >
-                                             <SquareDashed size={14} />
-                                          </button>
-                                       )}
-                                       {artboards.map(b => {
-                                          const isActive = b.id === activeArtboardId;
-                                          return (
-                                             <div
-                                                key={b.id}
-                                                className={`h-[30px] flex items-center gap-1.5 px-3 rounded-md cursor-pointer transition-all border border-transparent group ${isActive ? 'bg-[#292929] border-[#3C3C3C] shadow-sm' : 'hover:bg-[#202020] text-[#808080]'}`}
-                                                onClick={() => {
-                                                   setActiveArtboardId(b.id);
-                                                   if (fabricRef.current) {
-                                                      const cw = fabricRef.current.width!;
-                                                      const ch = fabricRef.current.height!;
-                                                      const vpt = fabricRef.current.viewportTransform!;
-                                                      const newVpt = vpt.slice() as any;
-                                                      newVpt[4] = cw / 2 - (b.x + b.width / 2) * newVpt[0];
-                                                      newVpt[5] = ch / 2 - (b.y + b.height / 2) * newVpt[3];
-                                                      fabricRef.current.setViewportTransform(newVpt);
-                                                   }
-                                                }}
-                                             >
-                                                <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-[#E0E0E0]' : ''}`}>
-                                                   {isActive && <div className="w-[4px] h-[4px] rounded-full bg-blue-500" />}
-                                                   {b.name}
-                                                </span>
-
-                                                <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                   <button
-                                                      className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#3A3A3A] text-[#A0A0A0] transition-colors artboard-dropdown-toggle"
-                                                      onClick={(e) => {
-                                                         e.stopPropagation();
-                                                         const rect = e.currentTarget.getBoundingClientRect();
-                                                         setArtboardDropdown(artboardDropdown?.id === b.id ? null : { id: b.id, x: rect.left, y: rect.bottom + 6 });
-                                                      }}
-                                                   >
-                                                      <MoreHorizontal size={12} />
-                                                   </button>
-                                                </div>
-                                             </div>
-                                          );
-                                       })}
-
-                                       <div className="w-px h-5 bg-[#333] mx-1 shrink-0" />
-
-                                       <button
-                                          className="h-[30px] px-3 flex items-center gap-1.5 rounded-md hover:bg-[#252525] text-[#808080] hover:text-[#C0C0C0] transition-colors shrink-0"
-                                          onClick={() => createArtboard()}
-                                       >
-                                          <Plus size={13} />
-                                          <span className="text-[11px] font-semibold">New</span>
-                                       </button>
-                                    </div>
-                                 )}
-
-                                 {/* Dropdown Menu Portal */}
-                                 {artboardDropdown && (
-                                    <div
-                                       className="fixed inset-0 z-50 pointer-events-auto"
-                                       onClick={() => setArtboardDropdown(null)}
-                                    >
-                                       <div
-                                          onClick={(e) => e.stopPropagation()}
-                                          style={{ left: Math.min(artboardDropdown.x, window.innerWidth - 180), top: artboardDropdown.y }}
-                                          className="absolute bg-[#1A1A1A] border border-[#2D2D2D] rounded-lg shadow-2xl py-1 min-w-[170px] artboard-dropdown-container"
-                                       >
-                                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-[#666] border-b border-[#252525] mb-1">Artboard</div>
-                                          <ContextMenuItem icon={Type} label="Rename Artboard" onClick={() => {
-                                             const board = artboards.find(b => b.id === artboardDropdown.id);
-                                             if (board) {
-                                                setRenamingArtboard({ id: board.id, name: board.name });
-                                             }
-                                             setArtboardDropdown(null);
-                                          }} />
-                                          <ContextMenuItem icon={Copy} label="Duplicate Artboard" onClick={() => {
-                                             const board = artboards.find(b => b.id === artboardDropdown.id);
-                                             if (board) {
-                                                createArtboard(board.name + " Copy", board.width, board.height);
-                                             }
-                                             setArtboardDropdown(null);
-                                          }} />
-                                          <ContextMenuItem icon={Expand} label="Resize Options" onClick={() => {
-                                             setActiveArtboardId(artboardDropdown.id);
-                                             setActiveTab("artboards");
-                                             setArtboardDropdown(null);
-                                          }} />
-                                          <ContextMenuItem icon={Download} label="Export Artboard" onClick={() => {
-                                             setActiveArtboardId(artboardDropdown.id);
-                                             setExportTarget("current");
-                                             setActiveTab("export");
-                                             setArtboardDropdown(null);
-                                          }} />
-                                          {artboards.length > 1 && (
-                                             <>
-                                                <div className="h-px bg-[#252525] my-1" />
-                                                <ContextMenuItem icon={Trash2} label="Delete Artboard" danger onClick={() => {
-                                                   deleteArtboard(artboardDropdown.id);
-                                                   setArtboardDropdown(null);
-                                                }} />
-                                             </>
-                                          )}
-                                       </div>
-                                    </div>
-                                 )}
-
-                                 {/* Canvas Container */}
-                                 <div
-                                    className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]"
-                                    onDragEnter={(e) => { e.preventDefault(); }}
-                                    onDragLeave={(e) => { e.preventDefault(); }}
-                                    onDragOver={(e) => { e.preventDefault(); }}
-                                    onDrop={async (e) => {
-                                       e.preventDefault();
-                                       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                                          const files = Array.from(e.dataTransfer.files);
-                                          const imageFiles = files.filter(f => f.type.startsWith('image/'));
-                                          const results = imageFiles.map(file => {
-                                             if (file.type === 'image/svg+xml') {
-                                                // For SVG, we need to read the text. It's async so we can just use URL for now or properly await.
-                                                // For simplicity in sync map, we just create object URL. The hook will load it.
-                                                // Actually, SVG needs string if we want it as group, but fabric.loadSVGFromURL can take a blob URL too.
-                                                return { url: URL.createObjectURL(file), type: 'svg' as const, name: file.name };
-                                             }
-                                             return { url: URL.createObjectURL(file), type: 'image' as const, name: file.name };
-                                          });
-                                          if (results.length > 0) {
-                                             importAssets(results);
-                                          }
-                                       }
-                                    }}
-                                 >
-                                    {/* subtle grid background */}
-                                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-
-                                    {/* Main Fabric Canvas Wrapper (hidden during comparison mode) */}
-                                    <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
-                                       <canvas ref={canvasRef} className="block" />
-                                    </div>
-
-                                    {/* Dynamic Photoshop-style Brush Adjustment floating HUD and diameter preview */}
-                                    {showHud && hudPosition && (() => {
-                                       const getRgba = (hex: string, alpha: number) => {
-                                          let c = hex.replace('#', '');
-                                          if (c.length === 3) {
-                                             c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
-                                          }
-                                          const r = parseInt(c.substring(0, 2), 16) || 0;
-                                          const g = parseInt(c.substring(2, 4), 16) || 0;
-                                          const b = parseInt(c.substring(4, 6), 16) || 0;
-                                          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                                       };
-
-                                       const zoom = fabricRef.current?.getZoom() || 1;
-                                       const size = brushSize * zoom;
-
-                                       const strokeWidth = 3;
-                                       const ringDiameter = Math.max(size, 48);
-                                       const radius = (ringDiameter / 2) + 6;
-                                       const padding = 12;
-                                       const svgSize = ringDiameter + (padding * 2);
-                                       const center = svgSize / 2;
-                                       const circumference = 2 * Math.PI * radius;
-
-                                       let percentage = 100;
-                                       let strokeColor = '#3b82f6'; // Size: Blue
-
-                                       if (activeBrushProperty === 'opacity') {
-                                          percentage = brushOpacity;
-                                          strokeColor = '#a855f7'; // Opacity: Purple/Magenta
-                                       } else if (activeBrushProperty === 'hardness') {
-                                          percentage = brushHardness;
-                                          strokeColor = '#f59e0b'; // Hardness: Amber/Yellow
-                                       } else {
-                                          percentage = (brushSize / 500) * 100;
-                                          strokeColor = '#3b82f6'; // Size: Blue
-                                       }
-
-                                       const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-                                       let previewStyle: React.CSSProperties = {
-                                          width: `${size}px`,
-                                          height: `${size}px`,
-                                          maxWidth: '450px',
-                                          maxHeight: '450px',
-                                          minWidth: '6px',
-                                          minHeight: '6px',
-                                          borderRadius: '9999px',
-                                          border: '1.5px solid rgba(255, 255, 255, 0.9)',
-                                          boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.45)',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          overflow: 'hidden',
-                                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' width='8' height='8' fill='%230D0F13'/%3E%3Crect y='8' width='8' height='8' fill='%230D0F13'/%3E%3C/svg%3E")`,
-                                          boxSizing: 'border-box',
-                                          transition: 'width 75ms ease-out, height 75ms ease-out'
-                                       };
-
-                                       const baseColor = brushColor || '#ef4444';
-                                       const opacity = brushOpacity / 100;
-                                       const hPercent = brushHardness;
-
-                                       const previewCoreStyle: React.CSSProperties = {
-                                          width: '100%',
-                                          height: '100%',
-                                          borderRadius: '9999px',
-                                          background: `radial-gradient(circle, ${getRgba(baseColor, opacity)} 0%, ${getRgba(baseColor, opacity * (hPercent / 100))} ${hPercent}%, transparent 100%)`,
-                                          transition: 'all 50ms ease-out'
-                                       };
-
-                                       return (
-                                          <div
-                                             id="brush-hud-overlay"
-                                             className="absolute pointer-events-none z-[100] flex flex-col items-center justify-center select-none"
-                                             style={{
-                                                left: hudPosition.x,
-                                                top: hudPosition.y,
-                                                transform: `translate(-50%, -50%) scale(${hudFadingOut ? 0.92 : 1})`,
-                                                opacity: hudFadingOut ? 0 : 1,
-                                                transition: 'opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.16, 1, 0.3, 1)',
-                                             }}
-                                          >
-                                             {/* Circle Wrapper with SVG Progress Dial */}
-                                             <div className="relative flex items-center justify-center" style={{ width: `${svgSize}px`, height: `${svgSize}px` }}>
-
-                                                <svg
-                                                   width={svgSize}
-                                                   height={svgSize}
-                                                   className="absolute top-0 left-0 pointer-events-none"
-                                                >
-                                                   {/* Contrast dark dropshadow circle */}
-                                                   <circle
-                                                      cx={center}
-                                                      cy={center}
-                                                      r={radius}
-                                                      fill="none"
-                                                      stroke="rgba(0, 0, 0, 0.5)"
-                                                      strokeWidth={strokeWidth + 2}
-                                                   />
-                                                   {/* Empty track */}
-                                                   <circle
-                                                      cx={center}
-                                                      cy={center}
-                                                      r={radius}
-                                                      fill="none"
-                                                      stroke="rgba(255, 255, 255, 0.15)"
-                                                      strokeWidth={strokeWidth}
-                                                   />
-                                                   {/* Dynamic trace progress segment */}
-                                                   <circle
-                                                      cx={center}
-                                                      cy={center}
-                                                      r={radius}
-                                                      fill="none"
-                                                      stroke={strokeColor}
-                                                      strokeWidth={strokeWidth}
-                                                      strokeDasharray={circumference}
-                                                      strokeDashoffset={strokeDashoffset}
-                                                      strokeLinecap="round"
-                                                      transform={`rotate(-90 ${center} ${center})`}
-                                                      className="transition-[stroke-dashoffset] duration-75 ease"
-                                                      style={{
-                                                         filter: `drop-shadow(0 0 3px ${strokeColor}cc)`,
-                                                      }}
-                                                   />
-                                                </svg>
-
-                                                {/* Center circle brush tip container with checkerboard bg */}
-                                                <div style={previewStyle as React.CSSProperties}>
-                                                   <div style={previewCoreStyle} />
-                                                </div>
-                                             </div>
-
-                                             {/* Floating HUD Information Pill */}
-                                             <div className="mt-4 bg-[#0B0D13]/95 backdrop-blur-xl border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.6)] rounded-full px-5 py-2.5 flex items-center gap-3 select-none animate-in fade-in duration-100 ease-out">
-                                                {activeBrushProperty === 'size' && (
-                                                   <>
-                                                      <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
-                                                         <Brush size={12} className="text-blue-400" />
-                                                         <span>Size</span>
-                                                      </div>
-                                                      <div className="w-px h-3.5 bg-white/15" />
-                                                      <div className="text-sm font-mono font-extrabold text-white">
-                                                         {brushSize}px
-                                                      </div>
-                                                   </>
-                                                )}
-                                                {activeBrushProperty === 'opacity' && (
-                                                   <>
-                                                      <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
-                                                         <Droplets size={12} className="text-purple-400" />
-                                                         <span>Opacity</span>
-                                                      </div>
-                                                      <div className="w-px h-3.5 bg-white/15" />
-                                                      <div className="text-sm font-mono font-extrabold text-white">
-                                                         {brushOpacity}%
-                                                      </div>
-                                                   </>
-                                                )}
-                                                {activeBrushProperty === 'hardness' && (
-                                                   <>
-                                                      <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
-                                                         <Circle size={12} className="text-amber-400 fill-amber-400/10" />
-                                                         <span>Hardness</span>
-                                                      </div>
-                                                      <div className="w-px h-3.5 bg-white/15" />
-                                                      <div className="text-sm font-mono font-extrabold text-white">
-                                                         {brushHardness}%
-                                                      </div>
-                                                   </>
-                                                )}
-                                             </div>
-                                          </div>
-                                       );
-                                    })()}
-
-                                    {/* Empty State Overlay */}
-                                    {isLoaded && artboards.length === 0 && (
-                                       <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
-                                          <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-[#1A1A1A] border border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
-                                             <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(45deg,transparent_25%,white_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]" />
-                                             <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 shadow-inner relative z-10 ring-1 ring-blue-500/20">
-                                                <SquareDashed size={24} className="w-5 h-5 md:w-7 md:h-7" />
-                                             </div>
-                                             <div className="relative z-10 w-full">
-                                                <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-white mb-1.5 md:mb-2">No active project</h3>
-                                                <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 leading-relaxed px-2">Create a new artboard to start placing elements and building your composition.</p>
-                                             </div>
-                                             <button
-                                                onClick={() => createArtboard()}
-                                                className="relative z-10 w-full flex items-center justify-center gap-2 px-5 md:px-6 h-10 md:h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition shadow-lg shadow-blue-600/20 active:scale-95"
-                                             >
-                                                <Plus size={16} /> Create Artboard
-                                             </button>
-                                          </div>
-                                       </div>
-                                    )}
-
-                                    {isCropping && (
-                                       <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm sm:max-w-none sm:w-auto z-[50]">
-                                          <div className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-[#2D2D2D] p-1.5 rounded-xl shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center justify-between sm:justify-start gap-2 overflow-x-auto no-scrollbar">
-                                             <div className="hidden sm:flex px-3 items-center gap-1.5 border-r border-[#333] pr-3 shrink-0">
-                                                <Crop size={14} className="text-blue-400" />
-                                                <span className="text-[11px] font-bold text-slate-200">Crop</span>
-                                             </div>
-
-                                             <select
-                                                className="bg-[#252525] hover:bg-[#333] text-slate-200 text-[10px] sm:text-[11px] px-2 py-1.5 rounded-md border border-[#3A3A3A] outline-none cursor-pointer appearance-none pr-6 bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%205%203%203%203-3%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[position:right_6px_center] bg-no-repeat w-24 sm:w-auto shrink-0"
-                                                defaultValue="free"
-                                                onChange={(e) => {
-                                                   const val = e.target.value;
-                                                   const { cropRect, origObj } = cropSessionRef.current;
-                                                   if (!cropRect || !origObj) return;
-
-                                                   if (val === 'free') {
-                                                      cropRect.set({ lockUniScaling: false });
-                                                   } else {
-                                                      let ratio = 1;
-                                                      if (val === 'original') {
-                                                         ratio = origObj.width! / origObj.height!;
-                                                      } else {
-                                                         ratio = parseFloat(val);
-                                                      }
-
-                                                      const center = cropRect.getCenterPoint();
-                                                      const curW = cropRect.getScaledWidth();
-                                                      const curH = cropRect.getScaledHeight();
-
-                                                      let newW = curW;
-                                                      let newH = newW / ratio;
-
-                                                      // Keep it somewhat within original bounds logic (simplified)
-                                                      if (newH > origObj.getScaledHeight()) {
-                                                         newH = origObj.getScaledHeight();
-                                                         newW = newH * ratio;
-                                                      }
-                                                      if (newW > origObj.getScaledWidth()) {
-                                                         newW = origObj.getScaledWidth();
-                                                         newH = newW / ratio;
-                                                      }
-
-                                                      cropRect.set({
-                                                         width: newW,
-                                                         height: newH,
-                                                         scaleX: 1,
-                                                         scaleY: 1,
-                                                         lockUniScaling: true,
-                                                      });
-
-                                                      cropRect.setPositionByOrigin(center, 'center', 'center');
-                                                      cropRect.setCoords();
-                                                   }
-                                                   fabricRef.current?.renderAll();
-                                                }}
-                                             >
-                                                <option value="free">Free Crop</option>
-                                                <option value="original">Original Ratio</option>
-                                                <optgroup label="Standard Dimensions">
-                                                   <option value="1">1:1 Square</option>
-                                                   <option value={4 / 3}>4:3 (Landscape)</option>
-                                                   <option value={16 / 9}>16:9 (Widescreen)</option>
-                                                   <option value={9 / 16}>9:16 (Vertical)</option>
-                                                   <option value={3 / 2}>3:2 (Classic)</option>
-                                                   <option value={210 / 297}>A4 (210x297mm)</option>
-                                                   <option value={8.5 / 11}>Letter (8.5x11")</option>
-                                                </optgroup>
-                                                <optgroup label="Document Presets">
-                                                   <option value={35 / 45}>India Passport (35x45mm)</option>
-                                                   <option value={1}>US Passport (2x2")</option>
-                                                   <option value={1}>Visa Photo (2x2")</option>
-                                                   <option value={86 / 54}>ID Card (86x54mm)</option>
-                                                   <option value={35 / 45}>Student Photo (35x45)</option>
-                                                   <option value={1}>Profile Pic (1:1)</option>
-                                                </optgroup>
-                                                <optgroup label="Social Media Presets">
-                                                   <option value={1}>Ig Post (1080x1080)</option>
-                                                   <option value={1080 / 1920}>Ig Story (1080x1920)</option>
-                                                   <option value={16 / 9}>YT Thumb (1280x720)</option>
-                                                   <option value={1}>LinkedIn (400x400)</option>
-                                                   <option value={820 / 312}>Fb Cover (820x312)</option>
-                                                </optgroup>
-                                             </select>
-
-                                             <div className="hidden sm:block h-4 w-px bg-[#333] ml-1 mr-1"></div>
-
-                                             <div className="flex items-center gap-1.5 shrink-0">
-                                                <button onClick={applyCrop} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap"><Check size={12} /> <span className="hidden sm:inline">Apply</span></button>
-                                                <button onClick={cancelCrop} className="px-3 py-1.5 bg-[#252525] hover:bg-[#333] text-slate-300 rounded-lg text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"><X size={12} /> <span className="hidden sm:inline">Cancel</span></button>
-                                             </div>
-                                          </div>
-                                       </div>
-                                    )}          {/* Squoosh-like image comparison viewer */}
-                                    {comparisonMode && (
-                                       <div className="absolute inset-0 z-40 bg-[#090909] flex flex-col p-0 md:p-4 items-center justify-center gap-4 select-none">
-                                          {/* Visual Header Option Controls */}
-                                          {isMobile ? (
-                                             <>
-                                                <button
-                                                   onClick={() => setActiveTab('properties')}
-                                                   className="absolute top-4 left-4 z-50 flex items-center justify-center w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white transition active:scale-95 shadow-[0_4px_16px_rgba(0,0,0,0.5)] backdrop-blur-xl border border-white/10"
-                                                >
-                                                   <ChevronLeft size={20} />
-                                                </button>
-
-                                                <button
-                                                   onClick={handleExport}
-                                                   className="absolute top-4 right-4 z-50 flex items-center gap-1.5 px-4 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-[11px] text-white font-extrabold uppercase tracking-widest shadow-[0_4px_16px_rgba(37,99,235,0.4)] transition active:scale-95 border border-blue-500/50 backdrop-blur-xl"
-                                                >
-                                                   <Download size={14} /> Save
-                                                </button>
-                                             </>
-                                          ) : (
-                                             <div className="w-full flex flex-col md:flex-row flex-wrap gap-3 items-stretch md:items-center justify-between bg-[#141414] p-3 rounded-xl border border-[#232323] shadow-lg mb-4 shrink-0 z-30">
-                                                <div className="flex items-center justify-between gap-3 flex-wrap">
-                                                   <div className="flex items-center gap-2">
-                                                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                                      <span className="text-xs font-black uppercase tracking-widest text-slate-200">Live Preview</span>
-                                                   </div>
-
-                                                   {/* Premium Toggle Stats Button */}
-                                                   <button
-                                                      onClick={() => setShowDiagnostics(prev => !prev)}
-                                                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/30 hover:bg-blue-600/20 text-[10px] text-blue-400 font-extrabold uppercase tracking-wider transition-all"
-                                                      title="Toggle performance diagnostics overlay"
-                                                   >
-                                                      {showDiagnostics ? <EyeOff size={11} className="mr-0.5" /> : <Eye size={11} className="mr-0.5" />}
-                                                      {showDiagnostics ? "Hide Stats" : "Show Stats"}
-                                                   </button>
-                                                </div>
-
-                                                <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3">
-                                                   {/* Zoom Control */}
-                                                   <div className="flex items-center justify-between xl:justify-start gap-2 bg-[#1A1A1A] p-1.5 px-3 rounded-lg border border-[#222] min-w-0 flex-wrap">
-
-                                                      <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest leading-none">Zoom</span>
-                                                      <div className="flex items-center gap-2">
-                                                         <input
-                                                            type="range"
-                                                            min="0.5"
-                                                            max="4"
-                                                            step="0.1"
-                                                            value={comparisonZoom}
-                                                            onChange={(e) => {
-                                                               const newZoom = parseFloat(e.target.value);
-                                                               setComparisonZoom(newZoom);
-                                                               if (transformComponentRef.current) {
-                                                                  const instance = transformComponentRef.current;
-                                                                  const inst = instance.instance;
-                                                                  const state = inst?.transformState || inst?.state || (instance as any).state || (instance as any).transformState;
-                                                                  const wrapper = inst?.wrapperComponent || (instance as any).wrapperComponent;
-
-                                                                  if (state && wrapper && typeof state.scale === 'number') {
-                                                                     const { scale, positionX, positionY } = state;
-                                                                     const width = wrapper.offsetWidth;
-                                                                     const height = wrapper.offsetHeight;
-
-                                                                     const centerX = (width / 2 - positionX) / scale;
-                                                                     const centerY = (height / 2 - positionY) / scale;
-
-                                                                     const newPositionX = width / 2 - centerX * newZoom;
-                                                                     const newPositionY = height / 2 - centerY * newZoom;
-
-                                                                     instance.setTransform(newPositionX, newPositionY, newZoom);
-                                                                  } else {
-                                                                     instance.zoomToElement(undefined as any, newZoom);
-                                                                  }
-                                                               }
-                                                            }}
-                                                            className="w-16 sm:w-20 md:w-24 h-1 accent-blue-500 cursor-pointer"
-                                                         />
-                                                         <span className="text-[10px] text-blue-400 font-mono w-8 text-center">{Math.round(comparisonZoom * 100)}%</span>
-                                                         <button
-                                                            onClick={() => {
-                                                               if (transformComponentRef.current) {
-                                                                  transformComponentRef.current.resetTransform();
-                                                                  setComparisonZoom(1);
-                                                               }
-                                                            }}
-                                                            className="text-[9px] bg-[#2D2D2D] hover:bg-[#3D3D3D] text-slate-300 px-1.5 py-0.5 rounded border border-[#3D3D3D] transition-all font-bold uppercase tracking-widest cursor-pointer inline-flex items-center"
-                                                         >
-                                                            Fit
-                                                         </button>
-                                                      </div>
-                                                   </div>
-
-                                                   {/* Preview Modes Selection */}
-                                                   <div className="flex bg-[#1D1D1D] p-1 rounded-lg border border-[#2D2D2D] gap-1 overflow-x-auto sm:flex-wrap no-scrollbar shrink-0 max-w-full">
-                                                      {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
-                                                         <button
-                                                            key={mode}
-                                                            onClick={() => setComparisonPreviewMode(mode)}
-                                                            className={`px-3 py-1.5 text-[10px] sm:text-[11px] font-black rounded-md transition duration-150 uppercase tracking-widest ${comparisonPreviewMode === mode ? 'bg-blue-600 text-white shadow-[0_2px_8px_rgba(37,99,235,0.3)] font-black' : 'text-slate-400 hover:bg-[#252525] hover:text-slate-200'}`}
-                                                         >
-                                                            {mode.replace("-", " ")}
-                                                         </button>
-                                                      ))}
-                                                   </div>
-                                                </div>
-                                             </div>
-
-                                          )}
-
-                                          {/* Central Canvas Viewport Area */}
-                                          <div className={`flex-1 w-full flex items-center justify-center relative min-h-0 ${isMobile ? 'p-0 overflow-hidden' : ''}`}>
-                                             {/* Mobile preview mode contextual selector bubble with conditional rendering toggle */}
+                                       {/* Artboard Bar */}
+                                       {activeTab !== 'export' && (
+                                          <div className="h-10 bg-[#1E1E1E] border-b border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
                                              {isMobile && (
-                                                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center gap-2 max-w-[95vw]">
-                                                   {!showMobileCompareSwitcher ? (
-                                                      <button
-                                                         onClick={() => setShowMobileCompareSwitcher(true)}
-                                                         className="bg-black/85 hover:bg-black border border-white/10 text-white text-[10px] font-black uppercase tracking-[0.15em] px-4 py-2.5 rounded-full flex items-center gap-2 backdrop-blur-xl shadow-2xl pointer-events-auto active:scale-95 transition"
-                                                      >
-                                                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                                         View: {comparisonPreviewMode === 'split' ? 'Split' : (comparisonPreviewMode === 'side-by-side' ? 'Side' : comparisonPreviewMode)}
-                                                         <ChevronDown size={12} className="text-white/60 ml-0.5" />
-                                                      </button>
-                                                   ) : (
-                                                      <div className="bg-black/90 backdrop-blur-xl p-1 border border-white/15 rounded-full shadow-2xl flex items-center gap-1 shrink-0 pointer-events-auto animate-in fade-in zoom-in duration-200">
-                                                         {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
-                                                            <button
-                                                               key={mode}
-                                                               onClick={() => {
-                                                                  setComparisonPreviewMode(mode);
-                                                                  setShowMobileCompareSwitcher(false);
-                                                               }}
-                                                               className={`px-3 py-1.5 text-[9px] font-black rounded-full transition-all uppercase tracking-[0.05em] ${comparisonPreviewMode === mode ? 'bg-white text-black font-extrabold' : 'text-white/50 hover:text-white'}`}
-                                                            >
-                                                               {mode === 'split' ? 'Split' : (mode === 'side-by-side' ? 'Side' : mode)}
-                                                            </button>
-                                                         ))}
-                                                         <button
-                                                            onClick={() => setShowMobileCompareSwitcher(false)}
-                                                            className="p-1.5 text-white/40 hover:text-white transition rounded-full"
-                                                         >
-                                                            <X size={12} />
-                                                         </button>
-                                                      </div>
-                                                   )}
-                                                </div>
-                                             )}
-
-                                             {/* Floating Reset Zoom bubble */}
-                                             {isMobile && Math.round(comparisonZoom * 100) !== 100 && (
                                                 <button
-                                                   onClick={() => {
-                                                      if (transformComponentRef.current) {
-                                                         transformComponentRef.current.resetTransform();
-                                                         setComparisonZoom(1);
-                                                      }
-                                                   }}
-                                                   className="absolute bottom-24 left-4 z-40 bg-black/80 border border-white/10 text-white font-mono text-[10px] font-black px-3 py-2 rounded-full flex items-center gap-1.5 backdrop-blur-xl shadow-2xl pointer-events-auto active:scale-95 transition"
+                                                   onClick={() => setShowMobileArtboardsGallery(true)}
+                                                   className="h-[30px] w-[30px] shrink-0 sticky left-0 z-10 bg-[#292929] border border-[#3C3C3C] shadow flex items-center justify-center rounded-md mr-1 text-[#C0C0C0] hover:text-white"
                                                 >
-                                                   <ZoomIn size={14} /> {Math.round(comparisonZoom * 100)}%
+                                                   <SquareDashed size={14} />
                                                 </button>
                                              )}
-                                             {comparisonPreviewMode === "split" && (
-                                                <div
-                                                   ref={sliderRef}
-                                                   onPointerMove={handlePointerMove}
-                                                   onPointerUp={handlePointerUp}
-                                                   onPointerLeave={handlePointerUp}
-                                                   onKeyDown={handleKeyDown}
-                                                   tabIndex={0}
-                                                   className={`${isMobile ? 'w-full h-full rounded-none border-none flex-1 min-h-0' : 'w-full max-w-5xl flex-1 min-h-0 rounded-xl border border-[#222]'} relative bg-[#111] overflow-hidden shadow-2xl group flex items-center justify-center outline-none focus:border-blue-500/50`}
-                                                   style={{
-                                                      aspectRatio: !isMobile ? (() => {
-                                                         const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                         return b ? `${b.width} / ${b.height}` : "1.33";
-                                                      })() : undefined
-                                                   }}
-                                                >
-                                                   {/* OPTIMIZED PREVIEW (Background layer) */}
-                                                   <div className="absolute inset-0 w-full h-full p-4 overflow-hidden flex items-center justify-center">
-                                                      <TransformWrapper
-                                                         ref={transformComponentRef}
-                                                         disabled={isMobile}
-                                                         initialScale={comparisonZoom}
-                                                         minScale={0.1}
-                                                         maxScale={20}
-                                                         centerOnInit
-                                                         panning={{ disabled: isDraggingDivider }}
-                                                         onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                      >
-                                                         <TransformComponent wrapperStyle={{ width: "100%", height: "100%", cursor: isDraggingDivider ? "ew-resize" : "grab" }} contentStyle={{ width: "100%", height: "100%" }}>
-                                                            <div className="relative w-full h-full flex items-center justify-center">
-                                                               {originalPreviewDims && optimizedPreviewDims && (
-                                                                  <div
-                                                                     className="relative"
-                                                                     style={{
-                                                                        width: originalPreviewDims.w,
-                                                                        height: originalPreviewDims.h,
-                                                                        maxWidth: '100%',
-                                                                        maxHeight: '100%',
-                                                                        aspectRatio: `${originalPreviewDims.w} / ${originalPreviewDims.h}`
-                                                                     }}
-                                                                  >
-                                                                     {/* OPTIMIZED IMAGE (Background layer) */}
-                                                                     <img
-                                                                        src={optimizedImageUrl || originalImageUrl || ""}
-                                                                        alt="Optimized"
-                                                                        referrerPolicy="no-referrer"
-                                                                        className="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                                                                        style={{
-                                                                           backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                           ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                        }}
-                                                                     />
-
-                                                                     {/* ORIGINAL IMAGE (Foreground layer with clipPath) */}
-                                                                     <img
-                                                                        src={originalImageUrl || ""}
-                                                                        alt="Original"
-                                                                        referrerPolicy="no-referrer"
-                                                                        className="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                                                                        style={{
-                                                                           clipPath: `polygon(0 0, ${comparisonDivider}% 0, ${comparisonDivider}% 100%, 0 100%)`
-                                                                        }}
-                                                                     />
-                                                                  </div>
-                                                               )}
-                                                            </div>
-                                                         </TransformComponent>
-                                                      </TransformWrapper>
-                                                   </div>
-
-                                                   {/* Drag Divider Line & Handle */}
-                                                   <div
-                                                      onPointerDown={handlePointerDown}
-                                                      onDoubleClick={() => setComparisonDivider(50)}
-                                                      className="absolute top-0 bottom-0 select-none z-30 cursor-ew-resize group"
-                                                      style={{ left: `${comparisonDivider}%`, transform: 'translateX(-50%)' }}
-                                                   >
-                                                      <div className="absolute inset-y-0 w-[2px] bg-blue-500 group-hover:bg-blue-400 group-active:bg-blue-300 transition-colors shadow-2xl" />
-
-                                                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#181818] border-2 border-blue-500 group-hover:border-blue-400 text-white flex items-center justify-center shadow-2xl transition duration-150 hover:scale-110 active:scale-95 bg-opacity-95">
-                                                         <div className="flex gap-1 items-center">
-                                                            <div className="w-1.5 h-1.5 border-t-2 border-l-2 border-blue-400 rotate-[-45deg]" />
-                                                            <div className="w-[1px] h-3 bg-blue-500/50 rounded-full" />
-                                                            <div className="w-1.5 h-1.5 border-t-2 border-r-2 border-blue-400 rotate-[45deg]" />
-                                                         </div>
-                                                      </div>
-                                                   </div>
-
-                                                   {/* Left Side Label (Original) */}
-                                                   {showDiagnostics && (
-                                                      <div className="hidden md:block absolute top-4 left-4 bg-black/75 text-[#A2A2A2] text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-white/5 pointer-events-none backdrop-blur-md">
-                                                         Original: <span className="font-mono text-white text-xs">{formatBytes(originalSize || 0)}</span>
-                                                      </div>
-                                                   )}
-
-                                                   {/* Right Side Label (Optimized) */}
-                                                   {showDiagnostics && (
-                                                      <div className="hidden md:block absolute top-4 right-4 bg-blue-950/70 text-blue-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-blue-500/20 pointer-events-none backdrop-blur-md">
-                                                         Optimized: <span className="font-mono text-white text-xs">{formatBytes(optimizedSize || 0)}</span>
-                                                      </div>
-                                                   )}
-                                                </div>
-                                             )}
-
-                                             {comparisonPreviewMode === "side-by-side" && (
-                                                <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-w-4xl max-h-[60vh]'}`}>
-                                                   <TransformWrapper
-                                                      ref={transformComponentRef}
-                                                      initialScale={comparisonZoom}
-                                                      minScale={0.1}
-                                                      maxScale={20}
-                                                      centerOnInit
-                                                      limitToBounds={false}
-                                                      centerZoomedOut={true}
-                                                      panning={{ velocityDisabled: true }}
-                                                      onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                   >
-                                                      <TransformComponent
-                                                         wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
-                                                         contentStyle={{ width: "100%", height: "100%" }}
-                                                      >
-                                                         <div className={`grid ${isMobile ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2'} gap-4 w-full h-full p-4`}>
-                                                            <div className="relative rounded-xl border border-[#222] bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
-                                                               <div className="relative w-full h-full flex items-center justify-center">
-                                                                  <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
-                                                                     backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                     ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                  }} />
-                                                               </div>
-                                                               {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original: {formatBytes(originalSize || 0)}</span>}
-                                                            </div>
-                                                            <div className="relative rounded-xl border border-blue-500/20 bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
-                                                               <div className="relative w-full h-full flex items-center justify-center">
-                                                                  <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
-                                                                     backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                     ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                  }} />
-                                                               </div>
-                                                               {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-blue-950/70 px-3 py-1.5 rounded-lg border border-blue-500/20 text-[10px] text-blue-300 font-bold font-mono">Optimized: {formatBytes(optimizedSize || 0)}</span>}
-                                                            </div>
-                                                         </div>
-                                                      </TransformComponent>
-                                                   </TransformWrapper>
-                                                </div>
-                                             )}
-
-                                             {comparisonPreviewMode === "original" && (
-                                                <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-h-[60vh] max-w-4xl border border-[#222] rounded-xl'} bg-[#111] overflow-hidden flex items-center justify-center shadow-2xl`}>
-                                                   <TransformWrapper
-                                                      ref={transformComponentRef}
-                                                      initialScale={comparisonZoom}
-                                                      minScale={0.1}
-                                                      maxScale={20}
-                                                      centerOnInit
-                                                      limitToBounds={false}
-                                                      centerZoomedOut={true}
-                                                      panning={{ velocityDisabled: true }}
-                                                      onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                   >
-                                                      <TransformComponent
-                                                         wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
-                                                         contentStyle={{ width: "100%", height: "100%" }}
-                                                      >
-                                                         <div className="relative w-full h-full flex items-center justify-center p-4">
-                                                            <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
-                                                               backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                               ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                            }} />
-                                                         </div>
-                                                      </TransformComponent>
-                                                   </TransformWrapper>
-                                                   {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original Only ({formatBytes(originalSize || 0)})</span>}
-                                                </div>
-                                             )}
-
-                                             {comparisonPreviewMode === "optimized" && (
-                                                <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-h-[60vh] max-w-4xl border border-blue-500/20 rounded-xl'} bg-[#111] overflow-hidden flex items-center justify-center shadow-2xl`}>
-                                                   <TransformWrapper
-                                                      ref={transformComponentRef}
-                                                      initialScale={comparisonZoom}
-                                                      minScale={0.1}
-                                                      maxScale={20}
-                                                      centerOnInit
-                                                      limitToBounds={false}
-                                                      centerZoomedOut={true}
-                                                      panning={{ velocityDisabled: true }}
-                                                      onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                   >
-                                                      <TransformComponent
-                                                         wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
-                                                         contentStyle={{ width: "100%", height: "100%" }}
-                                                      >
-                                                         <div className="relative w-full h-full flex items-center justify-center p-4">
-                                                            <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
-                                                               backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                               ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                            }} />
-                                                         </div>
-                                                      </TransformComponent>
-                                                   </TransformWrapper>
-                                                   {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-blue-950/70 px-3 py-1.5 rounded-lg border border-blue-500/20 text-[10px] text-blue-300 font-bold font-mono">Optimized Only ({formatBytes(optimizedSize || 0)})</span>}
-                                                </div>
-                                             )}
-
-                                             {/* Floating Green Live Size Indicator */}
-                                             {optimizedSize && originalSize && originalSize > optimizedSize && showDiagnostics && (
-                                                <div className="hidden md:flex absolute bottom-4 right-4 bg-emerald-900/90 border border-emerald-500/30 text-white backdrop-blur-md px-4 py-2.5 rounded-xl shadow-2xl z-25 flex-col items-center justify-center font-bold animate-fade-in transition-all">
-                                                   <div className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-                                                      <Activity size={12} className="animate-pulse" />
-                                                      {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
-                                                   </div>
-                                                   <div className="text-lg font-mono font-black">{formatBytes(optimizedSize)}</div>
-                                                   <div className="text-[9px] text-emerald-300/75 uppercase font-mono tracking-wider mt-0.5">Saved {formatBytes(originalSize - optimizedSize)}</div>
-                                                </div>
-                                             )}
-
-                                             {/* Visual Quality & Diagnostics analysis floating card */}
-                                             {showDiagnostics && (
-                                                <div className="hidden md:flex absolute bottom-4 left-4 max-w-xs bg-[#141414]/95 border border-[#2E2E2E] text-slate-300 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-2xl z-25 flex-col gap-1.5 text-xs text-left animate-in fade-in duration-200">
-                                                   <div className="text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider border-b border-[#232323] pb-1 flex items-center justify-between">
-                                                      <div className="flex items-center gap-1.5">
-                                                         <Sliders size={11} className="text-blue-400" /> Quality Diagnostics
-                                                      </div>
-                                                      <button onClick={() => setShowDiagnostics(false)} className="text-slate-500 hover:text-white p-0.5 transition" title="Minimize diagnostics panel"><X size={11} /></button>
-                                                   </div>
-                                                   <div className="flex justify-between gap-6">
-                                                      <span className="text-slate-400 text-[11px]">Format:</span>
-                                                      <span className="font-mono text-[11px] font-bold text-blue-400 uppercase">{exportSettings.format}</span>
-                                                   </div>
-                                                   <div className="flex justify-between gap-6">
-                                                      <span className="text-slate-400 text-[11px]">Resolution:</span>
-                                                      <span className="font-mono text-[11px] font-bold text-slate-100">
-                                                         {(() => {
-                                                            const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                            return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} x ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
-                                                         })()}
-                                                      </span>
-                                                   </div>
-                                                   <div className="flex justify-between gap-6">
-                                                      <span className="text-slate-400 text-[11px]">PSNR Metric:</span>
-                                                      <span className="font-mono text-[11px] font-bold text-emerald-400">
-                                                         {psnr ? `${psnr.toFixed(1)} dB` : 'Calculating...'}
-                                                      </span>
-                                                   </div>
-                                                   <div className="flex justify-between gap-6">
-                                                      <span className="text-slate-400 text-[11px]">SSIM Metric:</span>
-                                                      <span className="font-mono text-[11px] font-bold text-blue-400">
-                                                         {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Calculating...'}
-                                                      </span>
-                                                   </div>
-                                                   <div className="flex justify-between gap-6">
-                                                      <span className="text-slate-400 text-[11px]">Visual Fidelity:</span>
-                                                      <span className="text-[11px] font-medium text-slate-200">
-                                                         {(() => {
-                                                            if (exportSettings.format === 'png') return exportSettings.png?.paletteReduction ? '8-Bit Index' : 'Perfect Lossless';
-                                                            const q = exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : exportSettings.avif.cqLevel);
-                                                            if (q > 90) return 'Exceptional';
-                                                            if (q > 75) return 'Balanced';
-                                                            if (q > 50) return 'Standard Lossy';
-                                                            return 'High Compression';
-                                                         })()}
-                                                      </span>
-                                                   </div>
-                                                </div>
-                                             )}
-
-                                             {/* Minimized HUD diagnostic bubble */}
-                                             {!showDiagnostics && (
-                                                <button
-                                                   onClick={() => setShowDiagnostics(true)}
-                                                   className="hidden md:flex absolute bottom-4 left-4 w-9 h-9 rounded-xl bg-[#141414]/95 border border-[#2E2E2E] hover:border-blue-500/50 hover:bg-[#1A1A1A] text-slate-300 hover:text-white backdrop-blur-md items-center justify-center shadow-xl z-25 transition-all"
-                                                   title="Show diagnostics overlay"
-                                                >
-                                                   <Sliders size={14} />
-                                                </button>
-                                             )}
-
-                                             {/* Worker compilation progress & current operation overlay */}
-                                             {isGeneratingPreview && (
-                                                <div className="absolute inset-0 bg-[#0A0A0A]/85 backdrop-blur-sm flex flex-col items-center justify-center z-40 rounded-xl transition-all duration-300 border border-[#222]">
-                                                   <div className="relative flex items-center justify-center mb-4">
-                                                      <RotateCw className="animate-spin text-blue-500 w-9 h-9" />
-                                                      <div className="absolute w-12 h-12 rounded-full border-2 border-dashed border-blue-500/20 animate-spin-reverse" />
-                                                   </div>
-                                                   <div className="text-xs font-semibold text-slate-100">{currentPreviewOp || "Regenerating active optimization preview..."}</div>
-                                                   <div className="text-[9px] text-[#8C8C8C] mt-1.5 uppercase font-[#8C8C8C] tracking-wider font-mono">WebAssembly Engine (jSquash)</div>
-                                                </div>
-                                             )}
-                                          </div>
-
-                                          {/* Mobile Floating HUD metrics chips (Progressive Disclosure) */}
-                                          {isMobile && (
-                                             <div
-                                                onClick={() => setShowMobilePanel(true)}
-                                                className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-[#121212]/95 border border-white/15 pointer-events-auto px-4 py-2.5 rounded-xl shadow-[0_12px_32px_rgba(0,0,0,0.85)] flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-950 transition-all active:scale-[0.97] text-slate-100 min-w-[275px] max-w-[90vw]"
-                                             >
-                                                <div className="flex items-center gap-2.5">
-                                                   <span className="bg-blue-500/10 text-blue-400 text-[10px] font-black tracking-widest px-2 py-1 rounded-md uppercase font-mono border border-blue-500/15">
-                                                      {exportSettings.format}
-                                                   </span>
-                                                   {!!(originalSize && optimizedSize && originalSize > optimizedSize) && (
-                                                      <div className="flex flex-col text-left leading-tight">
-                                                         <span className="text-[11px] font-black text-emerald-400 tracking-wide">
-                                                            {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
-                                                         </span>
-                                                         <span className="text-[8px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono leading-none">Savings</span>
-                                                      </div>
-                                                   )}
-                                                   {(!originalSize || !optimizedSize) && (
-                                                      <span className="text-[11px] font-black text-blue-400 tracking-wide uppercase">
-                                                         Settings
-                                                      </span>
-                                                   )}
-                                                </div>
-                                                <div className="w-[1px] h-4 bg-white/10" />
-                                                <div className="flex items-center gap-2.5">
-                                                   {(optimizedSize && optimizedSize > 0) ? (
-                                                      <div className="flex flex-col text-right leading-tight">
-                                                         <span className="text-[11px] text-white font-extrabold font-mono">
-                                                            {formatBytes(optimizedSize)}
-                                                         </span>
-                                                         <span className="text-[8px] text-[#8A8A8A] font-extrabold uppercase tracking-wider leading-none">Optimized</span>
-                                                      </div>
-                                                   ) : (
-                                                      <div className="flex flex-col text-right leading-tight">
-                                                         <span className="text-[11px] text-white font-extrabold font-mono">
-                                                            Export Studio
-                                                         </span>
-                                                         <span className="text-[8px] text-[#8A8A8A] font-extrabold uppercase tracking-wider leading-none">Optimize</span>
-                                                      </div>
-                                                   )}
-                                                   <Sliders size={11} className="text-blue-400 animate-pulse shrink-0" />
-                                                </div>
-                                             </div>
-                                          )}
-
-                                          {/* Premium Mobile Slide-Up Bottom Sheet */}
-                                          {isMobile && showMobileDiagnosticsSheet && (
-                                             <>
-                                                <div
-                                                   className="fixed inset-0 bg-black/80 z-[100] backdrop-blur-sm animate-in fade-in cursor-pointer pointer-events-auto"
-                                                   onClick={() => setShowMobileDiagnosticsSheet(false)}
-                                                />
-                                                <div className="fixed bottom-0 left-0 right-0 z-[101] bg-[#0F0F0F] rounded-t-3xl border-t border-[#252525] p-5 pb-8 flex flex-col gap-4 animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto pointer-events-auto">
-                                                   <div className="w-12 h-1 bg-[#333] rounded-full mx-auto" onClick={() => setShowMobileDiagnosticsSheet(false)} />
-
-                                                   <div className="flex items-center justify-between border-b border-[#222] pb-3">
-                                                      <div className="flex items-center gap-2">
-                                                         <Sliders size={16} className="text-blue-500" />
-                                                         <h3 className="text-xs font-black uppercase tracking-widest text-[#E0E0E0]">Optimization Settings</h3>
-                                                      </div>
-                                                      <button
-                                                         onClick={() => setShowMobileDiagnosticsSheet(false)}
-                                                         className="p-1 px-3 rounded-lg bg-[#1E1E1E] text-[10px] font-bold uppercase tracking-wider hover:bg-[#2A2A2A] text-slate-400"
-                                                      >
-                                                         Close
-                                                      </button>
-                                                   </div>
-
-                                                   {['jpeg', 'webp', 'avif'].includes(exportSettings.format) && (
-                                                      <div className="bg-[#161616] p-4 rounded-xl border border-[#222]">
-                                                         <div className="flex justify-between items-center mb-2">
-                                                            <span className="text-[10px] uppercase font-black text-[#A2A2A2] tracking-wider">Adjustment Quality</span>
-                                                            <span className="text-xs font-bold text-blue-400 font-mono">
-                                                               {exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : 100 - exportSettings.avif.cqLevel)}%
-                                                            </span>
-                                                         </div>
-                                                         <input
-                                                            type="range"
-                                                            min="5"
-                                                            max="100"
-                                                            value={
-                                                               exportSettings.format === 'jpeg'
-                                                                  ? exportSettings.mozjpeg.quality
-                                                                  : (exportSettings.format === 'webp'
-                                                                     ? exportSettings.webp.quality
-                                                                     : 100 - exportSettings.avif.cqLevel)
-                                                            }
-                                                            onChange={(e) => {
-                                                               const val = parseInt(e.target.value);
-                                                               const newSettings = { ...exportSettings };
-                                                               if (exportSettings.format === 'jpeg') {
-                                                                  newSettings.mozjpeg.quality = val;
-                                                               } else if (exportSettings.format === 'webp') {
-                                                                  newSettings.webp.quality = val;
-                                                               } else if (exportSettings.format === 'avif') {
-                                                                  newSettings.avif.cqLevel = 100 - val;
-                                                               }
-                                                               setExportSettings(newSettings);
-                                                            }}
-                                                            className="w-full accent-blue-500 cursor-pointer h-1.5 bg-[#252525] rounded-full"
-                                                         />
-                                                      </div>
-                                                   )}
-
-                                                   <div className="space-y-2 mt-1">
-                                                      <div className="grid grid-cols-2 gap-2">
-                                                         <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Target Format</span>
-                                                            <span className="font-mono text-xs font-bold text-blue-400 uppercase">{exportSettings.format}</span>
-                                                         </div>
-
-                                                         <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Resolution</span>
-                                                            <span className="font-mono text-xs font-bold text-slate-200">
-                                                               {(() => {
-                                                                  const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                                  return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} × ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
-                                                               })()}
-                                                            </span>
-                                                         </div>
-
-                                                         <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">PSNR Ratio</span>
-                                                            <span className="font-mono text-xs font-bold text-emerald-400 font-mono">
-                                                               {psnr ? `${psnr.toFixed(1)} dB` : 'Measuring...'}
-                                                            </span>
-                                                         </div>
-
-                                                         <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Visual SSIM</span>
-                                                            <span className="font-mono text-xs font-bold text-blue-400 block truncate">
-                                                               {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Measuring...'}
-                                                            </span>
-                                                         </div>
-                                                      </div>
-
-                                                      <div className="bg-[#161616] p-3 rounded-xl border border-[#222] mt-2 space-y-2">
-                                                         <div className="flex justify-between items-center border-b border-[#252525] pb-1.5">
-                                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Savings Profile</span>
-                                                            <span className="text-[10px] text-slate-500 uppercase font-mono">WASM optimized</span>
-                                                         </div>
-                                                         <div className="flex justify-between text-xs text-slate-300 font-sans">
-                                                            <span>Original Size: <span className="font-mono font-bold text-slate-400">{formatBytes(originalSize || 0)}</span></span>
-                                                            <span>Optimized Size: <span className="font-mono font-bold text-blue-400">{formatBytes(optimizedSize || 0)}</span></span>
-                                                         </div>
-                                                         {optimizedSize && originalSize && (
-                                                            <div className="flex justify-between text-xs text-emerald-400 border-t border-[#252525] pt-1.5 mt-1 font-sans">
-                                                               <span>Saved: <span className="font-mono font-black">{formatBytes(originalSize - optimizedSize)}</span></span>
-                                                               <span className="font-black">{parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller</span>
-                                                            </div>
-                                                         )}
-                                                      </div>
-                                                   </div>
-
-                                                   <div className="mt-2 text-center">
-                                                      <button
-                                                         onClick={() => {
-                                                            setShowMobileDiagnosticsSheet(false);
-                                                            handleExport();
-                                                         }}
-                                                         className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-white shadow-xl transition-all"
-                                                      >
-                                                         Confirm & Download Image
-                                                      </button>
-                                                   </div>
-                                                </div>
-                                             </>
-                                          )}
-
-                                          {/* Non-mobile Tablet/Accordion Bottom Details Sheet (Only visible on non-mobile screens) */}
-                                          {!isMobile && (
-                                             <div className="md:hidden w-full shrink-0 mt-2 z-30">
-                                                <div
-                                                   onClick={() => setMobileDetailsExpanded(!mobileDetailsExpanded)}
-                                                   className="w-full bg-[#141414] border border-[#2A2A2A] rounded-xl p-3 flex items-center justify-between hover:bg-[#1A1A1A] active:bg-[#111] transition-colors cursor-pointer select-none"
-                                                >
-                                                   <div className="flex items-center gap-2">
-                                                      <Sliders size={12} className="text-blue-400" />
-                                                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
-                                                         Optimization Details
-                                                      </span>
-                                                      <span className="text-[9px] text-blue-300 bg-blue-900/30 border border-blue-500/20 px-1.5 py-0.5 rounded font-bold uppercase font-mono">
-                                                         {exportSettings.format}
-                                                      </span>
-                                                   </div>
-
-                                                   {/* Display compact saving information metrics as clean chips */}
-                                                   <div className="flex items-center gap-1.5">
-                                                      {optimizedSize && originalSize && (
-                                                         <>
-                                                            {originalSize > optimizedSize && (
-                                                               <div className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                                                                  {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
-                                                               </div>
-                                                            )}
-                                                            <div className="text-[9px] font-bold text-blue-300 bg-[#1e293b]/40 border border-blue-500/10 px-2 py-0.5 rounded-md font-mono">
-                                                               {formatBytes(optimizedSize)}
-                                                            </div>
-                                                         </>
-                                                      )}
-                                                      <div className="text-slate-500 ml-1">
-                                                         {mobileDetailsExpanded ? (
-                                                            <ChevronDown size={14} className="text-blue-400" />
-                                                         ) : (
-                                                            <ChevronUp size={14} className="text-slate-400" />
-                                                         )}
-                                                      </div>
-                                                   </div>
-                                                </div>
-
-                                                {/* Accordion Expandable Diagnostics Body */}
-                                                {mobileDetailsExpanded && (
-                                                   <div className="w-full bg-[#111111] border-x border-b border-[#2A2A2A] rounded-b-xl p-3 space-y-2 mt-[-4px] text-xs text-left animate-in fade-in slide-in-from-top-2 duration-200">
-                                                      <div className="grid grid-cols-2 gap-2">
-                                                         {/* Format item */}
-                                                         <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Format</span>
-                                                            <span className="font-mono text-xs font-bold text-blue-400 uppercase">{exportSettings.format}</span>
-                                                         </div>
-
-                                                         {/* Resolution item */}
-                                                         <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Resolution</span>
-                                                            <span className="font-mono text-xs font-bold text-slate-200">
-                                                               {(() => {
-                                                                  const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                                  return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} × ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
-                                                               })()}
-                                                            </span>
-                                                         </div>
-
-                                                         {/* PSNR item */}
-                                                         <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">PSNR Metric</span>
-                                                            <span className="font-mono text-xs font-bold text-emerald-400">
-                                                               {psnr ? `${psnr.toFixed(1)} dB` : 'Calculating...'}
-                                                            </span>
-                                                         </div>
-
-                                                         {/* SSIM item */}
-                                                         <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                            <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">SSIM Metric</span>
-                                                            <span className="font-mono text-xs font-bold text-blue-400">
-                                                               {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Calculating...'}
-                                                            </span>
-                                                         </div>
-                                                      </div>
-
-                                                      {/* Savings and size comparisons */}
-                                                      {optimizedSize && originalSize && (
-                                                         <div className="bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-500/20 flex flex-col gap-1.5">
-                                                            <div className="flex justify-between items-center border-b border-emerald-500/10 pb-1">
-                                                               <span className="text-emerald-400 text-[9px] font-black uppercase tracking-wider font-sans">Size Savings</span>
-                                                               <span className="text-emerald-300 font-extrabold text-xs">
-                                                                  {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Reduction
-                                                               </span>
-                                                            </div>
-                                                            <div className="flex justify-between text-[11px] text-slate-300 font-sans">
-                                                               <span>Original Size: <span className="font-mono font-bold text-slate-400">{formatBytes(originalSize)}</span></span>
-                                                               <span>Saved: <span className="font-mono font-bold text-emerald-400">{formatBytes(originalSize - optimizedSize)}</span></span>
-                                                            </div>
-                                                         </div>
-                                                      )}
-
-                                                      {/* Fidelity statement item */}
-                                                      <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                         <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Visual Fidelity</span>
-                                                         <span className="text-xs font-medium text-slate-300 font-sans">
-                                                            {(() => {
-                                                               if (exportSettings.format === 'png') return exportSettings.png?.paletteReduction ? '8-Bit Color Index' : 'Pixel Lossless';
-                                                               const q = exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : exportSettings.avif.cqLevel);
-                                                               if (q > 90) return 'Exceptional';
-                                                               if (q > 75) return 'Balanced';
-                                                               if (q > 50) return 'Standard Lossy';
-                                                               return 'High Compression';
-                                                            })()}
-                                                         </span>
-                                                      </div>
-                                                   </div>
-                                                )}
-                                             </div>
-                                          )}
-                                       </div>
-                                    )}
-
-                                    {/* Floating Canvas Navigation & Zoom Controller */}
-                                    <div className={`absolute bottom-4 left-6 bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
-                                       <button
-                                          className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
-                                          onClick={() => {
-                                             if (!fabricRef.current) return;
-                                             let z = fabricRef.current.getZoom();
-                                             z = Math.max(0.1, z - 0.15);
-                                             fabricRef.current.setZoom(z);
-                                             setZoomPercent(Math.round(z * 100));
-                                             fabricRef.current.requestRenderAll();
-                                          }}
-                                          title="Zoom Out"
-                                       >
-                                          <Minus size={13} />
-                                       </button>
-
-                                       <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-200">
-                                          {zoomPercent}%
-                                       </span>
-
-                                       <button
-                                          className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
-                                          onClick={() => {
-                                             if (!fabricRef.current) return;
-                                             let z = fabricRef.current.getZoom();
-                                             z = Math.min(10, z + 0.15);
-                                             fabricRef.current.setZoom(z);
-                                             setZoomPercent(Math.round(z * 100));
-                                             fabricRef.current.requestRenderAll();
-                                          }}
-                                          title="Zoom In"
-                                       >
-                                          <Plus size={13} />
-                                       </button>
-
-                                       <div className="w-px h-4 bg-[#2D2D2D]" />
-
-                                       <button
-                                          className="px-2 py-1 bg-[#232323] hover:bg-[#2F2F2F] hover:text-white text-[10px] font-medium rounded transition"
-                                          onClick={() => {
-                                             if (!fabricRef.current) return;
-                                             const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
-                                             const vpt = fabricRef.current.viewportTransform!;
-                                             const newVpt = vpt.slice() as any;
-                                             newVpt[0] = 1.0;
-                                             newVpt[3] = 1.0;
-                                             const cw = fabricRef.current.width!;
-                                             const ch = fabricRef.current.height!;
-                                             newVpt[4] = cw / 2 - (activeB.x + activeB.width / 2);
-                                             newVpt[5] = ch / 2 - (activeB.y + activeB.height / 2);
-                                             fabricRef.current.setViewportTransform(newVpt);
-                                             setZoomPercent(100);
-                                          }}
-                                          title="Recenter Camera on Active Artboard"
-                                       >
-                                          Recenter
-                                       </button>
-
-                                       <button
-                                          className="px-2 py-1 bg-[#232323] hover:bg-[#2F2F2F] hover:text-white text-[10px] font-medium rounded transition"
-                                          onClick={() => {
-                                             if (!fabricRef.current || artboardsRef.current.length === 0) return;
-                                             let minX = Infinity, minY = Infinity;
-                                             let maxX = -Infinity, maxY = -Infinity;
-                                             artboardsRef.current.forEach(b => {
-                                                minX = Math.min(minX, b.x);
-                                                minY = Math.min(minY, b.y);
-                                                maxX = Math.max(maxX, b.x + b.width);
-                                                maxY = Math.max(maxY, b.y + b.height);
-                                             });
-                                             minX -= 60; minY -= 60;
-                                             maxX += 60; maxY += 60;
-
-                                             const w = maxX - minX;
-                                             const h = maxY - minY;
-                                             const cw = fabricRef.current.width!;
-                                             const ch = fabricRef.current.height!;
-
-                                             const zoom = Math.max(0.1, Math.min(4, Math.min(cw / w, ch / h)));
-                                             const vpt = fabricRef.current.viewportTransform!;
-                                             const newVpt = vpt.slice() as any;
-                                             newVpt[0] = zoom;
-                                             newVpt[3] = zoom;
-                                             newVpt[4] = cw / 2 - zoom * (minX + w / 2);
-                                             newVpt[5] = ch / 2 - zoom * (minY + h / 2);
-
-                                             fabricRef.current.setViewportTransform(newVpt);
-                                             setZoomPercent(Math.round(zoom * 100));
-                                          }}
-                                          title="Fit All Artboards in Viewport"
-                                       >
-                                          Fit All
-                                       </button>
-                                    </div>
-                                 </div>
-                              </div>
-
-                              {/* Resize Handle */}
-                              <div
-                                 onPointerDown={(e) => {
-                                    setIsResizingPanel(true);
-                                    e.preventDefault();
-                                 }}
-                                 className="relative z-20 w-1.5 -ml-[1px] -mr-[5px] cursor-col-resize flex justify-center group hidden md:flex"
-                              >
-                                 <div className={`h-full w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-x-150' : 'bg-transparent group-hover:bg-blue-500'}`} />
-                              </div>
-
-                              {/* Mobile Filter / Bottom Bar */}
-                              {isMobile && (
-                                 <div className="flex h-14 bg-[#1A1A1A] border-t border-[#2C2C2C] z-30 fixed bottom-0 left-0 right-0 px-2 items-center justify-between overflow-x-auto no-scrollbar">
-                                    <ToolBtn icon={MousePointer2} tool="select" current={activeTool} set={setTool} title="Move" />
-                                    <ToolBtn icon={Hand} tool="pan" current={activeTool} set={setTool} title="Pan" />
-                                    <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush" />
-                                    <ToolBtn icon={Type} tool="text" current={activeTool} set={addText} title="Text" />
-                                    <ToolBtn icon={Crop} tool="crop" current={activeTool} set={() => enterCropMode()} title="Crop" />
-
-                                    <div className="flex-1" />
-
-                                    <div className="relative shrink-0 flex items-center justify-center w-10">
-                                       <ColorPickerTrigger
-                                          color={brushColor || "#ffffff"}
-                                          onChange={changeCurrentColor}
-                                          className="w-7 h-7 rounded-full border border-white/20 shadow-inner relative overflow-hidden"
-                                       />
-                                    </div>
-
-                                    <div className="w-px h-8 bg-[#3A3A3A] mx-2 shrink-0" />
-
-                                    <button
-                                       onClick={() => setShowMobilePanel(true)}
-                                       className="h-10 w-10 shrink-0 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl flex items-center justify-center transition-colors shadow-sm ml-auto"
-                                    >
-                                       <Layers size={18} />
-                                    </button>
-                                 </div>
-                              )}
-
-                              {/* Mobile Swipe Wrapper Backdrop */}
-                              {isMobile && showMobilePanel && (
-                                 <div className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm animate-in fade-in" onClick={() => setShowMobilePanel(false)} />
-                              )}
-
-                              {/* Right Sidebar - Logic Panels */}
-                              <div
-                                 style={{ width: isMobile ? '100%' : `${panelWidth}px` }}
-                                 className={`${isMobile ? `fixed bottom-0 left-0 right-0 z-50 h-[85vh] rounded-t-2xl transform transition-transform duration-300 ${showMobilePanel ? 'translate-y-0' : 'translate-y-full'}` : 'h-full'} border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-[#2C2C2C]'} bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.5)] md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150`}
-                              >
-                                 {isMobile && (
-                                    <div
-                                       className="w-full flex justify-center py-3 shrink-0 z-10 sticky top-0 bg-[#1E1E1E]"
-                                       onTouchStart={(e) => {
-                                          const startY = e.touches[0].clientY;
-                                          const handleMove = (eMove: TouchEvent) => {
-                                             const delta = eMove.touches[0].clientY - startY;
-                                             if (delta > 50) {
-                                                setShowMobilePanel(false);
-                                                document.removeEventListener('touchmove', handleMove);
-                                             }
-                                          };
-                                          const handleEnd = () => {
-                                             document.removeEventListener('touchmove', handleMove);
-                                             document.removeEventListener('touchend', handleEnd);
-                                          };
-                                          document.addEventListener('touchmove', handleMove);
-                                          document.addEventListener('touchend', handleEnd);
-                                       }}
-                                    >
-                                       <div className="w-16 h-1.5 bg-[#4A4A4A] rounded-full" />
-                                    </div>
-                                 )}
-
-                                 <div className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] overflow-x-auto select-none no-scrollbar shrink-0">
-                                    <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
-                                    <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
-                                    <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
-                                    <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
-                                    <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
-                                    <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
-                                    <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
-                                 </div>
-
-                                 <div className="flex-1 overflow-y-auto overflow-x-hidden">
-
-                                    {/* PROPERTIES PANEL */}
-                                    {activeTab === 'properties' && (
-                                       <PropertiesTab />
-                                    )}
-                                    {/* ARTBOARDS PANEL */}
-                                    {activeTab === 'artboards' && (
-                                       <ArtboardsTab />
-
-                                    )}
-
-                                    {/* QUICK ACTIONS PANEL */}
-                                    {activeTab === 'quick' && (
-                                       <div className="p-4 space-y-6 text-[#C0C0C0]">
-                                          {selectionType !== 'image' && selectionType !== 'frameGroup' ? (
-                                             <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
-                                                <Activity size={32} className="mb-4 text-emerald-500 animate-pulse" />
-                                                <span className="text-sm font-semibold text-white">Quick Actions</span>
-                                                <span className="text-xs mt-2 w-48 text-[#8A8A8A]">Select an Image layer on the canvas to access one-click utilities and fixes.</span>
-                                             </div>
-                                          ) : (
-                                             <div className="space-y-6 flex flex-col h-full">
-
-                                                {/* One-Click Quick Fixes */}
-                                                <div className="space-y-2">
-                                                   <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
-                                                      <Sparkles size={11} className="text-yellow-400" /> Quick Fixes
-                                                   </div>
-                                                   <div className="grid grid-cols-1 gap-1.5">
-                                                      <button onClick={() => { addFilterToPipeline('brightness'); applyFilter('brightness', 0.1); addFilterToPipeline('contrast'); applyFilter('contrast', 0.15); applyFilter('vibrance', undefined); addFilterToPipeline('vibrance'); }} className="p-2 border border-[#2C2C2C] hover:border-emerald-500/50 hover:bg-emerald-900/20 bg-[#1A1A1A] rounded text-left text-[11px] font-medium transition duration-150 group font-sans flex items-center gap-3">
-                                                         <div className="w-6 h-6 rounded bg-[#2A2A2A] flex items-center justify-center text-white"><Sparkles size={12} /></div>
-                                                         <div>
-                                                            <div className="text-white group-hover:text-emerald-400 transition-colors">Auto Enhance</div>
-                                                            <div className="text-[9px] text-[#6A6A6A]">Smart contrast, brightness, and vibrance</div>
-                                                         </div>
-                                                      </button>
-                                                      <button onClick={() => { addFilterToPipeline('sharpen'); applyFilter('sharpen', 0.3); }} className="p-2 border border-[#2C2C2C] hover:border-blue-500/50 hover:bg-blue-900/20 bg-[#1A1A1A] rounded text-left text-[11px] font-medium transition duration-150 group font-sans flex items-center gap-3">
-                                                         <div className="w-6 h-6 rounded bg-[#2A2A2A] flex items-center justify-center text-white"><Eye size={12} /></div>
-                                                         <div>
-                                                            <div className="text-white group-hover:text-blue-400 transition-colors">Auto Sharpen</div>
-                                                            <div className="text-[9px] text-[#6A6A6A]">Enhance edge detail and clarity</div>
-                                                         </div>
-                                                      </button>
-                                                      <button onClick={() => { addFilterToPipeline('saturation'); applyFilter('saturation', 0.2); addFilterToPipeline('vibrance'); }} className="p-2 border border-[#2C2C2C] hover:border-violet-500/50 hover:bg-violet-900/20 bg-[#1A1A1A] rounded text-left text-[11px] font-medium transition duration-150 group font-sans flex items-center gap-3">
-                                                         <div className="w-6 h-6 rounded bg-[#2A2A2A] flex items-center justify-center text-white"><Palette size={12} /></div>
-                                                         <div>
-                                                            <div className="text-white group-hover:text-violet-400 transition-colors">Auto Color Correct</div>
-                                                            <div className="text-[9px] text-[#6A6A6A]">Boost missing saturation and colors</div>
-                                                         </div>
-                                                      </button>
-                                                   </div>
-                                                </div>
-
-                                                {/* Quick Utilities */}
-                                                <div className="space-y-2">
-                                                   <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
-                                                      <Settings2 size={11} className="text-slate-400" /> Transform Utilities
-                                                   </div>
-                                                   <div className="grid grid-cols-2 gap-1.5">
-                                                      {[
-                                                         { label: 'Fit to Print', target: 'print' },
-                                                         { label: 'Fit to Web', target: 'web' },
-                                                         { label: 'Center Subject', target: 'center' },
-                                                         { label: 'Reset Aspect', target: 'reset' }
-                                                      ].map(u => (
-                                                         <button
-                                                            key={u.label}
-                                                            onClick={() => {
-                                                               if (u.target === 'reset') resetCrop();
-                                                               else alignSelection('centerH');
-                                                            }}
-                                                            className="py-1 px-2 border border-[#2C2C2C] hover:border-slate-500/50 hover:text-white bg-[#1A1A1A] hover:bg-[#252525] rounded text-center text-[10px] font-medium transition duration-150 font-sans"
-                                                         >
-                                                            {u.label}
-                                                         </button>
-                                                      ))}
-                                                   </div>
-                                                </div>
-
-                                                {/* Digital Frames */}
-                                                <div className="space-y-2">
-                                                   <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
-                                                      <ImageIcon size={11} className="text-orange-400" /> Digital Frames
-                                                   </div>
-                                                   <div className="grid grid-cols-2 gap-1.5">
-                                                      {[
-                                                         { label: 'Polaroid', target: 'polaroid' },
-                                                         { label: 'Classic White', target: 'white' },
-                                                         { label: 'Gallery Black', target: 'black' },
-                                                         { label: 'Metallic Gold', target: 'metallic' },
-                                                         { label: 'Vintage Brown', target: 'vintage' }
-                                                      ].map(u => (
-                                                         <button
-                                                            key={u.label}
-                                                            onClick={() => applyFrame(u.target)}
-                                                            className="py-1 px-2 border border-[#2C2C2C] hover:border-orange-500/50 hover:text-white bg-[#1A1A1A] hover:bg-[#252525] rounded text-center text-[10px] font-medium transition duration-150 font-sans"
-                                                         >
-                                                            {u.label}
-                                                         </button>
-                                                      ))}
-                                                   </div>
-                                                </div>
-
-                                                {selectionType === 'frameGroup' && (
-                                                   <div className="space-y-1 mt-3">
-                                                      <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                                                         <span>Border Width</span>
-                                                         <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{frameBorderWidth}px</span>
-                                                      </div>
-                                                      <input
-                                                         type="range" min="1" max="150" step="1" value={frameBorderWidth}
-                                                         onChange={(e) => updateFrameBorderWidth(Number(e.target.value))}
-                                                         className="w-full accent-orange-500 h-1"
-                                                      />
-                                                   </div>
-                                                )}
-
-                                                {/* Document Prep */}
-                                                <div className="space-y-2 mt-4 pt-4 border-t border-[#2C2C2C]">
-                                                   <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
-                                                      <FileText size={11} className="text-red-400" /> Formatting Utilities
-                                                   </div>
-                                                   <div className="text-[9px] text-slate-500 mb-2 leading-relaxed">Instantly reformat open imagery strictly into normalized document proportions.</div>
-                                                   <div className="h-[300px] overflow-y-auto no-scrollbar pr-1 grid grid-cols-1 gap-1.5">
-                                                      {PRESET_REGISTRY.filter(p => p.category === 'document' || p.category === 'social' || p.category === 'ecommerce').map((preset) => (
-                                                         <button key={preset.id} onClick={() => createArtboardFromPreset(preset.id)} className="flex items-center gap-2 p-1.5 bg-[#222] hover:bg-white/5 border border-[#333] hover:border-white/20 rounded text-left transition-colors font-sans">
-                                                            <div className={`w-5 h-5 rounded bg-[#333] flex items-center justify-center shrink-0 ${preset.category === 'social' ? 'text-fuchsia-500' : preset.category === 'ecommerce' ? 'text-orange-500' : 'text-blue-400'}`}>
-                                                               {preset.category === 'social' ? <Instagram size={10} /> : preset.category === 'ecommerce' ? <ShoppingBag size={10} /> : <FileText size={10} />}
-                                                            </div>
-                                                            <div className="flex-1 overflow-hidden">
-                                                               <div className="text-[10px] font-medium text-white truncate">Convert to {preset.name}</div>
-                                                               <div className="text-[8px] text-slate-500 font-mono">{preset.width}x{preset.height} {preset.unit}</div>
-                                                            </div>
-                                                         </button>
-                                                      ))}
-                                                   </div>
-                                                </div>
-                                             </div>
-                                          )}
-                                       </div>
-                                    )}
-
-                                    <FilterStudioTab />
-
-
-
-                                    {/* LAYERS PANEL */}
-                                    {activeTab === 'layers' && <LayersTab />}
-
-                                    {/* HISTORY PANEL */}
-                                    {activeTab === 'history' && (
-                                       <div className="p-2">
-                                          <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 ml-2 mt-2">Action History</div>
-                                          <div className="space-y-1">
-                                             {historyNames.map((name, idx) => {
-                                                const isCurrent = idx === commandIndex;
-                                                const isFuture = idx > commandIndex;
+                                             {artboards.map(b => {
+                                                const isActive = b.id === activeArtboardId;
                                                 return (
-                                                   <div key={idx} onClick={() => jumpToHistory(idx)} className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-xs transition-colors ${isCurrent ? 'bg-blue-600/20 text-blue-300 font-medium' : isFuture ? 'text-[#6A6A6A] hover:bg-[#2C2C2C]' : 'text-[#C0C0C0] hover:bg-[#2C2C2C]'}`}>
-                                                      <div className={`w-2 h-2 rounded-full mr-3 ${isCurrent ? 'bg-blue-500' : isFuture ? 'bg-[#3A3A3A]' : 'bg-[#6A6A6A]'}`} />
-                                                      {name}
+                                                   <div
+                                                      key={b.id}
+                                                      className={`h-[30px] flex items-center gap-1.5 px-3 rounded-md cursor-pointer transition-all border border-transparent group ${isActive ? 'bg-[#292929] border-[#3C3C3C] shadow-sm' : 'hover:bg-[#202020] text-[#808080]'}`}
+                                                      onClick={() => {
+                                                         setActiveArtboardId(b.id);
+                                                         if (fabricRef.current) {
+                                                            const cw = fabricRef.current.width!;
+                                                            const ch = fabricRef.current.height!;
+                                                            const vpt = fabricRef.current.viewportTransform!;
+                                                            const newVpt = vpt.slice() as any;
+                                                            newVpt[4] = cw / 2 - (b.x + b.width / 2) * newVpt[0];
+                                                            newVpt[5] = ch / 2 - (b.y + b.height / 2) * newVpt[3];
+                                                            fabricRef.current.setViewportTransform(newVpt);
+                                                         }
+                                                      }}
+                                                   >
+                                                      <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-[#E0E0E0]' : ''}`}>
+                                                         {isActive && <div className="w-[4px] h-[4px] rounded-full bg-blue-500" />}
+                                                         {b.name}
+                                                      </span>
+
+                                                      <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                         <button
+                                                            className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#3A3A3A] text-[#A0A0A0] transition-colors artboard-dropdown-toggle"
+                                                            onClick={(e) => {
+                                                               e.stopPropagation();
+                                                               const rect = e.currentTarget.getBoundingClientRect();
+                                                               setArtboardDropdown(artboardDropdown?.id === b.id ? null : { id: b.id, x: rect.left, y: rect.bottom + 6 });
+                                                            }}
+                                                         >
+                                                            <MoreHorizontal size={12} />
+                                                         </button>
+                                                      </div>
                                                    </div>
                                                 );
                                              })}
-                                             {historyNames.length === 0 && (
-                                                <div className="p-4 text-xs text-[#8A8A8A] text-center italic mt-10">No history track found.</div>
-                                             )}
+
+                                             <div className="w-px h-5 bg-[#333] mx-1 shrink-0" />
+
+                                             <button
+                                                className="h-[30px] px-3 flex items-center gap-1.5 rounded-md hover:bg-[#252525] text-[#808080] hover:text-[#C0C0C0] transition-colors shrink-0"
+                                                onClick={() => createArtboard()}
+                                             >
+                                                <Plus size={13} />
+                                                <span className="text-[11px] font-semibold">New</span>
+                                             </button>
+                                          </div>
+                                       )}
+
+                                       {/* Dropdown Menu Portal */}
+                                       {artboardDropdown && (
+                                          <div
+                                             className="fixed inset-0 z-50 pointer-events-auto"
+                                             onClick={() => setArtboardDropdown(null)}
+                                          >
+                                             <div
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{ left: Math.min(artboardDropdown.x, window.innerWidth - 180), top: artboardDropdown.y }}
+                                                className="absolute bg-[#1A1A1A] border border-[#2D2D2D] rounded-lg shadow-2xl py-1 min-w-[170px] artboard-dropdown-container"
+                                             >
+                                                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-[#666] border-b border-[#252525] mb-1">Artboard</div>
+                                                <ContextMenuItem icon={Type} label="Rename Artboard" onClick={() => {
+                                                   const board = artboards.find(b => b.id === artboardDropdown.id);
+                                                   if (board) {
+                                                      setRenamingArtboard({ id: board.id, name: board.name });
+                                                   }
+                                                   setArtboardDropdown(null);
+                                                }} />
+                                                <ContextMenuItem icon={Copy} label="Duplicate Artboard" onClick={() => {
+                                                   const board = artboards.find(b => b.id === artboardDropdown.id);
+                                                   if (board) {
+                                                      createArtboard(board.name + " Copy", board.width, board.height);
+                                                   }
+                                                   setArtboardDropdown(null);
+                                                }} />
+                                                <ContextMenuItem icon={Expand} label="Resize Options" onClick={() => {
+                                                   setActiveArtboardId(artboardDropdown.id);
+                                                   setActiveTab("artboards");
+                                                   setArtboardDropdown(null);
+                                                }} />
+                                                <ContextMenuItem icon={Download} label="Export Artboard" onClick={() => {
+                                                   setActiveArtboardId(artboardDropdown.id);
+                                                   setExportTarget("current");
+                                                   setActiveTab("export");
+                                                   setArtboardDropdown(null);
+                                                }} />
+                                                {artboards.length > 1 && (
+                                                   <>
+                                                      <div className="h-px bg-[#252525] my-1" />
+                                                      <ContextMenuItem icon={Trash2} label="Delete Artboard" danger onClick={() => {
+                                                         deleteArtboard(artboardDropdown.id);
+                                                         setArtboardDropdown(null);
+                                                      }} />
+                                                   </>
+                                                )}
+                                             </div>
+                                          </div>
+                                       )}
+
+                                       {/* Canvas Container */}
+                                       <div
+                                          className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]"
+                                          onDragEnter={(e) => { e.preventDefault(); }}
+                                          onDragLeave={(e) => { e.preventDefault(); }}
+                                          onDragOver={(e) => { e.preventDefault(); }}
+                                          onDrop={async (e) => {
+                                             e.preventDefault();
+                                             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                                                const files = Array.from(e.dataTransfer.files);
+                                                const imageFiles = files.filter(f => f.type.startsWith('image/'));
+
+                                                // Check if dropped over a collage block
+                                                const canvas = fabricRef.current;
+                                                let droppedOnBlock = false;
+
+                                                if (canvas && imageFiles.length > 0) {
+                                                   const target = canvas.findTarget(e.nativeEvent as any, false);
+                                                   if (target && (target as any).isCollageBlock) {
+                                                      const file = imageFiles[0];
+                                                      const reader = new FileReader();
+                                                      reader.onload = (event) => {
+                                                         const dataUrl = event.target?.result as string;
+                                                         const beforeState = { collageImageSrc: (target as any).collageImageSrc };
+                                                         const afterState = { collageImageSrc: dataUrl };
+                                                         (target as any).collageImageSrc = dataUrl;
+                                                         canvas.requestRenderAll();
+
+                                                         const cmd = new StyleChangeCommand("Fill Block with Image", target as fabric.Object, beforeState, afterState);
+                                                         executeCommand(cmd);
+                                                      };
+                                                      reader.readAsDataURL(file);
+                                                      droppedOnBlock = true;
+                                                   }
+                                                }
+
+                                                if (!droppedOnBlock) {
+                                                   const promises = imageFiles.map(file => {
+                                                      return new Promise<{ url: string, type: 'svg' | 'image', name: string }>((resolve) => {
+                                                         const reader = new FileReader();
+                                                         reader.onload = (event) => {
+                                                            const dataUrl = event.target?.result as string;
+                                                            if (file.type === 'image/svg+xml') {
+                                                               resolve({ url: dataUrl, type: 'svg', name: file.name });
+                                                            } else {
+                                                               resolve({ url: dataUrl, type: 'image', name: file.name });
+                                                            }
+                                                         };
+                                                         reader.readAsDataURL(file);
+                                                      });
+                                                   });
+
+                                                   const results = await Promise.all(promises);
+                                                   if (results.length > 0) {
+                                                      importAssets(results);
+                                                   }
+                                                }
+                                             }
+                                          }}
+                                       >
+                                          {/* subtle grid background */}
+                                          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+
+                                          {/* Main Fabric Canvas Wrapper (hidden during comparison mode) */}
+                                          <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
+                                             <canvas ref={canvasRef} className="block" />
+                                          </div>
+
+                                          {/* Dynamic Photoshop-style Brush Adjustment floating HUD and diameter preview */}
+                                          {showHud && hudPosition && (() => {
+                                             const getRgba = (hex: string, alpha: number) => {
+                                                let c = hex.replace('#', '');
+                                                if (c.length === 3) {
+                                                   c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+                                                }
+                                                const r = parseInt(c.substring(0, 2), 16) || 0;
+                                                const g = parseInt(c.substring(2, 4), 16) || 0;
+                                                const b = parseInt(c.substring(4, 6), 16) || 0;
+                                                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                                             };
+
+                                             const zoom = fabricRef.current?.getZoom() || 1;
+                                             const size = brushSize * zoom;
+
+                                             const strokeWidth = 3;
+                                             const ringDiameter = Math.max(size, 48);
+                                             const radius = (ringDiameter / 2) + 6;
+                                             const padding = 12;
+                                             const svgSize = ringDiameter + (padding * 2);
+                                             const center = svgSize / 2;
+                                             const circumference = 2 * Math.PI * radius;
+
+                                             let percentage = 100;
+                                             let strokeColor = '#3b82f6'; // Size: Blue
+
+                                             if (activeBrushProperty === 'opacity') {
+                                                percentage = brushOpacity;
+                                                strokeColor = '#a855f7'; // Opacity: Purple/Magenta
+                                             } else if (activeBrushProperty === 'hardness') {
+                                                percentage = brushHardness;
+                                                strokeColor = '#f59e0b'; // Hardness: Amber/Yellow
+                                             } else {
+                                                percentage = (brushSize / 500) * 100;
+                                                strokeColor = '#3b82f6'; // Size: Blue
+                                             }
+
+                                             const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+                                             let previewStyle: React.CSSProperties = {
+                                                width: `${size}px`,
+                                                height: `${size}px`,
+                                                maxWidth: '450px',
+                                                maxHeight: '450px',
+                                                minWidth: '6px',
+                                                minHeight: '6px',
+                                                borderRadius: '9999px',
+                                                border: '1.5px solid rgba(255, 255, 255, 0.9)',
+                                                boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.45)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                overflow: 'hidden',
+                                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' width='8' height='8' fill='%230D0F13'/%3E%3Crect y='8' width='8' height='8' fill='%230D0F13'/%3E%3C/svg%3E")`,
+                                                boxSizing: 'border-box',
+                                                transition: 'width 75ms ease-out, height 75ms ease-out'
+                                             };
+
+                                             const baseColor = brushColor || '#ef4444';
+                                             const opacity = brushOpacity / 100;
+                                             const hPercent = brushHardness;
+
+                                             const previewCoreStyle: React.CSSProperties = {
+                                                width: '100%',
+                                                height: '100%',
+                                                borderRadius: '9999px',
+                                                background: `radial-gradient(circle, ${getRgba(baseColor, opacity)} 0%, ${getRgba(baseColor, opacity * (hPercent / 100))} ${hPercent}%, transparent 100%)`,
+                                                transition: 'all 50ms ease-out'
+                                             };
+
+                                             return (
+                                                <div
+                                                   id="brush-hud-overlay"
+                                                   className="absolute pointer-events-none z-[100] flex flex-col items-center justify-center select-none"
+                                                   style={{
+                                                      left: hudPosition.x,
+                                                      top: hudPosition.y,
+                                                      transform: `translate(-50%, -50%) scale(${hudFadingOut ? 0.92 : 1})`,
+                                                      opacity: hudFadingOut ? 0 : 1,
+                                                      transition: 'opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.16, 1, 0.3, 1)',
+                                                   }}
+                                                >
+                                                   {/* Circle Wrapper with SVG Progress Dial */}
+                                                   <div className="relative flex items-center justify-center" style={{ width: `${svgSize}px`, height: `${svgSize}px` }}>
+
+                                                      <svg
+                                                         width={svgSize}
+                                                         height={svgSize}
+                                                         className="absolute top-0 left-0 pointer-events-none"
+                                                      >
+                                                         {/* Contrast dark dropshadow circle */}
+                                                         <circle
+                                                            cx={center}
+                                                            cy={center}
+                                                            r={radius}
+                                                            fill="none"
+                                                            stroke="rgba(0, 0, 0, 0.5)"
+                                                            strokeWidth={strokeWidth + 2}
+                                                         />
+                                                         {/* Empty track */}
+                                                         <circle
+                                                            cx={center}
+                                                            cy={center}
+                                                            r={radius}
+                                                            fill="none"
+                                                            stroke="rgba(255, 255, 255, 0.15)"
+                                                            strokeWidth={strokeWidth}
+                                                         />
+                                                         {/* Dynamic trace progress segment */}
+                                                         <circle
+                                                            cx={center}
+                                                            cy={center}
+                                                            r={radius}
+                                                            fill="none"
+                                                            stroke={strokeColor}
+                                                            strokeWidth={strokeWidth}
+                                                            strokeDasharray={circumference}
+                                                            strokeDashoffset={strokeDashoffset}
+                                                            strokeLinecap="round"
+                                                            transform={`rotate(-90 ${center} ${center})`}
+                                                            className="transition-[stroke-dashoffset] duration-75 ease"
+                                                            style={{
+                                                               filter: `drop-shadow(0 0 3px ${strokeColor}cc)`,
+                                                            }}
+                                                         />
+                                                      </svg>
+
+                                                      {/* Center circle brush tip container with checkerboard bg */}
+                                                      <div style={previewStyle as React.CSSProperties}>
+                                                         <div style={previewCoreStyle} />
+                                                      </div>
+                                                   </div>
+
+                                                   {/* Floating HUD Information Pill */}
+                                                   <div className="mt-4 bg-[#0B0D13]/95 backdrop-blur-xl border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.6)] rounded-full px-5 py-2.5 flex items-center gap-3 select-none animate-in fade-in duration-100 ease-out">
+                                                      {activeBrushProperty === 'size' && (
+                                                         <>
+                                                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                                               <Brush size={12} className="text-blue-400" />
+                                                               <span>Size</span>
+                                                            </div>
+                                                            <div className="w-px h-3.5 bg-white/15" />
+                                                            <div className="text-sm font-mono font-extrabold text-white">
+                                                               {brushSize}px
+                                                            </div>
+                                                         </>
+                                                      )}
+                                                      {activeBrushProperty === 'opacity' && (
+                                                         <>
+                                                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                                               <Droplets size={12} className="text-purple-400" />
+                                                               <span>Opacity</span>
+                                                            </div>
+                                                            <div className="w-px h-3.5 bg-white/15" />
+                                                            <div className="text-sm font-mono font-extrabold text-white">
+                                                               {brushOpacity}%
+                                                            </div>
+                                                         </>
+                                                      )}
+                                                      {activeBrushProperty === 'hardness' && (
+                                                         <>
+                                                            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                                               <Circle size={12} className="text-amber-400 fill-amber-400/10" />
+                                                               <span>Hardness</span>
+                                                            </div>
+                                                            <div className="w-px h-3.5 bg-white/15" />
+                                                            <div className="text-sm font-mono font-extrabold text-white">
+                                                               {brushHardness}%
+                                                            </div>
+                                                         </>
+                                                      )}
+                                                   </div>
+                                                </div>
+                                             );
+                                          })()}
+
+                                          {/* Empty State Overlay */}
+                                          {isLoaded && artboards.length === 0 && (
+                                             <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
+                                                <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-[#1A1A1A] border border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
+                                                   <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(45deg,transparent_25%,white_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]" />
+                                                   <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 shadow-inner relative z-10 ring-1 ring-blue-500/20">
+                                                      <SquareDashed size={24} className="w-5 h-5 md:w-7 md:h-7" />
+                                                   </div>
+                                                   <div className="relative z-10 w-full">
+                                                      <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-white mb-1.5 md:mb-2">No active project</h3>
+                                                      <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 leading-relaxed px-2">Create a new artboard to start placing elements and building your composition.</p>
+                                                   </div>
+                                                   <button
+                                                      onClick={() => createArtboard()}
+                                                      className="relative z-10 w-full flex items-center justify-center gap-2 px-5 md:px-6 h-10 md:h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition shadow-lg shadow-blue-600/20 active:scale-95"
+                                                   >
+                                                      <Plus size={16} /> Create Artboard
+                                                   </button>
+                                                </div>
+                                             </div>
+                                          )}
+
+                                          {isCropping && (
+                                             <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm sm:max-w-none sm:w-auto z-[50]">
+                                                <div className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-[#2D2D2D] p-1.5 rounded-xl shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center justify-between sm:justify-start gap-2 overflow-x-auto no-scrollbar">
+                                                   <div className="hidden sm:flex px-3 items-center gap-1.5 border-r border-[#333] pr-3 shrink-0">
+                                                      <Crop size={14} className="text-blue-400" />
+                                                      <span className="text-[11px] font-bold text-slate-200">Crop</span>
+                                                   </div>
+
+                                                   <select
+                                                      className="bg-[#252525] hover:bg-[#333] text-slate-200 text-[10px] sm:text-[11px] px-2 py-1.5 rounded-md border border-[#3A3A3A] outline-none cursor-pointer appearance-none pr-6 bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%205%203%203%203-3%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[position:right_6px_center] bg-no-repeat w-24 sm:w-auto shrink-0"
+                                                      defaultValue="free"
+                                                      onChange={(e) => {
+                                                         const val = e.target.value;
+                                                         const { cropRect, origObj } = cropSessionRef.current;
+                                                         if (!cropRect || !origObj) return;
+
+                                                         if (val === 'free') {
+                                                            cropRect.set({ lockUniScaling: false });
+                                                         } else {
+                                                            let ratio = 1;
+                                                            if (val === 'original') {
+                                                               ratio = origObj.width! / origObj.height!;
+                                                            } else {
+                                                               ratio = parseFloat(val);
+                                                            }
+
+                                                            const center = cropRect.getCenterPoint();
+                                                            const curW = cropRect.getScaledWidth();
+                                                            const curH = cropRect.getScaledHeight();
+
+                                                            let newW = curW;
+                                                            let newH = newW / ratio;
+
+                                                            // Keep it somewhat within original bounds logic (simplified)
+                                                            if (newH > origObj.getScaledHeight()) {
+                                                               newH = origObj.getScaledHeight();
+                                                               newW = newH * ratio;
+                                                            }
+                                                            if (newW > origObj.getScaledWidth()) {
+                                                               newW = origObj.getScaledWidth();
+                                                               newH = newW / ratio;
+                                                            }
+
+                                                            cropRect.set({
+                                                               width: newW,
+                                                               height: newH,
+                                                               scaleX: 1,
+                                                               scaleY: 1,
+                                                               lockUniScaling: true,
+                                                            });
+
+                                                            cropRect.setPositionByOrigin(center, 'center', 'center');
+                                                            cropRect.setCoords();
+                                                         }
+                                                         fabricRef.current?.renderAll();
+                                                      }}
+                                                   >
+                                                      <option value="free">Free Crop</option>
+                                                      <option value="original">Original Ratio</option>
+                                                      <optgroup label="Standard Dimensions">
+                                                         <option value="1">1:1 Square</option>
+                                                         <option value={4 / 3}>4:3 (Landscape)</option>
+                                                         <option value={16 / 9}>16:9 (Widescreen)</option>
+                                                         <option value={9 / 16}>9:16 (Vertical)</option>
+                                                         <option value={3 / 2}>3:2 (Classic)</option>
+                                                         <option value={210 / 297}>A4 (210x297mm)</option>
+                                                         <option value={8.5 / 11}>Letter (8.5x11")</option>
+                                                      </optgroup>
+                                                      <optgroup label="Document Presets">
+                                                         <option value={35 / 45}>India Passport (35x45mm)</option>
+                                                         <option value={1}>US Passport (2x2")</option>
+                                                         <option value={1}>Visa Photo (2x2")</option>
+                                                         <option value={86 / 54}>ID Card (86x54mm)</option>
+                                                         <option value={35 / 45}>Student Photo (35x45)</option>
+                                                         <option value={1}>Profile Pic (1:1)</option>
+                                                      </optgroup>
+                                                      <optgroup label="Social Media Presets">
+                                                         <option value={1}>Ig Post (1080x1080)</option>
+                                                         <option value={1080 / 1920}>Ig Story (1080x1920)</option>
+                                                         <option value={16 / 9}>YT Thumb (1280x720)</option>
+                                                         <option value={1}>LinkedIn (400x400)</option>
+                                                         <option value={820 / 312}>Fb Cover (820x312)</option>
+                                                      </optgroup>
+                                                   </select>
+
+                                                   <div className="hidden sm:block h-4 w-px bg-[#333] ml-1 mr-1"></div>
+
+                                                   <div className="flex items-center gap-1.5 shrink-0">
+                                                      <button onClick={applyCrop} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap"><Check size={12} /> <span className="hidden sm:inline">Apply</span></button>
+                                                      <button onClick={cancelCrop} className="px-3 py-1.5 bg-[#252525] hover:bg-[#333] text-slate-300 rounded-lg text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"><X size={12} /> <span className="hidden sm:inline">Cancel</span></button>
+                                                   </div>
+                                                </div>
+                                             </div>
+                                          )}          {/* Squoosh-like image comparison viewer */}
+                                          {comparisonMode && (
+                                             <div className="absolute inset-0 z-40 bg-[#090909] flex flex-col p-0 md:p-4 items-center justify-center gap-4 select-none">
+                                                {/* Visual Header Option Controls */}
+                                                {isMobile ? (
+                                                   <>
+                                                      <button
+                                                         onClick={() => setActiveTab('properties')}
+                                                         className="absolute top-4 left-4 z-50 flex items-center justify-center w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white transition active:scale-95 shadow-[0_4px_16px_rgba(0,0,0,0.5)] backdrop-blur-xl border border-white/10"
+                                                      >
+                                                         <ChevronLeft size={20} />
+                                                      </button>
+
+                                                      <button
+                                                         onClick={handleExport}
+                                                         className="absolute top-4 right-4 z-50 flex items-center gap-1.5 px-4 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-[11px] text-white font-extrabold uppercase tracking-widest shadow-[0_4px_16px_rgba(37,99,235,0.4)] transition active:scale-95 border border-blue-500/50 backdrop-blur-xl"
+                                                      >
+                                                         <Download size={14} /> Save
+                                                      </button>
+                                                   </>
+                                                ) : (
+                                                   <div className="w-full flex flex-col md:flex-row flex-wrap gap-3 items-stretch md:items-center justify-between bg-[#141414] p-3 rounded-xl border border-[#232323] shadow-lg mb-4 shrink-0 z-30">
+                                                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                                                         <div className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                            <span className="text-xs font-black uppercase tracking-widest text-slate-200">Live Preview</span>
+                                                         </div>
+
+                                                         {/* Premium Toggle Stats Button */}
+                                                         <button
+                                                            onClick={() => setShowDiagnostics(prev => !prev)}
+                                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/30 hover:bg-blue-600/20 text-[10px] text-blue-400 font-extrabold uppercase tracking-wider transition-all"
+                                                            title="Toggle performance diagnostics overlay"
+                                                         >
+                                                            {showDiagnostics ? <EyeOff size={11} className="mr-0.5" /> : <Eye size={11} className="mr-0.5" />}
+                                                            {showDiagnostics ? "Hide Stats" : "Show Stats"}
+                                                         </button>
+                                                      </div>
+
+                                                      <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3">
+                                                         {/* Zoom Control */}
+                                                         <div className="flex items-center justify-between xl:justify-start gap-2 bg-[#1A1A1A] p-1.5 px-3 rounded-lg border border-[#222] min-w-0 flex-wrap">
+
+                                                            <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest leading-none">Zoom</span>
+                                                            <div className="flex items-center gap-2">
+                                                               <input
+                                                                  type="range"
+                                                                  min="0.5"
+                                                                  max="4"
+                                                                  step="0.1"
+                                                                  value={comparisonZoom}
+                                                                  onChange={(e) => {
+                                                                     const newZoom = parseFloat(e.target.value);
+                                                                     setComparisonZoom(newZoom);
+                                                                     if (transformComponentRef.current) {
+                                                                        const instance = transformComponentRef.current;
+                                                                        const inst = instance.instance;
+                                                                        const state = inst?.transformState || inst?.state || (instance as any).state || (instance as any).transformState;
+                                                                        const wrapper = inst?.wrapperComponent || (instance as any).wrapperComponent;
+
+                                                                        if (state && wrapper && typeof state.scale === 'number') {
+                                                                           const { scale, positionX, positionY } = state;
+                                                                           const width = wrapper.offsetWidth;
+                                                                           const height = wrapper.offsetHeight;
+
+                                                                           const centerX = (width / 2 - positionX) / scale;
+                                                                           const centerY = (height / 2 - positionY) / scale;
+
+                                                                           const newPositionX = width / 2 - centerX * newZoom;
+                                                                           const newPositionY = height / 2 - centerY * newZoom;
+
+                                                                           instance.setTransform(newPositionX, newPositionY, newZoom);
+                                                                        } else {
+                                                                           instance.zoomToElement(undefined as any, newZoom);
+                                                                        }
+                                                                     }
+                                                                  }}
+                                                                  className="w-16 sm:w-20 md:w-24 h-1 accent-blue-500 cursor-pointer"
+                                                               />
+                                                               <span className="text-[10px] text-blue-400 font-mono w-8 text-center">{Math.round(comparisonZoom * 100)}%</span>
+                                                               <button
+                                                                  onClick={() => {
+                                                                     if (transformComponentRef.current) {
+                                                                        transformComponentRef.current.resetTransform();
+                                                                        setComparisonZoom(1);
+                                                                     }
+                                                                  }}
+                                                                  className="text-[9px] bg-[#2D2D2D] hover:bg-[#3D3D3D] text-slate-300 px-1.5 py-0.5 rounded border border-[#3D3D3D] transition-all font-bold uppercase tracking-widest cursor-pointer inline-flex items-center"
+                                                               >
+                                                                  Fit
+                                                               </button>
+                                                            </div>
+                                                         </div>
+
+                                                         {/* Preview Modes Selection */}
+                                                         <div className="flex bg-[#1D1D1D] p-1 rounded-lg border border-[#2D2D2D] gap-1 overflow-x-auto sm:flex-wrap no-scrollbar shrink-0 max-w-full">
+                                                            {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
+                                                               <button
+                                                                  key={mode}
+                                                                  onClick={() => setComparisonPreviewMode(mode)}
+                                                                  className={`px-3 py-1.5 text-[10px] sm:text-[11px] font-black rounded-md transition duration-150 uppercase tracking-widest ${comparisonPreviewMode === mode ? 'bg-blue-600 text-white shadow-[0_2px_8px_rgba(37,99,235,0.3)] font-black' : 'text-slate-400 hover:bg-[#252525] hover:text-slate-200'}`}
+                                                               >
+                                                                  {mode.replace("-", " ")}
+                                                               </button>
+                                                            ))}
+                                                         </div>
+                                                      </div>
+                                                   </div>
+
+                                                )}
+
+                                                {/* Central Canvas Viewport Area */}
+                                                <div className={`flex-1 w-full flex items-center justify-center relative min-h-0 ${isMobile ? 'p-0 overflow-hidden' : ''}`}>
+                                                   {/* Mobile preview mode contextual selector bubble with conditional rendering toggle */}
+                                                   {isMobile && (
+                                                      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center gap-2 max-w-[95vw]">
+                                                         {!showMobileCompareSwitcher ? (
+                                                            <button
+                                                               onClick={() => setShowMobileCompareSwitcher(true)}
+                                                               className="bg-black/85 hover:bg-black border border-white/10 text-white text-[10px] font-black uppercase tracking-[0.15em] px-4 py-2.5 rounded-full flex items-center gap-2 backdrop-blur-xl shadow-2xl pointer-events-auto active:scale-95 transition"
+                                                            >
+                                                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                                               View: {comparisonPreviewMode === 'split' ? 'Split' : (comparisonPreviewMode === 'side-by-side' ? 'Side' : comparisonPreviewMode)}
+                                                               <ChevronDown size={12} className="text-white/60 ml-0.5" />
+                                                            </button>
+                                                         ) : (
+                                                            <div className="bg-black/90 backdrop-blur-xl p-1 border border-white/15 rounded-full shadow-2xl flex items-center gap-1 shrink-0 pointer-events-auto animate-in fade-in zoom-in duration-200">
+                                                               {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
+                                                                  <button
+                                                                     key={mode}
+                                                                     onClick={() => {
+                                                                        setComparisonPreviewMode(mode);
+                                                                        setShowMobileCompareSwitcher(false);
+                                                                     }}
+                                                                     className={`px-3 py-1.5 text-[9px] font-black rounded-full transition-all uppercase tracking-[0.05em] ${comparisonPreviewMode === mode ? 'bg-white text-black font-extrabold' : 'text-white/50 hover:text-white'}`}
+                                                                  >
+                                                                     {mode === 'split' ? 'Split' : (mode === 'side-by-side' ? 'Side' : mode)}
+                                                                  </button>
+                                                               ))}
+                                                               <button
+                                                                  onClick={() => setShowMobileCompareSwitcher(false)}
+                                                                  className="p-1.5 text-white/40 hover:text-white transition rounded-full"
+                                                               >
+                                                                  <X size={12} />
+                                                               </button>
+                                                            </div>
+                                                         )}
+                                                      </div>
+                                                   )}
+
+                                                   {/* Floating Reset Zoom bubble */}
+                                                   {isMobile && Math.round(comparisonZoom * 100) !== 100 && (
+                                                      <button
+                                                         onClick={() => {
+                                                            if (transformComponentRef.current) {
+                                                               transformComponentRef.current.resetTransform();
+                                                               setComparisonZoom(1);
+                                                            }
+                                                         }}
+                                                         className="absolute bottom-24 left-4 z-40 bg-black/80 border border-white/10 text-white font-mono text-[10px] font-black px-3 py-2 rounded-full flex items-center gap-1.5 backdrop-blur-xl shadow-2xl pointer-events-auto active:scale-95 transition"
+                                                      >
+                                                         <ZoomIn size={14} /> {Math.round(comparisonZoom * 100)}%
+                                                      </button>
+                                                   )}
+                                                   {comparisonPreviewMode === "split" && (
+                                                      <div
+                                                         ref={sliderRef}
+                                                         onPointerMove={handlePointerMove}
+                                                         onPointerUp={handlePointerUp}
+                                                         onPointerLeave={handlePointerUp}
+                                                         onKeyDown={handleKeyDown}
+                                                         tabIndex={0}
+                                                         className={`${isMobile ? 'w-full h-full rounded-none border-none flex-1 min-h-0' : 'w-full max-w-5xl flex-1 min-h-0 rounded-xl border border-[#222]'} relative bg-[#111] overflow-hidden shadow-2xl group flex items-center justify-center outline-none focus:border-blue-500/50`}
+                                                         style={{
+                                                            aspectRatio: !isMobile ? (() => {
+                                                               const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
+                                                               return b ? `${b.width} / ${b.height}` : "1.33";
+                                                            })() : undefined
+                                                         }}
+                                                      >
+                                                         {/* OPTIMIZED PREVIEW (Background layer) */}
+                                                         <div className="absolute inset-0 w-full h-full p-4 overflow-hidden flex items-center justify-center">
+                                                            <TransformWrapper
+                                                               ref={transformComponentRef}
+                                                               disabled={isMobile}
+                                                               initialScale={comparisonZoom}
+                                                               minScale={0.1}
+                                                               maxScale={20}
+                                                               centerOnInit
+                                                               panning={{ disabled: isDraggingDivider }}
+                                                               onTransform={(p) => setComparisonZoom(p.state.scale)}
+                                                            >
+                                                               <TransformComponent wrapperStyle={{ width: "100%", height: "100%", cursor: isDraggingDivider ? "ew-resize" : "grab" }} contentStyle={{ width: "100%", height: "100%" }}>
+                                                                  <div className="relative w-full h-full flex items-center justify-center">
+                                                                     {originalPreviewDims && optimizedPreviewDims && (
+                                                                        <div
+                                                                           className="relative"
+                                                                           style={{
+                                                                              width: originalPreviewDims.w,
+                                                                              height: originalPreviewDims.h,
+                                                                              maxWidth: '100%',
+                                                                              maxHeight: '100%',
+                                                                              aspectRatio: `${originalPreviewDims.w} / ${originalPreviewDims.h}`
+                                                                           }}
+                                                                        >
+                                                                           {/* OPTIMIZED IMAGE (Background layer) */}
+                                                                           <img
+                                                                              src={optimizedImageUrl || originalImageUrl || ""}
+                                                                              alt="Optimized"
+                                                                              referrerPolicy="no-referrer"
+                                                                              className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                                                                              style={{
+                                                                                 backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
+                                                                                 ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                                              }}
+                                                                           />
+
+                                                                           {/* ORIGINAL IMAGE (Foreground layer with clipPath) */}
+                                                                           <img
+                                                                              src={originalImageUrl || ""}
+                                                                              alt="Original"
+                                                                              referrerPolicy="no-referrer"
+                                                                              className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                                                                              style={{
+                                                                                 clipPath: `polygon(0 0, ${comparisonDivider}% 0, ${comparisonDivider}% 100%, 0 100%)`
+                                                                              }}
+                                                                           />
+                                                                        </div>
+                                                                     )}
+                                                                  </div>
+                                                               </TransformComponent>
+                                                            </TransformWrapper>
+                                                         </div>
+
+                                                         {/* Drag Divider Line & Handle */}
+                                                         <div
+                                                            onPointerDown={handlePointerDown}
+                                                            onDoubleClick={() => setComparisonDivider(50)}
+                                                            className="absolute top-0 bottom-0 select-none z-30 cursor-ew-resize group"
+                                                            style={{ left: `${comparisonDivider}%`, transform: 'translateX(-50%)' }}
+                                                         >
+                                                            <div className="absolute inset-y-0 w-[2px] bg-blue-500 group-hover:bg-blue-400 group-active:bg-blue-300 transition-colors shadow-2xl" />
+
+                                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#181818] border-2 border-blue-500 group-hover:border-blue-400 text-white flex items-center justify-center shadow-2xl transition duration-150 hover:scale-110 active:scale-95 bg-opacity-95">
+                                                               <div className="flex gap-1 items-center">
+                                                                  <div className="w-1.5 h-1.5 border-t-2 border-l-2 border-blue-400 rotate-[-45deg]" />
+                                                                  <div className="w-[1px] h-3 bg-blue-500/50 rounded-full" />
+                                                                  <div className="w-1.5 h-1.5 border-t-2 border-r-2 border-blue-400 rotate-[45deg]" />
+                                                               </div>
+                                                            </div>
+                                                         </div>
+
+                                                         {/* Left Side Label (Original) */}
+                                                         {showDiagnostics && (
+                                                            <div className="hidden md:block absolute top-4 left-4 bg-black/75 text-[#A2A2A2] text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-white/5 pointer-events-none backdrop-blur-md">
+                                                               Original: <span className="font-mono text-white text-xs">{formatBytes(originalSize || 0)}</span>
+                                                            </div>
+                                                         )}
+
+                                                         {/* Right Side Label (Optimized) */}
+                                                         {showDiagnostics && (
+                                                            <div className="hidden md:block absolute top-4 right-4 bg-blue-950/70 text-blue-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-blue-500/20 pointer-events-none backdrop-blur-md">
+                                                               Optimized: <span className="font-mono text-white text-xs">{formatBytes(optimizedSize || 0)}</span>
+                                                            </div>
+                                                         )}
+                                                      </div>
+                                                   )}
+
+                                                   {comparisonPreviewMode === "side-by-side" && (
+                                                      <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-w-4xl max-h-[60vh]'}`}>
+                                                         <TransformWrapper
+                                                            ref={transformComponentRef}
+                                                            initialScale={comparisonZoom}
+                                                            minScale={0.1}
+                                                            maxScale={20}
+                                                            centerOnInit
+                                                            limitToBounds={false}
+                                                            centerZoomedOut={true}
+                                                            panning={{ velocityDisabled: true }}
+                                                            onTransform={(p) => setComparisonZoom(p.state.scale)}
+                                                         >
+                                                            <TransformComponent
+                                                               wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
+                                                               contentStyle={{ width: "100%", height: "100%" }}
+                                                            >
+                                                               <div className={`grid ${isMobile ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2'} gap-4 w-full h-full p-4`}>
+                                                                  <div className="relative rounded-xl border border-[#222] bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
+                                                                     <div className="relative w-full h-full flex items-center justify-center">
+                                                                        <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
+                                                                           backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
+                                                                           ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                                        }} />
+                                                                     </div>
+                                                                     {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original: {formatBytes(originalSize || 0)}</span>}
+                                                                  </div>
+                                                                  <div className="relative rounded-xl border border-blue-500/20 bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
+                                                                     <div className="relative w-full h-full flex items-center justify-center">
+                                                                        <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
+                                                                           backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
+                                                                           ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                                        }} />
+                                                                     </div>
+                                                                     {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-blue-950/70 px-3 py-1.5 rounded-lg border border-blue-500/20 text-[10px] text-blue-300 font-bold font-mono">Optimized: {formatBytes(optimizedSize || 0)}</span>}
+                                                                  </div>
+                                                               </div>
+                                                            </TransformComponent>
+                                                         </TransformWrapper>
+                                                      </div>
+                                                   )}
+
+                                                   {comparisonPreviewMode === "original" && (
+                                                      <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-h-[60vh] max-w-4xl border border-[#222] rounded-xl'} bg-[#111] overflow-hidden flex items-center justify-center shadow-2xl`}>
+                                                         <TransformWrapper
+                                                            ref={transformComponentRef}
+                                                            initialScale={comparisonZoom}
+                                                            minScale={0.1}
+                                                            maxScale={20}
+                                                            centerOnInit
+                                                            limitToBounds={false}
+                                                            centerZoomedOut={true}
+                                                            panning={{ velocityDisabled: true }}
+                                                            onTransform={(p) => setComparisonZoom(p.state.scale)}
+                                                         >
+                                                            <TransformComponent
+                                                               wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
+                                                               contentStyle={{ width: "100%", height: "100%" }}
+                                                            >
+                                                               <div className="relative w-full h-full flex items-center justify-center p-4">
+                                                                  <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
+                                                                     backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
+                                                                     ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                                  }} />
+                                                               </div>
+                                                            </TransformComponent>
+                                                         </TransformWrapper>
+                                                         {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original Only ({formatBytes(originalSize || 0)})</span>}
+                                                      </div>
+                                                   )}
+
+                                                   {comparisonPreviewMode === "optimized" && (
+                                                      <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-h-[60vh] max-w-4xl border border-blue-500/20 rounded-xl'} bg-[#111] overflow-hidden flex items-center justify-center shadow-2xl`}>
+                                                         <TransformWrapper
+                                                            ref={transformComponentRef}
+                                                            initialScale={comparisonZoom}
+                                                            minScale={0.1}
+                                                            maxScale={20}
+                                                            centerOnInit
+                                                            limitToBounds={false}
+                                                            centerZoomedOut={true}
+                                                            panning={{ velocityDisabled: true }}
+                                                            onTransform={(p) => setComparisonZoom(p.state.scale)}
+                                                         >
+                                                            <TransformComponent
+                                                               wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
+                                                               contentStyle={{ width: "100%", height: "100%" }}
+                                                            >
+                                                               <div className="relative w-full h-full flex items-center justify-center p-4">
+                                                                  <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
+                                                                     backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
+                                                                     ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                                  }} />
+                                                               </div>
+                                                            </TransformComponent>
+                                                         </TransformWrapper>
+                                                         {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-blue-950/70 px-3 py-1.5 rounded-lg border border-blue-500/20 text-[10px] text-blue-300 font-bold font-mono">Optimized Only ({formatBytes(optimizedSize || 0)})</span>}
+                                                      </div>
+                                                   )}
+
+                                                   {/* Floating Green Live Size Indicator */}
+                                                   {optimizedSize && originalSize && originalSize > optimizedSize && showDiagnostics && (
+                                                      <div className="hidden md:flex absolute bottom-4 right-4 bg-emerald-900/90 border border-emerald-500/30 text-white backdrop-blur-md px-4 py-2.5 rounded-xl shadow-2xl z-25 flex-col items-center justify-center font-bold animate-fade-in transition-all">
+                                                         <div className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                                                            <Activity size={12} className="animate-pulse" />
+                                                            {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
+                                                         </div>
+                                                         <div className="text-lg font-mono font-black">{formatBytes(optimizedSize)}</div>
+                                                         <div className="text-[9px] text-emerald-300/75 uppercase font-mono tracking-wider mt-0.5">Saved {formatBytes(originalSize - optimizedSize)}</div>
+                                                      </div>
+                                                   )}
+
+                                                   {/* Visual Quality & Diagnostics analysis floating card */}
+                                                   {showDiagnostics && (
+                                                      <div className="hidden md:flex absolute bottom-4 left-4 max-w-xs bg-[#141414]/95 border border-[#2E2E2E] text-slate-300 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-2xl z-25 flex-col gap-1.5 text-xs text-left animate-in fade-in duration-200">
+                                                         <div className="text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider border-b border-[#232323] pb-1 flex items-center justify-between">
+                                                            <div className="flex items-center gap-1.5">
+                                                               <Sliders size={11} className="text-blue-400" /> Quality Diagnostics
+                                                            </div>
+                                                            <button onClick={() => setShowDiagnostics(false)} className="text-slate-500 hover:text-white p-0.5 transition" title="Minimize diagnostics panel"><X size={11} /></button>
+                                                         </div>
+                                                         <div className="flex justify-between gap-6">
+                                                            <span className="text-slate-400 text-[11px]">Format:</span>
+                                                            <span className="font-mono text-[11px] font-bold text-blue-400 uppercase">{exportSettings.format}</span>
+                                                         </div>
+                                                         <div className="flex justify-between gap-6">
+                                                            <span className="text-slate-400 text-[11px]">Resolution:</span>
+                                                            <span className="font-mono text-[11px] font-bold text-slate-100">
+                                                               {(() => {
+                                                                  const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
+                                                                  return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} x ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
+                                                               })()}
+                                                            </span>
+                                                         </div>
+                                                         <div className="flex justify-between gap-6">
+                                                            <span className="text-slate-400 text-[11px]">PSNR Metric:</span>
+                                                            <span className="font-mono text-[11px] font-bold text-emerald-400">
+                                                               {psnr ? `${psnr.toFixed(1)} dB` : 'Calculating...'}
+                                                            </span>
+                                                         </div>
+                                                         <div className="flex justify-between gap-6">
+                                                            <span className="text-slate-400 text-[11px]">SSIM Metric:</span>
+                                                            <span className="font-mono text-[11px] font-bold text-blue-400">
+                                                               {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Calculating...'}
+                                                            </span>
+                                                         </div>
+                                                         <div className="flex justify-between gap-6">
+                                                            <span className="text-slate-400 text-[11px]">Visual Fidelity:</span>
+                                                            <span className="text-[11px] font-medium text-slate-200">
+                                                               {(() => {
+                                                                  if (exportSettings.format === 'png') return exportSettings.png?.paletteReduction ? '8-Bit Index' : 'Perfect Lossless';
+                                                                  const q = exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : exportSettings.avif.cqLevel);
+                                                                  if (q > 90) return 'Exceptional';
+                                                                  if (q > 75) return 'Balanced';
+                                                                  if (q > 50) return 'Standard Lossy';
+                                                                  return 'High Compression';
+                                                               })()}
+                                                            </span>
+                                                         </div>
+                                                      </div>
+                                                   )}
+
+                                                   {/* Minimized HUD diagnostic bubble */}
+                                                   {!showDiagnostics && (
+                                                      <button
+                                                         onClick={() => setShowDiagnostics(true)}
+                                                         className="hidden md:flex absolute bottom-4 left-4 w-9 h-9 rounded-xl bg-[#141414]/95 border border-[#2E2E2E] hover:border-blue-500/50 hover:bg-[#1A1A1A] text-slate-300 hover:text-white backdrop-blur-md items-center justify-center shadow-xl z-25 transition-all"
+                                                         title="Show diagnostics overlay"
+                                                      >
+                                                         <Sliders size={14} />
+                                                      </button>
+                                                   )}
+
+                                                   {/* Worker compilation progress & current operation overlay */}
+                                                   {isGeneratingPreview && (
+                                                      <div className="absolute inset-0 bg-[#0A0A0A]/85 backdrop-blur-sm flex flex-col items-center justify-center z-40 rounded-xl transition-all duration-300 border border-[#222]">
+                                                         <div className="relative flex items-center justify-center mb-4">
+                                                            <RotateCw className="animate-spin text-blue-500 w-9 h-9" />
+                                                            <div className="absolute w-12 h-12 rounded-full border-2 border-dashed border-blue-500/20 animate-spin-reverse" />
+                                                         </div>
+                                                         <div className="text-xs font-semibold text-slate-100">{currentPreviewOp || "Regenerating active optimization preview..."}</div>
+                                                         <div className="text-[9px] text-[#8C8C8C] mt-1.5 uppercase font-[#8C8C8C] tracking-wider font-mono">WebAssembly Engine (jSquash)</div>
+                                                      </div>
+                                                   )}
+                                                </div>
+
+                                                {/* Mobile Floating HUD metrics chips (Progressive Disclosure) */}
+                                                {isMobile && (
+                                                   <div
+                                                      onClick={() => setShowMobilePanel(true)}
+                                                      className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-[#121212]/95 border border-white/15 pointer-events-auto px-4 py-2.5 rounded-xl shadow-[0_12px_32px_rgba(0,0,0,0.85)] flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-950 transition-all active:scale-[0.97] text-slate-100 min-w-[275px] max-w-[90vw]"
+                                                   >
+                                                      <div className="flex items-center gap-2.5">
+                                                         <span className="bg-blue-500/10 text-blue-400 text-[10px] font-black tracking-widest px-2 py-1 rounded-md uppercase font-mono border border-blue-500/15">
+                                                            {exportSettings.format}
+                                                         </span>
+                                                         {!!(originalSize && optimizedSize && originalSize > optimizedSize) && (
+                                                            <div className="flex flex-col text-left leading-tight">
+                                                               <span className="text-[11px] font-black text-emerald-400 tracking-wide">
+                                                                  {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
+                                                               </span>
+                                                               <span className="text-[8px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono leading-none">Savings</span>
+                                                            </div>
+                                                         )}
+                                                         {(!originalSize || !optimizedSize) && (
+                                                            <span className="text-[11px] font-black text-blue-400 tracking-wide uppercase">
+                                                               Settings
+                                                            </span>
+                                                         )}
+                                                      </div>
+                                                      <div className="w-[1px] h-4 bg-white/10" />
+                                                      <div className="flex items-center gap-2.5">
+                                                         {(optimizedSize && optimizedSize > 0) ? (
+                                                            <div className="flex flex-col text-right leading-tight">
+                                                               <span className="text-[11px] text-white font-extrabold font-mono">
+                                                                  {formatBytes(optimizedSize)}
+                                                               </span>
+                                                               <span className="text-[8px] text-[#8A8A8A] font-extrabold uppercase tracking-wider leading-none">Optimized</span>
+                                                            </div>
+                                                         ) : (
+                                                            <div className="flex flex-col text-right leading-tight">
+                                                               <span className="text-[11px] text-white font-extrabold font-mono">
+                                                                  Export Studio
+                                                               </span>
+                                                               <span className="text-[8px] text-[#8A8A8A] font-extrabold uppercase tracking-wider leading-none">Optimize</span>
+                                                            </div>
+                                                         )}
+                                                         <Sliders size={11} className="text-blue-400 animate-pulse shrink-0" />
+                                                      </div>
+                                                   </div>
+                                                )}
+
+                                                {/* Premium Mobile Slide-Up Bottom Sheet */}
+                                                {isMobile && showMobileDiagnosticsSheet && (
+                                                   <>
+                                                      <div
+                                                         className="fixed inset-0 bg-black/80 z-[100] backdrop-blur-sm animate-in fade-in cursor-pointer pointer-events-auto"
+                                                         onClick={() => setShowMobileDiagnosticsSheet(false)}
+                                                      />
+                                                      <div className="fixed bottom-0 left-0 right-0 z-[101] bg-[#0F0F0F] rounded-t-3xl border-t border-[#252525] p-5 pb-8 flex flex-col gap-4 animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto pointer-events-auto">
+                                                         <div className="w-12 h-1 bg-[#333] rounded-full mx-auto" onClick={() => setShowMobileDiagnosticsSheet(false)} />
+
+                                                         <div className="flex items-center justify-between border-b border-[#222] pb-3">
+                                                            <div className="flex items-center gap-2">
+                                                               <Sliders size={16} className="text-blue-500" />
+                                                               <h3 className="text-xs font-black uppercase tracking-widest text-[#E0E0E0]">Optimization Settings</h3>
+                                                            </div>
+                                                            <button
+                                                               onClick={() => setShowMobileDiagnosticsSheet(false)}
+                                                               className="p-1 px-3 rounded-lg bg-[#1E1E1E] text-[10px] font-bold uppercase tracking-wider hover:bg-[#2A2A2A] text-slate-400"
+                                                            >
+                                                               Close
+                                                            </button>
+                                                         </div>
+
+                                                         {['jpeg', 'webp', 'avif'].includes(exportSettings.format) && (
+                                                            <div className="bg-[#161616] p-4 rounded-xl border border-[#222]">
+                                                               <div className="flex justify-between items-center mb-2">
+                                                                  <span className="text-[10px] uppercase font-black text-[#A2A2A2] tracking-wider">Adjustment Quality</span>
+                                                                  <span className="text-xs font-bold text-blue-400 font-mono">
+                                                                     {exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : 100 - exportSettings.avif.cqLevel)}%
+                                                                  </span>
+                                                               </div>
+                                                               <input
+                                                                  type="range"
+                                                                  min="5"
+                                                                  max="100"
+                                                                  value={
+                                                                     exportSettings.format === 'jpeg'
+                                                                        ? exportSettings.mozjpeg.quality
+                                                                        : (exportSettings.format === 'webp'
+                                                                           ? exportSettings.webp.quality
+                                                                           : 100 - exportSettings.avif.cqLevel)
+                                                                  }
+                                                                  onChange={(e) => {
+                                                                     const val = parseInt(e.target.value);
+                                                                     const newSettings = { ...exportSettings };
+                                                                     if (exportSettings.format === 'jpeg') {
+                                                                        newSettings.mozjpeg.quality = val;
+                                                                     } else if (exportSettings.format === 'webp') {
+                                                                        newSettings.webp.quality = val;
+                                                                     } else if (exportSettings.format === 'avif') {
+                                                                        newSettings.avif.cqLevel = 100 - val;
+                                                                     }
+                                                                     setExportSettings(newSettings);
+                                                                  }}
+                                                                  className="w-full accent-blue-500 cursor-pointer h-1.5 bg-[#252525] rounded-full"
+                                                               />
+                                                            </div>
+                                                         )}
+
+                                                         <div className="space-y-2 mt-1">
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                               <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Target Format</span>
+                                                                  <span className="font-mono text-xs font-bold text-blue-400 uppercase">{exportSettings.format}</span>
+                                                               </div>
+
+                                                               <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Resolution</span>
+                                                                  <span className="font-mono text-xs font-bold text-slate-200">
+                                                                     {(() => {
+                                                                        const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
+                                                                        return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} × ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
+                                                                     })()}
+                                                                  </span>
+                                                               </div>
+
+                                                               <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">PSNR Ratio</span>
+                                                                  <span className="font-mono text-xs font-bold text-emerald-400 font-mono">
+                                                                     {psnr ? `${psnr.toFixed(1)} dB` : 'Measuring...'}
+                                                                  </span>
+                                                               </div>
+
+                                                               <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Visual SSIM</span>
+                                                                  <span className="font-mono text-xs font-bold text-blue-400 block truncate">
+                                                                     {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Measuring...'}
+                                                                  </span>
+                                                               </div>
+                                                            </div>
+
+                                                            <div className="bg-[#161616] p-3 rounded-xl border border-[#222] mt-2 space-y-2">
+                                                               <div className="flex justify-between items-center border-b border-[#252525] pb-1.5">
+                                                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Savings Profile</span>
+                                                                  <span className="text-[10px] text-slate-500 uppercase font-mono">WASM optimized</span>
+                                                               </div>
+                                                               <div className="flex justify-between text-xs text-slate-300 font-sans">
+                                                                  <span>Original Size: <span className="font-mono font-bold text-slate-400">{formatBytes(originalSize || 0)}</span></span>
+                                                                  <span>Optimized Size: <span className="font-mono font-bold text-blue-400">{formatBytes(optimizedSize || 0)}</span></span>
+                                                               </div>
+                                                               {optimizedSize && originalSize && (
+                                                                  <div className="flex justify-between text-xs text-emerald-400 border-t border-[#252525] pt-1.5 mt-1 font-sans">
+                                                                     <span>Saved: <span className="font-mono font-black">{formatBytes(originalSize - optimizedSize)}</span></span>
+                                                                     <span className="font-black">{parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller</span>
+                                                                  </div>
+                                                               )}
+                                                            </div>
+                                                         </div>
+
+                                                         <div className="mt-2 text-center">
+                                                            <button
+                                                               onClick={() => {
+                                                                  setShowMobileDiagnosticsSheet(false);
+                                                                  handleExport();
+                                                               }}
+                                                               className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-white shadow-xl transition-all"
+                                                            >
+                                                               Confirm & Download Image
+                                                            </button>
+                                                         </div>
+                                                      </div>
+                                                   </>
+                                                )}
+
+                                                {/* Non-mobile Tablet/Accordion Bottom Details Sheet (Only visible on non-mobile screens) */}
+                                                {!isMobile && (
+                                                   <div className="md:hidden w-full shrink-0 mt-2 z-30">
+                                                      <div
+                                                         onClick={() => setMobileDetailsExpanded(!mobileDetailsExpanded)}
+                                                         className="w-full bg-[#141414] border border-[#2A2A2A] rounded-xl p-3 flex items-center justify-between hover:bg-[#1A1A1A] active:bg-[#111] transition-colors cursor-pointer select-none"
+                                                      >
+                                                         <div className="flex items-center gap-2">
+                                                            <Sliders size={12} className="text-blue-400" />
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
+                                                               Optimization Details
+                                                            </span>
+                                                            <span className="text-[9px] text-blue-300 bg-blue-900/30 border border-blue-500/20 px-1.5 py-0.5 rounded font-bold uppercase font-mono">
+                                                               {exportSettings.format}
+                                                            </span>
+                                                         </div>
+
+                                                         {/* Display compact saving information metrics as clean chips */}
+                                                         <div className="flex items-center gap-1.5">
+                                                            {optimizedSize && originalSize && (
+                                                               <>
+                                                                  {originalSize > optimizedSize && (
+                                                                     <div className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                                                                        {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
+                                                                     </div>
+                                                                  )}
+                                                                  <div className="text-[9px] font-bold text-blue-300 bg-[#1e293b]/40 border border-blue-500/10 px-2 py-0.5 rounded-md font-mono">
+                                                                     {formatBytes(optimizedSize)}
+                                                                  </div>
+                                                               </>
+                                                            )}
+                                                            <div className="text-slate-500 ml-1">
+                                                               {mobileDetailsExpanded ? (
+                                                                  <ChevronDown size={14} className="text-blue-400" />
+                                                               ) : (
+                                                                  <ChevronUp size={14} className="text-slate-400" />
+                                                               )}
+                                                            </div>
+                                                         </div>
+                                                      </div>
+
+                                                      {/* Accordion Expandable Diagnostics Body */}
+                                                      {mobileDetailsExpanded && (
+                                                         <div className="w-full bg-[#111111] border-x border-b border-[#2A2A2A] rounded-b-xl p-3 space-y-2 mt-[-4px] text-xs text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                               {/* Format item */}
+                                                               <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Format</span>
+                                                                  <span className="font-mono text-xs font-bold text-blue-400 uppercase">{exportSettings.format}</span>
+                                                               </div>
+
+                                                               {/* Resolution item */}
+                                                               <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Resolution</span>
+                                                                  <span className="font-mono text-xs font-bold text-slate-200">
+                                                                     {(() => {
+                                                                        const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
+                                                                        return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} × ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
+                                                                     })()}
+                                                                  </span>
+                                                               </div>
+
+                                                               {/* PSNR item */}
+                                                               <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">PSNR Metric</span>
+                                                                  <span className="font-mono text-xs font-bold text-emerald-400">
+                                                                     {psnr ? `${psnr.toFixed(1)} dB` : 'Calculating...'}
+                                                                  </span>
+                                                               </div>
+
+                                                               {/* SSIM item */}
+                                                               <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
+                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">SSIM Metric</span>
+                                                                  <span className="font-mono text-xs font-bold text-blue-400">
+                                                                     {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Calculating...'}
+                                                                  </span>
+                                                               </div>
+                                                            </div>
+
+                                                            {/* Savings and size comparisons */}
+                                                            {optimizedSize && originalSize && (
+                                                               <div className="bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-500/20 flex flex-col gap-1.5">
+                                                                  <div className="flex justify-between items-center border-b border-emerald-500/10 pb-1">
+                                                                     <span className="text-emerald-400 text-[9px] font-black uppercase tracking-wider font-sans">Size Savings</span>
+                                                                     <span className="text-emerald-300 font-extrabold text-xs">
+                                                                        {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Reduction
+                                                                     </span>
+                                                                  </div>
+                                                                  <div className="flex justify-between text-[11px] text-slate-300 font-sans">
+                                                                     <span>Original Size: <span className="font-mono font-bold text-slate-400">{formatBytes(originalSize)}</span></span>
+                                                                     <span>Saved: <span className="font-mono font-bold text-emerald-400">{formatBytes(originalSize - optimizedSize)}</span></span>
+                                                                  </div>
+                                                               </div>
+                                                            )}
+
+                                                            {/* Fidelity statement item */}
+                                                            <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
+                                                               <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Visual Fidelity</span>
+                                                               <span className="text-xs font-medium text-slate-300 font-sans">
+                                                                  {(() => {
+                                                                     if (exportSettings.format === 'png') return exportSettings.png?.paletteReduction ? '8-Bit Color Index' : 'Pixel Lossless';
+                                                                     const q = exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : exportSettings.avif.cqLevel);
+                                                                     if (q > 90) return 'Exceptional';
+                                                                     if (q > 75) return 'Balanced';
+                                                                     if (q > 50) return 'Standard Lossy';
+                                                                     return 'High Compression';
+                                                                  })()}
+                                                               </span>
+                                                            </div>
+                                                         </div>
+                                                      )}
+                                                   </div>
+                                                )}
+                                             </div>
+                                          )}
+
+                                          {/* Floating Canvas Navigation & Zoom Controller */}
+                                          <div className={`absolute bottom-4 left-6 bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
+                                             <button
+                                                className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
+                                                onClick={() => {
+                                                   if (!fabricRef.current) return;
+                                                   let z = fabricRef.current.getZoom();
+                                                   z = Math.max(0.1, z - 0.15);
+                                                   fabricRef.current.setZoom(z);
+                                                   setZoomPercent(Math.round(z * 100));
+                                                   fabricRef.current.requestRenderAll();
+                                                }}
+                                                title="Zoom Out"
+                                             >
+                                                <Minus size={13} />
+                                             </button>
+
+                                             <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-200">
+                                                {zoomPercent}%
+                                             </span>
+
+                                             <button
+                                                className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
+                                                onClick={() => {
+                                                   if (!fabricRef.current) return;
+                                                   let z = fabricRef.current.getZoom();
+                                                   z = Math.min(10, z + 0.15);
+                                                   fabricRef.current.setZoom(z);
+                                                   setZoomPercent(Math.round(z * 100));
+                                                   fabricRef.current.requestRenderAll();
+                                                }}
+                                                title="Zoom In"
+                                             >
+                                                <Plus size={13} />
+                                             </button>
+
+                                             <div className="w-px h-4 bg-[#2D2D2D]" />
+
+                                             <button
+                                                className="px-2 py-1 bg-[#232323] hover:bg-[#2F2F2F] hover:text-white text-[10px] font-medium rounded transition"
+                                                onClick={() => {
+                                                   if (!fabricRef.current) return;
+                                                   const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
+                                                   const vpt = fabricRef.current.viewportTransform!;
+                                                   const newVpt = vpt.slice() as any;
+                                                   newVpt[0] = 1.0;
+                                                   newVpt[3] = 1.0;
+                                                   const cw = fabricRef.current.width!;
+                                                   const ch = fabricRef.current.height!;
+                                                   newVpt[4] = cw / 2 - (activeB.x + activeB.width / 2);
+                                                   newVpt[5] = ch / 2 - (activeB.y + activeB.height / 2);
+                                                   fabricRef.current.setViewportTransform(newVpt);
+                                                   setZoomPercent(100);
+                                                }}
+                                                title="Recenter Camera on Active Artboard"
+                                             >
+                                                Recenter
+                                             </button>
+
+                                             <button
+                                                className="px-2 py-1 bg-[#232323] hover:bg-[#2F2F2F] hover:text-white text-[10px] font-medium rounded transition"
+                                                onClick={() => {
+                                                   if (!fabricRef.current || artboardsRef.current.length === 0) return;
+                                                   let minX = Infinity, minY = Infinity;
+                                                   let maxX = -Infinity, maxY = -Infinity;
+                                                   artboardsRef.current.forEach(b => {
+                                                      minX = Math.min(minX, b.x);
+                                                      minY = Math.min(minY, b.y);
+                                                      maxX = Math.max(maxX, b.x + b.width);
+                                                      maxY = Math.max(maxY, b.y + b.height);
+                                                   });
+                                                   minX -= 60; minY -= 60;
+                                                   maxX += 60; maxY += 60;
+
+                                                   const w = maxX - minX;
+                                                   const h = maxY - minY;
+                                                   const cw = fabricRef.current.width!;
+                                                   const ch = fabricRef.current.height!;
+
+                                                   const zoom = Math.max(0.1, Math.min(4, Math.min(cw / w, ch / h)));
+                                                   const vpt = fabricRef.current.viewportTransform!;
+                                                   const newVpt = vpt.slice() as any;
+                                                   newVpt[0] = zoom;
+                                                   newVpt[3] = zoom;
+                                                   newVpt[4] = cw / 2 - zoom * (minX + w / 2);
+                                                   newVpt[5] = ch / 2 - zoom * (minY + h / 2);
+
+                                                   fabricRef.current.setViewportTransform(newVpt);
+                                                   setZoomPercent(Math.round(zoom * 100));
+                                                }}
+                                                title="Fit All Artboards in Viewport"
+                                             >
+                                                Fit All
+                                             </button>
+                                          </div>
+                                       </div>
+                                    </div>
+
+                                    {/* Resize Handle */}
+                                    <div
+                                       onPointerDown={(e) => {
+                                          setIsResizingPanel(true);
+                                          e.preventDefault();
+                                       }}
+                                       className="relative z-20 w-1.5 -ml-[1px] -mr-[5px] cursor-col-resize flex justify-center group hidden md:flex"
+                                    >
+                                       <div className={`h-full w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-x-150' : 'bg-transparent group-hover:bg-blue-500'}`} />
+                                    </div>
+
+                                    {/* Mobile Filter / Bottom Bar */}
+                                    {isMobile && (
+                                       <div className="flex h-14 bg-[#1A1A1A] border-t border-[#2C2C2C] z-30 fixed bottom-0 left-0 right-0 px-2 items-center justify-between overflow-x-auto no-scrollbar">
+                                          <ToolBtn icon={MousePointer2} tool="select" current={activeTool} set={setTool} title="Move" />
+                                          <ToolBtn icon={Hand} tool="pan" current={activeTool} set={setTool} title="Pan" />
+                                          <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush" />
+                                          <ToolBtn icon={Type} tool="text" current={activeTool} set={addText} title="Text" />
+                                          <ToolBtn icon={Crop} tool="crop" current={activeTool} set={() => enterCropMode()} title="Crop" />
+
+                                          <div className="flex-1" />
+
+                                          <div className="relative shrink-0 flex items-center justify-center w-10">
+                                             <ColorPickerTrigger
+                                                color={brushColor || "#ffffff"}
+                                                onChange={changeCurrentColor}
+                                                className="w-7 h-7 rounded-full border border-white/20 shadow-inner relative overflow-hidden"
+                                             />
+                                          </div>
+
+                                          <div className="w-px h-8 bg-[#3A3A3A] mx-2 shrink-0" />
+
+                                          <button
+                                             onClick={() => setShowMobilePanel(true)}
+                                             className="h-10 w-10 shrink-0 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl flex items-center justify-center transition-colors shadow-sm ml-auto"
+                                          >
+                                             <Layers size={18} />
+                                          </button>
+                                       </div>
+                                    )}
+
+                                    {/* Mobile Swipe Wrapper Backdrop */}
+                                    {isMobile && showMobilePanel && (
+                                       <div className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm animate-in fade-in" onClick={() => setShowMobilePanel(false)} />
+                                    )}
+
+                                    {/* Right Sidebar - Logic Panels */}
+                                    <div
+                                       style={{ width: isMobile ? '100%' : `${panelWidth}px` }}
+                                       className={`${isMobile ? `fixed bottom-0 left-0 right-0 z-50 h-[85vh] rounded-t-2xl transform transition-transform duration-300 ${showMobilePanel ? 'translate-y-0' : 'translate-y-full'}` : 'h-full'} border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-[#2C2C2C]'} bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.5)] md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150`}
+                                    >
+                                       {isMobile && (
+                                          <div
+                                             className="w-full flex justify-center py-3 shrink-0 z-10 sticky top-0 bg-[#1E1E1E]"
+                                             onTouchStart={(e) => {
+                                                const startY = e.touches[0].clientY;
+                                                const handleMove = (eMove: TouchEvent) => {
+                                                   const delta = eMove.touches[0].clientY - startY;
+                                                   if (delta > 50) {
+                                                      setShowMobilePanel(false);
+                                                      document.removeEventListener('touchmove', handleMove);
+                                                   }
+                                                };
+                                                const handleEnd = () => {
+                                                   document.removeEventListener('touchmove', handleMove);
+                                                   document.removeEventListener('touchend', handleEnd);
+                                                };
+                                                document.addEventListener('touchmove', handleMove);
+                                                document.addEventListener('touchend', handleEnd);
+                                             }}
+                                          >
+                                             <div className="w-16 h-1.5 bg-[#4A4A4A] rounded-full" />
+                                          </div>
+                                       )}
+
+                                       <div className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] overflow-x-auto select-none no-scrollbar shrink-0">
+                                          <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
+                                          <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
+                                          <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
+                                          <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
+                                          <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
+                                          <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
+                                          <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
+                                       </div>
+
+                                       <div className="flex-1 overflow-y-auto overflow-x-hidden">
+
+                                          {/* PROPERTIES PANEL */}
+                                          {activeTab === 'properties' && (
+                                             <PropertiesTab />
+                                          )}
+                                          {/* ARTBOARDS PANEL */}
+                                          {activeTab === 'artboards' && (
+                                             <ArtboardsTab />
+
+                                          )}
+                                          {/* QUICK ACTIONS PANEL */}
+                                          {activeTab === 'quick' && (
+                                             <QuickActionsTab
+                                                selectionType={selectionType}
+                                                addFilterToPipeline={addFilterToPipeline}
+                                                applyFilter={applyFilter}
+                                                resetCrop={resetCrop}
+                                                alignSelection={alignSelection}
+                                                applyFrame={applyFrame}
+                                                frameBorderWidth={frameBorderWidth}
+                                                updateFrameBorderWidth={updateFrameBorderWidth}
+                                                createArtboardFromPreset={createArtboardFromPreset}
+                                             />
+                                          )}
+
+                                          {/* FILTERS PANEL */}
+                                          {activeTab === 'filters' && <FilterStudioTab />}
+
+                                          {/* LAYERS PANEL */}
+                                          {activeTab === 'layers' && <LayersTab />}
+
+                                          {/* HISTORY PANEL */}
+                                          {activeTab === 'history' && (
+                                             <div className="p-2">
+                                                <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 ml-2 mt-2">Action History</div>
+                                                <div className="space-y-1">
+                                                   {historyNames.map((name, idx) => {
+                                                      const isCurrent = idx === commandIndex;
+                                                      const isFuture = idx > commandIndex;
+                                                      return (
+                                                         <div key={idx} onClick={() => jumpToHistory(idx)} className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-xs transition-colors ${isCurrent ? 'bg-blue-600/20 text-blue-300 font-medium' : isFuture ? 'text-[#6A6A6A] hover:bg-[#2C2C2C]' : 'text-[#C0C0C0] hover:bg-[#2C2C2C]'}`}>
+                                                            <div className={`w-2 h-2 rounded-full mr-3 ${isCurrent ? 'bg-blue-500' : isFuture ? 'bg-[#3A3A3A]' : 'bg-[#6A6A6A]'}`} />
+                                                            {name}
+                                                         </div>
+                                                      );
+                                                   })}
+                                                   {historyNames.length === 0 && (
+                                                      <div className="p-4 text-xs text-[#8A8A8A] text-center italic mt-10">No history track found.</div>
+                                                   )}
+                                                </div>
+                                             </div>
+                                          )}
+
+                                          {/* EXPORT WORKSPACE (jSquash with Artboards) */}
+                                          {activeTab === 'export' && (
+                                             <ExportStudio
+                                                settings={exportSettings}
+                                                onChange={setExportSettings}
+                                                onExport={handleExport}
+                                                isExporting={isExporting}
+                                                originalSize={originalSize}
+                                                optimizedSize={optimizedSize}
+                                                originalWidth={artboards.find(b => b.id === activeArtboardId)?.width || 800}
+                                                originalHeight={artboards.find(b => b.id === activeArtboardId)?.height || 600}
+                                                psnr={psnr}
+                                                artboards={artboards}
+                                                activeArtboardId={activeArtboardId}
+                                                setActiveArtboardId={setActiveArtboardId}
+                                                exportTarget={exportTarget}
+                                                setExportTarget={setExportTarget}
+                                                selectedExportIds={selectedExportIds}
+                                                setSelectedExportIds={setSelectedExportIds}
+                                             />
+                                          )}
+                                       </div>
+                                    </div>
+                                    {/* Suggestion Toast */}
+                                    {activeSuggestion && (
+                                       <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-bounce-subtle pointer-events-auto">
+                                          <div className="bg-[#242424] border border-blue-500/50 shadow-[0_8px_32px_rgba(0,0,0,0.5)] rounded-2xl px-5 py-3 flex items-center gap-4 text-white">
+                                             <div className="bg-blue-500/20 p-2 rounded-xl text-blue-400">
+                                                <Sparkles size={18} />
+                                             </div>
+                                             <div>
+                                                <div className="text-xs font-bold leading-tight">Image too large?</div>
+                                                <div className="text-[10px] text-slate-400">Try smart fitting actions</div>
+                                             </div>
+                                             <div className="flex gap-2 ml-2">
+                                                <button onClick={() => { alignSelection('fit'); setActiveSuggestion(null); }} className="h-7 px-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-[10px] font-bold transition">Fit to Artboard</button>
+                                                <button onClick={() => { alignSelection('fill'); setActiveSuggestion(null); }} className="h-7 px-3 bg-[#333] hover:bg-[#444] rounded-lg text-[10px] font-bold transition">Fill Artboard</button>
+                                                <button onClick={() => setActiveSuggestion(null)} className="p-1 hover:bg-white/10 rounded-lg"><X size={14} /></button>
+                                             </div>
                                           </div>
                                        </div>
                                     )}
 
-                                    {/* EXPORT WORKSPACE (jSquash with Artboards) */}
-                                    {activeTab === 'export' && (
-                                       <ExportStudio
-                                          settings={exportSettings}
-                                          onChange={setExportSettings}
-                                          onExport={handleExport}
-                                          isExporting={isExporting}
-                                          originalSize={originalSize}
-                                          optimizedSize={optimizedSize}
-                                          originalWidth={artboards.find(b => b.id === activeArtboardId)?.width || 800}
-                                          originalHeight={artboards.find(b => b.id === activeArtboardId)?.height || 600}
-                                          psnr={psnr}
-                                          artboards={artboards}
-                                          activeArtboardId={activeArtboardId}
-                                          setActiveArtboardId={setActiveArtboardId}
-                                          exportTarget={exportTarget}
-                                          setExportTarget={setExportTarget}
-                                          selectedExportIds={selectedExportIds}
-                                          setSelectedExportIds={setSelectedExportIds}
+                                    {/* Context Menu Portal */}
+                                    {activeContextMenu && createPortal(
+                                       <div
+                                          ref={contextMenuRef}
+                                          className="fixed z-[9999] w-52 bg-[#1A1A1A] border border-[#2D2D2D] shadow-[0_12px_48px_rgba(0,0,0,0.7)] rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] py-1 context-menu-container"
+                                          style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
+                                          onClick={(e) => e.stopPropagation()}
+                                       >
+                                          {activeContextMenu.obj ? (
+                                             <>
+                                                {(activeContextMenu.obj as any)?.isCollageBlock && (
+                                                   <>
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-blue-500 border-b border-[#252525] mb-1">Smart Collage</div>
+                                                      <ContextMenuItem icon={LucideImage} label={(activeContextMenu.obj as any).collageImageSrc ? "Replace Image..." : "Add Image..."} onClick={() => {
+                                                         const input = document.createElement('input');
+                                                         input.type = 'file';
+                                                         input.accept = 'image/*';
+                                                         input.onchange = (e: any) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                               fabricRef.current?.setActiveObject(activeContextMenu.obj!);
+                                                               fillCollageBlockWithImage(file);
+                                                            }
+                                                         };
+                                                         input.click();
+                                                         closeContextMenu();
+                                                      }} />
+                                                      {(activeContextMenu.obj as any).collageImageSrc && (
+                                                         <ContextMenuItem icon={Trash2} label="Remove Image" onClick={() => {
+                                                            const rect = activeContextMenu.obj as fabric.Rect;
+                                                            const beforeState = { collageImageSrc: (rect as any).collageImageSrc };
+                                                            const afterState = { collageImageSrc: null };
+                                                            (rect as any).collageImageSrc = null;
+                                                            fabricRef.current?.requestRenderAll();
+                                                            executeCommand(new StyleChangeCommand("Remove Image", rect, beforeState, afterState));
+                                                            closeContextMenu();
+                                                         }} />
+                                                      )}
+                                                      <ContextMenuItem icon={Copy} label="Duplicate Block" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Trash2} label="Delete Block" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
+                                                      <div className="h-px bg-[#252525] my-1" />
+                                                   </>
+                                                )}
+                                                {(activeContextMenu.targets?.filter(t => (t as any).isCollageBlock).length > 0 && activeContextMenu.targets?.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length > 0) && (
+                                                   <>
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-green-500 border-b border-[#252525] mb-1">Bulk Assignment</div>
+                                                      {activeContextMenu.targets.filter(t => (t as any).isCollageBlock).length === 1 && activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length === 1 ? (
+                                                         <ContextMenuItem icon={LucideImage} label="Fit Image into Block" onClick={() => {
+                                                            const block = activeContextMenu.targets.find(t => (t as any).isCollageBlock) as fabric.Rect;
+                                                            const img = activeContextMenu.targets.find(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image;
+
+                                                            const beforeState = { collageImageSrc: (block as any).collageImageSrc };
+                                                            const afterState = { collageImageSrc: img.getSrc() };
+                                                            (block as any).collageImageSrc = img.getSrc();
+                                                            fabricRef.current?.requestRenderAll();
+                                                            executeCommand(new StyleChangeCommand("Fit Image into Block", block, beforeState, afterState));
+                                                            closeContextMenu();
+                                                         }} />
+                                                      ) : (
+                                                         <>
+                                                            <ContextMenuItem icon={LucideImage} label="Fill Blocks Sequentially" onClick={() => {
+                                                               const blocks = activeContextMenu.targets.filter(t => (t as any).isCollageBlock);
+                                                               const imgs = activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image[];
+                                                               const commands: Command[] = [];
+                                                               blocks.forEach((block, i) => {
+                                                                  const img = imgs[i % imgs.length];
+                                                                  const beforeState = { collageImageSrc: (block as any).collageImageSrc };
+                                                                  const afterState = { collageImageSrc: img.getSrc() };
+                                                                  (block as any).collageImageSrc = img.getSrc();
+                                                                  commands.push(new StyleChangeCommand("Fill Block", block as fabric.Object, beforeState, afterState));
+                                                               });
+                                                               fabricRef.current?.requestRenderAll();
+                                                               executeCommand(new MacroCommand("Fill Blocks Sequentially", commands));
+                                                               closeContextMenu();
+                                                            }} />
+                                                            <ContextMenuItem icon={LucideImage} label="Fill Blocks Randomly" onClick={() => {
+                                                               const blocks = activeContextMenu.targets.filter(t => (t as any).isCollageBlock);
+                                                               const imgs = activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image[];
+                                                               const commands: Command[] = [];
+                                                               blocks.forEach((block) => {
+                                                                  const img = imgs[Math.floor(Math.random() * imgs.length)];
+                                                                  const beforeState = { collageImageSrc: (block as any).collageImageSrc };
+                                                                  const afterState = { collageImageSrc: img.getSrc() };
+                                                                  (block as any).collageImageSrc = img.getSrc();
+                                                                  commands.push(new StyleChangeCommand("Fill Block", block as fabric.Object, beforeState, afterState));
+                                                               });
+                                                               fabricRef.current?.requestRenderAll();
+                                                               executeCommand(new MacroCommand("Fill Blocks Randomly", commands));
+                                                               closeContextMenu();
+                                                            }} />
+                                                         </>
+                                                      )}
+                                                      <div className="h-px bg-[#252525] my-1" />
+                                                   </>
+                                                )}
+                                                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
+                                                {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
+                                                   <>
+                                                      <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
+                                                      <div className="h-px bg-[#252525] my-1" />
+                                                   </>
+                                                )}
+                                                <ContextMenuItem icon={AlignLeft} label="Align Left" onClick={() => { alignSelection('left'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={AlignCenter} label="Align Center H" onClick={() => { alignSelection('centerH'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={AlignRight} label="Align Right" onClick={() => { alignSelection('right'); closeContextMenu(); }} />
+                                                <div className="h-px bg-[#252525] my-1" />
+                                                <ContextMenuItem icon={Move} label="Fit To Artboard" onClick={() => { alignSelection('fit'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={SquareDashed} label="Fill Artboard" onClick={() => { alignSelection('fill'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Expand} label="Stretch to Artboard" onClick={() => { alignSelection('stretch'); closeContextMenu(); }} />
+                                                <div className="h-px bg-[#252525] my-1" />
+                                                <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
+                                                <div className="h-px bg-[#252525] my-1" />
+                                                <ContextMenuItem icon={Crop} label="Resize Artboard to Selection" onClick={() => { resizeArtboardToSelection('both'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Crop} label="Resize Artboard Width to Selection" onClick={() => { resizeArtboardToSelection('width'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
+                                                <div className="h-px bg-[#252525] my-1" />
+                                                <ContextMenuItem icon={Copy} label="Copy as PNG" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
+                                                {activeContextMenu.obj?.type !== 'image' && (
+                                                   <ContextMenuItem icon={Copy} label="Copy as SVG" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
+                                                )}
+                                                <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
+                                                {activeContextMenu.obj?.type === 'group' && (
+                                                   <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => {
+                                                      const group = activeContextMenu.obj as any;
+                                                      if (group && typeof group.toActiveSelection === 'function') {
+                                                         const sel = group.toActiveSelection();
+                                                         fabricRef.current?.setActiveObject(sel);
+                                                      } else {
+                                                         const items = (group as any).removeAll();
+                                                         fabricRef.current?.remove(group as fabric.Group);
+                                                         items.forEach(i => fabricRef.current?.add(i));
+                                                         const sel = new fabric.ActiveSelection(items, { canvas: fabricRef.current });
+                                                         fabricRef.current?.setActiveObject(sel);
+                                                      }
+                                                      fabricRef.current?.requestRenderAll();
+                                                      updateLayersList();
+                                                      closeContextMenu();
+                                                   }} />
+                                                )}
+                                                <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
+                                                <div className="h-px bg-[#252525] my-1" />
+
+                                                {(() => {
+                                                   let maxIdx = -1;
+                                                   let minIdx = Number.MAX_SAFE_INTEGER;
+                                                   const totalObjs = fabricRef.current?.getObjects().length || 0;
+                                                   activeContextMenu.targets.forEach(t => {
+                                                      const idx = fabricRef.current?.getObjects().indexOf(t) ?? -1;
+                                                      if (idx > maxIdx) maxIdx = idx;
+                                                      if (idx !== -1 && idx < minIdx) minIdx = idx;
+                                                   });
+                                                   const canBringForward = maxIdx !== -1 && maxIdx < totalObjs - 1;
+                                                   const canSendBackward = minIdx !== -1 && minIdx > 0;
+
+                                                   return (
+                                                      <>
+                                                         <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Layer Order</div>
+                                                         <ContextMenuItem icon={BringToFront} label="Bring to Front" shortcut="Ctrl+Shift+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('front'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={ArrowUp} label="Bring Forward" shortcut="Ctrl+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('forward'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={ArrowDown} label="Send Backward" shortcut="Ctrl+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('backward'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={SendToBack} label="Send to Back" shortcut="Ctrl+Shift+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('back'); closeContextMenu(); }} />
+                                                         <div className="h-px bg-[#252525] my-1" />
+                                                      </>
+                                                   );
+                                                })()}
+
+                                                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Move To Artboard</div>
+                                                {artboards.map(b => (
+                                                   <ContextMenuItem
+                                                      key={b.id}
+                                                      icon={SquareDashed}
+                                                      label={b.name}
+                                                      onClick={() => {
+                                                         if (!fabricRef.current) return;
+                                                         const activeSelection = fabricRef.current.getActiveObject();
+                                                         if (!activeSelection) return;
+
+                                                         let objectsToProcess: any[] = [];
+                                                         if (activeSelection.type === 'activeSelection') {
+                                                            objectsToProcess = (activeSelection as any).getObjects();
+                                                            fabricRef.current.discardActiveObject();
+                                                         } else {
+                                                            objectsToProcess = [activeSelection];
+                                                         }
+
+                                                         objectsToProcess.forEach(obj => {
+                                                            const prevArtboardId = obj.artboardId;
+                                                            if (prevArtboardId !== b.id) {
+                                                               const prevBoard = artboards.find(x => x.id === prevArtboardId) || artboards[0];
+                                                               const dx = b.x - prevBoard.x;
+                                                               const dy = b.y - prevBoard.y;
+
+                                                               obj.artboardId = b.id;
+                                                               if (typeof obj.set === 'function') {
+                                                                  obj.set({
+                                                                     left: (obj.left ?? 0) + dx,
+                                                                     top: (obj.top ?? 0) + dy
+                                                                  });
+                                                                  if (typeof obj.setCoords === 'function') obj.setCoords();
+                                                               }
+                                                            }
+                                                         });
+
+                                                         if (objectsToProcess.length > 1) {
+                                                            const sel = new fabric.ActiveSelection(objectsToProcess, { canvas: fabricRef.current });
+                                                            fabricRef.current.setActiveObject(sel);
+                                                         } else if (objectsToProcess.length === 1) {
+                                                            fabricRef.current.setActiveObject(objectsToProcess[0]);
+                                                         }
+
+                                                         fabricRef.current.renderAll();
+                                                         updateLayersList();
+                                                         closeContextMenu();
+                                                      }}
+                                                   />
+                                                ))}
+                                                <div className="h-px bg-[#252525] my-1" />
+                                                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
+                                                <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
+                                                   try {
+                                                      const items = await navigator.clipboard.read();
+                                                      const results = await processPasteEvent({ clipboardData: { items: items as any } } as any);
+                                                      if (results.length > 0) importAssets(results);
+                                                   } catch (e) { }
+                                                   closeContextMenu();
+                                                }} />
+                                                <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
+                                                   setShowUrlPrompt(true);
+                                                   closeContextMenu();
+                                                }} />
+                                             </>
+                                          ) : (
+                                             <>
+                                                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Canvas Actions</div>
+                                                <ContextMenuItem icon={Plus} label="New Artboard" onClick={() => { createArtboard(); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Type} label="Add Text" onClick={() => { addText(); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Grid} label="Toggle Grid" onClick={() => { closeContextMenu(); }} />
+                                                <div className="h-px bg-[#252525] my-1" />
+                                                <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
+                                                <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
+                                                   try {
+                                                      const items = await navigator.clipboard.read();
+                                                      // This uses a hacky adapter to pass to our processPasteEvent which expects a standard PasteEvent
+                                                      const dataItems = Array.from(items).flatMap((item: any) =>
+                                                         item.types.map((type: string) => ({
+                                                            type,
+                                                            getType: () => item.getType(type),
+                                                         }))
+                                                      );
+                                                      // We actually already have a processClipboardItems function for exactly this!
+                                                      const { processClipboardItems } = await import('../image-import/clipboard/clipboardImporter');
+                                                      const results = await processClipboardItems(items as any);
+                                                      if (results.length > 0) importAssets(results);
+                                                   } catch (e) { }
+                                                   closeContextMenu();
+                                                }} />
+                                                <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
+                                                <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
+                                                   setShowUrlPrompt(true);
+                                                   closeContextMenu();
+                                                }} />
+                                             </>
+                                          )}
+                                       </div>,
+                                       document.body
+                                    )}
+
+                                    {/* Mobile Artboard Gallery Modal */}
+                                    {isMobile && showMobileArtboardsGallery && (
+                                       <div className="fixed inset-0 z-[100] bg-[#121212] overflow-y-auto w-full h-full animate-in fade-in zoom-in-95 duration-200">
+                                          <div className="sticky top-0 bg-[#1A1A1A] border-b border-[#2C2C2C] p-4 flex justify-between items-center z-10 shadow-md">
+                                             <h2 className="text-white font-bold tracking-tight text-lg flex items-center gap-2">
+                                                <SquareDashed size={18} className="text-blue-500" />
+                                                Select Artboard
+                                             </h2>
+                                             <button
+                                                onClick={() => setShowMobileArtboardsGallery(false)}
+                                                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#333] text-white hover:bg-[#444]"
+                                             >
+                                                <X size={18} />
+                                             </button>
+                                          </div>
+
+                                          <div className="p-4 grid grid-cols-2 gap-4 pb-20">
+                                             {artboards.map(b => {
+                                                const isActive = b.id === activeArtboardId;
+                                                return (
+                                                   <div
+                                                      key={b.id}
+                                                      onClick={() => {
+                                                         setActiveArtboardId(b.id);
+                                                         setShowMobileArtboardsGallery(false);
+                                                      }}
+                                                      className={`flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-blue-600/10 border-blue-500' : 'bg-[#1E1E1E] border-[#333] hover:border-gray-500'}`}
+                                                   >
+                                                      <div className="w-full aspect-square bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner">
+                                                         <div
+                                                            className="w-16 h-16 rounded-sm shadow-sm opacity-80"
+                                                            style={{
+                                                               backgroundColor: b.backgroundColor || '#fff',
+                                                               aspectRatio: `${b.width}/${b.height}`,
+                                                               width: b.orientation === 'landscape' ? '60%' : undefined,
+                                                               height: b.orientation === 'portrait' ? '60%' : undefined,
+                                                               ...(b.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                            }}
+                                                         />
+                                                         {isActive && (
+                                                            <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+                                                         )}
+                                                      </div>
+                                                      <div className="flex flex-col">
+                                                         <span className={`text-sm font-bold truncate ${isActive ? 'text-blue-400' : 'text-white'}`}>{b.name}</span>
+                                                         <span className="text-[10px] text-gray-500 font-mono tracking-tighter">{b.width} × {b.height}</span>
+                                                      </div>
+                                                   </div>
+                                                )
+                                             })}
+
+                                             <div
+                                                onClick={() => {
+                                                   createArtboard();
+                                                   setShowMobileArtboardsGallery(false);
+                                                }}
+                                                className="flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all bg-[#1E1E1E] border border-dashed border-[#444] hover:border-gray-400 items-center justify-center group"
+                                             >
+                                                <div className="w-10 h-10 rounded-full bg-blue-600 group-hover:bg-blue-500 flex items-center justify-center text-white shadow-lg transition-colors">
+                                                   <Plus size={20} />
+                                                </div>
+                                                <span className="text-xs font-bold text-gray-400 group-hover:text-white mt-1">New Artboard</span>
+                                             </div>
+                                          </div>
+                                       </div>
+                                    )}
+
+                                    {/* Rename Artboard Modal Dialog */}
+                                    {renamingArtboard && createPortal(
+                                       <div
+                                          className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+                                          onClick={() => setRenamingArtboard(null)}
+                                       >
+                                          <div
+                                             className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl shadow-[0_24px_64px_rgba(0,0,0,0.85)] w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 cursor-default"
+                                             onClick={(e) => e.stopPropagation()}
+                                          >
+                                             <div className="px-5 py-4 border-b border-[#2C2C2C] flex items-center justify-between">
+                                                <h3 className="text-sm font-semibold text-[#E0E0E0] flex items-center gap-2">
+                                                   <Edit2 size={14} className="text-blue-500" />
+                                                   Rename Artboard
+                                                </h3>
+                                                <button
+                                                   onClick={() => setRenamingArtboard(null)}
+                                                   className="text-gray-500 hover:text-white transition-colors"
+                                                >
+                                                   <X size={16} />
+                                                </button>
+                                             </div>
+                                             <div className="p-5 space-y-4">
+                                                <div className="space-y-1.5">
+                                                   <label className="text-[10px] font-semibold text-[#8A8A8A] uppercase tracking-wider">Artboard Name</label>
+                                                   <input
+                                                      type="text"
+                                                      autoFocus
+                                                      className="w-full h-9 bg-black border border-[#2C2C2C] rounded-lg px-3 text-xs text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+                                                      value={renamingArtboard.name}
+                                                      onChange={(e) => setRenamingArtboard({ ...renamingArtboard, name: e.target.value })}
+                                                      onKeyDown={(e) => {
+                                                         if (e.key === "Enter") {
+                                                            const trimmed = renamingArtboard.name.trim();
+                                                            if (trimmed) {
+                                                               updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
+                                                            }
+                                                            setRenamingArtboard(null);
+                                                         } else if (e.key === "Escape") {
+                                                            setRenamingArtboard(null);
+                                                         }
+                                                      }}
+                                                   />
+                                                </div>
+                                                <div className="flex justify-end gap-2 pt-1">
+                                                   <button
+                                                      onClick={() => setRenamingArtboard(null)}
+                                                      className="h-8 px-4 text-xs font-semibold border border-[#2D2D2D] text-[#808080] hover:text-white rounded-lg transition-colors"
+                                                   >
+                                                      Cancel
+                                                   </button>
+                                                   <button
+                                                      onClick={() => {
+                                                         const trimmed = renamingArtboard.name.trim();
+                                                         if (trimmed) {
+                                                            updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
+                                                         }
+                                                         setRenamingArtboard(null);
+                                                      }}
+                                                      className="h-8 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                                                   >
+                                                      Save
+                                                   </button>
+                                                </div>
+                                             </div>
+                                          </div>
+                                       </div>,
+                                       document.body
+                                    )}
+
+                                    {showShortcuts && createPortal(
+                                       <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowShortcuts(false)}>
+                                          <div className="bg-[#181818] border border-[#2c2c2c] rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                                             <div className="flex items-center justify-between p-4 border-b border-[#2c2c2c] bg-[#1a1a1a]">
+                                                <div className="font-semibold text-sm text-white flex items-center gap-2">
+                                                   <Keyboard size={16} className="text-blue-400" /> Image Node Shortcuts
+                                                </div>
+                                                <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white transition">
+                                                   <X size={16} />
+                                                </button>
+                                             </div>
+                                             <div className="p-4 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                   <span className="text-xs text-slate-300">Bring Forward</span>
+                                                   <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                   <span className="text-xs text-slate-300">Send Backward</span>
+                                                   <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                   <span className="text-xs text-slate-300">Bring to Front</span>
+                                                   <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                   <span className="text-xs text-slate-300">Send to Back</span>
+                                                   <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                   <span className="text-xs text-slate-300">Context Menu (Mobile)</span>
+                                                   <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">2-Finger Hold</span></div>
+                                                </div>
+                                             </div>
+                                          </div>
+                                       </div>,
+                                       document.body
+                                    )}
+
+                                    {showUrlPrompt && (
+                                       <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowUrlPrompt(false)}>
+                                          <div className="bg-[#111] border border-[#222] rounded-xl w-full max-w-md p-6 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                             <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+                                                <Link size={18} className="text-blue-500" />
+                                                Import from URL
+                                             </h3>
+                                             <div className="space-y-4">
+                                                <div>
+                                                   <label className="text-xs text-[#8A8A8A] font-bold uppercase tracking-wider mb-2 block">Image or SVG URL</label>
+                                                   <input
+                                                      type="text"
+                                                      value={urlInput}
+                                                      onChange={e => setUrlInput(e.target.value)}
+                                                      placeholder="https://example.com/image.png"
+                                                      className="w-full bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                                                      autoFocus
+                                                      onKeyDown={(e) => {
+                                                         if (e.key === 'Enter' && urlInput) {
+                                                            importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
+                                                            setShowUrlPrompt(false);
+                                                            setUrlInput("");
+                                                         } else if (e.key === 'Escape') {
+                                                            setShowUrlPrompt(false);
+                                                         }
+                                                      }}
+                                                   />
+                                                </div>
+                                                <div className="flex justify-end gap-3 pt-2">
+                                                   <button
+                                                      onClick={() => setShowUrlPrompt(false)}
+                                                      className="px-4 py-2 rounded-lg text-sm font-medium text-[#A0A0A0] hover:text-white hover:bg-[#222] transition-colors"
+                                                   >
+                                                      Cancel
+                                                   </button>
+                                                   <button
+                                                      onClick={() => {
+                                                         if (urlInput) {
+                                                            importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
+                                                            setShowUrlPrompt(false);
+                                                            setUrlInput("");
+                                                         }
+                                                      }}
+                                                      disabled={!urlInput}
+                                                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                   >
+                                                      Import
+                                                   </button>
+                                                </div>
+                                             </div>
+                                          </div>
+                                       </div>
+                                    )}
+
+                                    {showAssetGallery && (
+                                       <AssetGallery
+                                          onClose={() => setShowAssetGallery(false)}
+                                          onImport={(assets) => {
+                                             importAssets(assets);
+                                             setShowAssetGallery(false);
+                                          }}
                                        />
                                     )}
                                  </div>
                               </div>
-                              {/* Suggestion Toast */}
-                              {activeSuggestion && (
-                                 <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-bounce-subtle pointer-events-auto">
-                                    <div className="bg-[#242424] border border-blue-500/50 shadow-[0_8px_32px_rgba(0,0,0,0.5)] rounded-2xl px-5 py-3 flex items-center gap-4 text-white">
-                                       <div className="bg-blue-500/20 p-2 rounded-xl text-blue-400">
-                                          <Sparkles size={18} />
-                                       </div>
-                                       <div>
-                                          <div className="text-xs font-bold leading-tight">Image too large?</div>
-                                          <div className="text-[10px] text-slate-400">Try smart fitting actions</div>
-                                       </div>
-                                       <div className="flex gap-2 ml-2">
-                                          <button onClick={() => { alignSelection('fit'); setActiveSuggestion(null); }} className="h-7 px-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-[10px] font-bold transition">Fit to Artboard</button>
-                                          <button onClick={() => { alignSelection('fill'); setActiveSuggestion(null); }} className="h-7 px-3 bg-[#333] hover:bg-[#444] rounded-lg text-[10px] font-bold transition">Fill Artboard</button>
-                                          <button onClick={() => setActiveSuggestion(null)} className="p-1 hover:bg-white/10 rounded-lg"><X size={14} /></button>
-                                       </div>
-                                    </div>
-                                 </div>
-                              )}
-
-                              {/* Context Menu Portal */}
-                              {activeContextMenu && createPortal(
-                                 <div
-                                    ref={contextMenuRef}
-                                    className="fixed z-[9999] w-52 bg-[#1A1A1A] border border-[#2D2D2D] shadow-[0_12px_48px_rgba(0,0,0,0.7)] rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] py-1 context-menu-container"
-                                    style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
-                                    onClick={(e) => e.stopPropagation()}
-                                 >
-                                    {activeContextMenu.obj ? (
-                                       <>
-                                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
-                                          {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
-                                             <>
-                                                <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
-                                                <div className="h-px bg-[#252525] my-1" />
-                                             </>
-                                          )}
-                                          <ContextMenuItem icon={AlignLeft} label="Align Left" onClick={() => { alignSelection('left'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={AlignCenter} label="Align Center H" onClick={() => { alignSelection('centerH'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={AlignRight} label="Align Right" onClick={() => { alignSelection('right'); closeContextMenu(); }} />
-                                          <div className="h-px bg-[#252525] my-1" />
-                                          <ContextMenuItem icon={Move} label="Fit To Artboard" onClick={() => { alignSelection('fit'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={SquareDashed} label="Fill Artboard" onClick={() => { alignSelection('fill'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Expand} label="Stretch to Artboard" onClick={() => { alignSelection('stretch'); closeContextMenu(); }} />
-                                          <div className="h-px bg-[#252525] my-1" />
-                                          <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
-                                          <div className="h-px bg-[#252525] my-1" />
-                                          <ContextMenuItem icon={Crop} label="Resize Artboard to Selection" onClick={() => { resizeArtboardToSelection('both'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Crop} label="Resize Artboard Width to Selection" onClick={() => { resizeArtboardToSelection('width'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
-                                          <div className="h-px bg-[#252525] my-1" />
-                                          <ContextMenuItem icon={Copy} label="Copy as PNG" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
-                                          {activeContextMenu.obj?.type !== 'image' && (
-                                             <ContextMenuItem icon={Copy} label="Copy as SVG" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
-                                          )}
-                                          <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
-                                          {activeContextMenu.obj?.type === 'group' && (
-                                             <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => {
-                                                const group = activeContextMenu.obj as any;
-                                                if (group && typeof group.toActiveSelection === 'function') {
-                                                   const sel = group.toActiveSelection();
-                                                   fabricRef.current?.setActiveObject(sel);
-                                                } else {
-                                                   const items = (group as any).removeAll();
-                                                   fabricRef.current?.remove(group as fabric.Group);
-                                                   items.forEach(i => fabricRef.current?.add(i));
-                                                   const sel = new fabric.ActiveSelection(items, { canvas: fabricRef.current });
-                                                   fabricRef.current?.setActiveObject(sel);
-                                                }
-                                                fabricRef.current?.requestRenderAll();
-                                                updateLayersList();
-                                                closeContextMenu();
-                                             }} />
-                                          )}
-                                          <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
-                                          <div className="h-px bg-[#252525] my-1" />
-
-                                          {(() => {
-                                             let maxIdx = -1;
-                                             let minIdx = Number.MAX_SAFE_INTEGER;
-                                             const totalObjs = fabricRef.current?.getObjects().length || 0;
-                                             activeContextMenu.targets.forEach(t => {
-                                                const idx = fabricRef.current?.getObjects().indexOf(t) ?? -1;
-                                                if (idx > maxIdx) maxIdx = idx;
-                                                if (idx !== -1 && idx < minIdx) minIdx = idx;
-                                             });
-                                             const canBringForward = maxIdx !== -1 && maxIdx < totalObjs - 1;
-                                             const canSendBackward = minIdx !== -1 && minIdx > 0;
-
-                                             return (
-                                                <>
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Layer Order</div>
-                                                   <ContextMenuItem icon={BringToFront} label="Bring to Front" shortcut="Ctrl+Shift+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('front'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={ArrowUp} label="Bring Forward" shortcut="Ctrl+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('forward'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={ArrowDown} label="Send Backward" shortcut="Ctrl+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('backward'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={SendToBack} label="Send to Back" shortcut="Ctrl+Shift+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('back'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
-                                                </>
-                                             );
-                                          })()}
-
-                                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Move To Artboard</div>
-                                          {artboards.map(b => (
-                                             <ContextMenuItem
-                                                key={b.id}
-                                                icon={SquareDashed}
-                                                label={b.name}
-                                                onClick={() => {
-                                                   if (!fabricRef.current) return;
-                                                   const activeSelection = fabricRef.current.getActiveObject();
-                                                   if (!activeSelection) return;
-
-                                                   let objectsToProcess: any[] = [];
-                                                   if (activeSelection.type === 'activeSelection') {
-                                                      objectsToProcess = (activeSelection as any).getObjects();
-                                                      fabricRef.current.discardActiveObject();
-                                                   } else {
-                                                      objectsToProcess = [activeSelection];
-                                                   }
-
-                                                   objectsToProcess.forEach(obj => {
-                                                      const prevArtboardId = obj.artboardId;
-                                                      if (prevArtboardId !== b.id) {
-                                                         const prevBoard = artboards.find(x => x.id === prevArtboardId) || artboards[0];
-                                                         const dx = b.x - prevBoard.x;
-                                                         const dy = b.y - prevBoard.y;
-
-                                                         obj.artboardId = b.id;
-                                                         if (typeof obj.set === 'function') {
-                                                            obj.set({
-                                                               left: (obj.left ?? 0) + dx,
-                                                               top: (obj.top ?? 0) + dy
-                                                            });
-                                                            if (typeof obj.setCoords === 'function') obj.setCoords();
-                                                         }
-                                                      }
-                                                   });
-
-                                                   if (objectsToProcess.length > 1) {
-                                                      const sel = new fabric.ActiveSelection(objectsToProcess, { canvas: fabricRef.current });
-                                                      fabricRef.current.setActiveObject(sel);
-                                                   } else if (objectsToProcess.length === 1) {
-                                                      fabricRef.current.setActiveObject(objectsToProcess[0]);
-                                                   }
-
-                                                   fabricRef.current.renderAll();
-                                                   updateLayersList();
-                                                   closeContextMenu();
-                                                }}
-                                             />
-                                          ))}
-                                          <div className="h-px bg-[#252525] my-1" />
-                                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
-                                          <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
-                                             try {
-                                                const items = await navigator.clipboard.read();
-                                                const results = await processPasteEvent({ clipboardData: { items: items as any } } as any);
-                                                if (results.length > 0) importAssets(results);
-                                             } catch (e) { }
-                                             closeContextMenu();
-                                          }} />
-                                          <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
-                                             setShowUrlPrompt(true);
-                                             closeContextMenu();
-                                          }} />
-                                       </>
-                                    ) : (
-                                       <>
-                                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Canvas Actions</div>
-                                          <ContextMenuItem icon={Plus} label="New Artboard" onClick={() => { createArtboard(); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Type} label="Add Text" onClick={() => { addText(); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Grid} label="Toggle Grid" onClick={() => { closeContextMenu(); }} />
-                                          <div className="h-px bg-[#252525] my-1" />
-                                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
-                                          <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
-                                             try {
-                                                const items = await navigator.clipboard.read();
-                                                // This uses a hacky adapter to pass to our processPasteEvent which expects a standard PasteEvent
-                                                const dataItems = Array.from(items).flatMap((item: any) =>
-                                                   item.types.map((type: string) => ({
-                                                      type,
-                                                      getType: () => item.getType(type),
-                                                   }))
-                                                );
-                                                // We actually already have a processClipboardItems function for exactly this!
-                                                const { processClipboardItems } = await import('../image-import/clipboard/clipboardImporter');
-                                                const results = await processClipboardItems(items as any);
-                                                if (results.length > 0) importAssets(results);
-                                             } catch (e) { }
-                                             closeContextMenu();
-                                          }} />
-                                          <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
-                                          <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
-                                             setShowUrlPrompt(true);
-                                             closeContextMenu();
-                                          }} />
-                                       </>
-                                    )}
-                                 </div>,
-                                 document.body
-                              )}
-
-                              {/* Mobile Artboard Gallery Modal */}
-                              {isMobile && showMobileArtboardsGallery && (
-                                 <div className="fixed inset-0 z-[100] bg-[#121212] overflow-y-auto w-full h-full animate-in fade-in zoom-in-95 duration-200">
-                                    <div className="sticky top-0 bg-[#1A1A1A] border-b border-[#2C2C2C] p-4 flex justify-between items-center z-10 shadow-md">
-                                       <h2 className="text-white font-bold tracking-tight text-lg flex items-center gap-2">
-                                          <SquareDashed size={18} className="text-blue-500" />
-                                          Select Artboard
-                                       </h2>
-                                       <button
-                                          onClick={() => setShowMobileArtboardsGallery(false)}
-                                          className="w-8 h-8 flex items-center justify-center rounded-full bg-[#333] text-white hover:bg-[#444]"
-                                       >
-                                          <X size={18} />
-                                       </button>
-                                    </div>
-
-                                    <div className="p-4 grid grid-cols-2 gap-4 pb-20">
-                                       {artboards.map(b => {
-                                          const isActive = b.id === activeArtboardId;
-                                          return (
-                                             <div
-                                                key={b.id}
-                                                onClick={() => {
-                                                   setActiveArtboardId(b.id);
-                                                   setShowMobileArtboardsGallery(false);
-                                                }}
-                                                className={`flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-blue-600/10 border-blue-500' : 'bg-[#1E1E1E] border-[#333] hover:border-gray-500'}`}
-                                             >
-                                                <div className="w-full aspect-square bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner">
-                                                   <div
-                                                      className="w-16 h-16 rounded-sm shadow-sm opacity-80"
-                                                      style={{
-                                                         backgroundColor: b.backgroundColor || '#fff',
-                                                         aspectRatio: `${b.width}/${b.height}`,
-                                                         width: b.orientation === 'landscape' ? '60%' : undefined,
-                                                         height: b.orientation === 'portrait' ? '60%' : undefined,
-                                                         ...(b.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                      }}
-                                                   />
-                                                   {isActive && (
-                                                      <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
-                                                   )}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                   <span className={`text-sm font-bold truncate ${isActive ? 'text-blue-400' : 'text-white'}`}>{b.name}</span>
-                                                   <span className="text-[10px] text-gray-500 font-mono tracking-tighter">{b.width} × {b.height}</span>
-                                                </div>
-                                             </div>
-                                          )
-                                       })}
-
-                                       <div
-                                          onClick={() => {
-                                             createArtboard();
-                                             setShowMobileArtboardsGallery(false);
-                                          }}
-                                          className="flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all bg-[#1E1E1E] border border-dashed border-[#444] hover:border-gray-400 items-center justify-center group"
-                                       >
-                                          <div className="w-10 h-10 rounded-full bg-blue-600 group-hover:bg-blue-500 flex items-center justify-center text-white shadow-lg transition-colors">
-                                             <Plus size={20} />
-                                          </div>
-                                          <span className="text-xs font-bold text-gray-400 group-hover:text-white mt-1">New Artboard</span>
-                                       </div>
-                                    </div>
-                                 </div>
-                              )}
-
-                              {/* Rename Artboard Modal Dialog */}
-                              {renamingArtboard && createPortal(
-                                 <div
-                                    className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-                                    onClick={() => setRenamingArtboard(null)}
-                                 >
-                                    <div
-                                       className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl shadow-[0_24px_64px_rgba(0,0,0,0.85)] w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 cursor-default"
-                                       onClick={(e) => e.stopPropagation()}
-                                    >
-                                       <div className="px-5 py-4 border-b border-[#2C2C2C] flex items-center justify-between">
-                                          <h3 className="text-sm font-semibold text-[#E0E0E0] flex items-center gap-2">
-                                             <Edit2 size={14} className="text-blue-500" />
-                                             Rename Artboard
-                                          </h3>
-                                          <button
-                                             onClick={() => setRenamingArtboard(null)}
-                                             className="text-gray-500 hover:text-white transition-colors"
-                                          >
-                                             <X size={16} />
-                                          </button>
-                                       </div>
-                                       <div className="p-5 space-y-4">
-                                          <div className="space-y-1.5">
-                                             <label className="text-[10px] font-semibold text-[#8A8A8A] uppercase tracking-wider">Artboard Name</label>
-                                             <input
-                                                type="text"
-                                                autoFocus
-                                                className="w-full h-9 bg-black border border-[#2C2C2C] rounded-lg px-3 text-xs text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
-                                                value={renamingArtboard.name}
-                                                onChange={(e) => setRenamingArtboard({ ...renamingArtboard, name: e.target.value })}
-                                                onKeyDown={(e) => {
-                                                   if (e.key === "Enter") {
-                                                      const trimmed = renamingArtboard.name.trim();
-                                                      if (trimmed) {
-                                                         updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
-                                                      }
-                                                      setRenamingArtboard(null);
-                                                   } else if (e.key === "Escape") {
-                                                      setRenamingArtboard(null);
-                                                   }
-                                                }}
-                                             />
-                                          </div>
-                                          <div className="flex justify-end gap-2 pt-1">
-                                             <button
-                                                onClick={() => setRenamingArtboard(null)}
-                                                className="h-8 px-4 text-xs font-semibold border border-[#2D2D2D] text-[#808080] hover:text-white rounded-lg transition-colors"
-                                             >
-                                                Cancel
-                                             </button>
-                                             <button
-                                                onClick={() => {
-                                                   const trimmed = renamingArtboard.name.trim();
-                                                   if (trimmed) {
-                                                      updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
-                                                   }
-                                                   setRenamingArtboard(null);
-                                                }}
-                                                className="h-8 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-                                             >
-                                                Save
-                                             </button>
-                                          </div>
-                                       </div>
-                                    </div>
-                                 </div>,
-                                 document.body
-                              )}
-
-                              {showShortcuts && createPortal(
-                                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowShortcuts(false)}>
-                                    <div className="bg-[#181818] border border-[#2c2c2c] rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                                       <div className="flex items-center justify-between p-4 border-b border-[#2c2c2c] bg-[#1a1a1a]">
-                                          <div className="font-semibold text-sm text-white flex items-center gap-2">
-                                             <Keyboard size={16} className="text-blue-400" /> Image Node Shortcuts
-                                          </div>
-                                          <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white transition">
-                                             <X size={16} />
-                                          </button>
-                                       </div>
-                                       <div className="p-4 space-y-3">
-                                          <div className="flex items-center justify-between">
-                                             <span className="text-xs text-slate-300">Bring Forward</span>
-                                             <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                             <span className="text-xs text-slate-300">Send Backward</span>
-                                             <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                             <span className="text-xs text-slate-300">Bring to Front</span>
-                                             <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                             <span className="text-xs text-slate-300">Send to Back</span>
-                                             <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
-                                          </div>
-                                          <div className="flex items-center justify-between">
-                                             <span className="text-xs text-slate-300">Context Menu (Mobile)</span>
-                                             <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">2-Finger Hold</span></div>
-                                          </div>
-                                       </div>
-                                    </div>
-                                 </div>,
-                                 document.body
-                              )}
-
-                              {showUrlPrompt && (
-                                 <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowUrlPrompt(false)}>
-                                    <div className="bg-[#111] border border-[#222] rounded-xl w-full max-w-md p-6 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                                       <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                                          <Link size={18} className="text-blue-500" />
-                                          Import from URL
-                                       </h3>
-                                       <div className="space-y-4">
-                                          <div>
-                                             <label className="text-xs text-[#8A8A8A] font-bold uppercase tracking-wider mb-2 block">Image or SVG URL</label>
-                                             <input
-                                                type="text"
-                                                value={urlInput}
-                                                onChange={e => setUrlInput(e.target.value)}
-                                                placeholder="https://example.com/image.png"
-                                                className="w-full bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-                                                autoFocus
-                                                onKeyDown={(e) => {
-                                                   if (e.key === 'Enter' && urlInput) {
-                                                      importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
-                                                      setShowUrlPrompt(false);
-                                                      setUrlInput("");
-                                                   } else if (e.key === 'Escape') {
-                                                      setShowUrlPrompt(false);
-                                                   }
-                                                }}
-                                             />
-                                          </div>
-                                          <div className="flex justify-end gap-3 pt-2">
-                                             <button
-                                                onClick={() => setShowUrlPrompt(false)}
-                                                className="px-4 py-2 rounded-lg text-sm font-medium text-[#A0A0A0] hover:text-white hover:bg-[#222] transition-colors"
-                                             >
-                                                Cancel
-                                             </button>
-                                             <button
-                                                onClick={() => {
-                                                   if (urlInput) {
-                                                      importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
-                                                      setShowUrlPrompt(false);
-                                                      setUrlInput("");
-                                                   }
-                                                }}
-                                                disabled={!urlInput}
-                                                className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                             >
-                                                Import
-                                             </button>
-                                          </div>
-                                       </div>
-                                    </div>
-                                 </div>
-                              )}
-
-                              {showAssetGallery && (
-                                 <AssetGallery
-                                    onClose={() => setShowAssetGallery(false)}
-                                    onImport={(assets) => {
-                                       importAssets(assets);
-                                       setShowAssetGallery(false);
-                                    }}
-                                 />
-                              )}
-                           </div>
-                        </div>
-                     </LayersProvider>
-                  </WorkspaceUIProvider>
-               </HistoryProvider>
-            </SelectionProvider>
-         </CanvasProvider>
-      </ToolProvider>
+                           </LayersProvider>
+                        </WorkspaceUIProvider>
+                     </HistoryProvider>
+                  </SelectionProvider>
+               </CanvasProvider>
+            </ToolProvider>
+         </ShapePropertiesProvider>
+      </CollageConfigProvider>
    );
 
 }

@@ -1,9 +1,14 @@
 import React, { createContext, useContext, useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import * as fabric from 'fabric';
 import { ExportController } from '../services/ExportController';
-import { Artboard, ExportSettings } from '../../../types/export';
+import { ExportSettings, DEFAULT_EXPORT_SETTINGS } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 
 interface ExportContextValue {
+   exportTarget: "current" | "selected" | "all";
+   setExportTarget: React.Dispatch<React.SetStateAction<"current" | "selected" | "all">>;
+   selectedExportIds: { [key: string]: boolean };
+   setSelectedExportIds: React.Dispatch<React.SetStateAction<{ [key: string]: boolean }>>;
    isExporting: boolean;
    exportSettings: ExportSettings;
    setExportSettings: React.Dispatch<React.SetStateAction<ExportSettings>>;
@@ -21,18 +26,35 @@ interface ExportContextValue {
    ) => void;
    
    comparisonMode: boolean;
+   setComparisonMode: React.Dispatch<React.SetStateAction<boolean>>;
+   originalImageUrl: string | null;
+   setOriginalImageUrl: React.Dispatch<React.SetStateAction<string | null>>;
+   optimizedImageUrl: string | null;
+   setOptimizedImageUrl: React.Dispatch<React.SetStateAction<string | null>>;
+   psnr: number | null;
+   setPsnr: React.Dispatch<React.SetStateAction<number | null>>;
+   originalSize: number | null;
+   setOriginalSize: React.Dispatch<React.SetStateAction<number | null>>;
+   optimizedSize: number | null;
+   setOptimizedSize: React.Dispatch<React.SetStateAction<number | null>>;
+   currentPreviewOp: string;
+   setCurrentPreviewOp: React.Dispatch<React.SetStateAction<string>>;
+   isGeneratingPreview: boolean;
+   setIsGeneratingPreview: React.Dispatch<React.SetStateAction<boolean>>;
+   originalPreviewDims: {w: number, h: number};
+   setOriginalPreviewDims: React.Dispatch<React.SetStateAction<{w: number, h: number}>>;
+   optimizedPreviewDims: {w: number, h: number};
+   setOptimizedPreviewDims: React.Dispatch<React.SetStateAction<{w: number, h: number}>>;
+   generateLivePreview: () => Promise<void>;
 }
 
 const ExportContext = createContext<ExportContextValue | null>(null);
 
 export function ExportProvider({ children }: { children: React.ReactNode }) {
    const [isExporting, setIsExporting] = useState(false);
-   const [exportSettings, setExportSettings] = useState<ExportSettings>({
-      format: "png",
-      quality: 0.8,
-      effort: 4,
-      resize: { enabled: false, width: 1920, height: 1080 }
-   });
+   const [exportTarget, setExportTarget] = useState<"current" | "selected" | "all">("current");
+   const [selectedExportIds, setSelectedExportIds] = useState<{ [key: string]: boolean }>({});
+   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
 
    const [comparisonMode, setComparisonMode] = useState(false);
    const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
@@ -162,10 +184,15 @@ export function ExportProvider({ children }: { children: React.ReactNode }) {
       isExporting, handleExport,
       
       comparisonMode, setComparisonMode,
-      originalImageUrl, optimizedImageUrl,
-      psnr, originalSize, optimizedSize,
-      currentPreviewOp, isGeneratingPreview,
-      originalPreviewDims, optimizedPreviewDims,
+      originalImageUrl, setOriginalImageUrl,
+      optimizedImageUrl, setOptimizedImageUrl,
+      psnr, setPsnr,
+      originalSize, setOriginalSize,
+      optimizedSize, setOptimizedSize,
+      currentPreviewOp, setCurrentPreviewOp,
+      isGeneratingPreview, setIsGeneratingPreview,
+      originalPreviewDims, setOriginalPreviewDims,
+      optimizedPreviewDims, setOptimizedPreviewDims,
       generateLivePreview,
       initializeExport,
       updateExportState

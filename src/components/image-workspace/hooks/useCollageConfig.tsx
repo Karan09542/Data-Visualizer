@@ -1,8 +1,18 @@
-import { useState } from "react";
+import React, { createContext, useContext, useState, ReactNode } from "react";
 
+const CollageConfigContext = createContext<any>(null);
 
-export const useCollageConfig = () => {
-const [collagePaddingPercent, setCollagePaddingPercent] = useState<number>(5);
+export const CollageConfigProvider: React.FC<{
+  value: any;
+  children: ReactNode;
+}> = ({ value, children }) => (
+  <CollageConfigContext.Provider value={value}>
+    {children}
+  </CollageConfigContext.Provider>
+);
+
+export const useCollageConfigState = () => {
+  const [collagePaddingPercent, setCollagePaddingPercent] = useState<number>(5);
   const [collageGapPercent, setCollageGapPercent] = useState<number>(2);
   const [collageBgColor, setCollageBgColor] = useState<string>('#333333');
   const [collageBorderColor, setCollageBorderColor] = useState<string>('#555555');
@@ -29,4 +39,12 @@ const [collagePaddingPercent, setCollagePaddingPercent] = useState<number>(5);
     collageCornerBL, setCollageCornerBL,
     collageBorderStyle, setCollageBorderStyle
   };
+};
+
+export const useCollageConfig = () => {
+  const context = useContext(CollageConfigContext);
+  if (!context) {
+    throw new Error('useCollageConfig must be used within a CollageConfigProvider');
+  }
+  return context;
 };

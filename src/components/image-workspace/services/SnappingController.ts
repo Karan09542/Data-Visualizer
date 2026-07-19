@@ -1,5 +1,5 @@
 import * as fabric from 'fabric';
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 
 export interface Guide {
    type: 'v' | 'h';

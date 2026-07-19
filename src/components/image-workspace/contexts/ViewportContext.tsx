@@ -1,14 +1,14 @@
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { ViewportController } from '../services/ViewportController';
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 
 interface ViewportContextValue {
    zoomPercent: number;
    setZoomPercent: React.Dispatch<React.SetStateAction<number>>;
    fitView: () => void;
    validateViewport: () => void;
-   handleWheelZoom: (opt: fabric.IEvent<WheelEvent>) => void;
+   handleWheelZoom: (opt: fabric.TEvent<WheelEvent>) => void;
    initializeViewport: (
       canvas: fabric.Canvas,
       artboards: Artboard[],

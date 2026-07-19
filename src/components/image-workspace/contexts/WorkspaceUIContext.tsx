@@ -16,8 +16,8 @@ interface WorkspaceUIContextType {
   setImageFilters: (filters: any[]) => void;
   benchmarkInfo: any;
   setBenchmarkInfo: (info: any) => void;
-  createArtboard: (presetId?: string, forceDimensions?: { w: number, h: number }) => void;
-  createArtboardFromPreset: (presetId: string) => void;
+  createArtboard: (presetName?: string, customW?: number, customH?: number) => void;
+  createArtboardFromPreset: (presetName?: string, customW?: number, customH?: number) => void;
   duplicateArtboard: (board: any) => void;
   deleteArtboard: (id: string) => void;
   updateArtboardProp: (id: string, prop: string, value: any) => void;

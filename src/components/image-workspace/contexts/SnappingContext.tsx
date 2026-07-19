@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { SnappingController, Guide } from '../services/SnappingController';
-import { Artboard } from '../../../types/export';
+import { Artboard } from '../types/artboards';
 
 interface SnappingContextValue {
    isSnappingEnabled: boolean;
