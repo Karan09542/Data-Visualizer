@@ -60,7 +60,7 @@ export const IsolatedNodeView: React.FC<IsolatedNodeViewProps> = ({ path }) => {
         <div className={`w-full h-full flex relative ${isFullScreen ? '' : 'max-w-5xl max-h-[90vh] shadow-2xl rounded-[20px] overflow-hidden bg-white dark:bg-[#161b22] border border-slate-200 dark:border-white/5'}`}>
           {isMathNode ? (
             <div className="w-full h-full flex relative">
-              <MathNodeRenderer nodeId={path} data={nodeData} isExpanded={true} width={1200} height={800} />
+              <MathNodeRenderer nodeId={path} data={nodeData} isExpanded={true} />
             </div>
           ) : isTransferNode ? (
             <div className={`w-full h-full relative ${appTheme === 'dark' ? 'bg-[#0d1117]' : 'bg-slate-50'}`}>
