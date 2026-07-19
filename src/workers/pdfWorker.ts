@@ -119,7 +119,7 @@ self.onmessage = async (e: MessageEvent) => {
         const buffer = await blob.arrayBuffer();
 
         // Transfer the buffer (zero-copy) instead of cloning
-        self.postMessage(
+        (self as any).postMessage(
           { action: "THUMBNAIL_GENERATED", payload: { pageNumber: i, buffer } },
           [buffer]
         );

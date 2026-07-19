@@ -4,6 +4,7 @@ export interface MathFunction {
   id: string;
   name?: string;
   expr: string;
+  latex?: string;
   color: string;
   visible: boolean;
   type:
@@ -18,6 +19,7 @@ export interface MathFunction {
     | "inequality"
     | "line";
   compiled?: any;
+  compiledKey?: string;
   expr2?: string; // For parametric x/y or polar r/theta
   compiled2?: any;
   operator?: string;

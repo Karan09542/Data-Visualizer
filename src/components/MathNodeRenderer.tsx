@@ -98,7 +98,8 @@ import {
   MATH_EXAMPLES,
   TraceOverlay,
   VariableManager,
-  Timeline
+  Timeline,
+  MathNodeRendererProps
 } from "./math-node";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
@@ -896,8 +897,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
         // Thin synchronous shim for plotting
         const newFunctions = safeFunctions.map((f, i) => {
-          const res = result.results[i] || {};
-          if (res.error) return { ...f, error: res.error };
+          const res = result.results[i] || ({} as (typeof result.results)[number]);
+          if (res.error) return { ...f, error: res.error, compiledKey: undefined };
           try {
             let compiled, compiled2;
             let inferredOperator = f.operator;
@@ -931,7 +932,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
             }
             return { ...f, compiled, compiled2, compiledKey: res.compiledKey, operator: inferredOperator, error: undefined };
           } catch (e: any) {
-            return { ...f, error: formatMathError(e.message || String(e)) };
+            return { ...f, error: formatMathError(e.message || String(e)), compiledKey: undefined };
           }
         });
 
@@ -1758,7 +1759,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                 onBlur={() => saveImmediately()}
                                 variables={variables}
                                 hoveredVar={hoveredVar}
-                                setHoveredVar={setHoveredVar}
                                 error={f.error}
                                 warning={noSolutionMap[f.id] ? "This particular equation has no zero or solutions in the current view" : undefined}
                                 onAddEnter={handleAddFunction}
@@ -5424,9 +5424,9 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                             points = geomCacheRef.current[cacheId];
                           } else {
                             for (const key in geomCacheRef.current) {
-                               if (key.startsWith(f.id + "__")) {
-                                  delete geomCacheRef.current[key];
-                               }
+                              if (key.startsWith(f.id + "__")) {
+                                delete geomCacheRef.current[key];
+                              }
                             }
                             let pt: [number, number] = [0, 0];
                             if (f.type === "function") {
@@ -6143,10 +6143,10 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                       ))
                                       .map(fn => fn.expr)
                                       .join("__")}__${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
-                                      (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
-                                      (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
-                                      ? `time:${time}_fTime:${fTime}`
-                                      : "static"
+                                        (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
+                                        (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
+                                        ? `time:${time}_fTime:${fTime}`
+                                        : "static"
                                       }`}
                                     color={f.color}
                                     fillColor={f.fillColor}
@@ -6167,7 +6167,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                     px={px}
                                     py={py}
                                     lineStyle={f.lineStyle}
-                                    id={f.id}
                                     onNoSolution={handleNoSolution}
                                     weight={
                                       hoveredVar &&
@@ -6179,7 +6178,6 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                           ? f.outlineWidth
                                           : 3
                                     }
-                                    id={f.id}
                                     samplingDepth={samplingDepth}
                                   />
                                 )}
