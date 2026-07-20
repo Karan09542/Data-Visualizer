@@ -5,6 +5,7 @@ let isPngInitialised = false;
 let isJpegInitialised = false;
 let isWebpInitialised = false;
 let isAvifInitialised = false;
+let isJxlInitialised = false;
 
 const loadWasmModule = async (url: string): Promise<WebAssembly.Module> => {
   const res = await fetch(url);
@@ -109,6 +110,9 @@ self.onmessage = async (e: MessageEvent) => {
     let imgData = new ImageData(new Uint8ClampedArray(pixelBuffer), width, height);
 
     // 2. Resize if required
+    if (exportWidth <= 0 || exportHeight <= 0) {
+      throw new Error("Export dimensions must be greater than 0.");
+    }
     if (exportWidth !== width || exportHeight !== height) {
       const resizeImageModule = await import('@jsquash/resize') as any;
       const resizeFn = resizeImageModule.default;
@@ -155,6 +159,13 @@ self.onmessage = async (e: MessageEvent) => {
         await init(jpegModule);
         isJpegInitialised = true;
       }
+      
+      let chroma_subsample = e.data.mozjpeg?.chroma_subsample ?? 2;
+      // Prevent encoding error for odd dimensions in 4:2:0 / 4:2:2 modes by falling back to 4:4:4
+      if (chroma_subsample > 1 && (imgData.width % 2 !== 0 || imgData.height % 2 !== 0)) {
+         chroma_subsample = 1;
+      }
+
       // Pass MozJPEG settings
       rawBuffer = await encodeJpeg(imgData, { 
         quality: e.data.mozjpeg?.quality ?? exportQuality, 
@@ -168,7 +179,7 @@ self.onmessage = async (e: MessageEvent) => {
         trellis_opt_table: e.data.mozjpeg?.trellis_opt_table ?? false,
         trellis_loops: e.data.mozjpeg?.trellis_loops ?? 1,
         auto_subsample: e.data.mozjpeg?.auto_subsample ?? true,
-        chroma_subsample: e.data.mozjpeg?.chroma_subsample ?? 2,
+        chroma_subsample: chroma_subsample,
         separate_chroma_quality: e.data.mozjpeg?.separate_chroma_quality ?? false,
         chroma_quality: e.data.mozjpeg?.chroma_quality ?? 75,
       });
@@ -211,7 +222,7 @@ self.onmessage = async (e: MessageEvent) => {
         use_delta_palette: e.data.webp?.use_delta_palette ?? 0,
         use_sharp_yuv: e.data.webp?.use_sharp_yuv ?? 0,
       });
-    } else {
+    } else if (exportFormat === 'avif') {
       const encodeAvifModule = await import('@jsquash/avif/encode') as any;
       const encodeAvif = encodeAvifModule.default;
       if (!isAvifInitialised) {
@@ -220,6 +231,12 @@ self.onmessage = async (e: MessageEvent) => {
         await init(avifModule);
         isAvifInitialised = true;
       }
+      
+      let avifSubsample = e.data.avif?.subsample ?? 1;
+      if (avifSubsample !== 0 && (imgData.width % 2 !== 0 || imgData.height % 2 !== 0)) {
+         avifSubsample = 0;
+      }
+
       // Pass AVIF settings
       rawBuffer = await encodeAvif(imgData, { 
         cqLevel: e.data.avif?.cqLevel ?? 33,
@@ -228,10 +245,26 @@ self.onmessage = async (e: MessageEvent) => {
         tileRowsLog2: e.data.avif?.tileRowsLog2 ?? 0,
         tileColsLog2: e.data.avif?.tileColsLog2 ?? 0,
         speed: e.data.avif?.speed ?? 6,
-        subsample: e.data.avif?.subsample ?? 1,
+        subsample: avifSubsample,
         chromaDeltaQ: e.data.avif?.chromaDeltaQ ?? false,
         sharpness: e.data.avif?.sharpness ?? 0,
         tune: e.data.avif?.tune ?? 0,
+      });
+    } else if (exportFormat === 'jxl') {
+      const encodeJxlModule = await import('@jsquash/jxl/encode') as any;
+      const encodeJxl = encodeJxlModule.default;
+      if (!isJxlInitialised) {
+        const { init } = encodeJxlModule;
+        const jxlModule = await loadWasmModule(wasmUrls.jxl);
+        await init(jxlModule);
+        isJxlInitialised = true;
+      }
+      
+      rawBuffer = await encodeJxl(imgData, { 
+        effort: e.data.jxl?.effort ?? 7,
+        quality: e.data.jxl?.quality ?? 75,
+        progressive: e.data.jxl?.progressive ?? false,
+        lossless: e.data.jxl?.lossless ?? false,
       });
     }
 
@@ -260,6 +293,11 @@ self.onmessage = async (e: MessageEvent) => {
            const avifModule = await loadWasmModule(wasmUrls.avifDecode || "https://unpkg.com/@jsquash/avif@2.1.1/codec/dec/avif_dec.wasm");
            await decodeAvifModule.init(avifModule);
            decodedData = await decodeAvifModule.default(rawBuffer);
+        } else if (exportFormat === 'jxl') {
+           const decodeJxlModule = await import('@jsquash/jxl/decode') as any;
+           const jxlModule = await loadWasmModule(wasmUrls.jxlDecode || "https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm");
+           await decodeJxlModule.init(jxlModule);
+           decodedData = await decodeJxlModule.default(rawBuffer);
         }
 
         if (decodedData) {
@@ -281,13 +319,26 @@ self.onmessage = async (e: MessageEvent) => {
               result.psnr = 10 * Math.log10((255 * 255) / mse);
             }
           }
+          
+          // For formats that might not render natively in all browsers (like JXL),
+          // we pass the raw decoded pixels back so the main thread can render a PNG preview
+          if (exportFormat === 'jxl') {
+            result.decodedPixels = new Uint8ClampedArray(optimized).buffer; // clone buffer reference
+            result.decodedWidth = decodedData.width;
+            result.decodedHeight = decodedData.height;
+          }
         }
       } catch (metricsErr) {
         console.error("Failed to calculate metrics", metricsErr);
       }
     }
 
-    (self as any).postMessage(result, [rawBuffer]);
+    const transferables = [rawBuffer];
+    if (result.decodedPixels) {
+      transferables.push(result.decodedPixels);
+    }
+    
+    (self as any).postMessage(result, transferables);
   } catch (err: any) {
     (self as any).postMessage({ success: false, error: err.message || String(err) });
   }

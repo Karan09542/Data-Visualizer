@@ -3,7 +3,6 @@ import { Artboard } from '../types/artboards';
 
 interface WorkspaceUIContextType {
   isMobile: boolean;
-  setShowMobilePanel: (val: boolean) => void;
   setShowShortcuts: (val: boolean) => void;
   setActiveTab: (val: any) => void;
   handleImportImageClick: (e?: React.MouseEvent<HTMLButtonElement>) => void;

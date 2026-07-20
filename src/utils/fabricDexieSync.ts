@@ -197,6 +197,10 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
           enlObj.id = record.id;
           enlObj.artboardId = record.artboardId;
           
+          // Force selectability based on lock state to recover from mid-pan refreshes
+          enlObj.selectable = !record.data.locked;
+          enlObj.evented = !record.data.locked;
+          
           if (record.data.customName) enlObj.customName = record.data.customName;
           if (record.data.layerId) enlObj.layerId = record.data.layerId;
           if (record.data.assetId) enlObj.assetId = record.data.assetId;

@@ -1,5 +1,5 @@
 
-export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif';
+export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif' | 'jxl';
 
 export type ResizeMethod = 'lanczos3' | 'lanczos2' | 'triangle' | 'catmullRom' | 'mitchell' | 'nearest';
 
@@ -71,8 +71,16 @@ export interface PngOptions {
   ditherLevel: number;
 }
 
+export interface JxlOptions {
+  effort: number;
+  quality: number;
+  progressive: boolean;
+  lossless: boolean;
+}
+
 export interface ExportSettings {
   format: ExportFormat;
+  askForFilename?: boolean;
   resize: {
     enabled: boolean;
     width: number;
@@ -86,10 +94,12 @@ export interface ExportSettings {
   webp: WebpOptions;
   avif: AvifOptions;
   png: PngOptions;
+  jxl: JxlOptions;
 }
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   format: 'webp',
+  askForFilename: false,
   resize: {
     enabled: false,
     width: 800,
@@ -162,5 +172,11 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
     paletteReduction: false,
     paletteColors: 256,
     ditherLevel: 1.0,
+  },
+  jxl: {
+    effort: 7,
+    quality: 75,
+    progressive: false,
+    lossless: false,
   },
 };

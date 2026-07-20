@@ -4,7 +4,7 @@ export const TabBtn = ({ tab, active, set, label, icon: Icon }: any) => {
    const isActive = active === tab;
    return (
       <button 
-         className={`flex-1 flex flex-col items-center justify-center gap-1.5 py-2.5 transition-colors border-b-2 ${isActive ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+         className={`flex-1 min-w-[70px] shrink-0 flex flex-col items-center justify-center gap-1.5 py-2.5 px-2 transition-colors border-b-2 ${isActive ? 'border-blue-500 text-blue-400' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
          onClick={() => set(tab)}
       >
          <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />

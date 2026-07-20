@@ -30,14 +30,26 @@ export const QuickActionsTab: React.FC<QuickActionsTabProps> = ({
    createArtboardFromPreset
 }) => {
    const [formatCategory, setFormatCategory] = useState<'all' | 'document' | 'social' | 'ecommerce'>('all');
+   const [isAutoEnhance, setIsAutoEnhance] = useState(false);
+   const [isAutoSharpen, setIsAutoSharpen] = useState(false);
+   const [isAutoColorCorrect, setIsAutoColorCorrect] = useState(false);
+   
    const { activeObj } = useSelection();
 
-   if (selectionType !== 'image' && selectionType !== 'frameGroup') {
+   React.useEffect(() => {
+      setIsAutoEnhance(false);
+      setIsAutoSharpen(false);
+      setIsAutoColorCorrect(false);
+   }, [activeObj]);
+
+   const isCollageBlockWithImage = activeObj && (activeObj as any).isCollageBlock && !!(activeObj as any).collageImageSrc;
+
+   if (selectionType !== 'image' && selectionType !== 'frameGroup' && !isCollageBlockWithImage) {
       return (
          <div className="flex flex-col items-center justify-center py-20 text-center opacity-60 font-sans">
             <Activity size={32} className="mb-4 text-emerald-500 animate-pulse" />
             <span className="text-sm font-semibold text-white">Quick Actions</span>
-            <span className="text-xs mt-2 w-48 text-[#8A8A8A]">Select an Image layer on the canvas to access one-click utilities and fixes.</span>
+            <span className="text-[11px] mt-2 w-48 text-[#8A8A8A]">Select an Image layer or a filled Smart Collage Cell to access one-click utilities and fixes.</span>
          </div>
       );
    }
@@ -59,53 +71,65 @@ export const QuickActionsTab: React.FC<QuickActionsTabProps> = ({
             <div className="grid grid-cols-1 gap-2">
                <button
                   onClick={() => {
-                     addFilterToPipeline('brightness');
-                     applyFilter('brightness', 0.1);
-                     addFilterToPipeline('contrast');
-                     applyFilter('contrast', 0.15);
-                     applyFilter('vibrance', undefined);
-                     addFilterToPipeline('vibrance');
+                     if (isAutoEnhance) {
+                        applyFilter('brightness', 0);
+                        applyFilter('contrast', 0);
+                        setIsAutoEnhance(false);
+                     } else {
+                        applyFilter('brightness', 0.1);
+                        applyFilter('contrast', 0.15);
+                        setIsAutoEnhance(true);
+                     }
                   }}
-                  className="p-2 border border-[#2D2D2D] hover:border-emerald-500/50 hover:bg-emerald-950/20 bg-[#1A1A1A] rounded-xl text-left text-[11px] font-medium transition duration-150 group flex items-center gap-3 active:scale-[0.98]"
+                  className={`p-2 border rounded-xl text-left text-[11px] font-medium transition duration-150 group flex items-center gap-3 active:scale-[0.98] ${isAutoEnhance ? 'border-emerald-500 bg-emerald-950/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]' : 'border-[#2D2D2D] hover:border-emerald-500/50 hover:bg-emerald-950/20 bg-[#1A1A1A]'}`}
                >
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 group-hover:bg-emerald-500/20">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors ${isAutoEnhance ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/50' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 group-hover:bg-emerald-500/20'}`}>
                      <Sparkles size={13} />
                   </div>
                   <div>
-                     <div className="text-white font-semibold group-hover:text-emerald-400 transition-colors">Auto Enhance</div>
+                     <div className={`font-semibold transition-colors ${isAutoEnhance ? 'text-emerald-400' : 'text-white group-hover:text-emerald-400'}`}>Auto Enhance</div>
                      <div className="text-[9px] text-[#8A8A8A] mt-0.5">Smart contrast, brightness, and vibrance</div>
                   </div>
                </button>
 
                <button
                   onClick={() => {
-                     addFilterToPipeline('sharpen');
-                     applyFilter('sharpen', 0.3);
+                     if (isAutoSharpen) {
+                        applyFilter('sharpen', 0);
+                        setIsAutoSharpen(false);
+                     } else {
+                        applyFilter('sharpen', 0.3);
+                        setIsAutoSharpen(true);
+                     }
                   }}
-                  className="p-2 border border-[#2D2D2D] hover:border-blue-500/50 hover:bg-blue-950/20 bg-[#1A1A1A] rounded-xl text-left text-[11px] font-medium transition duration-150 group flex items-center gap-3 active:scale-[0.98]"
+                  className={`p-2 border rounded-xl text-left text-[11px] font-medium transition duration-150 group flex items-center gap-3 active:scale-[0.98] ${isAutoSharpen ? 'border-blue-500 bg-blue-950/40 shadow-[0_0_12px_rgba(59,130,246,0.2)]' : 'border-[#2D2D2D] hover:border-blue-500/50 hover:bg-blue-950/20 bg-[#1A1A1A]'}`}
                >
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-blue-500/20">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors ${isAutoSharpen ? 'bg-blue-500/30 text-blue-300 border-blue-500/50' : 'bg-blue-500/10 text-blue-400 border-blue-500/20 group-hover:bg-blue-500/20'}`}>
                      <Eye size={13} />
                   </div>
                   <div>
-                     <div className="text-white font-semibold group-hover:text-blue-400 transition-colors">Auto Sharpen</div>
+                     <div className={`font-semibold transition-colors ${isAutoSharpen ? 'text-blue-400' : 'text-white group-hover:text-blue-400'}`}>Auto Sharpen</div>
                      <div className="text-[9px] text-[#8A8A8A] mt-0.5">Enhance edge detail and clarity</div>
                   </div>
                </button>
 
                <button
                   onClick={() => {
-                     addFilterToPipeline('saturation');
-                     applyFilter('saturation', 0.2);
-                     addFilterToPipeline('vibrance');
+                     if (isAutoColorCorrect) {
+                        applyFilter('saturation', 0);
+                        setIsAutoColorCorrect(false);
+                     } else {
+                        applyFilter('saturation', 0.2);
+                        setIsAutoColorCorrect(true);
+                     }
                   }}
-                  className="p-2 border border-[#2D2D2D] hover:border-violet-500/50 hover:bg-violet-950/20 bg-[#1A1A1A] rounded-xl text-left text-[11px] font-medium transition duration-150 group flex items-center gap-3 active:scale-[0.98]"
+                  className={`p-2 border rounded-xl text-left text-[11px] font-medium transition duration-150 group flex items-center gap-3 active:scale-[0.98] ${isAutoColorCorrect ? 'border-violet-500 bg-violet-950/40 shadow-[0_0_12px_rgba(139,92,246,0.2)]' : 'border-[#2D2D2D] hover:border-violet-500/50 hover:bg-violet-950/20 bg-[#1A1A1A]'}`}
                >
-                  <div className="w-7 h-7 rounded-lg bg-violet-500/10 text-violet-400 flex items-center justify-center shrink-0 border border-violet-500/20 group-hover:bg-violet-500/20">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors ${isAutoColorCorrect ? 'bg-violet-500/30 text-violet-300 border-violet-500/50' : 'bg-violet-500/10 text-violet-400 border-violet-500/20 group-hover:bg-violet-500/20'}`}>
                      <Palette size={13} />
                   </div>
                   <div>
-                     <div className="text-white font-semibold group-hover:text-violet-400 transition-colors">Auto Color Correct</div>
+                     <div className={`font-semibold transition-colors ${isAutoColorCorrect ? 'text-violet-400' : 'text-white group-hover:text-violet-400'}`}>Auto Color Correct</div>
                      <div className="text-[9px] text-[#8A8A8A] mt-0.5">Boost missing saturation and colors</div>
                   </div>
                </button>
@@ -119,16 +143,21 @@ export const QuickActionsTab: React.FC<QuickActionsTabProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2">
                {[
-                  { label: 'Fit to Print', target: 'print' },
-                  { label: 'Fit to Web', target: 'web' },
-                  { label: 'Center Subject', target: 'center' },
-                  { label: 'Reset Aspect', target: 'reset' }
+                  { label: 'Fit to Artboard', target: 'fit' },
+                  { label: 'Fill Artboard', target: 'fill' },
+                  { label: 'Center', target: 'center' },
+                  { label: 'Reset Crop', target: 'reset' }
                ].map(u => (
                   <button
                      key={u.label}
                      onClick={() => {
                         if (u.target === 'reset') resetCrop();
-                        else alignSelection('centerH');
+                        else if (u.target === 'center') {
+                           alignSelection('centerH');
+                           alignSelection('centerV');
+                        } else {
+                           alignSelection(u.target as any);
+                        }
                      }}
                      className="py-1.5 px-2 border border-[#2D2D2D] hover:border-slate-500/50 hover:text-white bg-[#1A1A1A] hover:bg-[#252525] rounded-lg text-center text-[10px] font-semibold transition duration-150 active:scale-95"
                   >

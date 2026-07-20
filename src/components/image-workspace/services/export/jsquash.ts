@@ -14,6 +14,7 @@ export const webpSimdWasmUrl = "https://unpkg.com/@jsquash/webp@1.5.0/codec/enc/
 export const avifWasmUrl = "https://unpkg.com/@jsquash/avif@2.1.1/codec/enc/avif_enc.wasm";
 export const avifMtWasmUrl = "https://unpkg.com/@jsquash/avif@2.1.1/codec/enc/avif_enc_mt.wasm";
 export const resizeWasmUrl = "https://unpkg.com/@jsquash/resize@2.1.1/lib/resize/pkg/squoosh_resize_bg.wasm";
+export const jxlWasmUrl = "https://unpkg.com/@jsquash/jxl@1.3.0/codec/enc/jxl_enc.wasm";
 
 // Helpers to load and compile WASM
 // TODO(Refactor): Move to src/components/image-workspace/services/export/jsquash.ts

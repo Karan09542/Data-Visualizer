@@ -14,8 +14,6 @@ import { useArtboardState } from "./hooks/useArtboardState";
 import { useShapePropertiesState, ShapePropertiesProvider } from "./hooks/useShapeProperties";
 import { useCollageConfigState, CollageConfigProvider } from "./hooks/useCollageConfig";
 import { ColorPickerPortal, ColorPickerTrigger } from "./components/shared/ColorPickers";
-import { FilterSlider } from "./components/shared/FilterSlider";
-import { BtnSelect } from "./components/shared/BtnSelect";
 import { TabBtn } from "./components/shared/TabBtn";
 import { ToolBtn } from "./components/shared/ToolBtn";
 import { ContextMenuItem } from "./components/shared/ContextMenuItem";
@@ -36,7 +34,7 @@ import {
    Layers, MousePointer2, Brush, Circle, Square, Minus, Triangle, Edit2, RotateCw, RotateCcw, Image as ImageIcon,
    SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, FlipHorizontal, FlipVertical, BringToFront, SendToBack, ArrowUp, ArrowDown,
    Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
-   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand,
+   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand, Maximize, Focus, Target,
    AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
    Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images, Info, Keyboard, Clipboard, Library, Link
 } from "lucide-react";
@@ -55,7 +53,7 @@ import { AssetGallery } from "../image-import/gallery/AssetGallery";
 
 import './fabric/overrides';
 
-import { isPngInitialised, isResizeInitialised, isJpegInitialised, isWebpInitialised, isAvifInitialised, loadWasmModule, hasSimd, hasThreads, pngWasmUrl, jpegWasmUrl, webpWasmUrl, webpSimdWasmUrl, avifWasmUrl, avifMtWasmUrl, resizeWasmUrl } from "./services/export/jsquash";
+import { isPngInitialised, isResizeInitialised, isJpegInitialised, isWebpInitialised, isAvifInitialised, loadWasmModule, hasSimd, hasThreads, pngWasmUrl, jpegWasmUrl, webpWasmUrl, webpSimdWasmUrl, avifWasmUrl, avifMtWasmUrl, resizeWasmUrl, jxlWasmUrl } from "./services/export/jsquash";
 
 
 interface ImageWorkspaceProps {
@@ -231,7 +229,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const [isCtrlPressed, setIsCtrlPressed] = useState(false);
    const [isSpacePressed, setIsSpacePressed] = useState(false);
    const [guides, setGuides] = useState<{ type: 'v' | 'h'; pos: number }[]>([]);
-   const [activeSuggestion, setActiveSuggestion] = useState<{ id: string, type: string } | null>(null);
    const [exportTarget, setExportTarget] = useState<"current" | "selected" | "all">("current");
    const [selectedExportIds, setSelectedExportIds] = useState<Record<string, boolean>>(() => ({
       "artboard_default": true
@@ -278,6 +275,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const [isMobile, setIsMobile] = useState(false);
    const isMobileRef = useRef(false);
    const [showMobilePanel, setShowMobilePanel] = useState(false);
+   const [mobilePanelHeight, setMobilePanelHeight] = useState(40); // Percentage of screen height
    const [showMobileArtboardsGallery, setShowMobileArtboardsGallery] = useState(false);
    const [showMobileToolbox, setShowMobileToolbox] = useState(false);
    const [showMobileDiagnosticsSheet, setShowMobileDiagnosticsSheet] = useState(false);
@@ -320,6 +318,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          });
       }
    }, [artboards, path, isLoaded]);
+
 
    const fitView = useCallback(() => {
       if (!fabricRef.current || artboardsRef.current.length === 0) return;
@@ -493,20 +492,27 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const handlePointerMove = (e: PointerEvent) => {
          if (!containerRef.current) return;
          const containerRect = containerRef.current.getBoundingClientRect();
-         // Calculate width from the right edge
-         const newWidth = containerRect.right - e.clientX;
-         const clampedWidth = Math.max(MIN_PANEL_WIDTH, Math.min(newWidth, MAX_PANEL_WIDTH));
-         setPanelWidth(clampedWidth);
-
-         // Live resize of canvas during drag
-         if (fabricRef.current) {
-            const w = containerRect.width - clampedWidth;
-            const h = containerRect.height - 48; // header height approx 48px
-            fabricRef.current.setDimensions({
-               width: w > 100 ? w : 100,
-               height: h > 100 ? h : 100
-            });
-            fabricRef.current.requestRenderAll();
+         
+         if (isMobileRef.current) {
+            const newHeightPx = containerRect.bottom - e.clientY;
+            const percentage = Math.max(20, Math.min(80, (newHeightPx / containerRect.height) * 100));
+            setMobilePanelHeight(percentage);
+         } else {
+            // Calculate width from the right edge
+            const newWidth = containerRect.right - e.clientX;
+            const clampedWidth = Math.max(MIN_PANEL_WIDTH, Math.min(newWidth, MAX_PANEL_WIDTH));
+            setPanelWidth(clampedWidth);
+   
+            // Live resize of canvas during drag
+            if (fabricRef.current) {
+               const w = containerRect.width - clampedWidth;
+               const h = containerRect.height - 48; // header height approx 48px
+               fabricRef.current.setDimensions({
+                  width: w > 100 ? w : 100,
+                  height: h > 100 ? h : 100
+               });
+               fabricRef.current.requestRenderAll();
+            }
          }
       };
 
@@ -518,7 +524,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       window.addEventListener('pointerup', handlePointerUp);
 
       // Ensure we don't accidentally select things on the page while dragging
-      document.body.style.cursor = 'col-resize';
+      document.body.style.cursor = isMobileRef.current ? 'row-resize' : 'col-resize';
       document.body.style.userSelect = 'none';
 
       return () => {
@@ -1886,24 +1892,25 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
 
       const rect = active as fabric.Rect;
-      const scaledW = rect.getScaledWidth();
-      const scaledH = rect.getScaledHeight();
+      const bounds = rect.getBoundingRect();
+      const scaledW = bounds.width;
+      const scaledH = bounds.height;
       const textWidth = Math.min(scaledW * 0.8, 200);
       const textHeight = 30;
 
-      let left = rect.left + (scaledW - textWidth) / 2;
-      let top = rect.top + (scaledH - textHeight) / 2;
+      let left = bounds.left + (scaledW - textWidth) / 2;
+      let top = bounds.top + (scaledH - textHeight) / 2;
       let textAlign: fabric.TextboxProps['textAlign'] = 'center';
 
       if (alignment === 'top') {
-         top = rect.top + scaledH * 0.15;
+         top = bounds.top + scaledH * 0.15;
       } else if (alignment === 'bottom') {
-         top = rect.top + scaledH * 0.85 - textHeight;
+         top = bounds.top + scaledH * 0.85 - textHeight;
       } else if (alignment === 'left') {
-         left = rect.left + scaledW * 0.1;
+         left = bounds.left + scaledW * 0.1;
          textAlign = 'left';
       } else if (alignment === 'right') {
-         left = rect.left + scaledW * 0.9 - textWidth;
+         left = bounds.left + scaledW * 0.9 - textWidth;
          textAlign = 'right';
       }
 
@@ -1911,7 +1918,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          left,
          top,
          width: textWidth,
-         fill: '#FFFFFF',
+         fill: brushColor || '#FFFFFF',
          fontFamily: textProps.fontFamily,
          fontSize: Math.min(scaledH * 0.18, 24),
          fontWeight: 'bold',
@@ -3736,10 +3743,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             const obj = e.target;
             if (obj && obj.type === 'image' && !isInternalChange.current) {
                const board = getTargetArtboard(obj);
-               if (obj.width && (obj.width > board.width || obj.height! > board.height)) {
-                  setActiveSuggestion({ id: obj.id, type: 'image' });
-                  setTimeout(() => setActiveSuggestion(null), 8000);
-               }
+               // Removed suggestion toast logic
             }
          }
          updateLayersList();
@@ -4603,7 +4607,29 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!files || files.length === 0) return;
 
       const promises = Array.from(files).map(file => {
-         return new Promise<{ url: string, type: 'svg' | 'image', name: string }>((resolve) => {
+         return new Promise<{ url: string, type: 'svg' | 'image', name: string }>(async (resolve) => {
+            if (file.name.toLowerCase().endsWith('.jxl') || file.type === 'image/jxl') {
+               try {
+                  const arrayBuffer = await file.arrayBuffer();
+                  const decodeJxlModule = await import('@jsquash/jxl/decode') as any;
+                  const jxlModule = await loadWasmModule("https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm");
+                  await decodeJxlModule.init(jxlModule);
+                  const decodedData = await decodeJxlModule.default(arrayBuffer);
+                  
+                  const canvas = document.createElement('canvas');
+                  canvas.width = decodedData.width;
+                  canvas.height = decodedData.height;
+                  const ctx = canvas.getContext('2d')!;
+                  const imgData = new ImageData(decodedData.data, decodedData.width, decodedData.height);
+                  ctx.putImageData(imgData, 0, 0);
+                  const dataUrl = canvas.toDataURL("image/png");
+                  resolve({ url: dataUrl, type: 'image', name: file.name });
+                  return;
+               } catch (err) {
+                  console.error("Failed to decode JXL file on import:", err);
+               }
+            }
+
             const reader = new FileReader();
             reader.onload = (event) => {
                const dataUrl = event.target?.result as string;
@@ -5095,16 +5121,16 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       height: number,
       settings: ExportSettings,
       isLivePreview: boolean = false
-   ): Promise<{ buffer: ArrayBuffer, psnr?: number }> => {
+   ): Promise<{ buffer: ArrayBuffer, psnr?: number, decodedPixels?: ArrayBuffer, decodedWidth?: number, decodedHeight?: number }> => {
       const hasSimdResult = await hasSimd();
       const hasThreadsResult = await hasThreads();
 
       const worker = new ImageWorker();
 
-      return await new Promise<{ buffer: ArrayBuffer, psnr?: number }>((resolve, reject) => {
+      return await new Promise<{ buffer: ArrayBuffer, psnr?: number, decodedPixels?: ArrayBuffer, decodedWidth?: number, decodedHeight?: number }>((resolve, reject) => {
          worker.onmessage = (e) => {
             if (e.data.success) {
-               resolve({ buffer: e.data.resultBuffer, psnr: e.data.psnr });
+               resolve({ buffer: e.data.resultBuffer, psnr: e.data.psnr, decodedPixels: e.data.decodedPixels, decodedWidth: e.data.decodedWidth, decodedHeight: e.data.decodedHeight });
             } else {
                reject(new Error(e.data.error || "Background processing failed"));
             }
@@ -5137,10 +5163,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                avif: avifWasmUrl,
                avifMt: avifMtWasmUrl,
                resize: resizeWasmUrl,
+               jxl: jxlWasmUrl,
                // Decoder URLs
                jpegDecode: "https://unpkg.com/@jsquash/jpeg@1.6.0/codec/dec/mozjpeg_dec.wasm",
                webpDecode: "https://unpkg.com/@jsquash/webp@1.5.0/codec/dec/webp_dec.wasm",
                avifDecode: "https://unpkg.com/@jsquash/avif@2.1.1/codec/dec/avif_dec.wasm",
+               jxlDecode: "https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm",
             },
             hasSimdResult,
             hasThreadsResult,
@@ -5149,6 +5177,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             mozjpeg: settings.mozjpeg,
             webp: settings.webp,
             avif: settings.avif,
+            jxl: settings.jxl,
             pngLevel: settings.png.level,
             pngInterlace: settings.png.interlace,
             paletteReduction: settings.png.paletteReduction,
@@ -5186,7 +5215,16 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${board.name.toLowerCase().replace(/\s+/g, '_')}.${exportSettings.format}`;
+
+            let fileName = board.name.toLowerCase().replace(/\s+/g, '_');
+            if (exportSettings.askForFilename) {
+               const custom = window.prompt("Enter filename for export:", fileName);
+               if (custom) fileName = custom.replace(/\s+/g, '_');
+            } else {
+               fileName = Math.random().toString(36).substring(2, 10);
+            }
+
+            a.download = `${fileName}.${exportSettings.format}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -5200,13 +5238,31 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                   ...exportSettings,
                   resize: { ...exportSettings.resize, enabled: false }
                });
-               zip.file(`${board.name.toLowerCase().replace(/\s+/g, '_')}.${exportSettings.format}`, rawBuffer);
+
+               let fileName = board.name.toLowerCase().replace(/\s+/g, '_');
+               if (exportSettings.askForFilename) {
+                  const custom = window.prompt(`Enter filename for artboard '${board.name}':`, fileName);
+                  if (custom) fileName = custom.replace(/\s+/g, '_');
+               } else {
+                  fileName = Math.random().toString(36).substring(2, 10);
+               }
+
+               zip.file(`${fileName}.${exportSettings.format}`, rawBuffer);
             }
             const zipContent = await zip.generateAsync({ type: "blob" });
             const url = URL.createObjectURL(zipContent);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `artboards_export.zip`;
+
+            let zipName = "artboards_export";
+            if (exportSettings.askForFilename) {
+               const customZip = window.prompt("Enter filename for ZIP archive:", zipName);
+               if (customZip) zipName = customZip.replace(/\s+/g, '_');
+            } else {
+               zipName = "export_" + Math.random().toString(36).substring(2, 10);
+            }
+
+            a.download = `${zipName}.zip`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -5303,7 +5359,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             }
          };
 
-         const { buffer: optimizedBuffer, psnr: calculatedPsnr } = await optimizePixelBuffer(
+         const { buffer: optimizedBuffer, psnr: calculatedPsnr, decodedPixels, decodedWidth, decodedHeight } = await optimizePixelBuffer(
             buffer.slice(0),
             width,
             height,
@@ -5318,7 +5374,18 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          setOptimizedSize(projectedOptimizedSize);
          setPsnr(calculatedPsnr);
 
-         const optUrl = URL.createObjectURL(optimizedBlob);
+         let optUrl = '';
+         if (decodedPixels && decodedWidth && decodedHeight) {
+            const rawCanvas = document.createElement('canvas');
+            rawCanvas.width = decodedWidth;
+            rawCanvas.height = decodedHeight;
+            const rctx = rawCanvas.getContext('2d')!;
+            const imgData = new ImageData(new Uint8ClampedArray(decodedPixels), decodedWidth, decodedHeight);
+            rctx.putImageData(imgData, 0, 0);
+            optUrl = rawCanvas.toDataURL("image/png");
+         } else {
+            optUrl = URL.createObjectURL(optimizedBlob);
+         }
          setOptimizedImageUrl(prev => {
             if (prev) URL.revokeObjectURL(prev);
             return optUrl;
@@ -5356,7 +5423,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       comparisonMode,
       activeArtboardId,
       exportTarget,
-      exportSettings
+      exportSettings.format,
+      exportSettings.resize,
+      exportSettings.mozjpeg,
+      exportSettings.webp,
+      exportSettings.avif,
+      exportSettings.png,
+      exportSettings.jxl
    ]);
 
    // Hide objects of inactive artboards on mobile
@@ -5447,7 +5520,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                   }}>
                      <HistoryProvider value={{ commandIndex, historyNames, performUndo, performRedo, executeCommand }}>
                         <WorkspaceUIProvider value={{
-                           isMobile, setShowMobilePanel, setShowShortcuts, setActiveTab, handleImportImageClick, handleFileUpload,
+                           isMobile, setShowShortcuts, setActiveTab, handleImportImageClick, handleFileUpload,
                            artboards, setArtboards, activeArtboardId, setActiveArtboardId,
                            imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
                            createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
@@ -5472,7 +5545,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                     <div className="flex-1 flex flex-col min-w-0 bg-[#121212] overflow-hidden relative">
 
                                        {/* Artboard Bar */}
-                                       {activeTab !== 'export' && (
+                                       {activeTab !== 'export' && !isMobile && (
                                           <div className="h-10 bg-[#1E1E1E] border-b border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
                                              {isMobile && (
                                                 <button
@@ -5587,6 +5660,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                        {/* Canvas Container */}
                                        <div
                                           className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]"
+                                          onPointerDown={(e) => {
+                                             // Mobile panel is now a permanent split view, no tap-to-close needed
+                                          }}
                                           onDragEnter={(e) => { e.preventDefault(); }}
                                           onDragLeave={(e) => { e.preventDefault(); }}
                                           onDragOver={(e) => { e.preventDefault(); }}
@@ -6401,7 +6477,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 {/* Mobile Floating HUD metrics chips (Progressive Disclosure) */}
                                                 {isMobile && (
                                                    <div
-                                                      onClick={() => setShowMobilePanel(true)}
                                                       className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-[#121212]/95 border border-white/15 pointer-events-auto px-4 py-2.5 rounded-xl shadow-[0_12px_32px_rgba(0,0,0,0.85)] flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-950 transition-all active:scale-[0.97] text-slate-100 min-w-[275px] max-w-[90vw]"
                                                    >
                                                       <div className="flex items-center gap-2.5">
@@ -6685,7 +6760,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                           )}
 
                                           {/* Floating Canvas Navigation & Zoom Controller */}
-                                          <div className={`absolute bottom-4 left-6 bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
+                                          <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
                                              <button
                                                 className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
                                                 onClick={() => {
@@ -6723,7 +6798,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              <div className="w-px h-4 bg-[#2D2D2D]" />
 
                                              <button
-                                                className="px-2 py-1 bg-[#232323] hover:bg-[#2F2F2F] hover:text-white text-[10px] font-medium rounded transition"
+                                                className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
                                                 onClick={() => {
                                                    if (!fabricRef.current) return;
                                                    const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
@@ -6740,11 +6815,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 }}
                                                 title="Recenter Camera on Active Artboard"
                                              >
-                                                Recenter
+                                                <Target size={14} />
                                              </button>
 
                                              <button
-                                                className="px-2 py-1 bg-[#232323] hover:bg-[#2F2F2F] hover:text-white text-[10px] font-medium rounded transition"
+                                                className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
                                                 onClick={() => {
                                                    if (!fabricRef.current || artboardsRef.current.length === 0) return;
                                                    let minX = Infinity, minY = Infinity;
@@ -6776,26 +6851,28 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 }}
                                                 title="Fit All Artboards in Viewport"
                                              >
-                                                Fit All
+                                                <Expand size={14} />
                                              </button>
                                           </div>
                                        </div>
                                     </div>
 
-                                    {/* Resize Handle */}
-                                    <div
-                                       onPointerDown={(e) => {
-                                          setIsResizingPanel(true);
-                                          e.preventDefault();
-                                       }}
-                                       className="relative z-20 w-1.5 -ml-[1px] -mr-[5px] cursor-col-resize flex justify-center group hidden md:flex"
-                                    >
-                                       <div className={`h-full w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-x-150' : 'bg-transparent group-hover:bg-blue-500'}`} />
-                                    </div>
+                                    {/* Resize Handle (Only show if panel is visible on mobile) */}
+                                    {(!isMobile || showMobilePanel) && (
+                                       <div
+                                          onPointerDown={(e) => {
+                                             setIsResizingPanel(true);
+                                             e.preventDefault();
+                                          }}
+                                          className="relative z-20 md:w-1.5 md:-ml-[1px] md:-mr-[5px] h-1.5 md:h-full -mt-[1px] -mb-[5px] md:-mt-0 md:-mb-0 cursor-row-resize md:cursor-col-resize flex items-center md:items-stretch justify-center group"
+                                       >
+                                          <div className={`w-full h-[2px] md:h-full md:w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-y-150 md:scale-x-150 md:scale-y-100' : 'bg-[#2C2C2C] group-hover:bg-blue-500'}`} />
+                                       </div>
+                                    )}
 
                                     {/* Mobile Filter / Bottom Bar */}
-                                    {isMobile && (
-                                       <div className="flex h-14 bg-[#1A1A1A] border-t border-[#2C2C2C] z-30 fixed bottom-0 left-0 right-0 px-2 items-center justify-between overflow-x-auto no-scrollbar">
+                                    {isMobile && !showMobilePanel && (
+                                       <div className="flex h-14 bg-[#1A1A1A] border-t border-[#2C2C2C] z-30 shrink-0 w-full px-2 items-center justify-between overflow-x-auto no-scrollbar relative shadow-[0_-4px_24px_rgba(0,0,0,0.5)]">
                                           <ToolBtn icon={MousePointer2} tool="select" current={activeTool} set={setTool} title="Move" />
                                           <ToolBtn icon={Hand} tool="pan" current={activeTool} set={setTool} title="Pan" />
                                           <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush" />
@@ -6823,49 +6900,48 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                        </div>
                                     )}
 
-                                    {/* Mobile Swipe Wrapper Backdrop */}
-                                    {isMobile && showMobilePanel && (
-                                       <div className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm animate-in fade-in" onClick={() => setShowMobilePanel(false)} />
-                                    )}
 
-                                    {/* Right Sidebar - Logic Panels */}
-                                    <div
-                                       style={{ width: isMobile ? '100%' : `${panelWidth}px` }}
-                                       className={`${isMobile ? `fixed bottom-0 left-0 right-0 z-50 h-[85vh] rounded-t-2xl transform transition-transform duration-300 ${showMobilePanel ? 'translate-y-0' : 'translate-y-full'}` : 'h-full'} border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-[#2C2C2C]'} bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.5)] md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150`}
-                                    >
-                                       {isMobile && (
-                                          <div
-                                             className="w-full flex justify-center py-3 shrink-0 z-10 sticky top-0 bg-[#1E1E1E]"
+
+                                    {/* Right Sidebar / Bottom Panel - Logic Panels */}
+                                    {(!isMobile || showMobilePanel) && (
+                                       <div
+                                          style={isMobile ? { 
+                                             width: '100%', 
+                                             height: `${mobilePanelHeight}vh`,
+                                          } : { width: `${panelWidth}px` }}
+                                          className={`border-t md:border-t-0 md:border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-[#2C2C2C]'} bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150 relative`}
+                                       >
+
+                                          <div 
+                                             className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] select-none shrink-0 relative"
                                              onTouchStart={(e) => {
+                                                if (!isMobile) return;
                                                 const startY = e.touches[0].clientY;
-                                                const handleMove = (eMove: TouchEvent) => {
-                                                   const delta = eMove.touches[0].clientY - startY;
-                                                   if (delta > 50) {
-                                                      setShowMobilePanel(false);
-                                                      document.removeEventListener('touchmove', handleMove);
-                                                   }
-                                                };
-                                                const handleEnd = () => {
-                                                   document.removeEventListener('touchmove', handleMove);
+                                                const handleEnd = (eEnd: TouchEvent) => {
+                                                   if (eEnd.changedTouches[0].clientY - startY > 50) setShowMobilePanel(false);
                                                    document.removeEventListener('touchend', handleEnd);
                                                 };
-                                                document.addEventListener('touchmove', handleMove);
                                                 document.addEventListener('touchend', handleEnd);
                                              }}
                                           >
-                                             <div className="w-16 h-1.5 bg-[#4A4A4A] rounded-full" />
+                                             <div className={`flex-1 overflow-x-auto flex no-scrollbar ${isMobile ? 'pr-10' : ''}`}>
+                                                <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
+                                                <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
+                                                <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
+                                                <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
+                                                <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
+                                                <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
+                                                <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
+                                             </div>
+                                             {isMobile && (
+                                                <button 
+                                                   onClick={() => setShowMobilePanel(false)} 
+                                                   className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center bg-[#1A1A1A] border-l border-[#2C2C2C] text-[#8C8C8C] hover:text-white shadow-[-4px_0_8px_rgba(0,0,0,0.2)] z-10 bg-gradient-to-l from-[#1A1A1A] via-[#1A1A1A] to-transparent"
+                                                >
+                                                   <ChevronDown size={18} />
+                                                </button>
+                                             )}
                                           </div>
-                                       )}
-
-                                       <div className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] overflow-x-auto select-none no-scrollbar shrink-0">
-                                          <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
-                                          <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
-                                          <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
-                                          <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
-                                          <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
-                                          <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
-                                          <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
-                                       </div>
 
                                        <div className="flex-1 overflow-y-auto overflow-x-hidden">
 
@@ -6944,24 +7020,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                           )}
                                        </div>
                                     </div>
-                                    {/* Suggestion Toast */}
-                                    {activeSuggestion && (
-                                       <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-bounce-subtle pointer-events-auto">
-                                          <div className="bg-[#242424] border border-blue-500/50 shadow-[0_8px_32px_rgba(0,0,0,0.5)] rounded-2xl px-5 py-3 flex items-center gap-4 text-white">
-                                             <div className="bg-blue-500/20 p-2 rounded-xl text-blue-400">
-                                                <Sparkles size={18} />
-                                             </div>
-                                             <div>
-                                                <div className="text-xs font-bold leading-tight">Image too large?</div>
-                                                <div className="text-[10px] text-slate-400">Try smart fitting actions</div>
-                                             </div>
-                                             <div className="flex gap-2 ml-2">
-                                                <button onClick={() => { alignSelection('fit'); setActiveSuggestion(null); }} className="h-7 px-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-[10px] font-bold transition">Fit to Artboard</button>
-                                                <button onClick={() => { alignSelection('fill'); setActiveSuggestion(null); }} className="h-7 px-3 bg-[#333] hover:bg-[#444] rounded-lg text-[10px] font-bold transition">Fill Artboard</button>
-                                                <button onClick={() => setActiveSuggestion(null)} className="p-1 hover:bg-white/10 rounded-lg"><X size={14} /></button>
-                                             </div>
-                                          </div>
-                                       </div>
                                     )}
 
                                     {/* Context Menu Portal */}

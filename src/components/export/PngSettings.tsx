@@ -69,7 +69,7 @@ export const PngSettings: React.FC<Props> = ({ options, onChange, mode }) => {
       )}
 
       {/* Palette Reduction Section */}
-      <div className={`mt-2 pt-4 border-t border-[#222] space-y-4 ${mode === 'basic' ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
+      <div className="mt-2 pt-4 border-t border-[#222] space-y-4">
         <div className="flex items-center gap-2">
           <Palette size={14} className="text-pink-400" />
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Efficiency Layer</span>

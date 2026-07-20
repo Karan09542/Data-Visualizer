@@ -2,7 +2,7 @@ import React from 'react';
 import * as fabric from 'fabric';
 import {
    Brush, FlipHorizontal, FlipVertical, Move, SquareDashed, Layout, Square, Palette, MousePointer2, Copy, Trash2, Crop, RotateCcw, Settings,
-   Droplets, Sparkles, LucideImage, Printer, Plus
+   Droplets, Sparkles, LucideImage, Printer, Plus, Minus
 } from 'lucide-react';
 import { useTool } from '../../../contexts/ToolContext';
 import { useCanvas } from '../../../contexts/CanvasContext';
@@ -19,6 +19,47 @@ import { ModernCheckbox } from '../../shared/ModernCheckbox';
 import { TypographyPanel } from '../TypographyPanel';
 import { SmartCollageBlockCustomizationPanel } from '../SmartCollageBlockCustomizationPanel';
 import { ArtboardAssignmentModule } from '../ArtboardAssignmentModule';
+
+// Common UI Components for the Panel
+const PanelSection: React.FC<{ title: React.ReactNode; icon?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, children, className = '' }) => (
+   <div className={`bg-[#181818] rounded-xl border border-[#2A2A2A] p-4 space-y-4 shadow-sm ${className}`}>
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-white tracking-wide uppercase">
+         {icon}
+         <span>{title}</span>
+      </div>
+      {children}
+   </div>
+);
+
+const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+   <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 block mb-1.5">{children}</span>
+);
+
+const RangeSlider: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label?: string; valueDisplay?: string | number; displayUnit?: string }> = ({ label, valueDisplay, displayUnit = '', ...props }) => (
+   <div>
+      {(label || valueDisplay !== undefined) && (
+         <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1.5 font-medium">
+            {label && <span>{label}</span>}
+            {valueDisplay !== undefined && <span className="font-mono text-white/90 bg-white/5 px-1.5 py-0.5 rounded border border-white/10">{valueDisplay}{displayUnit}</span>}
+         </div>
+      )}
+      <input
+         type="range"
+         {...props}
+         className={`w-full accent-blue-500 hover:accent-blue-400 h-1.5 bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer ${props.className || ''}`}
+      />
+   </div>
+);
+
+const GridButton: React.FC<{ active?: boolean; onClick: () => void; children: React.ReactNode; className?: string }> = ({ active, onClick, children, className = '' }) => (
+   <button
+      type="button"
+      onClick={onClick}
+      className={`py-1.5 text-[10px] font-semibold rounded-md transition-all active:scale-95 ${active ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' : 'bg-white/5 border border-white/5 text-zinc-400 hover:text-white hover:bg-white/10'} ${className}`}
+   >
+      {children}
+   </button>
+);
 
 export const PropertiesTab: React.FC = () => {
    const {
@@ -53,19 +94,24 @@ export const PropertiesTab: React.FC = () => {
       shapeUseIndividualCorners, shapeCornerTL, shapeCornerTR, shapeCornerBL, shapeCornerBR, shapeCornerRadius
    } = useShapeProperties();
 
-   return (
-      <div className="p-3 sm:p-4 space-y-5 sm:space-y-6 font-sans">
-         {activeTool === 'brush' || activeTool === 'eraser' ? (
-            <div className="space-y-4">
-               <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-1 flex items-center gap-2"><Brush size={12} /> Brush Engine</div>
+   const activeObj = fabricRef.current?.getActiveObject();
+   const isCollageSelected = activeObj && (
+      (activeObj as any).isCollageBlock ||
+      (activeObj.type === 'activeSelection' && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))
+   );
 
+   return (
+      <div className="p-4 space-y-4 font-sans max-w-full overflow-x-hidden">
+         {activeTool === 'brush' || activeTool === 'eraser' ? (
+            <PanelSection title="Brush Engine" icon={<Brush size={14} className="text-blue-400" />}>
                {activeTool === 'brush' && (
                   <div>
-                     <label className="text-[10px] text-[#8A8A8A] block mb-1 font-semibold uppercase tracking-wider">Brush Type</label>
+                     <Label>Brush Type</Label>
                      <select
-                        className="w-full h-8 sm:h-9 bg-[#181818] border border-[#3A3A3A] rounded-lg text-xs px-2.5 outline-none text-white focus:border-blue-500 transition-colors cursor-pointer"
+                        className="w-full h-9 bg-white/5 border border-white/10 rounded-lg text-[11px] px-3 outline-none text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer shadow-sm appearance-none"
                         value={brushType || 'pencil'}
                         onChange={(e) => setBrushType(e.target.value)}
+                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23A0A0A0'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center', backgroundSize: '1rem' }}
                      >
                         <optgroup label="Standard Brushes">
                            <option value="pencil">Pencil</option>
@@ -95,90 +141,36 @@ export const PropertiesTab: React.FC = () => {
                   </div>
                )}
 
-               <div>
-                  <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                     <span>Brush Size</span>
-                     <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushSize}px</span>
-                  </div>
-                  <input
-                     type="range" min="1" max="500" step="1" value={brushSize}
-                     onChange={(e) => setBrushSize(Number(e.target.value))}
-                     className="w-full accent-blue-500 hover:accent-blue-400 h-2 md:h-1 bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer"
-                  />
+               <div className="space-y-4 pt-1">
+                  <RangeSlider label="Size" min="1" max="500" step="1" value={brushSize} valueDisplay={brushSize} displayUnit="px" onChange={(e) => setBrushSize(Number(e.target.value))} />
+                  
+                  {activeTool === 'brush' && (
+                     <>
+                        <RangeSlider label="Opacity" min="1" max="100" step="1" value={brushOpacity} valueDisplay={brushOpacity} displayUnit="%" onChange={(e) => setBrushOpacity(Number(e.target.value))} />
+                        <RangeSlider label="Flow" min="1" max="100" step="1" value={brushFlow} valueDisplay={brushFlow} displayUnit="%" onChange={(e) => setBrushFlow(Number(e.target.value))} />
+                        <RangeSlider label="Hardness" min="1" max="100" step="1" value={brushHardness} valueDisplay={brushHardness} displayUnit="%" onChange={(e) => setBrushHardness(Number(e.target.value))} />
+                        <RangeSlider label="Smoothing" min="0" max="100" step="1" value={brushSmoothing} valueDisplay={brushSmoothing} displayUnit="%" onChange={(e) => setBrushSmoothing(Number(e.target.value))} />
+                     </>
+                  )}
                </div>
 
                {activeTool === 'brush' && (
-                  <>
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Opacity</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushOpacity}%</span>
-                        </div>
-                        <input
-                           type="range" min="1" max="100" step="1" value={brushOpacity}
-                           onChange={(e) => setBrushOpacity(Number(e.target.value))}
-                           className="w-full accent-blue-500 hover:accent-blue-400 h-2 md:h-1 bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer"
-                        />
-                     </div>
-
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Flow</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushFlow}%</span>
-                        </div>
-                        <input
-                           type="range" min="1" max="100" step="1" value={brushFlow}
-                           onChange={(e) => setBrushFlow(Number(e.target.value))}
-                           className="w-full accent-blue-500 hover:accent-blue-400 h-2 md:h-1 bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer"
-                        />
-                     </div>
-
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Hardness</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushHardness}%</span>
-                        </div>
-                        <input
-                           type="range" min="1" max="100" step="1" value={brushHardness}
-                           onChange={(e) => setBrushHardness(Number(e.target.value))}
-                           className="w-full accent-blue-500 hover:accent-blue-400 h-2 md:h-1 bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer"
-                        />
-                     </div>
-
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Smoothing</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushSmoothing}%</span>
-                        </div>
-                        <input
-                           type="range" min="0" max="100" step="1" value={brushSmoothing}
-                           onChange={(e) => setBrushSmoothing(Number(e.target.value))}
-                           className="w-full accent-blue-500 h-1"
-                        />
-                     </div>
-
-                     <div className="pt-2">
-                        <BrushPreview
-                           type={brushType}
-                           color={brushColor}
-                           size={brushSize}
-                           opacity={brushOpacity}
-                           hardness={brushHardness}
-                           flow={brushFlow}
-                        />
-                     </div>
-                  </>
-               )}
-            </div>
-         ) : selectionType ? (
-            <>
-               {/* Artboard Ownership Info */}
-               <div className="mb-4 bg-[#181818] border border-[#2c2c2c] p-2.5 sm:p-3 rounded-xl flex items-center justify-between hover:border-[#3a3a3a] transition-colors">
-                  <div className="flex items-center gap-2">
-                     <SquareDashed size={14} className="text-slate-400" />
-                     <span className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">Artboard</span>
+                  <div className="pt-3 border-t border-white/5">
+                     <BrushPreview type={brushType} color={brushColor} size={brushSize} opacity={brushOpacity} hardness={brushHardness} flow={brushFlow} />
                   </div>
-                  <span className="text-xs text-blue-400 font-mono truncate max-w-[120px] bg-blue-500/10 px-2 py-0.5 rounded">
+               )}
+            </PanelSection>
+         ) : selectionType ? (
+            <div className="space-y-4">
+               {/* Artboard Ownership Info */}
+               <div className="bg-[#181818] border border-blue-500/20 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-2">
+                     <div className="w-6 h-6 rounded bg-blue-500/10 flex items-center justify-center">
+                        <SquareDashed size={14} className="text-blue-400" />
+                     </div>
+                     <span className="text-[11px] font-semibold text-zinc-300 uppercase tracking-wide">Artboard</span>
+                  </div>
+                  <span className="text-[10px] text-white font-mono truncate max-w-[120px] bg-white/10 px-2 py-1 rounded-md border border-white/5">
                      {(() => {
                         const obj = fabricRef.current?.getActiveObject() as any;
                         if (!obj) return 'None';
@@ -196,74 +188,62 @@ export const PropertiesTab: React.FC = () => {
                <ObjectDimensionsPanel fabricRef={fabricRef} />
 
                {/* Transform Module */}
-               <div>
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 flex items-center gap-2"><Move size={12} /> Transform</div>
+               <PanelSection title="Transform" icon={<Move size={14} className="text-green-400" />}>
                   <div className="flex gap-2">
-                     <button className="flex-1 h-8 sm:h-9 bg-[#2C2C2C] hover:bg-[#3A3A3A] rounded-lg flex justify-center items-center gap-2 text-xs transition border border-[#3A3A3A] active:scale-95" onClick={flipX}><FlipHorizontal size={14} /> Flip X</button>
-                     <button className="flex-1 h-8 sm:h-9 bg-[#2C2C2C] hover:bg-[#3A3A3A] rounded-lg flex justify-center items-center gap-2 text-xs transition border border-[#3A3A3A] active:scale-95" onClick={flipY}><FlipVertical size={14} /> Flip Y</button>
+                     <button className="flex-1 h-9 bg-white/5 hover:bg-white/10 rounded-lg flex justify-center items-center gap-2 text-[11px] font-medium text-zinc-300 hover:text-white transition-all border border-white/10 active:scale-95 shadow-sm" onClick={flipX}><FlipHorizontal size={14} /> Flip X</button>
+                     <button className="flex-1 h-9 bg-white/5 hover:bg-white/10 rounded-lg flex justify-center items-center gap-2 text-[11px] font-medium text-zinc-300 hover:text-white transition-all border border-white/10 active:scale-95 shadow-sm" onClick={flipY}><FlipVertical size={14} /> Flip Y</button>
                   </div>
-               </div>
+               </PanelSection>
 
                {/* Smart Collage Block Customization Panel */}
                <SmartCollageBlockCustomizationPanel />
+               
                {/* Shape Customization Panel */}
-               {['rect', 'circle', 'triangle', 'line'].includes(selectionType || '') && (
-                  <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in">
-                     <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
-                        <Palette size={12} /> Shape Properties
-                     </div>
-
+               {!isCollageSelected && ['rect', 'circle', 'triangle', 'line'].includes(selectionType || '') && (
+                  <PanelSection title="Shape Properties" icon={<Palette size={14} className="text-pink-400" />}>
                      {/* Fill and Stroke Colors */}
-                     <div className="grid grid-cols-2 gap-2 bg-[#141414] border border-[#222] p-2.5 rounded-lg">
+                     <div className="grid grid-cols-2 gap-3 bg-[#111] border border-white/5 p-3 rounded-lg">
                         {/* Fill color */}
                         {selectionType !== 'line' && (
-                           <div className="space-y-1">
-                              <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">Fill Color</span>
-                              <div className="flex gap-2">
-                                 <div className="w-8 h-8 rounded shrink-0 border border-[#2a2a2a] shadow-inner relative overflow-hidden" style={{ backgroundColor: shapeFillColor }}>
+                           <div className="space-y-1.5">
+                              <Label>Fill Color</Label>
+                              <div className="flex gap-2 items-center">
+                                 <div className="w-8 h-8 rounded-md shrink-0 border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: shapeFillColor }}>
                                     {shapeFillColor === 'transparent' && (
-                                       <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-red-500/20 to-transparent flex items-center justify-center">
-                                          <div className="w-full h-[1px] bg-red-500 rotate-45" />
+                                       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmZmIj48L3JlY3Q+CjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNjY2MiPjwvcmVjdD4KPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjQiIGhlaWdodD0iNCIgZmlsbD0iI2NjYyI+PC9yZWN0Pgo8L3N2Zz4=')] flex items-center justify-center">
+                                          <div className="w-full h-[2px] bg-red-500/80 rotate-45" />
                                        </div>
                                     )}
                                     <ColorPickerTrigger
                                        color={shapeFillColor === 'transparent' ? '#ffffff' : shapeFillColor}
-                                       onChange={(color) => {
-                                          updateSelectedShapeProperty('fill', color);
-                                       }}
+                                       onChange={(color) => updateSelectedShapeProperty('fill', color)}
                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                     />
                                  </div>
-                                 <div className="flex-1 flex flex-col gap-1 justify-center">
-                                    <button
-                                       type="button"
-                                       onClick={() => updateSelectedShapeProperty('fill', 'transparent')}
-                                       className="py-1 px-1.5 text-[9px] bg-[#1a1a1a] border border-[#2a2a2a] rounded text-slate-400 hover:text-white"
-                                    >
-                                       Transparent
-                                    </button>
-                                 </div>
+                                 <button
+                                    type="button"
+                                    onClick={() => updateSelectedShapeProperty('fill', 'transparent')}
+                                    className="px-2 py-1.5 text-[9px] font-bold uppercase tracking-wider bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-zinc-400 hover:text-white transition-colors"
+                                 >
+                                    None
+                                 </button>
                               </div>
                            </div>
                         )}
 
                         {/* Border (Stroke) color */}
-                        <div className={selectionType === 'line' ? 'col-span-2 space-y-1' : 'space-y-1'}>
-                           <span className="text-[9px] uppercase tracking-wider text-[#8A8A8A] block font-bold">
-                              {selectionType === 'line' ? 'Line Color' : 'Border Color'}
-                           </span>
+                        <div className={selectionType === 'line' ? 'col-span-2 space-y-1.5' : 'space-y-1.5'}>
+                           <Label>{selectionType === 'line' ? 'Line Color' : 'Border Color'}</Label>
                            <div className="flex gap-2">
-                              <div className="w-8 h-8 rounded shrink-0 border border-[#2a2a2a] shadow-inner relative overflow-hidden" style={{ backgroundColor: shapeStrokeColor }}>
+                              <div className="w-8 h-8 rounded-md shrink-0 border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: shapeStrokeColor }}>
                                  {shapeStrokeColor === 'transparent' && (
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-red-500/20 to-transparent flex items-center justify-center">
-                                       <div className="w-full h-[1px] bg-red-500 rotate-45" />
+                                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmZmIj48L3JlY3Q+CjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNjY2MiPjwvcmVjdD4KPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjQiIGhlaWdodD0iNCIgZmlsbD0iI2NjYyI+PC9yZWN0Pgo8L3N2Zz4=')] flex items-center justify-center">
+                                       <div className="w-full h-[2px] bg-red-500/80 rotate-45" />
                                     </div>
                                  )}
                                  <ColorPickerTrigger
                                     color={shapeStrokeColor === 'transparent' ? '#ffffff' : shapeStrokeColor}
-                                    onChange={(color) => {
-                                       updateSelectedShapeProperty('stroke', color);
-                                    }}
+                                    onChange={(color) => updateSelectedShapeProperty('stroke', color)}
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                  />
                               </div>
@@ -271,234 +251,109 @@ export const PropertiesTab: React.FC = () => {
                         </div>
                      </div>
 
-                     {/* Border Style (Dashed/Solid/None) & Thickness */}
-                     <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
-                        <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">
-                           {selectionType === 'line' ? 'Line Style & Thickness' : 'Border & Outline Style'}
-                        </span>
-
+                     {/* Border Style & Thickness */}
+                     <div className="space-y-4 pt-1">
                         {selectionType !== 'line' && (
                            <div>
-                              <span className="text-[9px] text-[#808080] block mb-1">Outline Style</span>
-                              <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                              <Label>Outline Style</Label>
+                              <div className="grid grid-cols-3 gap-1 bg-[#111] rounded-lg p-1 border border-white/5">
                                  {['none', 'solid', 'dashed'].map((st) => (
-                                    <button
-                                       key={st}
-                                       type="button"
-                                       onClick={() => {
-                                          updateSelectedShapeProperty('borderStyle', st);
-                                       }}
-                                       className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${shapeBorderStyle === st ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
-                                    >
-                                       {st}
-                                    </button>
+                                    <GridButton key={st} active={shapeBorderStyle === st} onClick={() => updateSelectedShapeProperty('borderStyle', st)}>
+                                       <span className="capitalize">{st}</span>
+                                    </GridButton>
                                  ))}
                               </div>
                            </div>
                         )}
 
-                        {/* Thickness/Stroke Width range slider */}
-                        <div>
-                           <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
-                              <span>{selectionType === 'line' ? 'Line Thickness' : 'Border Thickness'}</span>
-                              <span className="font-mono text-blue-400 text-[10px] font-bold">{shapeStrokeWidth}px</span>
-                           </div>
-                           <input
-                              type="range" min={selectionType === 'line' ? "1" : "0"} max="50" step="1"
-                              value={shapeStrokeWidth}
-                              onChange={(e) => {
-                                 const val = Number(e.target.value);
-                                 updateSelectedShapeProperty('strokeWidth', val);
-                              }}
-                              className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                           />
-                        </div>
-
-                        {/* General Opacity control */}
-                        <div className="pt-1 border-t border-[#1C1C1C]">
-                           <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
-                              <span>Opacity</span>
-                              <span className="font-mono text-blue-400 text-[10px] font-bold">{shapeOpacity}%</span>
-                           </div>
-                           <input
-                              type="range" min="1" max="100" step="1"
-                              value={shapeOpacity}
-                              onChange={(e) => {
-                                 const val = Number(e.target.value);
-                                 updateSelectedShapeProperty('opacity', val);
-                              }}
-                              className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                           />
-                        </div>
+                        <RangeSlider 
+                           label={selectionType === 'line' ? 'Line Thickness' : 'Border Thickness'} 
+                           min={selectionType === 'line' ? "1" : "0"} max="50" step="1" 
+                           value={shapeStrokeWidth} valueDisplay={shapeStrokeWidth} displayUnit="px" 
+                           onChange={(e) => updateSelectedShapeProperty('strokeWidth', Number(e.target.value))} 
+                        />
+                        <RangeSlider 
+                           label="Opacity" 
+                           min="1" max="100" step="1" 
+                           value={shapeOpacity} valueDisplay={shapeOpacity} displayUnit="%" 
+                           onChange={(e) => updateSelectedShapeProperty('opacity', Number(e.target.value))} 
+                        />
                      </div>
 
                      {/* Corner Rounding Controls - RECTANGLE ONLY */}
                      {selectionType === 'rect' && (
-                        <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
-                           <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">Corner Rounding</span>
-
-                           <div className="py-1 border-b border-[#1C1C1C]">
+                        <div className="pt-3 border-t border-white/10 space-y-3">
+                           <div className="flex items-center justify-between">
+                              <Label>Corner Rounding</Label>
                               <ModernCheckbox
                                  checked={shapeUseIndividualCorners}
                                  onChange={(val) => updateSelectedShapeProperty('useIndividualCorners', val)}
-                                 label="Round Corners Separately"
+                                 label="Separate"
                                  labelLeft
                               />
                            </div>
 
                            {shapeUseIndividualCorners ? (
-                              <div className="grid grid-cols-2 gap-x-2 gap-y-2 pt-1">
-                                 {/* Top Left */}
-                                 <div>
-                                    <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
-                                       <span>Top Left</span>
-                                       <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerTL}%</span>
-                                    </div>
-                                    <input
-                                       type="range" min="0" max="100" step="1"
-                                       value={shapeCornerTL}
-                                       onChange={(e) => {
-                                          const val = Number(e.target.value);
-                                          updateSelectedShapeProperty('rx_tl', val);
-                                       }}
-                                       className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                    />
-                                 </div>
-                                 {/* Top Right */}
-                                 <div>
-                                    <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
-                                       <span>Top Right</span>
-                                       <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerTR}%</span>
-                                    </div>
-                                    <input
-                                       type="range" min="0" max="100" step="1"
-                                       value={shapeCornerTR}
-                                       onChange={(e) => {
-                                          const val = Number(e.target.value);
-                                          updateSelectedShapeProperty('rx_tr', val);
-                                       }}
-                                       className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                    />
-                                 </div>
-                                 {/* Bottom Left */}
-                                 <div>
-                                    <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
-                                       <span>Bottom Left</span>
-                                       <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerBL}%</span>
-                                    </div>
-                                    <input
-                                       type="range" min="0" max="100" step="1"
-                                       value={shapeCornerBL}
-                                       onChange={(e) => {
-                                          const val = Number(e.target.value);
-                                          updateSelectedShapeProperty('rx_bl', val);
-                                       }}
-                                       className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                    />
-                                 </div>
-                                 {/* Bottom Right */}
-                                 <div>
-                                    <div className="flex justify-between items-center text-[8px] text-[#8A8A8A] mb-0.5">
-                                       <span>Bottom Right</span>
-                                       <span className="font-mono text-blue-400 text-[8px] font-bold">{shapeCornerBR}%</span>
-                                    </div>
-                                    <input
-                                       type="range" min="0" max="100" step="1"
-                                       value={shapeCornerBR}
-                                       onChange={(e) => {
-                                          const val = Number(e.target.value);
-                                          updateSelectedShapeProperty('rx_br', val);
-                                       }}
-                                       className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                    />
-                                 </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                 <RangeSlider label="Top L" min="0" max="100" step="1" value={shapeCornerTL} valueDisplay={shapeCornerTL} displayUnit="%" onChange={(e) => updateSelectedShapeProperty('rx_tl', Number(e.target.value))} />
+                                 <RangeSlider label="Top R" min="0" max="100" step="1" value={shapeCornerTR} valueDisplay={shapeCornerTR} displayUnit="%" onChange={(e) => updateSelectedShapeProperty('rx_tr', Number(e.target.value))} />
+                                 <RangeSlider label="Bot L" min="0" max="100" step="1" value={shapeCornerBL} valueDisplay={shapeCornerBL} displayUnit="%" onChange={(e) => updateSelectedShapeProperty('rx_bl', Number(e.target.value))} />
+                                 <RangeSlider label="Bot R" min="0" max="100" step="1" value={shapeCornerBR} valueDisplay={shapeCornerBR} displayUnit="%" onChange={(e) => updateSelectedShapeProperty('rx_br', Number(e.target.value))} />
                               </div>
                            ) : (
-                              <div>
-                                 <div className="flex justify-between items-center text-[9px] text-[#8A8A8A] mb-1">
-                                    <span>Corner Rounding (%)</span>
-                                    <span className="font-mono text-blue-400 text-[10px] font-bold">{shapeCornerRadius}%</span>
-                                 </div>
-                                 <input
-                                    type="range" min="0" max="100" step="1"
-                                    value={shapeCornerRadius}
-                                    onChange={(e) => {
-                                       const val = Number(e.target.value);
-                                       updateSelectedShapeProperty('rx', val);
-                                    }}
-                                    className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                 />
-                              </div>
+                              <RangeSlider label="Radius" min="0" max="100" step="1" value={shapeCornerRadius} valueDisplay={shapeCornerRadius} displayUnit="%" onChange={(e) => updateSelectedShapeProperty('rx', Number(e.target.value))} />
                            )}
                         </div>
                      )}
-                  </div>
+                  </PanelSection>
                )}
+
                {/* Corner Rounding & Connections for Triangle/Line */}
                {['triangle', 'line'].includes(selectionType || '') && (
-                  <div className="space-y-4 border-b border-[#2C2C2C] pb-4 animate-fade-in pl-1">
-                     <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
-                        <Palette size={12} /> {selectionType === 'triangle' ? 'Triangle Rounding' : 'Line Join / End Caps'}
-                     </div>
-
-                     <div className="space-y-3 bg-[#141414] border border-[#222] p-3 rounded-lg">
-                        {/* Line Join selection */}
+                  <PanelSection title={selectionType === 'triangle' ? 'Triangle Rounding' : 'Line Join / End Caps'} icon={<Palette size={14} />}>
+                     <div className="space-y-4">
                         {selectionType !== 'line' && (
                            <div>
-                              <span className="text-[9px] text-[#808080] block mb-1">Corner Style</span>
-                              <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                              <Label>Corner Style</Label>
+                              <div className="grid grid-cols-3 gap-1 bg-[#111] rounded-lg p-1 border border-white/5">
                                  {[
                                     { id: 'miter', label: 'Sharp' },
                                     { id: 'round', label: 'Rounded' },
                                     { id: 'bevel', label: 'Beveled' }
                                  ].map((st) => (
-                                    <button
-                                       key={st.id}
-                                       type="button"
-                                       onClick={() => {
-                                          updateSelectedShapeProperty('strokeLineJoin', st.id);
-                                       }}
-                                       className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${shapeStrokeLineJoin === st.id ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
-                                    >
+                                    <GridButton key={st.id} active={shapeStrokeLineJoin === st.id} onClick={() => updateSelectedShapeProperty('strokeLineJoin', st.id)}>
                                        {st.label}
-                                    </button>
+                                    </GridButton>
                                  ))}
                               </div>
-                              <p className="text-[8px] text-[#606060] mt-1.5 leading-normal">
+                              <p className="text-[10px] text-zinc-500 mt-2 font-medium">
                                  {shapeStrokeLineJoin === 'round'
                                     ? '✓ Corners are rounded based on Border Thickness.'
-                                    : 'ℹ Select "Rounded" to round corners. Customise Border Thickness above to adjust the curve.'}
+                                    : 'ℹ Select "Rounded" to round corners.'}
                               </p>
                            </div>
                         )}
 
-                        {/* Line Cap style - specifically for lines */}
                         {selectionType === 'line' && (
-                           <div className="pt-2 border-t border-[#1C1C1C]">
-                              <span className="text-[9px] text-[#808080] block mb-1">Line End Caps</span>
-                              <div className="grid grid-cols-3 gap-0.5 bg-[#090909] rounded p-0.5 border border-[#222]">
+                           <div>
+                              <Label>Line End Caps</Label>
+                              <div className="grid grid-cols-3 gap-1 bg-[#111] rounded-lg p-1 border border-white/5">
                                  {[
                                     { id: 'butt', label: 'Butt' },
                                     { id: 'round', label: 'Round' },
                                     { id: 'square', label: 'Square' }
                                  ].map((cp) => (
-                                    <button
-                                       key={cp.id}
-                                       type="button"
-                                       onClick={() => {
-                                          updateSelectedShapeProperty('strokeLineCap', cp.id);
-                                       }}
-                                       className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${shapeStrokeLineCap === cp.id ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
-                                    >
+                                    <GridButton key={cp.id} active={shapeStrokeLineCap === cp.id} onClick={() => updateSelectedShapeProperty('strokeLineCap', cp.id)}>
                                        {cp.label}
-                                    </button>
+                                    </GridButton>
                                  ))}
                               </div>
                            </div>
                         )}
                      </div>
-                  </div>
+                  </PanelSection>
                )}
+
                {/* Typography Module */}
                {(selectionType === 'i-text' || selectionType === 'text' || selectionType === 'textbox') && (
                   <TypographyPanel />
@@ -506,35 +361,33 @@ export const PropertiesTab: React.FC = () => {
 
                {/* Image Adjustments Module */}
                {(selectionType === 'image' || selectionType === 'frameGroup') && (
-                  <div className="space-y-6">
-                     <div className="space-y-3">
-                        <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2"><Crop size={12} /> Crop & Composition</div>
+                  <div className="space-y-4">
+                     <PanelSection title="Crop & Composition" icon={<Crop size={14} className="text-orange-400" />}>
                         <div className="flex gap-2">
                            <button
                               onClick={() => enterCropMode()}
-                              className="flex-1 bg-[#2C2C2C] hover:bg-[#3C3C3C] text-white border border-[#3A3A3A] hover:border-blue-500 rounded text-xs py-2 transition flex items-center justify-center gap-1.5"
+                              className="flex-1 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-orange-500/50 rounded-lg text-[11px] font-medium py-2 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-sm"
                            >
                               <Crop size={14} /> Crop Image
                            </button>
                            <button
                               onClick={() => resetCrop()}
-                              className="bg-[#2C2C2C] hover:bg-[#3C3C3C] text-[#808080] hover:text-white border border-[#3A3A3A] rounded px-3 py-2 transition flex items-center justify-center gap-1.5"
+                              className="bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/10 rounded-lg px-3 py-2 transition-all flex items-center justify-center active:scale-95 shadow-sm"
                               title="Reset Crop"
                            >
                               <RotateCcw size={14} />
                            </button>
                         </div>
-                     </div>
+                     </PanelSection>
 
-                     <div>
-                        <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 flex items-center gap-2"><Settings size={12} /> Adjustments Non-Destructive</div>
+                     <PanelSection title="Adjustments (Non-Destructive)" icon={<Settings size={14} className="text-zinc-400" />}>
                         <div className="space-y-4">
                            <FilterSlider label="Brightness" min="-0.5" max="0.5" step="0.01" onChange={(v) => applyFilter('brightness', v)} />
                            <FilterSlider label="Contrast" min="-0.5" max="0.5" step="0.01" onChange={(v) => applyFilter('contrast', v)} />
                            <FilterSlider label="Saturation" min="-1" max="1" step="0.01" onChange={(v) => applyFilter('saturation', v)} />
                            <FilterSlider label="Grayscale" min="0" max="1" step="0.01" onChange={(v) => applyFilter('grayscale', v)} />
                         </div>
-                     </div>
+                     </PanelSection>
                   </div>
                )}
 
@@ -542,59 +395,64 @@ export const PropertiesTab: React.FC = () => {
                <ArtboardAssignmentModule />
 
                {/* Quick Actions */}
-               <div>
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-2 flex items-center gap-2">Actions</div>
+               <div className="pt-2">
                   <div className="flex gap-2">
-                     <button className="flex-1 py-1.5 border border-[#3A3A3A] text-[#A0A0A0] hover:text-white bg-[#2C2C2C] hover:bg-[#3A3A3A] rounded text-xs transition-colors flex justify-center items-center" onClick={duplicateActiveObject}><Copy size={12} className="mr-1" /> Duplicate</button>
-                     <button className="flex-1 py-1.5 border border-red-900/50 text-red-400 bg-red-950/20 hover:bg-red-900/50 hover:text-white rounded text-xs transition-colors flex justify-center items-center" onClick={deleteActiveObject}><Trash2 size={12} className="mr-1" /> Delete</button>
+                     <button className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white rounded-lg text-[11px] font-medium transition-all shadow-sm active:scale-95 flex justify-center items-center gap-1.5" onClick={duplicateActiveObject}>
+                        <Copy size={14} /> Duplicate
+                     </button>
+                     <button className="flex-1 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 rounded-lg text-[11px] font-medium transition-all shadow-sm active:scale-95 flex justify-center items-center gap-1.5" onClick={deleteActiveObject}>
+                        <Trash2 size={14} /> Delete
+                     </button>
                   </div>
                </div>
-            </>
+            </div>
          ) : (
             <>
                {artboards.find(b => b.id === activeArtboardId) ? (
-                  <div className="space-y-6">
-                     <div className="flex items-center justify-between">
-                        <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2"><Square size={12} /> Artboard Properties</div>
+                  <div className="space-y-5">
+                     <div className="flex items-center gap-2 px-1">
+                        <Square size={16} className="text-white/80" />
+                        <span className="text-[12px] font-bold tracking-wider text-white uppercase">Artboard Properties</span>
                      </div>
 
                      {/* Smart Background Studio */}
-                     <div>
-                        <div className="text-[10px] text-[#A0A0A0] mb-2 font-semibold flex items-center gap-1"><Droplets size={12} /> Smart Background</div>
-                        <div className="flex gap-2 mb-2">
-                           <div className="w-8 h-8 rounded shrink-0 border border-[#3A3A3A] overflow-hidden relative" style={{ backgroundColor: artboards.find(b => b.id === activeArtboardId)?.backgroundColor as string || '#ffffff' }}>
+                     <PanelSection title="Smart Background" icon={<Droplets size={14} className="text-blue-400" />}>
+                        <div className="flex gap-3 items-center">
+                           <div className="w-12 h-12 rounded-xl shrink-0 border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: artboards.find(b => b.id === activeArtboardId)?.backgroundColor as string || '#ffffff' }}>
                               <ColorPickerTrigger
                                  color={artboards.find(b => b.id === activeArtboardId)?.backgroundColor as string || '#ffffff'}
                                  onChange={(c) => updateArtboardPropDirect(activeArtboardId, 'backgroundColor', c, true)}
                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                               />
                            </div>
+                           <div className="grid grid-cols-4 gap-1.5 flex-1">
+                              {['#FFFFFF', '#000000', '#F3F4F6', '#E5E7EB', '#3B82F6', '#EF4444', '#10B981', '#F59E0B'].map(c => (
+                                 <button key={c} onClick={() => updateArtboardPropDirect(activeArtboardId, 'backgroundColor', c, true)} className="w-full h-5 rounded-md border border-white/10 hover:border-white/50 hover:scale-110 active:scale-95 transition-all shadow-sm" style={{ backgroundColor: c }} />
+                              ))}
+                           </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-1 mb-2">
-                           {['#FFFFFF', '#000000', '#F3F4F6', '#E5E7EB', '#3B82F6', '#EF4444', '#10B981', '#F59E0B'].map(c => (
-                              <button key={c} onClick={() => updateArtboardPropDirect(activeArtboardId, 'backgroundColor', c, true)} className="w-full h-8 rounded border border-[#3A3A3A] hover:border-blue-500" style={{ backgroundColor: c }} />
-                           ))}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-1.5 mt-2">
-                           <button className="py-1.5 px-2 bg-blue-900/20 hover:bg-blue-900/40 border border-blue-500/30 hover:border-blue-500/60 text-blue-400 text-[10px] rounded flex gap-1.5 justify-center items-center font-semibold transition-colors">
-                              <Sparkles size={12} /> Auto-Remove BG
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                           <button className="py-2.5 px-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 hover:border-blue-500/50 text-blue-400 text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95">
+                              <Sparkles size={14} /> Auto-Remove BG
                            </button>
-                           <button className="py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-center items-center transition-colors">
-                              <LucideImage size={12} /> Gen AI Fill
+                           <button className="py-2.5 px-3 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95">
+                              <LucideImage size={14} /> Gen AI Fill
                            </button>
                         </div>
-                     </div>
+                     </PanelSection>
 
                      {/* Smart Collage Builder */}
-                     <div className="pt-4 border-t border-[#2C2C2C] space-y-3">
-                        <div className="text-[10px] text-[#A0A0A0] font-semibold flex items-center justify-between">
-                           <div className="flex items-center gap-1"><Layout size={12} /> Smart Collage Builder</div>
-                           <span className="text-[9px] text-blue-400 font-bold bg-blue-500/10 px-1.5 py-0.5 rounded">PERFECT FIT</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-1.5">
+                     <PanelSection 
+                        title={
+                           <div className="flex items-center justify-between w-full">
+                              <span>Smart Collage Builder</span>
+                              <span className="text-[9px] font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full shadow-sm shadow-blue-500/20">PERFECT FIT</span>
+                           </div>
+                        } 
+                        icon={<Layout size={14} className="text-purple-400" />}
+                     >
+                        <div className="grid grid-cols-3 gap-2">
                            {[
                               { l: '2x Grid', i: '2x' },
                               { l: '3x Grid', i: '3x' },
@@ -606,256 +464,109 @@ export const PropertiesTab: React.FC = () => {
                               <button
                                  key={c.i}
                                  onClick={() => generateSmartCollage(c.i)}
-                                 className="py-2 bg-[#202020] hover:bg-[#2A2A2A] border border-[#303030] rounded text-[9px] text-[#8A8A8A] hover:text-white flex flex-col items-center justify-center gap-1 transition"
+                                 className="py-2.5 bg-[#141414] hover:bg-[#1C1C1C] border border-[#333] hover:border-purple-500/50 rounded-lg text-[10px] text-zinc-400 hover:text-white flex flex-col items-center justify-center gap-1.5 transition-all group active:scale-95 shadow-sm"
                               >
-                                 <div className="w-6 h-6 border border-[#555] rounded-sm opacity-50 flex items-center justify-center text-[8px] font-mono">{c.i}</div>
-                                 {c.l}
+                                 <div className="w-8 h-8 border border-zinc-700 group-hover:border-purple-400/50 rounded-md bg-[#0A0A0A] group-hover:bg-purple-500/10 flex items-center justify-center text-[10px] font-mono transition-colors text-zinc-500 group-hover:text-purple-300">{c.i}</div>
+                                 <span className="font-medium">{c.l}</span>
                               </button>
                            ))}
                         </div>
 
-                        <div className="space-y-2.5 bg-[#1A1A1A] p-2.5 rounded-lg border border-[#262626]">
-                           <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block mb-1">Preset Options (Perfect Fit)</span>
+                        <div className="space-y-4 bg-[#111] p-3 rounded-lg border border-white/5 mt-2">
+                           <Label>Preset Options (Perfect Fit)</Label>
 
-                           <div>
-                              <div className="flex justify-between items-center text-[10px] text-[#8A8A8A] mb-1">
-                                 <span>Outer Padding (Margin)</span>
-                                 <span className="font-mono text-white text-[10px]">{collagePaddingPercent}%</span>
-                              </div>
-                              <input
-                                 type="range" min="0" max="15" step="1"
-                                 value={collagePaddingPercent}
-                                 onChange={(e) => setCollagePaddingPercent(Number(e.target.value))}
-                                 className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                              />
-                           </div>
+                           <RangeSlider label="Outer Padding (Margin)" min="0" max="15" step="1" value={collagePaddingPercent} valueDisplay={collagePaddingPercent} displayUnit="%" onChange={(e) => setCollagePaddingPercent(Number(e.target.value))} />
+                           <RangeSlider label="Inner Gap (Spacing)" min="0" max="10" step="0.5" value={collageGapPercent} valueDisplay={collageGapPercent} displayUnit="%" onChange={(e) => setCollageGapPercent(Number(e.target.value))} />
 
-                           <div>
-                              <div className="flex justify-between items-center text-[10px] text-[#8A8A8A] mb-1">
-                                 <span>Inner Gap (Spacing)</span>
-                                 <span className="font-mono text-white text-[10px]">{collageGapPercent}%</span>
-                              </div>
-                              <input
-                                 type="range" min="0" max="10" step="0.5"
-                                 value={collageGapPercent}
-                                 onChange={(e) => setCollageGapPercent(Number(e.target.value))}
-                                 className="w-full h-1 bg-[#2C2C2C] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                              />
-                           </div>
-
-                           <div className="grid grid-cols-2 gap-2 pt-1">
+                           <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5">
                               <div>
-                                 <span className="text-[9px] text-[#8A8A8A] block mb-1">Block Fill</span>
-                                 <div className="flex gap-1.5 items-center">
-                                    <div className="w-5 h-5 rounded border border-[#3A3A3A] shrink-0 relative" style={{ backgroundColor: collageBgColor }}>
-                                       <ColorPickerTrigger color={collageBgColor} onChange={setCollageBgColor} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                    </div>
+                                 <Label>Block Fill</Label>
+                                 <div className="w-full h-8 rounded-md border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: collageBgColor }}>
+                                    <ColorPickerTrigger color={collageBgColor} onChange={setCollageBgColor} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                  </div>
                               </div>
                               <div>
-                                 <span className="text-[9px] text-[#8A8A8A] block mb-1">Border Color</span>
-                                 <div className="flex gap-1.5 items-center">
-                                    <div className="w-5 h-5 rounded border border-[#3A3A3A] shrink-0 relative" style={{ backgroundColor: collageBorderColor }}>
-                                       <ColorPickerTrigger color={collageBorderColor} onChange={setCollageBorderColor} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                    </div>
+                                 <Label>Border Color</Label>
+                                 <div className="w-full h-8 rounded-md border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: collageBorderColor }}>
+                                    <ColorPickerTrigger color={collageBorderColor} onChange={setCollageBorderColor} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                  </div>
                               </div>
                            </div>
 
-                           <div className="grid grid-cols-2 gap-2 pt-1">
+                           <div className="grid grid-cols-2 gap-4 pt-1">
                               <div>
-                                 <span className="text-[9px] text-[#8A8A8A] block mb-1">Border Width</span>
+                                 <Label>Border Width</Label>
                                  <input
                                     type="number" min="0" max="10"
                                     value={collageBorderWidth}
                                     onChange={(e) => setCollageBorderWidth(Number(e.target.value))}
-                                    className="w-full h-6 bg-[#181818] border border-[#3A3A3A] text-[10px] text-white px-1.5 rounded outline-none focus:border-blue-500"
+                                    className="w-full h-8 bg-white/5 border border-white/10 text-[11px] text-white px-2 rounded-md outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
                                  />
                               </div>
                               <div>
-                                 <span className="text-[9px] text-[#8A8A8A] block mb-1">Corner Radius</span>
+                                 <Label>Corner Radius</Label>
                                  <input
                                     type="number" min="0" max="100"
                                     value={collageCornerRadius}
                                     onChange={(e) => setCollageCornerRadius(Number(e.target.value))}
-                                    className="w-full h-6 bg-[#181818] border border-[#3A3A3A] text-[10px] text-white px-1.5 rounded outline-none focus:border-blue-500"
+                                    className="w-full h-8 bg-white/5 border border-white/10 text-[11px] text-white px-2 rounded-md outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
                                  />
                               </div>
                            </div>
 
-                           <div>
-                              <span className="text-[9px] text-[#8A8A8A] block mb-1 font-sans">Border Style</span>
-                              <div className="grid grid-cols-3 gap-1 bg-[#181818] border border-[#2A2A2A] rounded p-0.5">
+                           <div className="pt-1">
+                              <Label>Border Style</Label>
+                              <div className="grid grid-cols-3 gap-1 bg-[#0A0A0A] border border-white/5 rounded-lg p-1">
                                  {['none', 'solid', 'dashed'].map((st) => (
-                                    <button
-                                       key={st}
-                                       type="button"
-                                       onClick={() => setCollageBorderStyle(st as any)}
-                                       className={`py-1 text-[9px] font-semibold rounded capitalize transition ${collageBorderStyle === st ? 'bg-[#3A3A3A] text-white' : 'text-[#8A8A8A] hover:text-white'}`}
-                                    >
-                                       {st}
-                                    </button>
+                                    <GridButton key={st} active={collageBorderStyle === st} onClick={() => setCollageBorderStyle(st as any)}>
+                                       <span className="capitalize">{st}</span>
+                                    </GridButton>
                                  ))}
                               </div>
                            </div>
                         </div>
-                     </div>
+                     </PanelSection>
 
                      {/* Print Settings */}
-                     <div className="pt-4 border-t border-[#2C2C2C]">
-                        <div className="text-[10px] text-[#A0A0A0] mb-2 font-semibold flex items-center gap-1"><Printer size={12} /> Print Preparation</div>
-                        <div className="space-y-1.5">
-                           <ModernCheckbox
-                              checked={!!artboards.find(b => b.id === activeArtboardId)?.showMargins}
-                              onChange={(val) => updateArtboardPropDirect(activeArtboardId, 'showMargins', val, true)}
-                              label='Show Print Margins (0.25")'
-                              labelLeft
-                           />
+                     <PanelSection title="Print Preparation" icon={<Printer size={14} className="text-zinc-400" />}>
+                        <div className="space-y-3">
+                           <div className="bg-[#111] p-3 rounded-lg border border-white/5">
+                              <ModernCheckbox
+                                 checked={!!artboards.find(b => b.id === activeArtboardId)?.showMargins}
+                                 onChange={(val) => updateArtboardPropDirect(activeArtboardId, 'showMargins', val, true)}
+                                 label='Show Print Margins (0.25")'
+                                 labelLeft
+                              />
+                           </div>
                            <div className="flex gap-2">
                               <button
                                  onClick={() => generateBleed(false)}
-                                 className="flex-1 py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-center items-center transition-colors active:scale-95"
+                                 className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95"
                                  title="Add 0.125&#34; Bleed"
                               >
-                                 <Plus className="opacity-70" size={12} />
+                                 <Plus className="text-zinc-400" size={14} />
                                  <span>Add Bleed</span>
                               </button>
                               <button
                                  onClick={() => generateBleed(true)}
-                                 className="flex-1 py-1.5 px-2 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] text-white text-[10px] rounded flex gap-1.5 justify-center items-center transition-colors active:scale-95"
+                                 className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95"
                                  title="Remove 0.125&#34; Bleed"
                               >
-                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><path d="M5 12h14" /></svg>
+                                 <Minus className="text-zinc-400" size={14} />
                                  <span>Remove Bleed</span>
                               </button>
                            </div>
                         </div>
-                     </div>
+                     </PanelSection>
                   </div>
                ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-center opacity-50">
-                     <MousePointer2 size={32} className="mb-4" />
-                     <span className="text-sm font-medium">No layer selected</span>
-                     <span className="text-xs mt-2 w-48">Select an object or an artboard on the canvas to edit its properties.</span>
+                  <div className="flex flex-col items-center justify-center py-24 text-center opacity-40">
+                     <MousePointer2 size={36} className="mb-4 text-white" strokeWidth={1.5} />
+                     <span className="text-sm font-semibold text-white">No Selection</span>
+                     <span className="text-xs mt-2 w-56 text-zinc-400 leading-relaxed">Select an object or an artboard on the canvas to edit its properties.</span>
                   </div>
                )}
             </>
-         )}
-         {false && (
-            <div className="pt-6 border-t border-[#2C2C2C] space-y-4">
-               <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-1 flex items-center gap-2"><Brush size={12} /> Brush Engine</div>
-
-               {activeTool === 'brush' && (
-                  <div>
-                     <label className="text-xs text-[#8A8A8A] block mb-1">Brush Type</label>
-                     <select
-                        className="w-full h-8 bg-[#181818] border border-[#3A3A3A] rounded text-xs px-2 outline-none text-white focus:border-blue-500"
-                        value={brushType || 'pencil'}
-                        onChange={(e) => setBrushType(e.target.value)}
-                     >
-                        <optgroup label="Standard Brushes">
-                           <option value="pencil">Pencil</option>
-                           <option value="brush">Art Brush</option>
-                           <option value="marker">Permanent Marker</option>
-                           <option value="highlighter">Highlighter</option>
-                        </optgroup>
-                        <optgroup label="Technical & Artistic">
-                           <option value="ink">Ink Pen</option>
-                           <option value="calligraphy">Calligraphy Brush</option>
-                           <option value="pixel">Pixel Brush</option>
-                           <option value="watercolor">Watercolor Brush</option>
-                        </optgroup>
-                        <optgroup label="Air & Sprays">
-                           <option value="airbrush">Airbrush</option>
-                           <option value="spray">Spray / Splatter</option>
-                           <option value="chalk">Chalk Brush</option>
-                        </optgroup>
-                        <optgroup label="Pattern Brushes">
-                           <option value="pattern_dots">Pattern - Dots</option>
-                           <option value="pattern_dashed">Pattern - Dashed Lines</option>
-                           <option value="pattern_texture">Pattern - Texture Stamp</option>
-                           <option value="pattern_decorative">Pattern - Decorative Diamonds</option>
-                           <option value="pattern_repeating_shapes">Pattern - Repeating Squares</option>
-                        </optgroup>
-                     </select>
-                  </div>
-               )}
-
-               <div>
-                  <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                     <span>Brush Size</span>
-                     <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushSize}px</span>
-                  </div>
-                  <input
-                     type="range" min="1" max="500" step="1" value={brushSize}
-                     onChange={(e) => setBrushSize(Number(e.target.value))}
-                     className="w-full accent-blue-500 h-1"
-                  />
-               </div>
-
-               {activeTool === 'brush' && (
-                  <>
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Opacity</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushOpacity}%</span>
-                        </div>
-                        <input
-                           type="range" min="1" max="100" step="1" value={brushOpacity}
-                           onChange={(e) => setBrushOpacity(Number(e.target.value))}
-                           className="w-full accent-blue-500 h-1"
-                        />
-                     </div>
-
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Flow</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushFlow}%</span>
-                        </div>
-                        <input
-                           type="range" min="1" max="100" step="1" value={brushFlow}
-                           onChange={(e) => setBrushFlow(Number(e.target.value))}
-                           className="w-full accent-blue-500 h-1"
-                        />
-                     </div>
-
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Hardness</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushHardness}%</span>
-                        </div>
-                        <input
-                           type="range" min="1" max="100" step="1" value={brushHardness}
-                           onChange={(e) => setBrushHardness(Number(e.target.value))}
-                           className="w-full accent-blue-500 h-1"
-                        />
-                     </div>
-
-                     <div>
-                        <div className="flex justify-between items-center text-[10px] text-[#A0A0A0] mb-1 font-semibold">
-                           <span>Smoothing</span>
-                           <span className="bg-[#181818] px-1.5 py-0.5 rounded border border-[#3A3A3A] text-[10px] text-white font-mono">{brushSmoothing}%</span>
-                        </div>
-                        <input
-                           type="range" min="0" max="100" step="1" value={brushSmoothing}
-                           onChange={(e) => setBrushSmoothing(Number(e.target.value))}
-                           className="w-full accent-blue-500 h-1"
-                        />
-                     </div>
-
-                     <div className="pt-2">
-                        <BrushPreview
-                           type={brushType}
-                           color={brushColor}
-                           size={brushSize}
-                           opacity={brushOpacity}
-                           hardness={brushHardness}
-                           flow={brushFlow}
-                        />
-                     </div>
-                  </>
-               )}
-            </div>
          )}
       </div>
    );

@@ -6,7 +6,7 @@ import { useCollageConfig } from '../../hooks/useCollageConfig';
 import { ColorPickerTrigger } from '../shared/ColorPickers';
 import { ModernCheckbox } from '../shared/ModernCheckbox';
 import { FilterSlider } from '../shared/FilterSlider';
-import { FlipHorizontal, FlipVertical } from 'lucide-react';
+import { FlipHorizontal, FlipVertical, RotateCcw } from 'lucide-react';
 
 export const SmartCollageBlockCustomizationPanel: React.FC = () => {
    const {
@@ -37,6 +37,17 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
    const currentOpacity = (activeObj as any)?.collageImageOpacity !== undefined ? (activeObj as any).collageImageOpacity : 1;
    const currentFlipX = (activeObj as any)?.collageImageFlipX || false;
    const currentFlipY = (activeObj as any)?.collageImageFlipY || false;
+
+   const handleResetImageTransforms = () => {
+      updateCollageBlockStyleProperty('collageImageFit', 'cover');
+      updateCollageBlockStyleProperty('collageImageZoom', 1);
+      updateCollageBlockStyleProperty('collageImagePanX', 0);
+      updateCollageBlockStyleProperty('collageImagePanY', 0);
+      updateCollageBlockStyleProperty('collageImageRotation', 0);
+      updateCollageBlockStyleProperty('collageImageOpacity', 1);
+      updateCollageBlockStyleProperty('collageImageFlipX', false);
+      updateCollageBlockStyleProperty('collageImageFlipY', false);
+   };
 
    return (
       <div className="space-y-4 pt-4 border-t border-[#2C2C2C] pb-4 animate-fade-in">
@@ -225,7 +236,7 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
          {/* Image filling interactive controls */}
          <div className="space-y-2 bg-[#141414] border border-[#222] p-3 rounded-lg">
             <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#909090] block pb-1 border-b border-[#222]">Fill Cell with Image</span>
-            <div className="pt-1">
+            <div className="pt-1 space-y-2">
                <label className="relative flex flex-col items-center justify-center border border-dashed border-[#3A3A3A] hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-[#0C0C0C] hover:bg-blue-950/10 group">
                   <LucideImage size={24} className="text-[#8A8A8A] group-hover:text-blue-400 mb-1.5 transition-colors" />
                   <span className="text-[10px] font-bold text-white group-hover:text-blue-300">{hasImage ? 'Replace Image' : 'Upload Photograph'}</span>
@@ -240,6 +251,15 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                      }}
                   />
                </label>
+               {hasImage && (
+                  <button
+                     type="button"
+                     onClick={() => updateCollageBlockStyleProperty('collageImageSrc', undefined)}
+                     className="w-full py-2 bg-red-950/20 hover:bg-red-900/40 border border-red-900/50 hover:border-red-500/50 text-red-400 hover:text-red-300 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-2 active:scale-95"
+                  >
+                     Remove Image
+                  </button>
+               )}
             </div>
 
             {hasImage && (
@@ -291,6 +311,16 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                            <FlipVertical size={13} /> FLIP Y
                         </button>
                      </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-[#222]">
+                     <button
+                        type="button"
+                        onClick={handleResetImageTransforms}
+                        className="w-full py-2 bg-[#181818] hover:bg-[#222] border border-[#3A3A3A] text-[#8A8A8A] hover:text-white text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-2 active:scale-95"
+                     >
+                        <RotateCcw size={13} /> Reset Transforms
+                     </button>
                   </div>
                </div>
             )}
