@@ -113,10 +113,13 @@ export default function App() {
 
   const [searchParams] = useSearchParams();
   const focusNodePath = searchParams.get('focusNode');
+  const forceWorkspace = searchParams.get('forceWorkspace');
 
   // We determine if focusNode is a "workspace" node based on naming conventions used by NodeRenderer
   const focusNodeType = useMemo(() => {
     if (!focusNodePath) return null;
+    if (forceWorkspace === 'true') return 'workspace';
+
     const name = String(focusNodePath.split('.').pop() || '');
 
     // Check if it's a workspace-supported node

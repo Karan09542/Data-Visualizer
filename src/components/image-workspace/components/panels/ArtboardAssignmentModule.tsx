@@ -93,12 +93,6 @@ export const ArtboardAssignmentModule: React.FC = () => {
                   <span>Fitting, Sizing & Spacing</span>
                </div>
                <div className="grid grid-cols-2 gap-1">
-                  {[
-                     { action: 'distributeH', title: 'Equal Space / Distribute Horizontally', label: 'Distribute Horiz' },
-                     { action: 'distributeV', title: 'Equal Space / Distribute Vertically', label: 'Distribute Vert' }
-                  ].map(btn => (
-                     <button key={btn.action} onClick={() => alignSelection(btn.action as any)} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]" title={btn.title}>{btn.label}</button>
-                  ))}
 
                   {parentAlignmentObj && (
                      <>
@@ -121,7 +115,7 @@ export const ArtboardAssignmentModule: React.FC = () => {
                   ].map(btn => (
                      <button key={btn.action} onClick={() => alignSelection(btn.action as any)} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]">{btn.label}</button>
                   ))}
-                  <button onClick={() => alignSelection('centerH')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 col-span-2 font-mono border border-transparent hover:border-[#444]">Center Selection</button>
+                  <button onClick={() => alignSelection('center')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 col-span-2 font-mono border border-transparent hover:border-[#444]">Center Selection</button>
                </div>
             </div>
          </div>

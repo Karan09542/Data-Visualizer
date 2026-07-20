@@ -6,9 +6,12 @@ interface NodeOptionsMenuProps {
   path: string;
   iconSize?: number;
   className?: string;
+  customText?: string;
+  onCustomAction?: () => void;
+  forceWorkspace?: boolean;
 }
 
-export function NodeOptionsMenu({ path, iconSize = 18, className = "" }: NodeOptionsMenuProps) {
+export function NodeOptionsMenu({ path, iconSize = 18, className = "", customText, onCustomAction, forceWorkspace }: NodeOptionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -75,6 +78,9 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "" }: NodeOpt
     setIsOpen(false);
     const url = new URL(window.location.href);
     url.searchParams.set('focusNode', path);
+    if (forceWorkspace) {
+      url.searchParams.set('forceWorkspace', 'true');
+    }
     window.open(url.toString(), '_blank');
   };
 
@@ -96,17 +102,24 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "" }: NodeOpt
       {isOpen && createPortal(
         <div 
           ref={menuRef}
-          className="min-w-[180px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-lg shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] py-1 overflow-hidden pointer-events-auto"
+          className="min-w-[140px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-lg shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] py-1 overflow-hidden pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
           <button
-            onClick={handleOpenInNewTab}
-            className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2.5 transition-colors cursor-pointer"
+            onClick={() => {
+              if (onCustomAction) {
+                setIsOpen(false);
+                onCustomAction();
+              } else {
+                handleOpenInNewTab();
+              }
+            }}
+            className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2 transition-colors cursor-pointer"
           >
-            <ExternalLink size={15} />
-            <span className="font-medium">Open in New Tab</span>
+            <ExternalLink size={14} />
+            <span className="font-medium">{customText || "Open in New Tab"}</span>
           </button>
         </div>,
         document.body

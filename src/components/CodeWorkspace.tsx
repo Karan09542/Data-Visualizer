@@ -168,6 +168,17 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   // Active open file in the workspace
   const currentFilePath = activeExplorerFile || path;
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has('focusNode') && currentFilePath) {
+      if (searchParams.get('focusNode') !== currentFilePath) {
+        searchParams.set('focusNode', currentFilePath);
+        const newUrl = `${window.location.pathname}?${searchParams.toString()}${window.location.hash}`;
+        window.history.replaceState(null, '', newUrl);
+      }
+    }
+  }, [currentFilePath]);
+
   const isEditingOtherFile = useMemo(() => {
     return !!(activeExplorerFile && activeExplorerFile !== path);
   }, [activeExplorerFile, path]);

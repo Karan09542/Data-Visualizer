@@ -823,7 +823,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
 
-   const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'distributeH' | 'distributeV') => {
+   const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'distributeH' | 'distributeV' | 'center') => {
       if (!fabricRef.current) return;
       const activeObject = fabricRef.current.getActiveObject();
       if (!activeObject) return;
@@ -1015,6 +1015,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                targetAbsLeft = board.x;
                break;
             case 'centerH':
+            case 'center':
             case 'fit':
             case 'fill':
             case 'fitWidth':
@@ -1034,6 +1035,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                targetAbsTop = board.y;
                break;
             case 'centerV':
+            case 'center':
             case 'fit':
             case 'fill':
             case 'fitHeight':
