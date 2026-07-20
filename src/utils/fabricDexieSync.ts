@@ -1,5 +1,6 @@
 import { db, FabricObject, Artboard } from '../lib/db';
 import * as fabric from 'fabric';
+import { resolveAssetUrl } from './assetManager';
 
 export const saveToDexie = async (documentId: string, artboards: any[], canvas: fabric.Canvas) => {
   if (!canvas || !documentId) return;
@@ -94,6 +95,7 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       'id', 
       'artboardId', 
       'layerId', 
+      'assetId',
       'customFilters', 
       'name', 
       'customName', 
@@ -172,16 +174,36 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
       return objData;
     });
 
-    fabric.util.enlivenObjects(orderedData).then((enlivenedObjects: any[]) => {
-      if (enlivenedObjects && enlivenedObjects.length > 0) {
+    // Pre-resolve asset URLs for objects that have an assetId (e.g. pasted/imported images)
+    // We must do this sequentially before passing to fabric.util.enlivenObjects
+    Promise.all(orderedData.map(async (objData) => {
+      if (objData.assetId) {
+         try {
+            const url = await resolveAssetUrl(objData.assetId);
+            if (url) {
+               objData.src = url;
+            }
+         } catch(e) {
+            console.error("Failed to resolve asset URL for", objData.assetId, e);
+         }
+      }
+      return objData;
+    })).then((resolvedData) => {
+      fabric.util.enlivenObjects(resolvedData).then((enlivenedObjects: any[]) => {
+        if (enlivenedObjects && enlivenedObjects.length > 0) {
         enlivenedObjects.forEach((enlObj, index) => {
           if (!enlObj) return;
           const record = objectRecords[index];
           enlObj.id = record.id;
           enlObj.artboardId = record.artboardId;
           
+          // Force selectability based on lock state to recover from mid-pan refreshes
+          enlObj.selectable = !record.data.locked;
+          enlObj.evented = !record.data.locked;
+          
           if (record.data.customName) enlObj.customName = record.data.customName;
           if (record.data.layerId) enlObj.layerId = record.data.layerId;
+          if (record.data.assetId) enlObj.assetId = record.data.assetId;
           if (record.data.isFrameGroup) enlObj.set('isFrameGroup', record.data.isFrameGroup);
           if (record.data.frameType) enlObj.set('frameType', record.data.frameType);
           
@@ -220,6 +242,7 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
       console.error("Failed to enliven objects:", e);
       canvas.requestRenderAll();
       resolve(loadedArtboards);
+    });
     });
   });
 };

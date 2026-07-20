@@ -48,7 +48,8 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
       return {
         url: a.url,
         type: typeStr as 'svg' | 'image',
-        name: a.filename
+        name: a.filename,
+        assetId: a.id
       };
     });
     if (selected.length > 0) {

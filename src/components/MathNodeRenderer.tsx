@@ -104,7 +104,7 @@ import {
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 
-export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
+export const MathNodeRenderer: React.FC<any> = ({
   nodeId,
   data,
   isExpanded,
@@ -897,8 +897,8 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
 
         // Thin synchronous shim for plotting
         const newFunctions = safeFunctions.map((f, i) => {
-          const res = result.results[i] || ({} as (typeof result.results)[number]);
-          if (res.error) return { ...f, error: res.error, compiledKey: undefined };
+          const res = (result.results[i] as any) || {};
+          if (res.error) return { ...f, error: res.error };
           try {
             let compiled, compiled2;
             let inferredOperator = f.operator;
@@ -2537,7 +2537,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               ? {
                                                 ...fn,
                                                 showLabel: e.target.checked,
-                                                label: e.target.checked && !fn.label ? (fn.latex || fn.expr || "") : fn.label,
+                                                label: e.target.checked && !fn.label ? ((fn as any).latex || fn.expr || "") : fn.label,
                                               }
                                               : fn,
                                           ),
@@ -2577,7 +2577,7 @@ export const MathNodeRenderer: React.FC<MathNodeRendererProps> = ({
                                               fn.id === f.id
                                                 ? {
                                                   ...fn,
-                                                  label: fn.latex || fn.expr || "",
+                                                  label: (fn as any).latex || fn.expr || "",
                                                 }
                                                 : fn
                                             )

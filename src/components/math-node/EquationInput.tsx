@@ -21,6 +21,7 @@ interface EquationInputProps {
   onChange: (v: string) => void;
   variables: any[];
   hoveredVar?: string | null;
+  setHoveredVar?: React.Dispatch<React.SetStateAction<string | null>>;
   error?: string;
   warning?: string;
   onAddEnter?: () => void;

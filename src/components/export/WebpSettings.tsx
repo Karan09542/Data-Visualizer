@@ -200,7 +200,7 @@ export const WebpSettings: React.FC<Props> = ({ options, onChange, mode }) => {
               <input
                 type="range"
                 min="0"
-                max="100"
+                max="99"
                 value={options.near_lossless}
                 onChange={(e) => onChange({ near_lossless: parseInt(e.target.value) })}
                 className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-emerald-600"

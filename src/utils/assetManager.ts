@@ -39,10 +39,10 @@ export function generateThumbnail(blob: Blob, maxWidth = 160, maxHeight = 160): 
     img.crossOrigin = "anonymous";
     img.onload = () => {
       URL.revokeObjectURL(url);
-      
+
       let width = img.naturalWidth || img.width;
       let height = img.naturalHeight || img.height;
-      
+
       if (width > maxWidth || height > maxHeight) {
         if (width > height) {
           height = Math.round((height * maxWidth) / width);
@@ -52,7 +52,7 @@ export function generateThumbnail(blob: Blob, maxWidth = 160, maxHeight = 160): 
           height = maxHeight;
         }
       }
-      
+
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
@@ -61,7 +61,7 @@ export function generateThumbnail(blob: Blob, maxWidth = 160, maxHeight = 160): 
         resolve(blob);
         return;
       }
-      
+
       try {
         ctx.drawImage(img, 0, 0, width, height);
         canvas.toBlob(
@@ -96,17 +96,17 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
   try {
     const arrayBuffer = await file.arrayBuffer();
     const hash = await computeHash(arrayBuffer);
-    
+
     // 1. Deduplication Check
     const existing = await db.assets.where("hash").equals(hash).first();
     if (existing) {
       return { assetId: existing.assetId, thumbnailId: existing.thumbnailId };
     }
-    
+
     // 2. Setup original Blob
     const originalBlob = new Blob([arrayBuffer], { type: file.type });
     const dims = await getImageDimensions(originalBlob);
-    
+
     // 3. Generate IDs
     const randomHex = () => Math.random().toString(36).substring(2, 10);
     const getExtension = (name: string, type: string) => {
@@ -119,12 +119,12 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
       }
       return '';
     };
-    
+
     const ext = getExtension(file.name, file.type);
     const assetId = ext ? `img_${randomHex()}.${ext}` : `img_${randomHex()}`;
     const thumbnailId = ext ? `thumb_${randomHex()}.${ext}` : `thumb_${randomHex()}`;
 
-    
+
     // 4. Generate Thumbnail
     let thumbnailBlob: Blob;
     try {
@@ -132,7 +132,7 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
     } catch {
       thumbnailBlob = originalBlob; // fallback
     }
-    
+
     // 5. Store both original and thumbnail
     const originalAsset: Asset = {
       assetId,
@@ -146,7 +146,7 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
       data: originalBlob,
       createdAt: Date.now()
     };
-    
+
     const thumbnailAsset: Asset = {
       assetId: thumbnailId,
       mimeType: "image/jpeg",
@@ -154,10 +154,10 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
       data: thumbnailBlob,
       createdAt: Date.now()
     };
-    
+
     await db.assets.add(originalAsset);
     await db.assets.add(thumbnailAsset);
-    
+
     return { assetId, thumbnailId };
   } catch (err) {
     console.error("AssetManager import failed", err);
@@ -192,10 +192,10 @@ export async function resolveAssetUrl(assetId: string): Promise<string> {
   if (urlCache.has(assetId)) {
     return urlCache.get(assetId)!;
   }
-  
+
   const blob = await getAssetBlob(assetId);
   if (!blob) return "";
-  
+
   let url = URL.createObjectURL(blob);
   if (assetId.includes('.')) {
     const ext = assetId.split('.').pop();
@@ -203,7 +203,7 @@ export async function resolveAssetUrl(assetId: string): Promise<string> {
       url += `#file.${ext}`;
     }
   }
-  
+
   urlCache.set(assetId, url);
   return url;
 }
@@ -215,7 +215,7 @@ export function revokeAllUrls() {
   for (const url of urlCache.values()) {
     try {
       URL.revokeObjectURL(url);
-    } catch {}
+    } catch { }
   }
   urlCache.clear();
 }
@@ -225,7 +225,7 @@ export function revokeAllUrls() {
  */
 export function collectReferencedAssetIds(obj: any): Set<string> {
   const ids = new Set<string>();
-  
+
   function traverse(current: any) {
     if (!current) return;
     if (typeof current === "object") {
@@ -239,7 +239,7 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
       if (typeof current === "string" && (current.startsWith("img_") || current.startsWith("thumb_"))) {
         ids.add(current);
       }
-      
+
       for (const key of Object.keys(current)) {
         traverse(current[key]);
       }
@@ -249,7 +249,7 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
       }
     }
   }
-  
+
   traverse(obj);
   return ids;
 }
@@ -260,25 +260,24 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
 export async function deleteUnusedAssets(parsedData: any, historyCodes: string[] = []): Promise<number> {
   try {
     const referencedIds = collectReferencedAssetIds(parsedData);
-    
-    // Also include IDs from undo/redo history to prevent breaking undo!
-    const assetIdRegex = /(img_|thumb_)[a-zA-Z0-9_.-]+/g;
-    for (const codeStr of historyCodes) {
-      if (!codeStr) continue;
-      const matches = codeStr.match(assetIdRegex);
-      if (matches) {
-        for (const match of matches) {
-          // Clean up potential trailing quotes or commas if regex matched too much
-          const cleanedMatch = match.replace(/["',}\]]/g, "");
-          referencedIds.add(cleanedMatch);
+
+    // Also protect assets that are being used internally by ImageWorkspace canvases
+    try {
+      const workspaceObjects = await db.objects.toArray();
+      for (const obj of workspaceObjects) {
+        if (obj.data && obj.data.assetId) {
+          referencedIds.add(obj.data.assetId);
         }
       }
+    } catch (e) {
+      console.warn("Failed to check workspace objects for asset references", e);
     }
+
     const allAssets = await db.assets.toArray();
-    
+
     const toDelete: string[] = [];
     const keepThumbnailIds = new Set<string>();
-    
+
     // First pass: map which thumbnails to keep
     for (const asset of allAssets) {
       if (asset.assetId.startsWith("img_") && referencedIds.has(asset.assetId)) {
@@ -287,12 +286,12 @@ export async function deleteUnusedAssets(parsedData: any, historyCodes: string[]
         }
       }
     }
-    
+
     // Second pass: identify obsolete ones
     for (const asset of allAssets) {
       const isOriginal = asset.assetId.startsWith("img_");
       const isThumbnail = asset.assetId.startsWith("thumb_");
-      
+
       if (isOriginal) {
         if (!referencedIds.has(asset.assetId)) {
           toDelete.push(asset.assetId);
@@ -306,7 +305,7 @@ export async function deleteUnusedAssets(parsedData: any, historyCodes: string[]
         }
       }
     }
-    
+
     if (toDelete.length > 0) {
       await db.assets.bulkDelete(toDelete);
     }

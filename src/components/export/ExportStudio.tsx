@@ -1,23 +1,20 @@
 
 import React, { useState } from 'react';
-import { 
-  Zap, 
-  Download, 
-  RotateCw, 
-  Sliders, 
-  Settings2, 
-  ShieldCheck, 
+import {
+  Zap,
+  Download,
+  RotateCw,
   Info,
-  ChevronRight,
   Package,
   Layers,
   Check
 } from 'lucide-react';
-import { ExportSettings, DEFAULT_EXPORT_SETTINGS, ExportFormat } from '../../types/export';
+import { ExportSettings, ExportFormat } from '../../types/export';
 import { MozjpegSettings } from './MozjpegSettings';
 import { WebpSettings } from './WebpSettings';
 import { AvifSettings } from './AvifSettings';
 import { PngSettings } from './PngSettings';
+import { JxlSettings } from './JxlSettings';
 import { ResizeSettings } from './ResizeSettings';
 import { MetricsPanel } from './MetricsPanel';
 import { PRESET_REGISTRY } from '../../lib/imagePresets';
@@ -63,7 +60,7 @@ export const ExportStudio: React.FC<Props> = ({
   const [uiMode, setUiMode] = useState<'basic' | 'advanced' | 'expert'>('basic');
   const [activeSection, setActiveSection] = useState<'codec' | 'resize' | 'presets'>('codec');
 
-  const updateCodecSettings = (codec: 'mozjpeg' | 'webp' | 'avif' | 'png', newOptions: any) => {
+  const updateCodecSettings = (codec: 'mozjpeg' | 'webp' | 'avif' | 'png' | 'jxl', newOptions: any) => {
     onChange({
       ...settings,
       [codec]: { ...settings[codec], ...newOptions }
@@ -128,7 +125,7 @@ export const ExportStudio: React.FC<Props> = ({
             <Zap size={18} className="text-blue-500" />
             <h2 className="text-sm font-black uppercase tracking-widest text-white">Export Studio</h2>
           </div>
-          <select 
+          <select
             value={uiMode}
             onChange={(e) => setUiMode(e.target.value as any)}
             className="bg-[#1A1A1A] border border-[#333] text-[10px] font-bold text-slate-400 rounded px-2 py-1 outline-none cursor-pointer hover:border-blue-500 transition-colors"
@@ -141,15 +138,14 @@ export const ExportStudio: React.FC<Props> = ({
 
         {/* Format Selector Tap */}
         <div className="flex bg-[#1A1A1A] p-1 rounded-lg border border-[#222] gap-1 overflow-x-auto no-scrollbar">
-          {(['jpeg', 'png', 'webp', 'avif'] as ExportFormat[]).map(fmt => (
+          {(['jpeg', 'png', 'webp', 'avif', 'jxl'] as ExportFormat[]).map(fmt => (
             <button
               key={fmt}
               onClick={() => onChange({ ...settings, format: fmt })}
-              className={`flex-1 min-w-[50px] py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
-                settings.format === fmt 
-                ? 'bg-blue-600 text-white shadow-lg' 
-                : 'text-slate-500 hover:text-slate-300 hover:bg-[#252525]'
-              }`}
+              className={`flex-1 min-w-[50px] py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${settings.format === fmt
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-[#252525]'
+                }`}
             >
               {fmt}
             </button>
@@ -158,143 +154,140 @@ export const ExportStudio: React.FC<Props> = ({
       </div>
 
       <div className="p-4 space-y-6 flex-1">
-        
+
         {/* Export Assistant */}
         {recommendation && (
           <div className="bg-blue-900/10 border border-blue-500/20 rounded-xl p-3 flex items-start gap-3 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none" />
-             <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0 text-blue-400">
-               <Info size={16} />
-             </div>
-             <div className="flex-1 relative z-10">
-                <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-sans">{matchedPreset.name} Detected</div>
-                <div className="text-xs text-blue-100/80 mt-1 mb-2 font-medium font-sans">
-                  {recommendation.message}
-                </div>
-                <button 
-                  onClick={() => {
-                    const fmt = recommendation.format.replace('image/', '') as ExportFormat;
-                    onChange({
-                      ...settings,
-                      format: fmt,
-                      [fmt === 'jpeg' ? 'mozjpeg' : fmt]: {
-                        ...(settings[fmt === 'jpeg' ? 'mozjpeg' : fmt] as any),
-                        quality: recommendation.quality
-                      }
-                    });
-                  }}
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 rounded transition-colors shadow-sm"
-                >
-                  Apply Recommended {recommendation.format.split('/')[1].toUpperCase()} @ {recommendation.quality}%
-                </button>
-             </div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none" />
+            <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0 text-blue-400">
+              <Info size={16} />
+            </div>
+            <div className="flex-1 relative z-10">
+              <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-sans">{matchedPreset.name} Detected</div>
+              <div className="text-xs text-blue-100/80 mt-1 mb-2 font-medium font-sans">
+                {recommendation.message}
+              </div>
+              <button
+                onClick={() => {
+                  const fmt = recommendation.format.replace('image/', '') as ExportFormat;
+                  onChange({
+                    ...settings,
+                    format: fmt,
+                    [fmt === 'jpeg' ? 'mozjpeg' : fmt]: {
+                      ...(settings[fmt === 'jpeg' ? 'mozjpeg' : fmt] as any),
+                      quality: recommendation.quality
+                    }
+                  });
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 rounded transition-colors shadow-sm"
+              >
+                Apply Recommended {recommendation.format.split('/')[1].toUpperCase()} @ {recommendation.quality}%
+              </button>
+            </div>
           </div>
         )}
 
         {/* Export Range Targeting Selector */}
         <div className="space-y-4 bg-[#111111] p-3.5 rounded-2xl border border-[#222222]">
-            <div className="flex items-center gap-2 mb-1">
-              <Layers size={14} className="text-blue-500" />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline Target</span>
-            </div>
+          <div className="flex items-center gap-2 mb-1">
+            <Layers size={14} className="text-blue-500" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline Target</span>
+          </div>
 
-            {/* Premium segmented control instead of simple select */}
-            <div className="flex bg-[#161616] p-1 rounded-xl border border-[#222222] gap-1 overflow-x-auto no-scrollbar">
-              {[
-                { id: 'current', label: 'Active' },
-                { id: 'selected', label: 'Selected' },
-                { id: 'all', label: 'All Boards' }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setExportTarget(t.id as any)}
-                  className={`flex-1 min-w-[65px] py-1.5 px-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center whitespace-nowrap ${
-                    exportTarget === t.id 
-                    ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm font-black' 
+          {/* Premium segmented control instead of simple select */}
+          <div className="flex bg-[#161616] p-1 rounded-xl border border-[#222222] gap-1 overflow-x-auto no-scrollbar">
+            {[
+              { id: 'current', label: 'Active' },
+              { id: 'selected', label: 'Selected' },
+              { id: 'all', label: 'All Boards' }
+            ].map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setExportTarget(t.id as any)}
+                className={`flex-1 min-w-[65px] py-1.5 px-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center whitespace-nowrap ${exportTarget === t.id
+                    ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm font-black'
                     : 'text-slate-500 hover:text-slate-300 border border-transparent'
                   }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-            {(exportTarget === "current" || exportTarget === "selected") && (
-              <div className="space-y-1.5 mt-3 max-h-[180px] overflow-y-auto border border-[#1F1F1F] p-1.5 rounded-xl bg-[#090909] custom-scrollbar shadow-inner">
-                  {artboards.map((b) => {
-                    const isSelected = exportTarget === "selected" ? !!selectedExportIds[b.id] : activeArtboardId === b.id;
-                    const isActive = activeArtboardId === b.id;
-                    const isDisabled = exportTarget === "current";
+          {(exportTarget === "current" || exportTarget === "selected") && (
+            <div className="space-y-1.5 mt-3 max-h-[180px] overflow-y-auto border border-[#1F1F1F] p-1.5 rounded-xl bg-[#090909] custom-scrollbar shadow-inner">
+              {artboards.map((b) => {
+                const isSelected = exportTarget === "selected" ? !!selectedExportIds[b.id] : activeArtboardId === b.id;
+                const isActive = activeArtboardId === b.id;
+                const isDisabled = exportTarget === "current";
 
-                    return (
-                      <div 
-                        key={b.id} 
-                        className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${
-                          isActive 
-                          ? 'bg-blue-600/5 border-blue-500/30 shadow-[0_0_12px_rgba(37,99,235,0.03)]' 
-                          : isSelected
-                            ? 'bg-blue-500/5 border-blue-500/20'
-                            : 'hover:bg-[#121212] border-transparent'
-                        }`}
-                        onClick={() => {
-                          if (exportTarget === "selected") {
-                            setSelectedExportIds(prev => ({ ...prev, [b.id]: !prev[b.id] }));
-                          } else {
-                            setActiveArtboardId(b.id);
-                          }
-                        }}
-                      >
-                        {/* Modern Custom Checkbox */}
-                        <div 
-                          className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${
-                            isSelected 
-                            ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]' 
-                            : 'bg-[#121212] border-[#2A2A2A] hover:border-[#444]'
-                          } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                        >
-                          {isSelected && <Check size={11} className="text-white stroke-[3.5] animate-in zoom-in-50" />}
-                        </div>
+                return (
+                  <div
+                    key={b.id}
+                    className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${isActive
+                        ? 'bg-blue-600/5 border-blue-500/30 shadow-[0_0_12px_rgba(37,99,235,0.03)]'
+                        : isSelected
+                          ? 'bg-blue-500/5 border-blue-500/20'
+                          : 'hover:bg-[#121212] border-transparent'
+                      }`}
+                    onClick={() => {
+                      if (exportTarget === "selected") {
+                        setSelectedExportIds(prev => ({ ...prev, [b.id]: !prev[b.id] }));
+                      } else {
+                        setActiveArtboardId(b.id);
+                      }
+                    }}
+                  >
+                    {/* Modern Custom Checkbox */}
+                    <div
+                      className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${isSelected
+                          ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]'
+                          : 'bg-[#121212] border-[#2A2A2A] hover:border-[#444]'
+                        } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      {isSelected && <Check size={11} className="text-white stroke-[3.5] animate-in zoom-in-50" />}
+                    </div>
 
-                        {/* Info details */}
-                        <div className="flex-1 min-w-0" onClick={(e) => {
-                          if (exportTarget === "selected") {
-                            setActiveArtboardId(b.id);
-                            e.stopPropagation();
-                          }
-                        }}>
-                            <div className={`text-[11px] font-extrabold tracking-tight truncate ${isActive ? 'text-blue-400 font-black' : 'text-slate-300'}`}>
-                              {b.name}
-                            </div>
-                            <div className="text-[9px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                              <span className="opacity-50 font-sans font-bold">DIM:</span>
-                              <span className="text-slate-400 font-semibold">{b.width} × {b.height}</span>
-                            </div>
-                        </div>
-
-                        {/* Beautiful active badge status */}
-                        {isActive && (
-                          <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full shrink-0">
-                            <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider">Active</span>
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                          </div>
-                        )}
+                    {/* Info details */}
+                    <div className="flex-1 min-w-0" onClick={(e) => {
+                      if (exportTarget === "selected") {
+                        setActiveArtboardId(b.id);
+                        e.stopPropagation();
+                      }
+                    }}>
+                      <div className={`text-[11px] font-extrabold tracking-tight truncate ${isActive ? 'text-blue-400 font-black' : 'text-slate-300'}`}>
+                        {b.name}
                       </div>
-                    );
-                  })}
-              </div>
-            )}
+                      <div className="text-[9px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                        <span className="opacity-50 font-sans font-bold">DIM:</span>
+                        <span className="text-slate-400 font-semibold">{b.width} × {b.height}</span>
+                      </div>
+                    </div>
+
+                    {/* Beautiful active badge status */}
+                    {isActive && (
+                      <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                        <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider">Active</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Resize Section Toggle */}
         <div className="space-y-4">
-           <ResizeSettings 
-             options={settings.resize} 
-             onChange={(opt) => onChange({ ...settings, resize: { ...settings.resize, ...opt } })}
-             originalWidth={originalWidth}
-             originalHeight={originalHeight}
-             mode={uiMode}
-           />
+          <ResizeSettings
+            options={settings.resize}
+            onChange={(opt) => onChange({ ...settings, resize: { ...settings.resize, ...opt } })}
+            originalWidth={originalWidth}
+            originalHeight={originalHeight}
+            mode={uiMode}
+          />
         </div>
 
         <div className="h-px bg-[#222]" />
@@ -302,30 +295,37 @@ export const ExportStudio: React.FC<Props> = ({
         {/* Dynamic Codec Settings */}
         <div className="space-y-4 animate-in fade-in duration-300">
           {settings.format === 'jpeg' && (
-            <MozjpegSettings 
-              options={settings.mozjpeg} 
-              onChange={(opt) => updateCodecSettings('mozjpeg', opt)} 
+            <MozjpegSettings
+              options={settings.mozjpeg}
+              onChange={(opt) => updateCodecSettings('mozjpeg', opt)}
               mode={uiMode}
             />
           )}
           {settings.format === 'webp' && (
-            <WebpSettings 
-              options={settings.webp} 
-              onChange={(opt) => updateCodecSettings('webp', opt)} 
+            <WebpSettings
+              options={settings.webp}
+              onChange={(opt) => updateCodecSettings('webp', opt)}
               mode={uiMode}
             />
           )}
           {settings.format === 'avif' && (
-            <AvifSettings 
-              options={settings.avif} 
-              onChange={(opt) => updateCodecSettings('avif', opt)} 
+            <AvifSettings
+              options={settings.avif}
+              onChange={(opt) => updateCodecSettings('avif', opt)}
               mode={uiMode}
             />
           )}
           {settings.format === 'png' && (
-            <PngSettings 
-              options={settings.png} 
-              onChange={(opt) => updateCodecSettings('png', opt)} 
+            <PngSettings
+              options={settings.png}
+              onChange={(opt) => updateCodecSettings('png', opt)}
+              mode={uiMode}
+            />
+          )}
+          {settings.format === 'jxl' && (
+            <JxlSettings
+              options={settings.jxl}
+              onChange={(opt) => updateCodecSettings('jxl', opt)}
               mode={uiMode}
             />
           )}
@@ -335,7 +335,7 @@ export const ExportStudio: React.FC<Props> = ({
 
         {/* Presets List */}
         <div className="space-y-3">
-           <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2">
             <Package size={14} className="text-slate-500" />
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Global Presets</span>
           </div>
@@ -354,7 +354,7 @@ export const ExportStudio: React.FC<Props> = ({
 
         {/* Metrics Display */}
         <div className="pt-2">
-          <MetricsPanel 
+          <MetricsPanel
             originalSize={originalSize}
             optimizedSize={optimizedSize}
             originalWidth={originalWidth}
@@ -368,15 +368,36 @@ export const ExportStudio: React.FC<Props> = ({
       </div>
 
       {/* Footer Export Button */}
-      <div className="p-4 bg-[#111] border-t border-[#222] sticky bottom-0">
+      <div className="p-4 bg-[#111] border-t border-[#222] sticky bottom-0 space-y-3">
+        <label className="flex items-center gap-3 cursor-pointer group bg-[#161616] p-2.5 rounded-xl border border-[#222] hover:border-blue-500/20 transition-all select-none">
+          <div className="relative flex items-center justify-center">
+            <input
+              type="checkbox"
+              checked={settings.askForFilename || false}
+              onChange={(e) => onChange({ ...settings, askForFilename: e.target.checked })}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
+              settings.askForFilename 
+              ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]' 
+              : 'bg-[#121212] border-[#2A2A2A] group-hover:border-[#444]'
+            }`}>
+              {settings.askForFilename && <Check size={11} className="text-white stroke-[3.5] animate-in zoom-in-50" />}
+            </div>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] text-slate-400 group-hover:text-slate-200 transition-colors font-bold uppercase tracking-tight">Ask for Custom Filename</span>
+            <span className="text-[9px] text-slate-600">Prompt for name on export (otherwise auto-generates random string)</span>
+          </div>
+        </label>
+        
         <button
           onClick={onExport}
           disabled={isExporting}
-          className={`w-full group relative overflow-hidden h-12 rounded-xl flex items-center justify-center gap-3 transition-all ${
-            isExporting 
-            ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
-            : 'bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-[0.98]'
-          }`}
+          className={`w-full group relative overflow-hidden h-12 rounded-xl flex items-center justify-center gap-3 transition-all ${isExporting
+              ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-[0.98]'
+            }`}
         >
           {isExporting ? <RotateCw className="animate-spin" size={18} /> : <Download size={18} className="group-hover:-translate-y-1 transition-transform" />}
           <span className="tracking-tight">{isExporting ? 'Processing Architecture...' : `Process & Download`}</span>

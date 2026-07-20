@@ -5,6 +5,7 @@ export interface ClipboardImportResult {
   blob?: Blob;
   width?: number;
   height?: number;
+  assetId?: string;
 }
 
 export async function processClipboardItems(items: ClipboardItems): Promise<ClipboardImportResult[]> {
