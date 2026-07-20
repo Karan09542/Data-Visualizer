@@ -3,7 +3,7 @@ export interface FilterConfig {
   id: string;
   type: string;
   name: string;
-  category: 'adjust' | 'color' | 'presets' | 'blur' | 'noise' | 'pixel' | 'blend' | 'advanced' | 'artsy';
+  category: 'adjust' | 'color' | 'presets' | 'blur' | 'noise' | 'pixel' | 'blend' | 'advanced' | 'artsy' | 'webgl';
   enabled: boolean;
   params: { [key: string]: any };
 }

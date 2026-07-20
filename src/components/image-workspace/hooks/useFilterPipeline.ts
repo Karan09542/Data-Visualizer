@@ -96,6 +96,42 @@ export const useFilterPipeline = (
       case 'chromatic':
         newItem = { ...base, name: 'Chromatic Aberration', category: 'artsy', params: {} };
         break;
+      case 'cyberpunkDuotone':
+        newItem = { ...base, name: 'Cyberpunk Duotone', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'halationBloom':
+        newItem = { ...base, name: 'Film Halation', category: 'webgl', params: { value: 0.8 } };
+        break;
+      case 'vhsGlitch':
+        newItem = { ...base, name: 'VHS Glitch', category: 'webgl', params: { value: 0.5 } };
+        break;
+      case 'frostedGlass':
+        newItem = { ...base, name: 'Frosted Glass', category: 'webgl', params: { value: 0.5 } };
+        break;
+      case 'vaporwaveHalftone':
+        newItem = { ...base, name: 'Vaporwave Dither', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'thermalHeatmap':
+        newItem = { ...base, name: 'Thermal Vision', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'neonSobelEdge':
+        newItem = { ...base, name: 'Neon Edge', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'liquidRipple':
+        newItem = { ...base, name: 'Liquid Ripple', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'asciiMatrix':
+        newItem = { ...base, name: 'ASCII Matrix', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'mandalaMirror':
+        newItem = { ...base, name: 'Mandala Mirror', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'godRays':
+        newItem = { ...base, name: 'God Rays', category: 'webgl', params: { value: 1.0 } };
+        break;
+      case 'anamorphicFlare':
+        newItem = { ...base, name: 'Anamorphic Flare', category: 'webgl', params: { value: 1.0 } };
+        break;
       case 'blendColor':
         newItem = { ...base, name: 'Blend Color Filter', category: 'blend', params: { color: '#3b82f6', mode: 'multiply', alpha: 0.4 } };
         break;

@@ -1,7 +1,13 @@
 import * as fabric from "fabric";
 import { FilterConfig } from "../../types/filters";
+import { CyberpunkDuotoneFilter, HalationBloomFilter, VHSGlitchFilter, FrostedGlassFilter, VaporwaveHalftoneFilter, ThermalHeatmapFilter, NeonSobelEdgeFilter, LiquidRippleFilter, AsciiMatrixFilter, MandalaMirrorFilter, GodRaysFilter, AnamorphicFlareFilter } from "./custom/WebGLFilters";
 
 // TODO(Refactor): Move to src/components/image-workspace/services/filters/rebuildFabricFilters.ts
+// Increase texture size limit to prevent WebGL filters from cropping large images
+if (fabric.config) {
+  fabric.config.textureSize = 8192;
+}
+
 export function rebuildFabricFilters(obj: any, filtersObj: any) {
   if (!obj || !filtersObj) return;
   const startTime = performance.now();
@@ -48,6 +54,30 @@ export function rebuildFabricFilters(obj: any, filtersObj: any) {
             const g = item.params.green !== undefined ? Number(item.params.green) : 1.0;
             const b = item.params.blue !== undefined ? Number(item.params.blue) : 1.0;
             filterInstance = new filtersObj.Gamma({ gamma: [r, g, b] });
+          }
+          break;
+        case 'temperature':
+          if (filtersObj.ColorMatrix) {
+            const val = Number(item.params.value || 0);
+            const matrix = [
+              1 + val, 0, 0, 0, 0,
+              0, 1, 0, 0, 0,
+              0, 0, 1 - val, 0, 0,
+              0, 0, 0, 1, 0
+            ];
+            filterInstance = new filtersObj.ColorMatrix({ matrix });
+          }
+          break;
+        case 'tint':
+          if (filtersObj.ColorMatrix) {
+            const val = Number(item.params.value || 0);
+            const matrix = [
+              1, 0, 0, 0, 0,
+              0, 1 - val, 0, 0, 0,
+              0, 0, 1, 0, 0,
+              0, 0, 0, 1, 0
+            ];
+            filterInstance = new filtersObj.ColorMatrix({ matrix });
           }
           break;
         case 'hueRotation':
@@ -171,6 +201,24 @@ export function rebuildFabricFilters(obj: any, filtersObj: any) {
             filterInstance = new filtersObj.ColorMatrix({ matrix });
           }
           break;
+        case 'nightVision':
+          if (filtersObj.ColorMatrix) {
+            const matrix = [
+              0, 0, 0, 0, 0,
+              0, 1.2, 0, 0, 0,
+              0, 0, 0, 0, 0,
+              0, 0, 0, 1, 0
+            ];
+            filterInstance = new filtersObj.ColorMatrix({ matrix });
+          }
+          break;
+        case 'unsharpMask':
+          if (filtersObj.Convolute) {
+            filterInstance = new filtersObj.Convolute({
+              matrix: [-1, -1, -1, -1, 9, -1, -1, -1, -1]
+            });
+          }
+          break;
         case 'blendColor':
           if (filtersObj.BlendColor) {
             filterInstance = new filtersObj.BlendColor({
@@ -179,6 +227,42 @@ export function rebuildFabricFilters(obj: any, filtersObj: any) {
               alpha: Number(item.params.alpha !== undefined ? item.params.alpha : 0.5)
             });
           }
+          break;
+        case 'cyberpunkDuotone':
+          filterInstance = new CyberpunkDuotoneFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'halationBloom':
+          filterInstance = new HalationBloomFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 0.5) });
+          break;
+        case 'vhsGlitch':
+          filterInstance = new VHSGlitchFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 0.5) });
+          break;
+        case 'frostedGlass':
+          filterInstance = new FrostedGlassFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 0.5) });
+          break;
+        case 'vaporwaveHalftone':
+          filterInstance = new VaporwaveHalftoneFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'thermalHeatmap':
+          filterInstance = new ThermalHeatmapFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'neonSobelEdge':
+          filterInstance = new NeonSobelEdgeFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'liquidRipple':
+          filterInstance = new LiquidRippleFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'asciiMatrix':
+          filterInstance = new AsciiMatrixFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'mandalaMirror':
+          filterInstance = new MandalaMirrorFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'godRays':
+          filterInstance = new GodRaysFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          break;
+        case 'anamorphicFlare':
+          filterInstance = new AnamorphicFlareFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
           break;
         case 'preset':
           if (filtersObj.ColorMatrix) {
