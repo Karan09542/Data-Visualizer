@@ -18,19 +18,21 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
           innerObj.canvas = canvas;
           const matrix = innerObj.calcTransformMatrix();
           const options = fabric.util.qrDecompose(matrix);
+          const center = new fabric.Point(options.translateX, options.translateY);
+          const absolutePos = innerObj.translateToOriginPoint(center, innerObj.originX, innerObj.originY);
           
           fabricObjects.push({
              ...innerObj,
-             left: options.translateX,
-             top: options.translateY,
+             left: absolutePos.x,
+             top: absolutePos.y,
              scaleX: options.scaleX,
              scaleY: options.scaleY,
              angle: options.angle,
              toObject: (props: string[]) => {
                  const objData = innerObj.toObject(props);
                  // Override with absolute coords
-                 objData.left = options.translateX;
-                 objData.top = options.translateY;
+                 objData.left = absolutePos.x;
+                 objData.top = absolutePos.y;
                  objData.scaleX = options.scaleX;
                  objData.scaleY = options.scaleY;
                  objData.angle = options.angle;

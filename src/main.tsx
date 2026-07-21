@@ -156,6 +156,19 @@ if (typeof window !== 'undefined') {
   };
 
   window.console.error = function(...args: any[]) {
+     if (args.length > 0) {
+       const firstArg = args[0];
+       if (firstArg instanceof Error && firstArg.name === 'Canceled' && firstArg.message === 'Canceled') {
+         return;
+       }
+       if (firstArg && typeof firstArg === 'object' && firstArg.name === 'Canceled' && firstArg.message === 'Canceled') {
+         return;
+       }
+       if (typeof firstArg === 'string' && (firstArg.includes('Canceled: Canceled') || firstArg.includes('<Fit />'))) {
+         return;
+       }
+     }
+
      const cleanArgs = args.map(arg => {
         try {
            return sanitizeArg(arg);

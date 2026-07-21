@@ -1,0 +1,56 @@
+[
+  {
+    "id": "ormbg",
+    "version": "1.0.0",
+    "task": "background-removal",
+    "name": "ORMBG (High Quality)",
+    "description": "High-quality portrait segmentation model",
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/litert-community/ormbg-LiteRT/resolve/main/ormbg.tflite?download=true"
+      }
+    ],
+    "supports": [
+      "remove",
+      "portrait",
+      "passport",
+      "change-bg"
+    ]
+  },
+  {
+    "id": "sinet",
+    "version": "1.0.0",
+    "task": "background-removal",
+    "name": "SINet (Fast)",
+    "description": "Lightweight portrait segmentation for background removal",
+    "sources": [
+      {
+        "type": "local",
+        "url": "/models/sinet.tflite"
+      }
+    ],
+    "supports": [
+      "remove",
+      "portrait",
+      "passport",
+      "change-bg"
+    ]
+  },
+  {
+    "id": "vdsr",
+    "version": "2.0.1",
+    "task": "upscale",
+    "name": "VDSR Upscaler",
+    "description": "Very Deep Super-Resolution",
+    "sources": [
+      {
+        "type": "local",
+        "url": "/models/vdsr_256.tflite"
+      }
+    ],
+    "supports": [
+      "upscale"
+    ]
+  }
+]

@@ -41,6 +41,11 @@ export function placeImagesSmartly(canvas: fabric.Canvas, images: fabric.Object[
     selection.add(img);
   });
 
-  canvas.setActiveObject(selection);
+  if (images.length === 1) {
+    canvas.setActiveObject(images[0]);
+  } else if (images.length > 1) {
+    canvas.setActiveObject(selection);
+  }
+  
   canvas.requestRenderAll();
 }

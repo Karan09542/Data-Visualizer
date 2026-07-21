@@ -21,25 +21,25 @@ import {
   Eye,
   FileText,
 } from "lucide-react";
-const SmartMediaRenderer = React.lazy(() => import("./SmartMediaRenderer"));
-const SmartFallbackMedia = React.lazy(() => import("./SmartFallbackMedia").then(m => ({ default: m.SmartFallbackMedia })));
-const ApiNodeRenderer = React.lazy(() => import("./ApiNodeRenderer").then(m => ({ default: m.ApiNodeRenderer })));
-const JsNodeRenderer = React.lazy(() => import("./JsNodeRenderer").then(m => ({ default: m.JsNodeRenderer })));
-const JsNodeCodeRenderer = React.lazy(() => import("./JsNodeCodeRenderer").then(m => ({ default: m.JsNodeCodeRenderer })));
-const JsNodeTerminalRenderer = React.lazy(() => import("./JsNodeTerminalRenderer").then(m => ({ default: m.JsNodeTerminalRenderer })));
-const TsNodeRenderer = React.lazy(() => import("./TsNodeRenderer").then(m => ({ default: m.TsNodeRenderer })));
-const TsNodeCodeRenderer = React.lazy(() => import("./TsNodeCodeRenderer").then(m => ({ default: m.TsNodeCodeRenderer })));
-const TsNodeTerminalRenderer = React.lazy(() => import("./TsNodeTerminalRenderer").then(m => ({ default: m.TsNodeTerminalRenderer })));
-const PyNodeRenderer = React.lazy(() => import("./PyNodeRenderer").then(m => ({ default: m.PyNodeRenderer })));
-const PyNodeCodeRenderer = React.lazy(() => import("./PyNodeCodeRenderer").then(m => ({ default: m.PyNodeCodeRenderer })));
-const PyNodeTerminalRenderer = React.lazy(() => import("./PyNodeTerminalRenderer").then(m => ({ default: m.PyNodeTerminalRenderer })));
-const MathNodeRenderer = React.lazy(() => import("./MathNodeRenderer").then(m => ({ default: m.MathNodeRenderer })));
-const TransferNodeRenderer = React.lazy(() => import("./TransferNodeRenderer").then(m => ({ default: m.TransferNodeRenderer })));
-const TodoNodeRenderer = React.lazy(() => import("./TodoNodeRenderer").then(m => ({ default: m.TodoNodeRenderer })));
-const SearchNodeRenderer = React.lazy(() => import("./SearchNodeRenderer").then(m => ({ default: m.SearchNodeRenderer })));
-const NodeOptionsMenu = React.lazy(() => import("./NodeOptionsMenu").then(m => ({ default: m.NodeOptionsMenu })));
+import SmartMediaRenderer from "./SmartMediaRenderer";
+import { SmartFallbackMedia } from "./SmartFallbackMedia";
+import { ApiNodeRenderer } from "./ApiNodeRenderer";
+import { JsNodeRenderer } from "./JsNodeRenderer";
+import { JsNodeCodeRenderer } from "./JsNodeCodeRenderer";
+import { JsNodeTerminalRenderer } from "./JsNodeTerminalRenderer";
+import { TsNodeRenderer } from "./TsNodeRenderer";
+import { TsNodeCodeRenderer } from "./TsNodeCodeRenderer";
+import { TsNodeTerminalRenderer } from "./TsNodeTerminalRenderer";
+import { PyNodeRenderer } from "./PyNodeRenderer";
+import { PyNodeCodeRenderer } from "./PyNodeCodeRenderer";
+import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
+import { MathNodeRenderer } from "./MathNodeRenderer";
+import { TransferNodeRenderer } from "./TransferNodeRenderer";
+import { TodoNodeRenderer } from "./TodoNodeRenderer";
+import { SearchNodeRenderer } from "./SearchNodeRenderer";
+import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
-const SafeModelViewer = React.lazy(() => import("./SafeModelViewer").then(m => ({ default: m.SafeModelViewer })));
+import { SafeModelViewer } from "./SafeModelViewer";
 
 interface NodeProps {
   key?: React.Key;
@@ -278,10 +278,10 @@ function NodeRenderer({
   const actualAssetId =
     data.rawValue && typeof data.rawValue === "object"
       ? data.rawValue.assetId ||
-        data.rawValue.assetRef ||
-        (data.rawValue._type === "media" ? data.rawValue.assetId : null)
+      data.rawValue.assetRef ||
+      (data.rawValue._type === "media" ? data.rawValue.assetId : null)
       : typeof data.value === "string" &&
-          (data.value.startsWith("img_") || data.value.startsWith("thumb_"))
+        (data.value.startsWith("img_") || data.value.startsWith("thumb_"))
         ? data.value
         : null;
 
@@ -385,10 +385,10 @@ function NodeRenderer({
   const assetMimeType = assetDetails?.mimeType?.toLowerCase() || "";
   const assetName =
     typeof data.rawValue === "object" &&
-    (data.rawValue?.name || data.rawValue?.filename || data.rawValue?.url)
+      (data.rawValue?.name || data.rawValue?.filename || data.rawValue?.url)
       ? String(
-          data.rawValue.name || data.rawValue.filename || data.rawValue.url,
-        ).toLowerCase()
+        data.rawValue.name || data.rawValue.filename || data.rawValue.url,
+      ).toLowerCase()
       : "";
   const fallbackStrVal =
     actualAssetId && (assetName || assetDetails?.filename)
@@ -414,12 +414,12 @@ function NodeRenderer({
 
   const mediaType =
     isManuallyRendered &&
-    data.type === "string" &&
-    !smartMediaFailed &&
-    !isApiNode &&
-    !isJsNode &&
-    !isTsNode &&
-    !isKnownDataUrl
+      data.type === "string" &&
+      !smartMediaFailed &&
+      !isApiNode &&
+      !isJsNode &&
+      !isTsNode &&
+      !isKnownDataUrl
       ? resolvedMediaType
       : null;
   const isMedia = !!mediaType;
@@ -757,8 +757,8 @@ function NodeRenderer({
       ];
       const colorClass =
         ludoColors[
-          Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) %
-            4
+        Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) %
+        4
         ];
       const initial =
         type === "object"
@@ -1164,9 +1164,9 @@ function NodeRenderer({
         ];
         const borderColor =
           ludoColors[
-            Math.abs(
-              data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0),
-            ) % 4
+          Math.abs(
+            data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0),
+          ) % 4
           ];
         const isLudoNodeDark = appTheme === "dark";
         shapeClasses = `px-4 py-3 min-w-[150px] rounded-xl border-4 ${borderColor} ${isLudoNodeDark ? "bg-[#f8fafc] shadow-[0_10px_20px_-5px_rgba(0,0,0,0.5)]" : "bg-white/95 shadow-[0_10px_20px_-5px_rgba(0,0,0,0.3)]"} backdrop-blur-md transition-transform overflow-visible`;
@@ -1297,7 +1297,6 @@ function NodeRenderer({
         pointerEvents: "none",
       }}
     >
-      <React.Suspense fallback={<div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500/50 animate-pulse">Loading node...</div>}>
       <div className="w-full h-full flex items-center justify-center">
         {nodeTheme === "seed" && data.id === "root" && !isSpecialNode && (
           <div
@@ -1758,9 +1757,9 @@ function NodeRenderer({
                     ? { color: nodeTextColor }
                     : {}),
                   ...(!isSpecialNode &&
-                  (nodeTheme === "peepal" ||
-                    nodeTheme === "banyan" ||
-                    nodeTheme === "nature")
+                    (nodeTheme === "peepal" ||
+                      nodeTheme === "banyan" ||
+                      nodeTheme === "nature")
                     ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                     : {}),
                 }}
@@ -1781,8 +1780,8 @@ function NodeRenderer({
                             ? { color: nodeTextColor, opacity: 0.7 }
                             : {}),
                           ...(nodeTheme === "peepal" ||
-                          nodeTheme === "banyan" ||
-                          nodeTheme === "nature"
+                            nodeTheme === "banyan" ||
+                            nodeTheme === "nature"
                             ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                             : {}),
                         }}
@@ -1818,21 +1817,20 @@ function NodeRenderer({
                           </span>
                         )}
                         <span
-                          className={`text-[11px] font-mono leading-normal inline ${
-                            isExpanded
-                              ? "whitespace-pre-wrap break-all"
-                              : nodeTheme === "peepal" || nodeTheme === "banyan"
-                                ? "line-clamp-3 whitespace-normal break-all block"
-                                : "truncate w-full max-w-full block"
-                          } ${valText}`}
+                          className={`text-[11px] font-mono leading-normal inline ${isExpanded
+                            ? "whitespace-pre-wrap break-all"
+                            : nodeTheme === "peepal" || nodeTheme === "banyan"
+                              ? "line-clamp-3 whitespace-normal break-all block"
+                              : "truncate w-full max-w-full block"
+                            } ${valText}`}
                           title={!isExpanded ? String(data.value) : undefined}
                           style={{
                             ...(isCustom
                               ? { color: nodeTextColor, opacity: 0.9 }
                               : {}),
                             ...(nodeTheme === "peepal" ||
-                            nodeTheme === "banyan" ||
-                            nodeTheme === "nature"
+                              nodeTheme === "banyan" ||
+                              nodeTheme === "nature"
                               ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                               : {}),
                           }}
@@ -1998,9 +1996,9 @@ function NodeRenderer({
               )}
               {mediaType === "image" && (
                 <div className="ml-1 flex-shrink-0 p-1 flex items-center justify-center z-[100]">
-                  <NodeOptionsMenu 
-                    path={data.path} 
-                    iconSize={14} 
+                  <NodeOptionsMenu
+                    path={data.path}
+                    iconSize={14}
                     customText="Open Editor in New Tab"
                     forceWorkspace={true}
                   />
@@ -2131,7 +2129,7 @@ function NodeRenderer({
                         mediaType === "smart"
                           ? "smart"
                           : mediaType === "pdf" ||
-                              strVal.match(/\.pdf(\?.*)?$/i)
+                            strVal.match(/\.pdf(\?.*)?$/i)
                             ? "pdf"
                             : (mediaType as any),
                     });
@@ -2145,7 +2143,6 @@ function NodeRenderer({
           </div>
         </div>
       </div>
-      </React.Suspense>
     </foreignObject>
   );
 }
