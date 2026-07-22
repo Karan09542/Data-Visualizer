@@ -57,6 +57,13 @@
 </head>
 
 <body>
+  <script>
+    // Browser shim for Node.js requires externalized by Vite
+    window.require = window.require || function(mod) {
+      console.warn("[Global Shim] require(" + mod + ") called in browser runtime.");
+      return {};
+    };
+  </script>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>

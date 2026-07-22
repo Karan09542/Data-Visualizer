@@ -288,10 +288,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   const totalPhotos = layout.rows * layout.cols;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] bg-[#0A0A0A] text-white flex flex-col h-screen w-screen overflow-hidden font-sans select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[99999] bg-[#0A0A0A] text-white flex flex-col h-[100dvh] w-full overflow-hidden font-sans select-none animate-in fade-in duration-200">
       
       {/* Studio Top Header Navigation */}
-      <header className="h-14 sm:h-16 border-b border-[#222] bg-[#111111] px-3 sm:px-6 flex items-center justify-between shrink-0 z-20 shadow-md">
+      <header className="h-14 sm:h-16 border-b border-[#222] bg-[#111111] px-2 sm:px-6 flex items-center justify-between shrink-0 z-20 shadow-md">
         
         {/* Left: Branding & Title */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -313,11 +313,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         </div>
 
         {/* Right: Action Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           <button
             onClick={handleExportPNG}
             title="Export High-Res PNG"
-            className="flex items-center gap-1.5 bg-[#1C1C1C] hover:bg-[#282828] border border-[#333] text-white p-2 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 shadow-sm"
+            className="flex items-center gap-1 sm:gap-1.5 bg-[#1C1C1C] hover:bg-[#282828] border border-[#333] text-white p-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 shadow-sm"
           >
             <Download size={15} />
             <span className="hidden sm:inline">Export PNG</span>
@@ -326,7 +326,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <button
             onClick={handleExportPDF}
             title="Print or Save PDF"
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white p-2 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95 shadow-lg shadow-blue-600/20"
+            className="flex items-center gap-1 sm:gap-1.5 bg-blue-600 hover:bg-blue-500 text-white p-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95 shadow-lg shadow-blue-600/20"
           >
             <Printer size={15} />
             <span className="hidden sm:inline">Print / Save PDF</span>

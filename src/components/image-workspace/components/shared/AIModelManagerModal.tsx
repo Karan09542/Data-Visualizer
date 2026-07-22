@@ -151,7 +151,7 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
 
   return createPortal(
     <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-6 font-sans animate-in fade-in duration-200" style={{ zIndex: 99999 }}>
-      <div className="bg-[#0A0A0A] sm:border border-[#2D2D2D] sm:rounded-3xl w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-[#0A0A0A] sm:border border-[#2D2D2D] sm:rounded-3xl w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] max-w-3xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="flex items-center justify-between p-6 sm:p-8 border-b border-[#222] bg-[#0A0A0A] shrink-0 sticky top-0 z-10">
@@ -221,7 +221,7 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
         {/* List */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 bg-[#0A0A0A]">
           {models.map(manifest => (
-            <ModelItem key={manifest.id} manifest={manifest} onCustomDelete={refreshModels} />
+            <ModelItem key={`${manifest.id}-${manifest.version}`} manifest={manifest} onCustomDelete={refreshModels} />
           ))}
           {models.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-[#555]">
