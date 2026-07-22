@@ -19,6 +19,7 @@ import { ModernCheckbox } from '../../shared/ModernCheckbox';
 import { TypographyPanel } from '../TypographyPanel';
 import { SmartCollageBlockCustomizationPanel } from '../SmartCollageBlockCustomizationPanel';
 import { ArtboardAssignmentModule } from '../ArtboardAssignmentModule';
+import { ModernSelect, SelectGroup } from '../../shared/ModernSelect';
 
 // Common UI Components for the Panel
 const PanelSection: React.FC<{ title: React.ReactNode; icon?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, children, className = '' }) => (
@@ -90,7 +91,7 @@ export const PropertiesTab: React.FC = () => {
 
    const {
       shapeStrokeLineCap, shapeStrokeLineJoin, shapeFillColor, shapeStrokeColor, shapeStrokeWidth,
-      shapeBorderStyle, shapeOpacity,
+      shapeBorderStyle, shapeOpacity, shapeBlendMode,
       shapeUseIndividualCorners, shapeCornerTL, shapeCornerTR, shapeCornerBL, shapeCornerBR, shapeCornerRadius
    } = useShapeProperties();
 
@@ -195,6 +196,55 @@ export const PropertiesTab: React.FC = () => {
                   </div>
                </PanelSection>
 
+               {/* Appearance Panel */}
+               {!isCollageSelected && selectionType !== 'frameGroup' && (
+                  <PanelSection title="Appearance" icon={<Sparkles size={14} className="text-yellow-400" />}>
+                     <div className="space-y-4">
+                        <RangeSlider 
+                           label="Opacity" 
+                           min="1" max="100" step="1" 
+                           value={shapeOpacity} valueDisplay={shapeOpacity} displayUnit="%" 
+                           onChange={(e) => updateSelectedShapeProperty('opacity', Number(e.target.value))} 
+                        />
+                        <div>
+                           <Label>Blend Mode</Label>
+                           <ModernSelect
+                              value={shapeBlendMode || 'source-over'}
+                              onChange={(val) => updateSelectedShapeProperty('globalCompositeOperation', val)}
+                              groups={[
+                                 { label: 'Normal', options: [{ value: 'source-over', label: 'Normal' }] },
+                                 { label: 'Darken', options: [
+                                    { value: 'darken', label: 'Darken' },
+                                    { value: 'multiply', label: 'Multiply' },
+                                    { value: 'color-burn', label: 'Color Burn' }
+                                 ]},
+                                 { label: 'Lighten', options: [
+                                    { value: 'lighten', label: 'Lighten' },
+                                    { value: 'screen', label: 'Screen' },
+                                    { value: 'color-dodge', label: 'Color Dodge' }
+                                 ]},
+                                 { label: 'Contrast', options: [
+                                    { value: 'overlay', label: 'Overlay' },
+                                    { value: 'soft-light', label: 'Soft Light' },
+                                    { value: 'hard-light', label: 'Hard Light' }
+                                 ]},
+                                 { label: 'Inversion', options: [
+                                    { value: 'difference', label: 'Difference' },
+                                    { value: 'exclusion', label: 'Exclusion' }
+                                 ]},
+                                 { label: 'Component', options: [
+                                    { value: 'hue', label: 'Hue' },
+                                    { value: 'saturation', label: 'Saturation' },
+                                    { value: 'color', label: 'Color' },
+                                    { value: 'luminosity', label: 'Luminosity' }
+                                 ]}
+                              ]}
+                           />
+                        </div>
+                     </div>
+                  </PanelSection>
+               )}
+
                {/* Smart Collage Block Customization Panel */}
                <SmartCollageBlockCustomizationPanel />
                
@@ -271,12 +321,6 @@ export const PropertiesTab: React.FC = () => {
                            min={selectionType === 'line' ? "1" : "0"} max="50" step="1" 
                            value={shapeStrokeWidth} valueDisplay={shapeStrokeWidth} displayUnit="px" 
                            onChange={(e) => updateSelectedShapeProperty('strokeWidth', Number(e.target.value))} 
-                        />
-                        <RangeSlider 
-                           label="Opacity" 
-                           min="1" max="100" step="1" 
-                           value={shapeOpacity} valueDisplay={shapeOpacity} displayUnit="%" 
-                           onChange={(e) => updateSelectedShapeProperty('opacity', Number(e.target.value))} 
                         />
                      </div>
 

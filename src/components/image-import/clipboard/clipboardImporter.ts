@@ -61,17 +61,15 @@ export async function processPasteEvent(e: React.ClipboardEvent | ClipboardEvent
   const results: ClipboardImportResult[] = [];
   
   if (e.clipboardData && e.clipboardData.items) {
-    const items = e.clipboardData.items;
+    const items = Array.from(e.clipboardData.items);
     
-    // First pass: look for html/text containing images
-    let hasHtml = false;
-    for (let i = 0; i < items.length; i++) {
-       if (items[i].type === 'text/html') hasHtml = true;
-    }
-    
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.indexOf('image/') !== -1) {
+    // Check what types of data we have in the clipboard payload
+    const hasImageFile = items.some(item => item.type.indexOf('image/') !== -1 && item.kind === 'file');
+    const hasHtml = items.some(item => item.type === 'text/html');
+
+    // Process items concurrently and await them all
+    const processPromises = items.map(async (item) => {
+      if (item.type.indexOf('image/') !== -1 && item.kind === 'file') {
         const file = item.getAsFile();
         if (file) {
           if (file.type === 'image/svg+xml') {
@@ -83,34 +81,39 @@ export async function processPasteEvent(e: React.ClipboardEvent | ClipboardEvent
             results.push({ url, type: 'image', blob: file, name: file.name });
           }
         }
-      } else if (item.type === 'text/html') {
-         item.getAsString((html) => {
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            const imgs = doc.querySelectorAll('img');
-            imgs.forEach(img => {
-               if (img.src && !img.src.startsWith('file://')) {
-                  results.push({ url: img.src, type: img.src.includes('.svg') || img.src.includes('image/svg+xml') ? 'svg' : 'image' });
-               }
+      } else if (item.type === 'text/html' && !hasImageFile) {
+         // Only fallback to HTML parsing if there are no direct image files
+         return new Promise<void>((resolve) => {
+            item.getAsString((html) => {
+               const doc = new DOMParser().parseFromString(html, 'text/html');
+               const imgs = doc.querySelectorAll('img');
+               imgs.forEach(img => {
+                  if (img.src && !img.src.startsWith('file://')) {
+                     results.push({ url: img.src, type: img.src.includes('.svg') || img.src.includes('image/svg+xml') ? 'svg' : 'image' });
+                  }
+               });
+               resolve();
             });
          });
-      } else if (item.type === 'text/plain' && !hasHtml) {
-         item.getAsString((text) => {
-            if (text.startsWith('http') && text.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i)) {
-               results.push({ url: text.trim(), type: text.includes('.svg') ? 'svg' : 'image' });
-            } else if (text.trim().startsWith('<svg') && text.trim().endsWith('</svg>')) {
-               const url = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(text.trim())))}`;
-               results.push({ url, type: 'svg', name: 'Pasted SVG text' });
-            } else if (text.startsWith('data:image/')) {
-               results.push({ url: text.trim(), type: text.includes('image/svg+xml') ? 'svg' : 'image' });
-            }
+      } else if (item.type === 'text/plain' && !hasImageFile && !hasHtml) {
+         // Only fallback to plain text if there are no images and no HTML
+         return new Promise<void>((resolve) => {
+            item.getAsString((text) => {
+               if (text.startsWith('http') && text.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i)) {
+                  results.push({ url: text.trim(), type: text.includes('.svg') ? 'svg' : 'image' });
+               } else if (text.trim().startsWith('<svg') && text.trim().endsWith('</svg>')) {
+                  const url = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(text.trim())))}`;
+                  results.push({ url, type: 'svg', name: 'Pasted SVG text' });
+               } else if (text.startsWith('data:image/')) {
+                  results.push({ url: text.trim(), type: text.includes('image/svg+xml') ? 'svg' : 'image' });
+               }
+               resolve();
+            });
          });
       }
-    }
-  }
-  
-  // Wait a tiny bit for the getAsString callbacks to resolve
-  if (results.length === 0) {
-      await new Promise(r => setTimeout(r, 50));
+    });
+
+    await Promise.all(processPromises);
   }
   
   return results;

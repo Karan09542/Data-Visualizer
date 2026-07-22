@@ -178,6 +178,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       shapeCornerBL, setShapeCornerBL,
       shapeCornerBR, setShapeCornerBR,
       shapeOpacity, setShapeOpacity,
+      shapeBlendMode, setShapeBlendMode,
       shapeStrokeLineJoin, setShapeStrokeLineJoin,
       shapeStrokeLineCap, setShapeStrokeLineCap
    } = shapeProps;
@@ -1346,6 +1347,48 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
             return;
          }
+
+         let isInternal = false;
+         try {
+             const txt = e.clipboardData?.getData('text/plain');
+             if (txt && txt.includes('__fabricInternalClipboard')) {
+                 isInternal = true;
+             }
+         } catch(err) {}
+
+         if (isInternal && (window as any)._fabricInternalClipboard) {
+             const cloned = (window as any)._fabricInternalClipboard;
+             cloned.clone().then((clonedObj: any) => {
+                 fabricRef.current?.discardActiveObject();
+                 clonedObj.set({
+                    left: (clonedObj.left || 0) + 20,
+                    top: (clonedObj.top || 0) + 20,
+                    id: Date.now().toString() + Math.random().toString(),
+                    artboardId: activeArtboardId || undefined
+                 });
+                 
+                 if (clonedObj.type === 'activeSelection') {
+                     clonedObj.canvas = fabricRef.current;
+                     clonedObj.forEachObject((obj: any) => {
+                         obj.id = Date.now().toString() + Math.random().toString();
+                         obj.artboardId = activeArtboardId || undefined;
+                         fabricRef.current?.add(obj);
+                     });
+                     clonedObj.setCoords();
+                 } else {
+                     fabricRef.current?.add(clonedObj);
+                 }
+                 
+                 const cmd = new AddObjectCommand("Paste Object", clonedObj);
+                 executeCommand(cmd);
+                 fabricRef.current?.setActiveObject(clonedObj);
+                 fabricRef.current?.requestRenderAll();
+                 updateLayersList();
+             });
+             e.preventDefault();
+             return;
+         }
+
          const results = await processPasteEvent(e);
          if (results.length > 0) {
             importAssets(results);
@@ -1380,6 +1423,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             setShapeStrokeColor(strokeVal === 'transparent' ? '#000000' : strokeVal);
             setShapeStrokeWidth(active.get('strokeWidth') as number ?? 2);
             setShapeOpacity(Math.round((active.get('opacity') ?? 1) * 100));
+            setShapeBlendMode(active.get('globalCompositeOperation') as string || 'source-over');
             setShapeStrokeLineJoin((active.get('strokeLineJoin') as 'miter' | 'round' | 'bevel') || 'miter');
             setShapeStrokeLineCap((active.get('strokeLineCap') as 'butt' | 'round' | 'square') || 'butt');
 
@@ -1412,6 +1456,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                setShapeCornerBR(brPercent);
                setShapeCornerBL(blPercent);
             }
+         } else if (['image', 'i-text', 'textbox'].includes(selType || '')) {
+            setShapeOpacity(Math.round((active.get('opacity') ?? 1) * 100));
+            setShapeBlendMode(active.get('globalCompositeOperation') as string || 'source-over');
          }
 
          if ((active as any).isCollageBlock) {
@@ -2143,11 +2190,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!active) return;
 
       const items: fabric.Object[] = [];
+      const allowedTypes = ['rect', 'circle', 'triangle', 'line', 'image', 'i-text', 'textbox', 'path'];
+
       if (active.type === 'activeSelection') {
          (active as fabric.ActiveSelection).getObjects().forEach(o => {
-            if (['rect', 'circle', 'triangle', 'line'].includes(o.type || '')) items.push(o);
+            if (allowedTypes.includes(o.type || '')) items.push(o);
          });
-      } else if (['rect', 'circle', 'triangle', 'line'].includes(active.type || '')) {
+      } else if (allowedTypes.includes(active.type || '')) {
          items.push(active);
       }
 
@@ -2201,6 +2250,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             before.opacity = item.get('opacity');
             after.opacity = value / 100;
             setShapeOpacity(value);
+         } else if (prop === 'globalCompositeOperation') {
+            before.globalCompositeOperation = item.get('globalCompositeOperation');
+            after.globalCompositeOperation = value;
+            setShapeBlendMode(value);
          } else if (prop === 'strokeLineJoin') {
             before.strokeLineJoin = item.get('strokeLineJoin');
             after.strokeLineJoin = value;
@@ -3913,6 +3966,19 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                const activeObj = fabricRef.current?.getActiveObject();
                if (activeObj && activeObj.type === 'image') {
                   enterCropMode(activeObj as fabric.Image);
+               }
+            }
+         }
+         
+         if (e.key.toLowerCase() === 'c' && ctrlOrCmd && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+            if (!isCropping) {
+               const activeObj = fabricRef.current?.getActiveObject();
+               if (activeObj) {
+                  navigator.clipboard.writeText(JSON.stringify({ __fabricInternalClipboard: true })).catch(()=>{});
+                  activeObj.clone(['id', 'artboardId']).then((cloned) => {
+                     (window as any)._fabricInternalClipboard = cloned;
+                     setNotification({ message: 'Object copied', type: 'success' });
+                  });
                }
             }
          }
@@ -6144,16 +6210,16 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                           </div>
                                        </div>
 
-                                       {/* Resize Handle (Only show if panel is visible on mobile) */}
-                                       {(!isMobile || showMobilePanel) && (
+                                       {/* Resize Handle (Desktop Only) */}
+                                       {(!isMobile) && (
                                           <div
                                              onPointerDown={(e) => {
                                                 setIsResizingPanel(true);
                                                 e.preventDefault();
                                              }}
-                                             className="relative z-20 md:w-1.5 md:-ml-[1px] md:-mr-[5px] h-1.5 md:h-full -mt-[1px] -mb-[5px] md:-mt-0 md:-mb-0 cursor-row-resize md:cursor-col-resize flex items-center md:items-stretch justify-center group"
+                                             className="relative z-20 w-1.5 -ml-[1px] -mr-[5px] h-full cursor-col-resize flex items-stretch justify-center group"
                                           >
-                                             <div className={`w-full h-[2px] md:h-full md:w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-y-150 md:scale-x-150 md:scale-y-100' : 'bg-[#2C2C2C] group-hover:bg-blue-500'}`} />
+                                             <div className={`h-full w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-x-150' : 'bg-[#2C2C2C] group-hover:bg-blue-500'}`} />
                                           </div>
                                        )}
 
@@ -6198,6 +6264,18 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              } : { width: `${panelWidth}px` }}
                                              className={`border-t md:border-t-0 md:border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-[#2C2C2C]'} bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150 relative`}
                                           >
+                                             {/* Mobile Resize Pill Handle */}
+                                             {isMobile && (
+                                                <div 
+                                                   className="w-full h-4 bg-[#1A1A1A] flex items-center justify-center shrink-0 cursor-row-resize z-10 active:bg-[#1A1A1A]/80 transition-colors"
+                                                   onPointerDown={(e) => {
+                                                      setIsResizingPanel(true);
+                                                      e.preventDefault();
+                                                   }}
+                                                >
+                                                   <div className={`w-12 h-1 rounded-full transition-colors ${isResizingPanel ? 'bg-blue-500' : 'bg-[#444] hover:bg-[#666]'}`} />
+                                                </div>
+                                             )}
 
                                              <div
                                                 className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] select-none shrink-0 relative"
@@ -6436,10 +6514,48 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
                                                    <div className="h-px bg-[#252525] my-1" />
-                                                   <ContextMenuItem icon={Copy} label="Copy as PNG" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
+                                                   <ContextMenuItem icon={Copy} label="Copy to Clipboard (PNG)" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
                                                    {activeContextMenu.obj?.type !== 'image' && (
-                                                      <ContextMenuItem icon={Copy} label="Copy as SVG" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Copy} label="Copy to Clipboard (SVG)" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
                                                    )}
+                                                   <ContextMenuItem icon={Copy} label="Copy Object" shortcut="Ctrl+C" onClick={() => { 
+                                                      const active = fabricRef.current?.getActiveObject();
+                                                      if (active) {
+                                                         active.clone(['id', 'artboardId']).then((cloned) => {
+                                                            (window as any)._fabricInternalClipboard = cloned;
+                                                            setNotification({ message: 'Object copied', type: 'success' });
+                                                         });
+                                                      }
+                                                      closeContextMenu(); 
+                                                   }} />
+                                                   <ContextMenuItem icon={Clipboard} label="Paste Object" shortcut="Ctrl+V" onClick={() => { 
+                                                      const cloned = (window as any)._fabricInternalClipboard;
+                                                      if (cloned) {
+                                                         cloned.clone().then((clonedObj: any) => {
+                                                            fabricRef.current?.discardActiveObject();
+                                                            clonedObj.set({
+                                                               left: clonedObj.left + 20,
+                                                               top: clonedObj.top + 20,
+                                                               id: Date.now().toString() + Math.random().toString(),
+                                                               evented: true,
+                                                            });
+                                                            if (clonedObj.type === 'activeSelection') {
+                                                               clonedObj.canvas = fabricRef.current;
+                                                               clonedObj.forEachObject((obj: any) => {
+                                                                  obj.id = Date.now().toString() + Math.random().toString();
+                                                                  fabricRef.current?.add(obj);
+                                                               });
+                                                               clonedObj.setCoords();
+                                                            } else {
+                                                               fabricRef.current?.add(clonedObj);
+                                                            }
+                                                            fabricRef.current?.setActiveObject(clonedObj);
+                                                            fabricRef.current?.requestRenderAll();
+                                                            updateLayersList();
+                                                         });
+                                                      }
+                                                      closeContextMenu(); 
+                                                   }} />
                                                    <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
                                                    {activeContextMenu.obj?.type === 'group' && (
                                                       <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => {

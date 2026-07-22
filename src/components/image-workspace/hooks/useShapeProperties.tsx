@@ -23,6 +23,7 @@ export const useShapePropertiesState = () => {
   const [shapeCornerBL, setShapeCornerBL] = useState<number>(0);
   const [shapeCornerBR, setShapeCornerBR] = useState<number>(0);
   const [shapeOpacity, setShapeOpacity] = useState<number>(100);
+  const [shapeBlendMode, setShapeBlendMode] = useState<string>('source-over');
   const [shapeStrokeLineJoin, setShapeStrokeLineJoin] = useState<'miter' | 'round' | 'bevel'>('miter');
   const [shapeStrokeLineCap, setShapeStrokeLineCap] = useState<'butt' | 'round' | 'square'>('butt');
 
@@ -38,6 +39,7 @@ export const useShapePropertiesState = () => {
     shapeCornerBL, setShapeCornerBL,
     shapeCornerBR, setShapeCornerBR,
     shapeOpacity, setShapeOpacity,
+    shapeBlendMode, setShapeBlendMode,
     shapeStrokeLineJoin, setShapeStrokeLineJoin,
     shapeStrokeLineCap, setShapeStrokeLineCap
   };

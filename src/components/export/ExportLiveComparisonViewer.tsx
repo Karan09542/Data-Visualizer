@@ -276,10 +276,57 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       ctx.globalAlpha = 1.0;
     }
     else if (comparisonPreviewMode === 'difference' && originalImgRef.current && optimizedImgRef.current) {
-      const bounds = drawImageCentered(originalImgRef.current);
+      const drawW = (originalImgRef.current as any).naturalWidth * comparisonZoom;
+      const drawH = (originalImgRef.current as any).naturalHeight * comparisonZoom;
+      const drawX = pan.x - drawW / 2;
+      const drawY = pan.y - drawH / 2;
+
+      // For difference mode, we want a solid black background, not a checkerboard, so difference math is clean
+      ctx.fillStyle = '#000';
+      ctx.fillRect(drawX, drawY, drawW, drawH);
+
+      // Draw original
+      ctx.drawImage(originalImgRef.current, drawX, drawY, drawW, drawH);
+      
+      // Calculate difference
       ctx.globalCompositeOperation = 'difference';
-      ctx.drawImage(optimizedImgRef.current, bounds.drawX, bounds.drawY, bounds.drawW, bounds.drawH);
+      ctx.drawImage(optimizedImgRef.current, drawX, drawY, drawW, drawH);
+
+      // Boost the difference to make it visible to the human eye (since compression diffs are often < 5/255)
+      // By using 'lighter', we add the pixels to themselves, doubling the brightness 4 times (16x boost)
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.filter = 'contrast(200%) brightness(200%)';
+      
+      // Draw the region over itself multiple times to amplify the faint difference signals
+      for (let i = 0; i < 4; i++) {
+         ctx.drawImage(
+            canvasRef.current, 
+            drawX * dpr, drawY * dpr, drawW * dpr, drawH * dpr, // source (in physical pixels)
+            drawX, drawY, drawW, drawH // dest (in logical pixels)
+         );
+      }
+      
+      ctx.filter = 'none';
       ctx.globalCompositeOperation = 'source-over';
+      
+      // Outline
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(drawX, drawY, drawW, drawH);
+
+      // Informative text overlay
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(drawX + 10, drawY + 10, 260, 30);
+      ctx.fillStyle = '#fff';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      if (psnr && psnr >= 99) {
+         ctx.fillStyle = '#4ade80'; // emerald-400
+         ctx.fillText('Perfect Match (No Difference)', drawX + 20, drawY + 25);
+      } else {
+         ctx.fillText('Difference Map (Boosted 16x)', drawX + 20, drawY + 25);
+      }
     }
 
     ctx.restore();
@@ -414,7 +461,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     <div className="absolute inset-0 z-50 bg-[#09090b] flex flex-col overflow-hidden text-slate-200 select-none font-sans">
       
       {/* --- TOP TOOLBAR --- */}
-      <div className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-white/5 bg-[#121214] shadow-sm z-10">
+      <div className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-white/5 bg-[#121214] shadow-sm relative z-50">
         <div className="flex items-center gap-2 sm:gap-4 overflow-hidden">
           <button 
             onClick={() => setActiveTab('properties')}
