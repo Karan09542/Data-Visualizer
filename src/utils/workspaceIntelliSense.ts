@@ -176,7 +176,7 @@ export function syncWorkspaceModelsToMonaco(monaco: any, parsedData: any) {
     else if (path.endsWith(".css")) lang = "css";
 
     let model = monaco.editor.getModel(uri);
-    if (!model) {
+    if (!model || (model.isDisposed && model.isDisposed())) {
       model = monaco.editor.createModel(content, lang, uri);
     } else {
       if (model.getLanguageId?.() !== lang) {

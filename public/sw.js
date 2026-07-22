@@ -147,11 +147,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-While-Revalidate strategy for static resources
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        // Cache new/updated response if successful
+  // Network-First strategy for JS/CSS assets to prevent stale chunk errors
+  if (url.pathname.includes('/assets/')) {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -159,8 +158,25 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return networkResponse;
-      }).catch((err) => {
-        // Suppress network errors offline
+      }).catch(() => {
+        return caches.match(event.request);
+      })
+    );
+    return;
+  }
+
+  // Stale-While-Revalidate strategy for other static resources
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
         console.log('[Service Worker] Fetch failed offline; using cache for:', url.pathname);
       });
 

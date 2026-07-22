@@ -92,12 +92,14 @@ export function runDiagnostics(model: any, monaco: any) {
 
   const timer = setTimeout(async () => {
     try {
+      if (model.isDisposed && model.isDisposed()) return;
       const code = model.getValue();
       const results = await sendWorkerRequest("diagnostics", {
         code,
         path: modelUriStr
       });
 
+      if (model.isDisposed && model.isDisposed()) return;
       if (!model.isDisposed()) {
         const markers = (results || []).map((err: any) => {
           // Fallback if index parameters are off
@@ -166,6 +168,7 @@ export function registerPyIntelliSense(monaco: any) {
     triggerCharacters: [".", " ", "(", ","],
     provideCompletionItems: async (model: any, position: any) => {
       try {
+        if (model.isDisposed && model.isDisposed()) return { suggestions: [] };
         const code = model.getValue();
         const results = await sendWorkerRequest("complete", {
           code,
@@ -207,6 +210,7 @@ export function registerPyIntelliSense(monaco: any) {
   monaco.languages.registerHoverProvider("python", {
     provideHover: async (model: any, position: any) => {
       try {
+        if (model.isDisposed && model.isDisposed()) return null;
         const code = model.getValue();
         const results = await sendWorkerRequest("hover", {
           code,
@@ -242,6 +246,7 @@ export function registerPyIntelliSense(monaco: any) {
     signatureHelpRetriggerCharacters: [","],
     provideSignatureHelp: async (model: any, position: any) => {
       try {
+        if (model.isDisposed && model.isDisposed()) return null;
         const code = model.getValue();
         const results = await sendWorkerRequest("signature", {
           code,

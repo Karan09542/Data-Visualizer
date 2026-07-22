@@ -16,6 +16,12 @@ if (typeof window !== 'undefined') {
   (window as any).process = {
     env: { DEBUG: undefined },
   };
+  if (typeof (window as any).require === 'undefined') {
+    (window as any).require = function(mod: string) {
+      console.warn(`[Browser Shim] require("${mod}") called in browser runtime.`);
+      return {};
+    };
+  }
 
   // Safely define toJSON on prototypes to intercept JSON.stringify crashes globally
   if (!(Error.prototype as any).toJSON) {
