@@ -115,7 +115,7 @@ export const useFilterPipeline = (
         newItem = { ...base, name: 'Thermal Vision', category: 'webgl', params: { value: 1.0 } };
         break;
       case 'neonSobelEdge':
-        newItem = { ...base, name: 'Neon Edge', category: 'webgl', params: { value: 1.0 } };
+        newItem = { ...base, name: 'Neon Edge', category: 'webgl', params: { value: 1.0, color: '#00ffcc' } };
         break;
       case 'liquidRipple':
         newItem = { ...base, name: 'Liquid Ripple', category: 'webgl', params: { value: 1.0 } };

@@ -147,8 +147,8 @@ self.onmessage = async (e: MessageEvent) => {
         isPngInitialised = true;
       }
       rawBuffer = await encodePng(imgData, {
-        level: e.data.pngLevel ?? 2,
-        interlace: e.data.pngInterlace ?? false,
+        level: Math.max(0, Math.min(9, e.data.png?.level ?? e.data.pngLevel ?? 1)),
+        interlace: Boolean(e.data.png?.interlace ?? e.data.pngInterlace ?? false),
       });
     } else if (exportFormat === 'jpeg') {
       const encodeJpegModule = await import('@jsquash/jpeg/encode') as any;
@@ -160,7 +160,7 @@ self.onmessage = async (e: MessageEvent) => {
         isJpegInitialised = true;
       }
       
-      let chroma_subsample = e.data.mozjpeg?.chroma_subsample ?? 2;
+      let chroma_subsample = e.data.mozjpeg?.chroma_subsample ?? 1;
       // Prevent encoding error for odd dimensions in 4:2:0 / 4:2:2 modes by falling back to 4:4:4
       if (chroma_subsample > 1 && (imgData.width % 2 !== 0 || imgData.height % 2 !== 0)) {
          chroma_subsample = 1;
@@ -168,20 +168,20 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Pass MozJPEG settings
       rawBuffer = await encodeJpeg(imgData, { 
-        quality: e.data.mozjpeg?.quality ?? exportQuality, 
-        baseline: e.data.mozjpeg?.baseline ?? false,
-        arithmetic: e.data.mozjpeg?.arithmetic ?? false,
-        progressive: e.data.mozjpeg?.progressive ?? true,
-        optimize_coding: e.data.mozjpeg?.optimize_coding ?? true,
-        smoothing: e.data.mozjpeg?.smoothing ?? 0,
-        trellis_multipass: e.data.mozjpeg?.trellis_multipass ?? false,
-        trellis_opt_zero: e.data.mozjpeg?.trellis_opt_zero ?? false,
-        trellis_opt_table: e.data.mozjpeg?.trellis_opt_table ?? false,
-        trellis_loops: e.data.mozjpeg?.trellis_loops ?? 1,
-        auto_subsample: e.data.mozjpeg?.auto_subsample ?? true,
+        quality: Math.max(1, Math.min(100, e.data.mozjpeg?.quality ?? exportQuality ?? 95)), 
+        baseline: Boolean(e.data.mozjpeg?.baseline ?? false),
+        arithmetic: Boolean(e.data.mozjpeg?.arithmetic ?? false),
+        progressive: Boolean(e.data.mozjpeg?.progressive ?? true),
+        optimize_coding: Boolean(e.data.mozjpeg?.optimize_coding ?? true),
+        smoothing: Math.max(0, Math.min(100, e.data.mozjpeg?.smoothing ?? 0)),
+        trellis_multipass: Boolean(e.data.mozjpeg?.trellis_multipass ?? false),
+        trellis_opt_zero: Boolean(e.data.mozjpeg?.trellis_opt_zero ?? false),
+        trellis_opt_table: Boolean(e.data.mozjpeg?.trellis_opt_table ?? false),
+        trellis_loops: Math.max(1, Math.min(50, e.data.mozjpeg?.trellis_loops ?? 1)),
+        auto_subsample: Boolean(e.data.mozjpeg?.auto_subsample ?? true),
         chroma_subsample: chroma_subsample,
-        separate_chroma_quality: e.data.mozjpeg?.separate_chroma_quality ?? false,
-        chroma_quality: e.data.mozjpeg?.chroma_quality ?? 75,
+        separate_chroma_quality: Boolean(e.data.mozjpeg?.separate_chroma_quality ?? false),
+        chroma_quality: Math.max(1, Math.min(100, e.data.mozjpeg?.chroma_quality ?? 95)),
       });
     } else if (exportFormat === 'webp') {
       const encodeWebpModule = await import('@jsquash/webp/encode') as any;
@@ -194,33 +194,33 @@ self.onmessage = async (e: MessageEvent) => {
       }
       // Pass WebP settings
       rawBuffer = await encodeWebp(imgData, { 
-        quality: e.data.webp?.quality ?? exportQuality, 
-        target_size: e.data.webp?.target_size ?? 0,
-        target_PSNR: e.data.webp?.target_PSNR ?? 0,
-        method: e.data.webp?.method ?? 4,
-        sns_strength: e.data.webp?.sns_strength ?? 50,
-        filter_strength: e.data.webp?.filter_strength ?? 60,
-        filter_sharpness: e.data.webp?.filter_sharpness ?? 0,
-        filter_type: e.data.webp?.filter_type ?? 1,
-        partitions: e.data.webp?.partitions ?? 0,
-        segments: e.data.webp?.segments ?? 4,
-        pass: e.data.webp?.pass ?? 1,
-        show_compressed: e.data.webp?.show_compressed ?? 0,
-        preprocessing: e.data.webp?.preprocessing ?? 0,
-        autofilter: e.data.webp?.autofilter ?? 0,
-        partition_limit: e.data.webp?.partition_limit ?? 0,
-        alpha_compression: e.data.webp?.alpha_compression ?? 1,
-        alpha_filtering: e.data.webp?.alpha_filtering ?? 1,
-        alpha_quality: e.data.webp?.alpha_quality ?? 100,
-        lossless: e.data.webp?.lossless ?? 0,
-        exact: e.data.webp?.exact ?? 0,
-        image_hint: e.data.webp?.image_hint ?? 0,
-        emulate_jpeg_size: e.data.webp?.emulate_jpeg_size ?? 0,
-        thread_level: e.data.webp?.thread_level ?? 0,
-        low_memory: e.data.webp?.low_memory ?? 0,
-        near_lossless: e.data.webp?.near_lossless ?? 100,
-        use_delta_palette: e.data.webp?.use_delta_palette ?? 0,
-        use_sharp_yuv: e.data.webp?.use_sharp_yuv ?? 0,
+        quality: Math.max(0, Math.min(100, e.data.webp?.quality ?? exportQuality ?? 95)), 
+        target_size: Math.max(0, e.data.webp?.target_size ?? 0),
+        target_PSNR: Math.max(0, e.data.webp?.target_PSNR ?? 0),
+        method: Math.max(0, Math.min(6, e.data.webp?.method ?? 4)),
+        sns_strength: Math.max(0, Math.min(100, e.data.webp?.sns_strength ?? 50)),
+        filter_strength: Math.max(0, Math.min(100, e.data.webp?.filter_strength ?? 60)),
+        filter_sharpness: Math.max(0, Math.min(7, e.data.webp?.filter_sharpness ?? 0)),
+        filter_type: Math.max(0, Math.min(1, e.data.webp?.filter_type ?? 1)),
+        partitions: Math.max(0, Math.min(3, e.data.webp?.partitions ?? 0)),
+        segments: Math.max(1, Math.min(4, e.data.webp?.segments ?? 4)),
+        pass: Math.max(1, Math.min(10, e.data.webp?.pass ?? 1)),
+        show_compressed: 0,
+        preprocessing: Math.max(0, Math.min(2, e.data.webp?.preprocessing ?? 0)),
+        autofilter: Math.max(0, Math.min(1, e.data.webp?.autofilter ?? 0)),
+        partition_limit: Math.max(0, Math.min(100, e.data.webp?.partition_limit ?? 0)),
+        alpha_compression: Math.max(0, Math.min(1, e.data.webp?.alpha_compression ?? 1)),
+        alpha_filtering: Math.max(0, Math.min(2, e.data.webp?.alpha_filtering ?? 1)),
+        alpha_quality: Math.max(0, Math.min(100, e.data.webp?.alpha_quality ?? 100)),
+        lossless: Math.max(0, Math.min(1, e.data.webp?.lossless ?? 0)),
+        exact: Math.max(0, Math.min(1, e.data.webp?.exact ?? 0)),
+        image_hint: Math.max(0, Math.min(3, e.data.webp?.image_hint ?? 0)),
+        emulate_jpeg_size: 0,
+        thread_level: 0,
+        low_memory: Math.max(0, Math.min(1, e.data.webp?.low_memory ?? 0)),
+        near_lossless: Math.max(0, Math.min(100, e.data.webp?.near_lossless ?? 100)),
+        use_delta_palette: 0,
+        use_sharp_yuv: Math.max(0, Math.min(1, e.data.webp?.use_sharp_yuv ?? 0)),
       });
     } else if (exportFormat === 'avif') {
       const encodeAvifModule = await import('@jsquash/avif/encode') as any;
@@ -237,17 +237,22 @@ self.onmessage = async (e: MessageEvent) => {
          avifSubsample = 0;
       }
 
+      const cqLevel = Math.max(0, Math.min(63, e.data.avif?.cqLevel ?? 15));
+      const cqAlphaLevel = (e.data.avif?.cqAlphaLevel !== undefined && e.data.avif.cqAlphaLevel >= 0)
+        ? Math.max(0, Math.min(63, e.data.avif.cqAlphaLevel))
+        : cqLevel;
+
       // Pass AVIF settings
       rawBuffer = await encodeAvif(imgData, { 
-        cqLevel: e.data.avif?.cqLevel ?? 33,
-        cqAlphaLevel: e.data.avif?.cqAlphaLevel ?? -1,
-        denoiseLevel: e.data.avif?.denoiseLevel ?? 0,
-        tileRowsLog2: e.data.avif?.tileRowsLog2 ?? 0,
-        tileColsLog2: e.data.avif?.tileColsLog2 ?? 0,
-        speed: e.data.avif?.speed ?? 6,
+        cqLevel: cqLevel,
+        cqAlphaLevel: cqAlphaLevel,
+        denoiseLevel: Math.max(0, Math.min(50, e.data.avif?.denoiseLevel ?? 0)),
+        tileRowsLog2: Math.max(0, Math.min(6, e.data.avif?.tileRowsLog2 ?? 0)),
+        tileColsLog2: Math.max(0, Math.min(6, e.data.avif?.tileColsLog2 ?? 0)),
+        speed: Math.max(0, Math.min(10, e.data.avif?.speed ?? 6)),
         subsample: avifSubsample,
-        chromaDeltaQ: e.data.avif?.chromaDeltaQ ?? false,
-        sharpness: e.data.avif?.sharpness ?? 0,
+        chromaDeltaQ: Boolean(e.data.avif?.chromaDeltaQ),
+        sharpness: Math.max(0, Math.min(7, e.data.avif?.sharpness ?? 0)),
         tune: e.data.avif?.tune ?? 0,
       });
     } else if (exportFormat === 'jxl') {
@@ -261,10 +266,10 @@ self.onmessage = async (e: MessageEvent) => {
       }
       
       rawBuffer = await encodeJxl(imgData, { 
-        effort: e.data.jxl?.effort ?? 7,
-        quality: e.data.jxl?.quality ?? 75,
-        progressive: e.data.jxl?.progressive ?? false,
-        lossless: e.data.jxl?.lossless ?? false,
+        effort: Math.max(1, Math.min(9, e.data.jxl?.effort ?? 7)),
+        quality: Math.max(1, Math.min(100, e.data.jxl?.quality ?? 95)),
+        progressive: Boolean(e.data.jxl?.progressive ?? false),
+        lossless: Boolean(e.data.jxl?.lossless ?? false),
       });
     }
 

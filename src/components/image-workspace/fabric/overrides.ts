@@ -162,18 +162,24 @@ if (fabric && fabric.Rect && fabric.Rect.prototype) {
   (fabric.Rect.prototype as any).applyFilters = function() {
     if (!this.isCollageBlock || !this.collageImage) return;
     
-    // Create a temporary fabric.Image to run the filter pipeline
-    if (!this._tempImageForFilters) {
-      this._tempImageForFilters = new fabric.Image(this.collageImage);
-    } else {
-      this._tempImageForFilters.setElement(this.collageImage);
+    try {
+      // Create a temporary fabric.Image to run the filter pipeline
+      if (!this._tempImageForFilters) {
+        this._tempImageForFilters = new fabric.Image(this.collageImage);
+      } else {
+        this._tempImageForFilters.setElement(this.collageImage);
+      }
+      
+      this._tempImageForFilters.filters = this.filters || [];
+      this._tempImageForFilters.applyFilters();
+      
+      // Stash the filtered result for _render
+      this._filteredCollageImage = this._tempImageForFilters._element || this._tempImageForFilters._filteredEl || this.collageImage;
+    } catch (err) {
+      console.error("Error applying filters to collage block:", err);
+      this._filteredCollageImage = this.collageImage;
     }
     
-    this._tempImageForFilters.filters = this.filters || [];
-    this._tempImageForFilters.applyFilters();
-    
-    // Stash the filtered result for _render
-    this._filteredCollageImage = this._tempImageForFilters._element || this._tempImageForFilters._filteredEl || this.collageImage;
     this.dirty = true;
     if (this.canvas) this.canvas.requestRenderAll();
   };

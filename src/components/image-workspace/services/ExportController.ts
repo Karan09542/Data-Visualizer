@@ -1,6 +1,6 @@
 import { Artboard } from '../types/artboards';
 import { ExportSettings } from '../../../types/export';
-import { optimizePixelBuffer, generateArtboardPixelBuffer } from './exportUtils';
+import { optimizePixelBuffer, generateArtboardPixelBuffer, generateDirectNativeBlob } from './exportUtils';
 import JSZip from 'jszip';
 import * as fabric from 'fabric';
 
@@ -40,14 +40,19 @@ export class ExportController {
 
       if (targets.length === 1) {
          const board = targets[0];
-         const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
+         let blob: Blob;
+         if (exportSettings.directNativeExport) {
+            blob = await generateDirectNativeBlob(canvas, board, exportSettings);
+         } else {
+            const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
+            const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
+            blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
+         }
 
-         const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
-         const blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
          const url = URL.createObjectURL(blob);
          const a = document.createElement('a');
          a.href = url;
-         a.download = `${board.name.toLowerCase().replace(/\\s+/g, '_')}.${exportSettings.format}`;
+         a.download = `${board.name.toLowerCase().replace(/\s+/g, '_')}.${exportSettings.format}`;
          document.body.appendChild(a);
          a.click();
          document.body.removeChild(a);
@@ -55,12 +60,19 @@ export class ExportController {
       } else {
          const zip = new JSZip();
          for (const board of targets) {
-            const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
-            const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, {
-               ...exportSettings,
-               resize: { ...exportSettings.resize, enabled: false }
-            });
-            zip.file(`${board.name.toLowerCase().replace(/\\s+/g, '_')}.${exportSettings.format}`, rawBuffer);
+            let rawBuffer: ArrayBuffer;
+            if (exportSettings.directNativeExport) {
+               const blob = await generateDirectNativeBlob(canvas, board, exportSettings);
+               rawBuffer = await blob.arrayBuffer();
+            } else {
+               const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
+               const { buffer: optimizedBuffer } = await optimizePixelBuffer(buffer, width, height, {
+                  ...exportSettings,
+                  resize: { ...exportSettings.resize, enabled: false }
+               });
+               rawBuffer = optimizedBuffer;
+            }
+            zip.file(`${board.name.toLowerCase().replace(/\s+/g, '_')}.${exportSettings.format}`, rawBuffer);
          }
          const zipContent = await zip.generateAsync({ type: "blob" });
          const url = URL.createObjectURL(zipContent);
@@ -133,29 +145,71 @@ export class ExportController {
       const origSize = originalBlob ? originalBlob.size : buffer.byteLength;
 
       const formatLabel = exportSettings.format.toUpperCase();
-      onProgress(`Running jSquash WASM optimization (${formatLabel})...`);
+      onProgress(`Running WASM optimization (${formatLabel})...`);
 
-      const previewSettings: ExportSettings = {
-         ...exportSettings,
-         resize: {
-            ...exportSettings.resize,
-            enabled: true,
-            width: optPreviewW,
-            height: optPreviewH
+      let optUrl: string;
+      let projectedOptimizedSize: number;
+      let calculatedPsnr: number | null = null;
+
+      if (exportSettings.directNativeExport) {
+         onProgress(`Generating direct high-quality (${formatLabel}) preview...`);
+         const directBlob = await generateDirectNativeBlob(canvas, board, exportSettings);
+         optUrl = URL.createObjectURL(directBlob);
+         projectedOptimizedSize = directBlob.size;
+
+         try {
+            const hqImg = new Image();
+            hqImg.src = optUrl;
+            await new Promise((r) => { hqImg.onload = r; hqImg.onerror = r; });
+            const hqCanvas = document.createElement('canvas');
+            hqCanvas.width = width;
+            hqCanvas.height = height;
+            const hCtx = hqCanvas.getContext('2d');
+            if (hCtx) {
+               hCtx.drawImage(hqImg, 0, 0, width, height);
+               const hqData = hCtx.getImageData(0, 0, width, height).data;
+               const origData = new Uint8ClampedArray(buffer);
+               if (hqData.length === origData.length) {
+                  let mse = 0;
+                  for (let i = 0; i < origData.length; i++) {
+                     const diff = origData[i] - hqData[i];
+                     mse += diff * diff;
+                  }
+                  mse /= origData.length;
+                  calculatedPsnr = mse === 0 ? 100 : Math.round(10 * Math.log10((255 * 255) / mse) * 10) / 10;
+               } else {
+                  calculatedPsnr = 100;
+               }
+            } else {
+               calculatedPsnr = 100;
+            }
+         } catch (e) {
+            calculatedPsnr = 100;
          }
-      };
+      } else {
+         const previewSettings: ExportSettings = {
+            ...exportSettings,
+            resize: {
+               ...exportSettings.resize,
+               enabled: true,
+               width: optPreviewW,
+               height: optPreviewH
+            }
+         };
 
-      const { buffer: optimizedBuffer, psnr: calculatedPsnr } = await optimizePixelBuffer(
-         buffer.slice(0),
-         width,
-         height,
-         previewSettings,
-         true
-      );
+         const { buffer: optimizedBuffer, psnr } = await optimizePixelBuffer(
+            buffer.slice(0),
+            width,
+            height,
+            previewSettings,
+            true
+         );
 
-      const optimizedBlob = new Blob([optimizedBuffer], { type: `image/${exportSettings.format}` });
-      const projectedOptimizedSize = previewScale < 1 ? Math.round(optimizedBlob.size / (previewScale * previewScale)) : optimizedBlob.size;
-      const optUrl = URL.createObjectURL(optimizedBlob);
+         const optimizedBlob = new Blob([optimizedBuffer], { type: `image/${exportSettings.format}` });
+         projectedOptimizedSize = previewScale < 1 ? Math.round(optimizedBlob.size / (previewScale * previewScale)) : optimizedBlob.size;
+         optUrl = URL.createObjectURL(optimizedBlob);
+         calculatedPsnr = psnr ?? null;
+      }
 
       return {
          originalUrl,

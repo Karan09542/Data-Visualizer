@@ -64,6 +64,10 @@ export const FilterStudioTab: React.FC = () => {
       setDraggedFilterId(id);
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', id);
+      const cardEl = (e.currentTarget as HTMLElement).closest('.filter-card-item');
+      if (cardEl && e.dataTransfer.setDragImage) {
+         e.dataTransfer.setDragImage(cardEl, 20, 20);
+      }
    };
 
    const handleDragOver = (e: React.DragEvent, id: string) => {
@@ -370,28 +374,31 @@ export const FilterStudioTab: React.FC = () => {
                               return (
                                  <div 
                                     key={f.id} 
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, f.id)}
                                     onDragOver={(e) => handleDragOver(e, f.id)}
                                     onDragLeave={(e) => handleDragLeave(e, f.id)}
-                                    onDragEnd={handleDragEnd}
                                     onDrop={(e) => handleDrop(e, f.id)}
-                                    className={`bg-[#181818] border ${f.enabled ? 'border-[#2C2C2C]' : 'border-dashed border-[#2A2A2A] opacity-50'} rounded-lg transition-all shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-t-2 border-t-blue-500 shadow-[0_-2px_8px_rgba(59,130,246,0.2)]' : ''}`}
+                                    className={`filter-card-item bg-[#181818] border ${f.enabled ? 'border-[#2C2C2C]' : 'border-dashed border-[#2A2A2A] opacity-50'} rounded-lg transition-all shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-t-2 border-t-blue-500 shadow-[0_-2px_8px_rgba(59,130,246,0.2)]' : ''}`}
                                  >
 
                                     {/* Title & Control buttons bar */}
                                     <div className="flex items-center justify-between px-3 py-1.5 bg-[#1B1B1B] border-b border-[#2C2C2C] rounded-t-lg">
                                        <div className="flex items-center gap-2">
-                                          <div className="cursor-grab text-[#555] hover:text-[#888] active:cursor-grabbing">
+                                          <div 
+                                             draggable
+                                             onDragStart={(e) => handleDragStart(e, f.id)}
+                                             onDragEnd={handleDragEnd}
+                                             className="cursor-grab text-[#555] hover:text-[#888] active:cursor-grabbing p-1 rounded hover:bg-[#2A2A2A] transition"
+                                             title="Drag to reorder filter"
+                                          >
                                              <GripVertical size={14} />
                                           </div>
                                           <button
                                              onClick={() => toggleFilterEnabled(f.id)}
                                              type="button"
-                                             className={`p-1 rounded transition duration-150 ${f.enabled ? 'bg-blue-600/20 text-blue-400' : 'bg-[#2A2A2A] text-[#8A8A8A]'}`}
+                                             className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition duration-150 touch-manipulation ${f.enabled ? 'bg-blue-600/20 text-blue-400' : 'bg-[#2A2A2A] text-[#8A8A8A]'}`}
                                              title={f.enabled ? 'Disable Filter' : 'Enable Filter'}
                                           >
-                                             <Power size={10} />
+                                             <Power size={11} />
                                           </button>
                                           <span className="text-[11px] font-bold text-white tracking-tight font-sans">{f.name}</span>
                                        </div>
@@ -401,49 +408,42 @@ export const FilterStudioTab: React.FC = () => {
                                              onClick={() => moveFilterInPipeline(f.id, 'down')}
                                              disabled={index === imageFilters.length - 1}
                                              type="button"
-                                             className="p-1 text-[#8A8A8A] hover:text-white disabled:opacity-30 disabled:pointer-events-none transition"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-white disabled:opacity-30 disabled:pointer-events-none transition touch-manipulation"
                                              title="Move Up"
                                           >
-                                             <ChevronUp size={12} />
+                                             <ChevronUp size={13} />
                                           </button>
                                           <button
                                              onClick={() => moveFilterInPipeline(f.id, 'up')}
                                              disabled={index === 0}
                                              type="button"
-                                             className="p-1 text-[#8A8A8A] hover:text-white disabled:opacity-30 disabled:pointer-events-none transition"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-white disabled:opacity-30 disabled:pointer-events-none transition touch-manipulation"
                                              title="Move Down"
                                           >
-                                             <ChevronDown size={12} />
+                                             <ChevronDown size={13} />
                                           </button>
                                           <button
                                              onClick={() => duplicateFilterInPipeline(f.id)}
                                              type="button"
-                                             className="p-1 text-[#8A8A8A] hover:text-white transition"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-white transition touch-manipulation"
                                              title="Duplicate"
                                           >
-                                             <Copy size={11} />
+                                             <Copy size={12} />
                                           </button>
                                           <button
                                              onClick={() => removeFilterFromPipeline(f.id)}
                                              type="button"
-                                             className="p-1 text-[#8A8A8A] hover:text-red-400 font-semibold transition translate-x-0.5"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-red-400 font-semibold transition touch-manipulation"
                                              title="Delete Filter"
                                           >
-                                             <X size={12} />
+                                             <X size={13} />
                                           </button>
                                        </div>
                                     </div>
 
                                     {/* Filter Slider/Controls Area */}
                                     {f.enabled && (
-                                       <div 
-                                          className="p-3 space-y-3"
-                                          draggable
-                                          onDragStart={(e) => {
-                                             e.preventDefault();
-                                             e.stopPropagation();
-                                          }}
-                                       >
+                                       <div className="p-3 space-y-3 touch-manipulation">
 
                                           {/* Adjustments: Brightness, Contrast, Saturation, Vibrance, Exposure, HueRotation */}
                                           {['brightness', 'contrast', 'saturation', 'vibrance', 'exposure', 'hueRotation', 'temperature', 'tint'].includes(f.type) && (
@@ -652,6 +652,18 @@ export const FilterStudioTab: React.FC = () => {
                                                    value={f.params.value !== undefined ? f.params.value : 1.0}
                                                    onChange={(e) => updateFilterParam(f.id, 'value', Number(e.target.value))}
                                                    className="w-full accent-purple-500 h-1 cursor-pointer bg-[#2A2A2A]"
+                                                />
+                                             </div>
+                                          )}
+
+                                          {/* Neon Edge Custom Color Picker */}
+                                          {f.type === 'neonSobelEdge' && (
+                                             <div className="flex items-center justify-between text-[10px] text-[#A0A0A0] font-sans">
+                                                <span>Neon Glow Color</span>
+                                                <ColorPickerTrigger
+                                                   color={f.params.color || '#00ffcc'}
+                                                   onChange={(c) => updateFilterParam(f.id, 'color', c)}
+                                                   label="Neon Color"
                                                 />
                                              </div>
                                           )}

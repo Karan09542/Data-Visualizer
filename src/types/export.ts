@@ -81,6 +81,7 @@ export interface JxlOptions {
 export interface ExportSettings {
   format: ExportFormat;
   askForFilename?: boolean;
+  directNativeExport?: boolean;
   resize: {
     enabled: boolean;
     width: number;
@@ -98,8 +99,9 @@ export interface ExportSettings {
 }
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
-  format: 'webp',
+  format: 'png',
   askForFilename: false,
+  directNativeExport: false,
   resize: {
     enabled: false,
     width: 800,
@@ -110,7 +112,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
     linearRGB: true,
   },
   mozjpeg: {
-    quality: 75,
+    quality: 95,
     baseline: false,
     arithmetic: false,
     progressive: true,
@@ -121,12 +123,12 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
     trellis_opt_table: false,
     trellis_loops: 1,
     auto_subsample: true,
-    chroma_subsample: 2,
+    chroma_subsample: 1,
     separate_chroma_quality: false,
-    chroma_quality: 75,
+    chroma_quality: 95,
   },
   webp: {
-    quality: 75,
+    quality: 95,
     target_size: 0,
     target_PSNR: 0,
     method: 4,
@@ -155,19 +157,19 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
     use_sharp_yuv: 0,
   },
   avif: {
-    cqLevel: 33,
+    cqLevel: 15,
     cqAlphaLevel: -1,
     denoiseLevel: 0,
     tileRowsLog2: 0,
     tileColsLog2: 0,
     speed: 6,
-    subsample: 1,
+    subsample: 0,
     chromaDeltaQ: false,
     sharpness: 0,
     tune: 0,
   },
   png: {
-    level: 2,
+    level: 1,
     interlace: false,
     paletteReduction: false,
     paletteColors: 256,
@@ -175,7 +177,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   },
   jxl: {
     effort: 7,
-    quality: 75,
+    quality: 95,
     progressive: false,
     lossless: false,
   },

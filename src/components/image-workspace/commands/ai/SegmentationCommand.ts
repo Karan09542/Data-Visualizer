@@ -35,7 +35,7 @@ export class SegmentationCommand implements Command {
     const effect = effectRegistry.get(effectId);
     this.name = effect ? effect.name : 'Segmentation';
     this.beforeSrc = obj.getSrc();
-    this.beforeData = { ...obj.data };
+    this.beforeData = { ...((obj as any).data || {}) };
     this.lastJobId = generateId(); // Assign jobId immediately
   }
 
@@ -53,7 +53,7 @@ export class SegmentationCommand implements Command {
       opacity: obj.opacity,
       filters: [...(obj.filters || [])],
       clipPath: obj.clipPath,
-      data: targetData ? { ...targetData } : { ...obj.data },
+      data: targetData ? { ...targetData } : { ...((obj as any).data || {}) },
       flipX: obj.flipX,
       flipY: obj.flipY,
       skewX: obj.skewX,
@@ -104,7 +104,7 @@ export class SegmentationCommand implements Command {
     }
 
     let imageData: ImageData;
-    let originalSrc = this.obj.data?._segOriginalSrc || this.beforeSrc;
+    let originalSrc = (this.obj as any).data?._segOriginalSrc || this.beforeSrc;
 
     try {
       if (this.lastJobId) aiEventBus.emit(this.lastJobId, { state: 'preparing-image', progress: 0 });

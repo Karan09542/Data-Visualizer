@@ -1,6 +1,6 @@
 import { Crop, FileText, Image as ImageIcon, Instagram, Linkedin, MonitorPlay, Palette, Printer, ShoppingBag, Smartphone, Twitter, Youtube } from "lucide-react";
 
-export type PresetCategory = "document" | "social" | "ecommerce" | "print" | "frames" | "collage" | "quick";
+export type PresetCategory = "document" | "social" | "ecommerce" | "print" | "screens" | "frames" | "collage" | "quick";
 
 export interface ImagePreset {
   id: string;
@@ -26,6 +26,15 @@ export interface ImagePreset {
 }
 
 export const PRESET_REGISTRY: ImagePreset[] = [
+  // ---- Screen & Editing Sizes ----
+  { id: "screen_1080p", name: "Full HD (1920x1080)", category: "screens", width: 1920, height: 1080, unit: "px", dpi: 72 },
+  { id: "screen_4k", name: "4K Ultra HD (3840x2160)", category: "screens", width: 3840, height: 2160, unit: "px", dpi: 72 },
+  { id: "screen_2k", name: "2K QHD (2560x1440)", category: "screens", width: 2560, height: 1440, unit: "px", dpi: 72 },
+  { id: "screen_720p", name: "HD 720p (1280x720)", category: "screens", width: 1280, height: 720, unit: "px", dpi: 72 },
+  { id: "screen_mobile", name: "Mobile Screen (390x844)", category: "screens", width: 390, height: 844, unit: "px", dpi: 72 },
+  { id: "screen_tablet", name: "Tablet Screen (820x1180)", category: "screens", width: 820, height: 1180, unit: "px", dpi: 72 },
+  { id: "screen_square_hd", name: "Square HD (1080x1080)", category: "screens", width: 1080, height: 1080, unit: "px", dpi: 72 },
+
   // ---- Document & ID Photo Studio ----
   { id: "doc_in_passport", name: "India Passport", category: "document", width: 35, height: 45, unit: "mm", dpi: 300, exportRecommendation: { format: "image/jpeg", quality: 90, message: "Use high quality JPEG for printing." } },
   { id: "doc_us_passport", name: "US Passport", category: "document", width: 2, height: 2, unit: "in", dpi: 300, exportRecommendation: { format: "image/jpeg", quality: 90, message: "Use high quality JPEG for printing. Must be 2x2 inches." } },
@@ -68,6 +77,7 @@ export const PRESET_REGISTRY: ImagePreset[] = [
   { id: "print_5x7", name: "5x7 Photo", category: "print", width: 5, height: 7, unit: "in", dpi: 300 },
   { id: "print_8x10", name: "8x10 Photo", category: "print", width: 8, height: 10, unit: "in", dpi: 300 },
   { id: "print_a4", name: "A4 Document", category: "print", width: 210, height: 297, unit: "mm", dpi: 300, exportRecommendation: { format: "image/jpeg", quality: 100, message: "High-resolution output for print." } },
+  { id: "print_a3", name: "A3 Poster", category: "print", width: 297, height: 420, unit: "mm", dpi: 300 },
   { id: "print_letter", name: "US Letter", category: "print", width: 8.5, height: 11, unit: "in", dpi: 300 },
 ];
 

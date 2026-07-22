@@ -2,10 +2,28 @@ import * as fabric from "fabric";
 import { FilterConfig } from "../../types/filters";
 import { CyberpunkDuotoneFilter, HalationBloomFilter, VHSGlitchFilter, FrostedGlassFilter, VaporwaveHalftoneFilter, ThermalHeatmapFilter, NeonSobelEdgeFilter, LiquidRippleFilter, AsciiMatrixFilter, MandalaMirrorFilter, GodRaysFilter, AnamorphicFlareFilter } from "./custom/WebGLFilters";
 
-// TODO(Refactor): Move to src/components/image-workspace/services/filters/rebuildFabricFilters.ts
-// Increase texture size limit to prevent WebGL filters from cropping large images
+// Dynamically detect maximum texture size supported by the hardware to prevent WebGL allocation crashes on mobile GPUs
+const getMaxSupportedTextureSize = (): number => {
+  try {
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (gl) {
+        const maxHardwareSize = (gl as WebGLRenderingContext).getParameter((gl as WebGLRenderingContext).MAX_TEXTURE_SIZE);
+        if (typeof maxHardwareSize === 'number' && maxHardwareSize > 0) {
+          // Cap at 4096 to prevent mobile memory pressure while supporting high-res filtering
+          return Math.min(maxHardwareSize, 4096);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Could not query GPU max texture size, using fallback limit", e);
+  }
+  return 2048; // Safe mobile GPU fallback limit
+};
+
 if (fabric.config) {
-  fabric.config.textureSize = 8192;
+  fabric.config.textureSize = getMaxSupportedTextureSize();
 }
 
 export function rebuildFabricFilters(obj: any, filtersObj: any) {
@@ -247,7 +265,10 @@ export function rebuildFabricFilters(obj: any, filtersObj: any) {
           filterInstance = new ThermalHeatmapFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
           break;
         case 'neonSobelEdge':
-          filterInstance = new NeonSobelEdgeFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
+          filterInstance = new NeonSobelEdgeFilter({
+            intensity: Number(item.params.value !== undefined ? item.params.value : 1.0),
+            color: item.params.color || '#00ffcc'
+          });
           break;
         case 'liquidRipple':
           filterInstance = new LiquidRippleFilter({ intensity: Number(item.params.value !== undefined ? item.params.value : 1.0) });
@@ -305,7 +326,11 @@ export function rebuildFabricFilters(obj: any, filtersObj: any) {
     }
   }
   
-  obj.applyFilters();
+  try {
+    obj.applyFilters();
+  } catch (applyErr) {
+    console.error("Error executing obj.applyFilters():", applyErr);
+  }
   const endTime = performance.now();
   obj.lastFilterBenchmark = {
     filterTimeMs: (endTime - startTime).toFixed(1),

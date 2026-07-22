@@ -35,7 +35,7 @@ export abstract class AICommand implements Command {
       opacity: obj.opacity,
       filters: [...(obj.filters || [])],
       clipPath: obj.clipPath,
-      data: { ...obj.data },
+      data: { ...((obj as any).data || {}) },
       flipX: obj.flipX,
       flipY: obj.flipY,
       skewX: obj.skewX,

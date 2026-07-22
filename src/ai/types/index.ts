@@ -28,6 +28,7 @@ export interface ModelManifest {
 }
 
 export type AIProgressState = 
+  | 'idle'
   | 'queued'
   | 'downloading'
   | 'loading-model'
@@ -37,6 +38,7 @@ export type AIProgressState =
   | 'encoding'
   | 'completed'
   | 'failed'
+  | 'error'
   | 'cancelled';
 
 export interface AIProgressEvent {

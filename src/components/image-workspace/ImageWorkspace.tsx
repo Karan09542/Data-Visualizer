@@ -1,3 +1,4 @@
+import { ExportLiveComparisonViewer } from '../export/ExportLiveComparisonViewer';
 import { WorkspaceHeader } from './components/layout/WorkspaceHeader';
 import { LeftToolbar } from './components/layout/LeftToolbar';
 import { PropertiesTab } from './components/panels/PropertiesTab';
@@ -280,6 +281,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const isMobileRef = useRef(false);
    const [showMobilePanel, setShowMobilePanel] = useState(false);
    const [mobilePanelHeight, setMobilePanelHeight] = useState(40); // Percentage of screen height
+
+
    const [showMobileArtboardsGallery, setShowMobileArtboardsGallery] = useState(false);
    const [showMobileToolbox, setShowMobileToolbox] = useState(false);
    const [showMobileDiagnosticsSheet, setShowMobileDiagnosticsSheet] = useState(false);
@@ -426,6 +429,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
    // UI Panels
    const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards" | "quick">("properties");
+
+   useEffect(() => {
+      if (activeTab === 'export') {
+         setMobilePanelHeight(30);
+      } else {
+         setMobilePanelHeight(45);
+      }
+   }, [activeTab]);
 
    // Panel sizing
    const MIN_PANEL_WIDTH = 280;
@@ -1655,19 +1666,21 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
    const createArtboardFromPreset = (presetId: string) => {
       const preset = PRESET_REGISTRY.find(p => p.id === presetId);
-      if (!preset || !activeArtboardId || !fabricRef.current) {
-         alert("Please ensure an artboard is selected.");
-         return;
-      }
-      const canvas = fabricRef.current;
+      if (!preset) return;
       const dims = getDimensionsInPixels(preset);
 
+      if (!activeArtboardId || artboards.length === 0 || !artboards.find(b => b.id === activeArtboardId)) {
+         createArtboard(preset.name, dims.width, dims.height);
+         return;
+      }
+
+      const canvas = fabricRef.current;
       const boardIndex = artboards.findIndex(b => b.id === activeArtboardId);
       if (boardIndex === -1) return;
       const board = artboards[boardIndex];
 
-      let targetImage = canvas.getActiveObject();
-      if (!targetImage || (targetImage.type !== 'image' && !targetImage.get('isFrameGroup'))) {
+      let targetImage = canvas ? canvas.getActiveObject() : null;
+      if (canvas && (!targetImage || (targetImage.type !== 'image' && !targetImage.get('isFrameGroup')))) {
          const objects = canvas.getObjects().filter(o => (o as any).artboardId === activeArtboardId);
          const images = objects.filter(o => o.type === 'image' || o.get('isFrameGroup'));
          if (images.length > 0) {
@@ -5643,7 +5656,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    let droppedOnBlock = false;
 
                                                    if (canvas && imageFiles.length > 0) {
-                                                      const target = canvas.findTarget(e.nativeEvent as any, false);
+                                                      const target = canvas.findTarget(e.nativeEvent as any);
                                                       if (target && (target as any).isCollageBlock) {
                                                          const file = imageFiles[0];
                                                          const reader = new FileReader();
@@ -5654,7 +5667,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             (target as any).collageImageSrc = dataUrl;
                                                             canvas.requestRenderAll();
 
-                                                            const cmd = new StyleChangeCommand("Fill Block with Image", target as fabric.Object, beforeState, afterState);
+                                                            const cmd = new StyleChangeCommand("Fill Block with Image", target as unknown as fabric.Object, beforeState, afterState);
                                                             executeCommand(cmd);
                                                          };
                                                          reader.readAsDataURL(file);
@@ -5986,744 +5999,51 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                       </div>
                                                    </div>
                                                 </div>
-                                             )}          {/* Squoosh-like image comparison viewer */}
-                                             {comparisonMode && (
-                                                <div className="absolute inset-0 z-40 bg-[#090909] flex flex-col p-0 md:p-4 items-center justify-center gap-4 select-none">
-                                                   {/* Visual Header Option Controls */}
-                                                   {isMobile ? (
-                                                      <>
-                                                         <button
-                                                            onClick={() => setActiveTab('properties')}
-                                                            className="absolute top-4 left-4 z-50 flex items-center justify-center w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white transition active:scale-95 shadow-[0_4px_16px_rgba(0,0,0,0.5)] backdrop-blur-xl border border-white/10"
-                                                         >
-                                                            <ChevronLeft size={20} />
-                                                         </button>
-
-                                                         <button
-                                                            onClick={handleExport}
-                                                            className="absolute top-4 right-4 z-50 flex items-center gap-1.5 px-4 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-[11px] text-white font-extrabold uppercase tracking-widest shadow-[0_4px_16px_rgba(37,99,235,0.4)] transition active:scale-95 border border-blue-500/50 backdrop-blur-xl"
-                                                         >
-                                                            <Download size={14} /> Save
-                                                         </button>
-                                                      </>
-                                                   ) : (
-                                                      <div className="w-full flex flex-col md:flex-row flex-wrap gap-3 items-stretch md:items-center justify-between bg-[#141414] p-3 rounded-xl border border-[#232323] shadow-lg mb-4 shrink-0 z-30">
-                                                         <div className="flex items-center justify-between gap-3 flex-wrap">
-                                                            <div className="flex items-center gap-2">
-                                                               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                                               <span className="text-xs font-black uppercase tracking-widest text-slate-200">Live Preview</span>
-                                                            </div>
-
-                                                            {/* Premium Toggle Stats Button */}
-                                                            <button
-                                                               onClick={() => setShowDiagnostics(prev => !prev)}
-                                                               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/30 hover:bg-blue-600/20 text-[10px] text-blue-400 font-extrabold uppercase tracking-wider transition-all"
-                                                               title="Toggle performance diagnostics overlay"
-                                                            >
-                                                               {showDiagnostics ? <EyeOff size={11} className="mr-0.5" /> : <Eye size={11} className="mr-0.5" />}
-                                                               {showDiagnostics ? "Hide Stats" : "Show Stats"}
-                                                            </button>
-                                                         </div>
-
-                                                         <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3">
-                                                            {/* Zoom Control */}
-                                                            <div className="flex items-center justify-between xl:justify-start gap-2 bg-[#1A1A1A] p-1.5 px-3 rounded-lg border border-[#222] min-w-0 flex-wrap">
-
-                                                               <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest leading-none">Zoom</span>
-                                                               <div className="flex items-center gap-2">
-                                                                  <input
-                                                                     type="range"
-                                                                     min="0.5"
-                                                                     max="4"
-                                                                     step="0.1"
-                                                                     value={comparisonZoom}
-                                                                     onChange={(e) => {
-                                                                        const newZoom = parseFloat(e.target.value);
-                                                                        setComparisonZoom(newZoom);
-                                                                        if (transformComponentRef.current) {
-                                                                           const instance = transformComponentRef.current;
-                                                                           const inst = instance.instance;
-                                                                           const state = inst?.transformState || inst?.state || (instance as any).state || (instance as any).transformState;
-                                                                           const wrapper = inst?.wrapperComponent || (instance as any).wrapperComponent;
-
-                                                                           if (state && wrapper && typeof state.scale === 'number') {
-                                                                              const { scale, positionX, positionY } = state;
-                                                                              const width = wrapper.offsetWidth;
-                                                                              const height = wrapper.offsetHeight;
-
-                                                                              const centerX = (width / 2 - positionX) / scale;
-                                                                              const centerY = (height / 2 - positionY) / scale;
-
-                                                                              const newPositionX = width / 2 - centerX * newZoom;
-                                                                              const newPositionY = height / 2 - centerY * newZoom;
-
-                                                                              instance.setTransform(newPositionX, newPositionY, newZoom);
-                                                                           } else {
-                                                                              instance.zoomToElement(undefined as any, newZoom);
-                                                                           }
-                                                                        }
-                                                                     }}
-                                                                     className="w-16 sm:w-20 md:w-24 h-1 accent-blue-500 cursor-pointer"
-                                                                  />
-                                                                  <span className="text-[10px] text-blue-400 font-mono w-8 text-center">{Math.round(comparisonZoom * 100)}%</span>
-                                                                  <button
-                                                                     onClick={() => {
-                                                                        if (transformComponentRef.current) {
-                                                                           transformComponentRef.current.resetTransform();
-                                                                           setComparisonZoom(1);
-                                                                        }
-                                                                     }}
-                                                                     className="text-[9px] bg-[#2D2D2D] hover:bg-[#3D3D3D] text-slate-300 px-1.5 py-0.5 rounded border border-[#3D3D3D] transition-all font-bold uppercase tracking-widest cursor-pointer inline-flex items-center"
-                                                                  >
-                                                                     Fit
-                                                                  </button>
-                                                               </div>
-                                                            </div>
-
-                                                            {/* Preview Modes Selection */}
-                                                            <div className="flex bg-[#1D1D1D] p-1 rounded-lg border border-[#2D2D2D] gap-1 overflow-x-auto sm:flex-wrap no-scrollbar shrink-0 max-w-full">
-                                                               {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
-                                                                  <button
-                                                                     key={mode}
-                                                                     onClick={() => setComparisonPreviewMode(mode)}
-                                                                     className={`px-3 py-1.5 text-[10px] sm:text-[11px] font-black rounded-md transition duration-150 uppercase tracking-widest ${comparisonPreviewMode === mode ? 'bg-blue-600 text-white shadow-[0_2px_8px_rgba(37,99,235,0.3)] font-black' : 'text-slate-400 hover:bg-[#252525] hover:text-slate-200'}`}
-                                                                  >
-                                                                     {mode.replace("-", " ")}
-                                                                  </button>
-                                                               ))}
-                                                            </div>
-                                                         </div>
-                                                      </div>
-
-                                                   )}
-
-                                                   {/* Central Canvas Viewport Area */}
-                                                   <div className={`flex-1 w-full flex items-center justify-center relative min-h-0 ${isMobile ? 'p-0 overflow-hidden' : ''}`}>
-                                                      {/* Mobile preview mode contextual selector bubble with conditional rendering toggle */}
-                                                      {isMobile && (
-                                                         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center gap-2 max-w-[95vw]">
-                                                            {!showMobileCompareSwitcher ? (
-                                                               <button
-                                                                  onClick={() => setShowMobileCompareSwitcher(true)}
-                                                                  className="bg-black/85 hover:bg-black border border-white/10 text-white text-[10px] font-black uppercase tracking-[0.15em] px-4 py-2.5 rounded-full flex items-center gap-2 backdrop-blur-xl shadow-2xl pointer-events-auto active:scale-95 transition"
-                                                               >
-                                                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                                                  View: {comparisonPreviewMode === 'split' ? 'Split' : (comparisonPreviewMode === 'side-by-side' ? 'Side' : comparisonPreviewMode)}
-                                                                  <ChevronDown size={12} className="text-white/60 ml-0.5" />
-                                                               </button>
-                                                            ) : (
-                                                               <div className="bg-black/90 backdrop-blur-xl p-1 border border-white/15 rounded-full shadow-2xl flex items-center gap-1 shrink-0 pointer-events-auto animate-in fade-in zoom-in duration-200">
-                                                                  {(["split", "side-by-side", "original", "optimized"] as const).map(mode => (
-                                                                     <button
-                                                                        key={mode}
-                                                                        onClick={() => {
-                                                                           setComparisonPreviewMode(mode);
-                                                                           setShowMobileCompareSwitcher(false);
-                                                                        }}
-                                                                        className={`px-3 py-1.5 text-[9px] font-black rounded-full transition-all uppercase tracking-[0.05em] ${comparisonPreviewMode === mode ? 'bg-white text-black font-extrabold' : 'text-white/50 hover:text-white'}`}
-                                                                     >
-                                                                        {mode === 'split' ? 'Split' : (mode === 'side-by-side' ? 'Side' : mode)}
-                                                                     </button>
-                                                                  ))}
-                                                                  <button
-                                                                     onClick={() => setShowMobileCompareSwitcher(false)}
-                                                                     className="p-1.5 text-white/40 hover:text-white transition rounded-full"
-                                                                  >
-                                                                     <X size={12} />
-                                                                  </button>
-                                                               </div>
-                                                            )}
-                                                         </div>
-                                                      )}
-
-                                                      {/* Floating Reset Zoom bubble */}
-                                                      {isMobile && Math.round(comparisonZoom * 100) !== 100 && (
-                                                         <button
-                                                            onClick={() => {
-                                                               if (transformComponentRef.current) {
-                                                                  transformComponentRef.current.resetTransform();
-                                                                  setComparisonZoom(1);
-                                                               }
-                                                            }}
-                                                            className="absolute bottom-24 left-4 z-40 bg-black/80 border border-white/10 text-white font-mono text-[10px] font-black px-3 py-2 rounded-full flex items-center gap-1.5 backdrop-blur-xl shadow-2xl pointer-events-auto active:scale-95 transition"
-                                                         >
-                                                            <ZoomIn size={14} /> {Math.round(comparisonZoom * 100)}%
-                                                         </button>
-                                                      )}
-                                                      {comparisonPreviewMode === "split" && (
-                                                         <div
-                                                            ref={sliderRef}
-                                                            onPointerMove={handlePointerMove}
-                                                            onPointerUp={handlePointerUp}
-                                                            onPointerLeave={handlePointerUp}
-                                                            onKeyDown={handleKeyDown}
-                                                            tabIndex={0}
-                                                            className={`${isMobile ? 'w-full h-full rounded-none border-none flex-1 min-h-0' : 'w-full max-w-5xl flex-1 min-h-0 rounded-xl border border-[#222]'} relative bg-[#111] overflow-hidden shadow-2xl group flex items-center justify-center outline-none focus:border-blue-500/50`}
-                                                            style={{
-                                                               aspectRatio: !isMobile ? (() => {
-                                                                  const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                                  return b ? `${b.width} / ${b.height}` : "1.33";
-                                                               })() : undefined
-                                                            }}
-                                                         >
-                                                            {/* OPTIMIZED PREVIEW (Background layer) */}
-                                                            <div className="absolute inset-0 w-full h-full p-4 overflow-hidden flex items-center justify-center">
-                                                               <TransformWrapper
-                                                                  ref={transformComponentRef}
-                                                                  disabled={isMobile}
-                                                                  initialScale={comparisonZoom}
-                                                                  minScale={0.1}
-                                                                  maxScale={20}
-                                                                  centerOnInit
-                                                                  panning={{ disabled: isDraggingDivider }}
-                                                                  onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                               >
-                                                                  <TransformComponent wrapperStyle={{ width: "100%", height: "100%", cursor: isDraggingDivider ? "ew-resize" : "grab" }} contentStyle={{ width: "100%", height: "100%" }}>
-                                                                     <div className="relative w-full h-full flex items-center justify-center">
-                                                                        {originalPreviewDims && optimizedPreviewDims && (
-                                                                           <div
-                                                                              className="relative"
-                                                                              style={{
-                                                                                 width: originalPreviewDims.w,
-                                                                                 height: originalPreviewDims.h,
-                                                                                 maxWidth: '100%',
-                                                                                 maxHeight: '100%',
-                                                                                 aspectRatio: `${originalPreviewDims.w} / ${originalPreviewDims.h}`
-                                                                              }}
-                                                                           >
-                                                                              {/* OPTIMIZED IMAGE (Background layer) */}
-                                                                              <img
-                                                                                 src={optimizedImageUrl || originalImageUrl || ""}
-                                                                                 alt="Optimized"
-                                                                                 referrerPolicy="no-referrer"
-                                                                                 className="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                                                                                 style={{
-                                                                                    backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                                    ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                                 }}
-                                                                              />
-
-                                                                              {/* ORIGINAL IMAGE (Foreground layer with clipPath) */}
-                                                                              <img
-                                                                                 src={originalImageUrl || ""}
-                                                                                 alt="Original"
-                                                                                 referrerPolicy="no-referrer"
-                                                                                 className="absolute inset-0 w-full h-full object-fill pointer-events-none"
-                                                                                 style={{
-                                                                                    clipPath: `polygon(0 0, ${comparisonDivider}% 0, ${comparisonDivider}% 100%, 0 100%)`
-                                                                                 }}
-                                                                              />
-                                                                           </div>
-                                                                        )}
-                                                                     </div>
-                                                                  </TransformComponent>
-                                                               </TransformWrapper>
-                                                            </div>
-
-                                                            {/* Drag Divider Line & Handle */}
-                                                            <div
-                                                               onPointerDown={handlePointerDown}
-                                                               onDoubleClick={() => setComparisonDivider(50)}
-                                                               className="absolute top-0 bottom-0 select-none z-30 cursor-ew-resize group"
-                                                               style={{ left: `${comparisonDivider}%`, transform: 'translateX(-50%)' }}
-                                                            >
-                                                               <div className="absolute inset-y-0 w-[2px] bg-blue-500 group-hover:bg-blue-400 group-active:bg-blue-300 transition-colors shadow-2xl" />
-
-                                                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#181818] border-2 border-blue-500 group-hover:border-blue-400 text-white flex items-center justify-center shadow-2xl transition duration-150 hover:scale-110 active:scale-95 bg-opacity-95">
-                                                                  <div className="flex gap-1 items-center">
-                                                                     <div className="w-1.5 h-1.5 border-t-2 border-l-2 border-blue-400 rotate-[-45deg]" />
-                                                                     <div className="w-[1px] h-3 bg-blue-500/50 rounded-full" />
-                                                                     <div className="w-1.5 h-1.5 border-t-2 border-r-2 border-blue-400 rotate-[45deg]" />
-                                                                  </div>
-                                                               </div>
-                                                            </div>
-
-                                                            {/* Left Side Label (Original) */}
-                                                            {showDiagnostics && (
-                                                               <div className="hidden md:block absolute top-4 left-4 bg-black/75 text-[#A2A2A2] text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-white/5 pointer-events-none backdrop-blur-md">
-                                                                  Original: <span className="font-mono text-white text-xs">{formatBytes(originalSize || 0)}</span>
-                                                               </div>
-                                                            )}
-
-                                                            {/* Right Side Label (Optimized) */}
-                                                            {showDiagnostics && (
-                                                               <div className="hidden md:block absolute top-4 right-4 bg-blue-950/70 text-blue-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-blue-500/20 pointer-events-none backdrop-blur-md">
-                                                                  Optimized: <span className="font-mono text-white text-xs">{formatBytes(optimizedSize || 0)}</span>
-                                                               </div>
-                                                            )}
-                                                         </div>
-                                                      )}
-
-                                                      {comparisonPreviewMode === "side-by-side" && (
-                                                         <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-w-4xl max-h-[60vh]'}`}>
-                                                            <TransformWrapper
-                                                               ref={transformComponentRef}
-                                                               initialScale={comparisonZoom}
-                                                               minScale={0.1}
-                                                               maxScale={20}
-                                                               centerOnInit
-                                                               limitToBounds={false}
-                                                               centerZoomedOut={true}
-                                                               panning={{ velocityDisabled: true }}
-                                                               onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                            >
-                                                               <TransformComponent
-                                                                  wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
-                                                                  contentStyle={{ width: "100%", height: "100%" }}
-                                                               >
-                                                                  <div className={`grid ${isMobile ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2'} gap-4 w-full h-full p-4`}>
-                                                                     <div className="relative rounded-xl border border-[#222] bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
-                                                                        <div className="relative w-full h-full flex items-center justify-center">
-                                                                           <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
-                                                                              backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                              ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                           }} />
-                                                                        </div>
-                                                                        {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original: {formatBytes(originalSize || 0)}</span>}
-                                                                     </div>
-                                                                     <div className="relative rounded-xl border border-blue-500/20 bg-[#111] overflow-hidden flex flex-col items-center justify-center p-3 shadow-xl">
-                                                                        <div className="relative w-full h-full flex items-center justify-center">
-                                                                           <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none" style={{
-                                                                              backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                              ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                           }} />
-                                                                        </div>
-                                                                        {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-blue-950/70 px-3 py-1.5 rounded-lg border border-blue-500/20 text-[10px] text-blue-300 font-bold font-mono">Optimized: {formatBytes(optimizedSize || 0)}</span>}
-                                                                     </div>
-                                                                  </div>
-                                                               </TransformComponent>
-                                                            </TransformWrapper>
-                                                         </div>
-                                                      )}
-
-                                                      {comparisonPreviewMode === "original" && (
-                                                         <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-h-[60vh] max-w-4xl border border-[#222] rounded-xl'} bg-[#111] overflow-hidden flex items-center justify-center shadow-2xl`}>
-                                                            <TransformWrapper
-                                                               ref={transformComponentRef}
-                                                               initialScale={comparisonZoom}
-                                                               minScale={0.1}
-                                                               maxScale={20}
-                                                               centerOnInit
-                                                               limitToBounds={false}
-                                                               centerZoomedOut={true}
-                                                               panning={{ velocityDisabled: true }}
-                                                               onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                            >
-                                                               <TransformComponent
-                                                                  wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
-                                                                  contentStyle={{ width: "100%", height: "100%" }}
-                                                               >
-                                                                  <div className="relative w-full h-full flex items-center justify-center p-4">
-                                                                     <img src={originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
-                                                                        backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                        ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                     }} />
-                                                                  </div>
-                                                               </TransformComponent>
-                                                            </TransformWrapper>
-                                                            {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-black/75 px-3 py-1.5 rounded-lg border border-white/5 text-[10px] text-white font-bold font-mono">Original Only ({formatBytes(originalSize || 0)})</span>}
-                                                         </div>
-                                                      )}
-
-                                                      {comparisonPreviewMode === "optimized" && (
-                                                         <div className={`w-full h-full relative ${isMobile ? 'rounded-none border-none max-h-full flex-1 min-h-0' : 'max-h-[60vh] max-w-4xl border border-blue-500/20 rounded-xl'} bg-[#111] overflow-hidden flex items-center justify-center shadow-2xl`}>
-                                                            <TransformWrapper
-                                                               ref={transformComponentRef}
-                                                               initialScale={comparisonZoom}
-                                                               minScale={0.1}
-                                                               maxScale={20}
-                                                               centerOnInit
-                                                               limitToBounds={false}
-                                                               centerZoomedOut={true}
-                                                               panning={{ velocityDisabled: true }}
-                                                               onTransform={(p) => setComparisonZoom(p.state.scale)}
-                                                            >
-                                                               <TransformComponent
-                                                                  wrapperStyle={{ width: "100%", height: "100%", cursor: comparisonZoom > 1 ? "grab" : "default" }}
-                                                                  contentStyle={{ width: "100%", height: "100%" }}
-                                                               >
-                                                                  <div className="relative w-full h-full flex items-center justify-center p-4">
-                                                                     <img src={optimizedImageUrl || originalImageUrl || ""} referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full object-contain pointer-events-none mx-auto" style={{
-                                                                        backgroundColor: ((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? 'transparent' : (artboards.find(x => x.id === activeArtboardId) || artboards[0])?.backgroundColor) || '#fff',
-                                                                        ...((artboards.find(x => x.id === activeArtboardId) || artboards[0])?.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                                     }} />
-                                                                  </div>
-                                                               </TransformComponent>
-                                                            </TransformWrapper>
-                                                            {showDiagnostics && <span className="hidden md:inline-block absolute top-3 left-3 bg-blue-950/70 px-3 py-1.5 rounded-lg border border-blue-500/20 text-[10px] text-blue-300 font-bold font-mono">Optimized Only ({formatBytes(optimizedSize || 0)})</span>}
-                                                         </div>
-                                                      )}
-
-                                                      {/* Floating Green Live Size Indicator */}
-                                                      {optimizedSize && originalSize && originalSize > optimizedSize && showDiagnostics && (
-                                                         <div className="hidden md:flex absolute bottom-4 right-4 bg-emerald-900/90 border border-emerald-500/30 text-white backdrop-blur-md px-4 py-2.5 rounded-xl shadow-2xl z-25 flex-col items-center justify-center font-bold animate-fade-in transition-all">
-                                                            <div className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-                                                               <Activity size={12} className="animate-pulse" />
-                                                               {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
-                                                            </div>
-                                                            <div className="text-lg font-mono font-black">{formatBytes(optimizedSize)}</div>
-                                                            <div className="text-[9px] text-emerald-300/75 uppercase font-mono tracking-wider mt-0.5">Saved {formatBytes(originalSize - optimizedSize)}</div>
-                                                         </div>
-                                                      )}
-
-                                                      {/* Visual Quality & Diagnostics analysis floating card */}
-                                                      {showDiagnostics && (
-                                                         <div className="hidden md:flex absolute bottom-4 left-4 max-w-xs bg-[#141414]/95 border border-[#2E2E2E] text-slate-300 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-2xl z-25 flex-col gap-1.5 text-xs text-left animate-in fade-in duration-200">
-                                                            <div className="text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider border-b border-[#232323] pb-1 flex items-center justify-between">
-                                                               <div className="flex items-center gap-1.5">
-                                                                  <Sliders size={11} className="text-blue-400" /> Quality Diagnostics
-                                                               </div>
-                                                               <button onClick={() => setShowDiagnostics(false)} className="text-slate-500 hover:text-white p-0.5 transition" title="Minimize diagnostics panel"><X size={11} /></button>
-                                                            </div>
-                                                            <div className="flex justify-between gap-6">
-                                                               <span className="text-slate-400 text-[11px]">Format:</span>
-                                                               <span className="font-mono text-[11px] font-bold text-blue-400 uppercase">{exportSettings.format}</span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-6">
-                                                               <span className="text-slate-400 text-[11px]">Resolution:</span>
-                                                               <span className="font-mono text-[11px] font-bold text-slate-100">
-                                                                  {(() => {
-                                                                     const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                                     return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} x ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
-                                                                  })()}
-                                                               </span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-6">
-                                                               <span className="text-slate-400 text-[11px]">PSNR Metric:</span>
-                                                               <span className="font-mono text-[11px] font-bold text-emerald-400">
-                                                                  {psnr ? `${psnr.toFixed(1)} dB` : 'Calculating...'}
-                                                               </span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-6">
-                                                               <span className="text-slate-400 text-[11px]">SSIM Metric:</span>
-                                                               <span className="font-mono text-[11px] font-bold text-blue-400">
-                                                                  {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Calculating...'}
-                                                               </span>
-                                                            </div>
-                                                            <div className="flex justify-between gap-6">
-                                                               <span className="text-slate-400 text-[11px]">Visual Fidelity:</span>
-                                                               <span className="text-[11px] font-medium text-slate-200">
-                                                                  {(() => {
-                                                                     if (exportSettings.format === 'png') return exportSettings.png?.paletteReduction ? '8-Bit Index' : 'Perfect Lossless';
-                                                                     const q = exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : exportSettings.avif.cqLevel);
-                                                                     if (q > 90) return 'Exceptional';
-                                                                     if (q > 75) return 'Balanced';
-                                                                     if (q > 50) return 'Standard Lossy';
-                                                                     return 'High Compression';
-                                                                  })()}
-                                                               </span>
-                                                            </div>
-                                                         </div>
-                                                      )}
-
-                                                      {/* Minimized HUD diagnostic bubble */}
-                                                      {!showDiagnostics && (
-                                                         <button
-                                                            onClick={() => setShowDiagnostics(true)}
-                                                            className="hidden md:flex absolute bottom-4 left-4 w-9 h-9 rounded-xl bg-[#141414]/95 border border-[#2E2E2E] hover:border-blue-500/50 hover:bg-[#1A1A1A] text-slate-300 hover:text-white backdrop-blur-md items-center justify-center shadow-xl z-25 transition-all"
-                                                            title="Show diagnostics overlay"
-                                                         >
-                                                            <Sliders size={14} />
-                                                         </button>
-                                                      )}
-
-                                                      {/* Worker compilation progress & current operation overlay */}
-                                                      {isGeneratingPreview && (
-                                                         <div className="absolute inset-0 bg-[#0A0A0A]/85 backdrop-blur-sm flex flex-col items-center justify-center z-40 rounded-xl transition-all duration-300 border border-[#222]">
-                                                            <div className="relative flex items-center justify-center mb-4">
-                                                               <RotateCw className="animate-spin text-blue-500 w-9 h-9" />
-                                                               <div className="absolute w-12 h-12 rounded-full border-2 border-dashed border-blue-500/20 animate-spin-reverse" />
-                                                            </div>
-                                                            <div className="text-xs font-semibold text-slate-100">{currentPreviewOp || "Regenerating active optimization preview..."}</div>
-                                                            <div className="text-[9px] text-[#8C8C8C] mt-1.5 uppercase font-[#8C8C8C] tracking-wider font-mono">WebAssembly Engine (jSquash)</div>
-                                                         </div>
-                                                      )}
-                                                   </div>
-
-                                                   {/* Mobile Floating HUD metrics chips (Progressive Disclosure) */}
-                                                   {isMobile && (
-                                                      <div
-                                                         className="absolute bottom-5 left-1/2 -translate-x-1/2 z-40 bg-[#121212]/95 border border-white/15 pointer-events-auto px-4 py-2.5 rounded-xl shadow-[0_12px_32px_rgba(0,0,0,0.85)] flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-950 transition-all active:scale-[0.97] text-slate-100 min-w-[275px] max-w-[90vw]"
-                                                      >
-                                                         <div className="flex items-center gap-2.5">
-                                                            <span className="bg-blue-500/10 text-blue-400 text-[10px] font-black tracking-widest px-2 py-1 rounded-md uppercase font-mono border border-blue-500/15">
-                                                               {exportSettings.format}
-                                                            </span>
-                                                            {!!(originalSize && optimizedSize && originalSize > optimizedSize) && (
-                                                               <div className="flex flex-col text-left leading-tight">
-                                                                  <span className="text-[11px] font-black text-emerald-400 tracking-wide">
-                                                                     {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
-                                                                  </span>
-                                                                  <span className="text-[8px] text-zinc-500 font-extrabold uppercase tracking-wider font-mono leading-none">Savings</span>
-                                                               </div>
-                                                            )}
-                                                            {(!originalSize || !optimizedSize) && (
-                                                               <span className="text-[11px] font-black text-blue-400 tracking-wide uppercase">
-                                                                  Settings
-                                                               </span>
-                                                            )}
-                                                         </div>
-                                                         <div className="w-[1px] h-4 bg-white/10" />
-                                                         <div className="flex items-center gap-2.5">
-                                                            {(optimizedSize && optimizedSize > 0) ? (
-                                                               <div className="flex flex-col text-right leading-tight">
-                                                                  <span className="text-[11px] text-white font-extrabold font-mono">
-                                                                     {formatBytes(optimizedSize)}
-                                                                  </span>
-                                                                  <span className="text-[8px] text-[#8A8A8A] font-extrabold uppercase tracking-wider leading-none">Optimized</span>
-                                                               </div>
-                                                            ) : (
-                                                               <div className="flex flex-col text-right leading-tight">
-                                                                  <span className="text-[11px] text-white font-extrabold font-mono">
-                                                                     Export Studio
-                                                                  </span>
-                                                                  <span className="text-[8px] text-[#8A8A8A] font-extrabold uppercase tracking-wider leading-none">Optimize</span>
-                                                               </div>
-                                                            )}
-                                                            <Sliders size={11} className="text-blue-400 animate-pulse shrink-0" />
-                                                         </div>
-                                                      </div>
-                                                   )}
-
-                                                   {/* Premium Mobile Slide-Up Bottom Sheet */}
-                                                   {isMobile && showMobileDiagnosticsSheet && (
-                                                      <>
-                                                         <div
-                                                            className="fixed inset-0 bg-black/80 z-[100] backdrop-blur-sm animate-in fade-in cursor-pointer pointer-events-auto"
-                                                            onClick={() => setShowMobileDiagnosticsSheet(false)}
-                                                         />
-                                                         <div className="fixed bottom-0 left-0 right-0 z-[101] bg-[#0F0F0F] rounded-t-3xl border-t border-[#252525] p-5 pb-8 flex flex-col gap-4 animate-in slide-in-from-bottom duration-300 max-h-[85vh] overflow-y-auto pointer-events-auto">
-                                                            <div className="w-12 h-1 bg-[#333] rounded-full mx-auto" onClick={() => setShowMobileDiagnosticsSheet(false)} />
-
-                                                            <div className="flex items-center justify-between border-b border-[#222] pb-3">
-                                                               <div className="flex items-center gap-2">
-                                                                  <Sliders size={16} className="text-blue-500" />
-                                                                  <h3 className="text-xs font-black uppercase tracking-widest text-[#E0E0E0]">Optimization Settings</h3>
-                                                               </div>
-                                                               <button
-                                                                  onClick={() => setShowMobileDiagnosticsSheet(false)}
-                                                                  className="p-1 px-3 rounded-lg bg-[#1E1E1E] text-[10px] font-bold uppercase tracking-wider hover:bg-[#2A2A2A] text-slate-400"
-                                                               >
-                                                                  Close
-                                                               </button>
-                                                            </div>
-
-                                                            {['jpeg', 'webp', 'avif'].includes(exportSettings.format) && (
-                                                               <div className="bg-[#161616] p-4 rounded-xl border border-[#222]">
-                                                                  <div className="flex justify-between items-center mb-2">
-                                                                     <span className="text-[10px] uppercase font-black text-[#A2A2A2] tracking-wider">Adjustment Quality</span>
-                                                                     <span className="text-xs font-bold text-blue-400 font-mono">
-                                                                        {exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : 100 - exportSettings.avif.cqLevel)}%
-                                                                     </span>
-                                                                  </div>
-                                                                  <input
-                                                                     type="range"
-                                                                     min="5"
-                                                                     max="100"
-                                                                     value={
-                                                                        exportSettings.format === 'jpeg'
-                                                                           ? exportSettings.mozjpeg.quality
-                                                                           : (exportSettings.format === 'webp'
-                                                                              ? exportSettings.webp.quality
-                                                                              : 100 - exportSettings.avif.cqLevel)
-                                                                     }
-                                                                     onChange={(e) => {
-                                                                        const val = parseInt(e.target.value);
-                                                                        const newSettings = { ...exportSettings };
-                                                                        if (exportSettings.format === 'jpeg') {
-                                                                           newSettings.mozjpeg.quality = val;
-                                                                        } else if (exportSettings.format === 'webp') {
-                                                                           newSettings.webp.quality = val;
-                                                                        } else if (exportSettings.format === 'avif') {
-                                                                           newSettings.avif.cqLevel = 100 - val;
-                                                                        }
-                                                                        setExportSettings(newSettings);
-                                                                     }}
-                                                                     className="w-full accent-blue-500 cursor-pointer h-1.5 bg-[#252525] rounded-full"
-                                                                  />
-                                                               </div>
-                                                            )}
-
-                                                            <div className="space-y-2 mt-1">
-                                                               <div className="grid grid-cols-2 gap-2">
-                                                                  <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Target Format</span>
-                                                                     <span className="font-mono text-xs font-bold text-blue-400 uppercase">{exportSettings.format}</span>
-                                                                  </div>
-
-                                                                  <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Resolution</span>
-                                                                     <span className="font-mono text-xs font-bold text-slate-200">
-                                                                        {(() => {
-                                                                           const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                                           return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} × ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
-                                                                        })()}
-                                                                     </span>
-                                                                  </div>
-
-                                                                  <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">PSNR Ratio</span>
-                                                                     <span className="font-mono text-xs font-bold text-emerald-400 font-mono">
-                                                                        {psnr ? `${psnr.toFixed(1)} dB` : 'Measuring...'}
-                                                                     </span>
-                                                                  </div>
-
-                                                                  <div className="bg-[#161616] p-3 rounded-xl border border-[#222] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Visual SSIM</span>
-                                                                     <span className="font-mono text-xs font-bold text-blue-400 block truncate">
-                                                                        {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Measuring...'}
-                                                                     </span>
-                                                                  </div>
-                                                               </div>
-
-                                                               <div className="bg-[#161616] p-3 rounded-xl border border-[#222] mt-2 space-y-2">
-                                                                  <div className="flex justify-between items-center border-b border-[#252525] pb-1.5">
-                                                                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Savings Profile</span>
-                                                                     <span className="text-[10px] text-slate-500 uppercase font-mono">WASM optimized</span>
-                                                                  </div>
-                                                                  <div className="flex justify-between text-xs text-slate-300 font-sans">
-                                                                     <span>Original Size: <span className="font-mono font-bold text-slate-400">{formatBytes(originalSize || 0)}</span></span>
-                                                                     <span>Optimized Size: <span className="font-mono font-bold text-blue-400">{formatBytes(optimizedSize || 0)}</span></span>
-                                                                  </div>
-                                                                  {optimizedSize && originalSize && (
-                                                                     <div className="flex justify-between text-xs text-emerald-400 border-t border-[#252525] pt-1.5 mt-1 font-sans">
-                                                                        <span>Saved: <span className="font-mono font-black">{formatBytes(originalSize - optimizedSize)}</span></span>
-                                                                        <span className="font-black">{parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller</span>
-                                                                     </div>
-                                                                  )}
-                                                               </div>
-                                                            </div>
-
-                                                            <div className="mt-2 text-center">
-                                                               <button
-                                                                  onClick={() => {
-                                                                     setShowMobileDiagnosticsSheet(false);
-                                                                     handleExport();
-                                                                  }}
-                                                                  className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-white shadow-xl transition-all"
-                                                               >
-                                                                  Confirm & Download Image
-                                                               </button>
-                                                            </div>
-                                                         </div>
-                                                      </>
-                                                   )}
-
-                                                   {/* Non-mobile Tablet/Accordion Bottom Details Sheet (Only visible on non-mobile screens) */}
-                                                   {!isMobile && (
-                                                      <div className="md:hidden w-full shrink-0 mt-2 z-30">
-                                                         <div
-                                                            onClick={() => setMobileDetailsExpanded(!mobileDetailsExpanded)}
-                                                            className="w-full bg-[#141414] border border-[#2A2A2A] rounded-xl p-3 flex items-center justify-between hover:bg-[#1A1A1A] active:bg-[#111] transition-colors cursor-pointer select-none"
-                                                         >
-                                                            <div className="flex items-center gap-2">
-                                                               <Sliders size={12} className="text-blue-400" />
-                                                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
-                                                                  Optimization Details
-                                                               </span>
-                                                               <span className="text-[9px] text-blue-300 bg-blue-900/30 border border-blue-500/20 px-1.5 py-0.5 rounded font-bold uppercase font-mono">
-                                                                  {exportSettings.format}
-                                                               </span>
-                                                            </div>
-
-                                                            {/* Display compact saving information metrics as clean chips */}
-                                                            <div className="flex items-center gap-1.5">
-                                                               {optimizedSize && originalSize && (
-                                                                  <>
-                                                                     {originalSize > optimizedSize && (
-                                                                        <div className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                                                                           {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Smaller
-                                                                        </div>
-                                                                     )}
-                                                                     <div className="text-[9px] font-bold text-blue-300 bg-[#1e293b]/40 border border-blue-500/10 px-2 py-0.5 rounded-md font-mono">
-                                                                        {formatBytes(optimizedSize)}
-                                                                     </div>
-                                                                  </>
-                                                               )}
-                                                               <div className="text-slate-500 ml-1">
-                                                                  {mobileDetailsExpanded ? (
-                                                                     <ChevronDown size={14} className="text-blue-400" />
-                                                                  ) : (
-                                                                     <ChevronUp size={14} className="text-slate-400" />
-                                                                  )}
-                                                               </div>
-                                                            </div>
-                                                         </div>
-
-                                                         {/* Accordion Expandable Diagnostics Body */}
-                                                         {mobileDetailsExpanded && (
-                                                            <div className="w-full bg-[#111111] border-x border-b border-[#2A2A2A] rounded-b-xl p-3 space-y-2 mt-[-4px] text-xs text-left animate-in fade-in slide-in-from-top-2 duration-200">
-                                                               <div className="grid grid-cols-2 gap-2">
-                                                                  {/* Format item */}
-                                                                  <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Format</span>
-                                                                     <span className="font-mono text-xs font-bold text-blue-400 uppercase">{exportSettings.format}</span>
-                                                                  </div>
-
-                                                                  {/* Resolution item */}
-                                                                  <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Resolution</span>
-                                                                     <span className="font-mono text-xs font-bold text-slate-200">
-                                                                        {(() => {
-                                                                           const b = artboards.find(x => x.id === activeArtboardId) || artboards[0];
-                                                                           return b ? `${exportTarget === 'current' ? exportSettings.resize.width : b.width} × ${exportTarget === 'current' ? exportSettings.resize.height : b.height}` : "0 x 0";
-                                                                        })()}
-                                                                     </span>
-                                                                  </div>
-
-                                                                  {/* PSNR item */}
-                                                                  <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">PSNR Metric</span>
-                                                                     <span className="font-mono text-xs font-bold text-emerald-400">
-                                                                        {psnr ? `${psnr.toFixed(1)} dB` : 'Calculating...'}
-                                                                     </span>
-                                                                  </div>
-
-                                                                  {/* SSIM item */}
-                                                                  <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                                     <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">SSIM Metric</span>
-                                                                     <span className="font-mono text-xs font-bold text-blue-400">
-                                                                        {psnr ? (psnr > 40 ? '0.998' : (psnr > 35 ? '0.992' : '0.975')) : 'Calculating...'}
-                                                                     </span>
-                                                                  </div>
-                                                               </div>
-
-                                                               {/* Savings and size comparisons */}
-                                                               {optimizedSize && originalSize && (
-                                                                  <div className="bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-500/20 flex flex-col gap-1.5">
-                                                                     <div className="flex justify-between items-center border-b border-emerald-500/10 pb-1">
-                                                                        <span className="text-emerald-400 text-[9px] font-black uppercase tracking-wider font-sans">Size Savings</span>
-                                                                        <span className="text-emerald-300 font-extrabold text-xs">
-                                                                           {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}% Reduction
-                                                                        </span>
-                                                                     </div>
-                                                                     <div className="flex justify-between text-[11px] text-slate-300 font-sans">
-                                                                        <span>Original Size: <span className="font-mono font-bold text-slate-400">{formatBytes(originalSize)}</span></span>
-                                                                        <span>Saved: <span className="font-mono font-bold text-emerald-400">{formatBytes(originalSize - optimizedSize)}</span></span>
-                                                                     </div>
-                                                                  </div>
-                                                               )}
-
-                                                               {/* Fidelity statement item */}
-                                                               <div className="bg-[#181818] p-2 rounded-lg border border-[#232323] flex justify-between items-center">
-                                                                  <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider font-sans">Visual Fidelity</span>
-                                                                  <span className="text-xs font-medium text-slate-300 font-sans">
-                                                                     {(() => {
-                                                                        if (exportSettings.format === 'png') return exportSettings.png?.paletteReduction ? '8-Bit Color Index' : 'Pixel Lossless';
-                                                                        const q = exportSettings.format === 'jpeg' ? exportSettings.mozjpeg.quality : (exportSettings.format === 'webp' ? exportSettings.webp.quality : exportSettings.avif.cqLevel);
-                                                                        if (q > 90) return 'Exceptional';
-                                                                        if (q > 75) return 'Balanced';
-                                                                        if (q > 50) return 'Standard Lossy';
-                                                                        return 'High Compression';
-                                                                     })()}
-                                                                  </span>
-                                                               </div>
-                                                            </div>
-                                                         )}
-                                                      </div>
-                                                   )}
-                                                </div>
                                              )}
+
+                                             {/* Squoosh-like image comparison viewer component */}
+                                             <ExportLiveComparisonViewer
+                                                comparisonMode={comparisonMode}
+                                                isMobile={isMobile}
+                                                activeTab={activeTab}
+                                                setActiveTab={setActiveTab}
+                                                handleExport={handleExport}
+                                                comparisonPreviewMode={comparisonPreviewMode}
+                                                setComparisonPreviewMode={setComparisonPreviewMode}
+                                                comparisonZoom={comparisonZoom}
+                                                setComparisonZoom={setComparisonZoom}
+                                                transformComponentRef={transformComponentRef}
+                                                sliderRef={sliderRef}
+                                                handlePointerMove={handlePointerMove}
+                                                handlePointerUp={handlePointerUp}
+                                                handleKeyDown={handleKeyDown}
+                                                artboards={artboards}
+                                                activeArtboardId={activeArtboardId}
+                                                isDraggingDivider={isDraggingDivider}
+                                                originalPreviewDims={originalPreviewDims}
+                                                optimizedPreviewDims={optimizedPreviewDims}
+                                                optimizedImageUrl={optimizedImageUrl}
+                                                originalImageUrl={originalImageUrl}
+                                                comparisonDivider={comparisonDivider}
+                                                handlePointerDown={handlePointerDown}
+                                                setComparisonDivider={setComparisonDivider}
+                                                showDiagnostics={showDiagnostics}
+                                                setShowDiagnostics={setShowDiagnostics}
+                                                originalSize={originalSize}
+                                                optimizedSize={optimizedSize}
+                                                exportSettings={exportSettings}
+                                                setExportSettings={setExportSettings}
+                                                exportTarget={exportTarget}
+                                                psnr={psnr}
+                                                isGeneratingPreview={isGeneratingPreview}
+                                                currentPreviewOp={currentPreviewOp}
+                                                showMobileCompareSwitcher={showMobileCompareSwitcher}
+                                                setShowMobileCompareSwitcher={setShowMobileCompareSwitcher}
+                                                showMobileDiagnosticsSheet={showMobileDiagnosticsSheet}
+                                                setShowMobileDiagnosticsSheet={setShowMobileDiagnosticsSheet}
+                                                mobileDetailsExpanded={mobileDetailsExpanded}
+                                                setMobileDetailsExpanded={setMobileDetailsExpanded}
+                                             />
 
                                              {/* Floating Canvas Navigation & Zoom Controller */}
                                              <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
@@ -6938,7 +6258,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 )}
 
                                                 {/* AI PANEL */}
-                                                {activeTab === 'ai' && (
+                                                {(activeTab as string) === 'ai' && (
                                                    <AIToolsPanel
                                                       selectionType={selectionType}
                                                       executeCommand={executeCommand}

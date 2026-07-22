@@ -11,7 +11,11 @@ export class CyberpunkDuotoneFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -61,7 +65,11 @@ export class HalationBloomFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -111,7 +119,11 @@ export class VHSGlitchFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -169,7 +181,11 @@ export class FrostedGlassFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -215,7 +231,11 @@ export class VaporwaveHalftoneFilter extends (fabric as any).filters.BaseFilter 
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -269,7 +289,11 @@ export class ThermalHeatmapFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -306,20 +330,93 @@ export class ThermalHeatmapFilter extends (fabric as any).filters.BaseFilter {
   }
 }
 
+function parseHexToRgbaNormalized(colorStr: string): [number, number, number, number] {
+  if (!colorStr) return [0.0, 1.0, 0.8, 1.0];
+
+  // 1. Check for rgb(...) or rgba(...) strings (returned by RgbaStringColorPicker)
+  const rgbaMatch = colorStr.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+  if (rgbaMatch) {
+    const r = Math.max(0, Math.min(255, parseInt(rgbaMatch[1], 10))) / 255;
+    const g = Math.max(0, Math.min(255, parseInt(rgbaMatch[2], 10))) / 255;
+    const b = Math.max(0, Math.min(255, parseInt(rgbaMatch[3], 10))) / 255;
+    const a = rgbaMatch[4] !== undefined ? Math.max(0, Math.min(1, parseFloat(rgbaMatch[4]))) : 1.0;
+    return [r, g, b, a];
+  }
+
+  // 2. Check for hex format #rgb, #rrggbb, #rgba, #rrggbbaa
+  let cleanHex = colorStr.trim();
+  if (cleanHex.startsWith('#')) {
+    let hex = cleanHex.slice(1);
+    if (hex.length === 3 || hex.length === 4) {
+      hex = hex.split('').map(x => x + x).join('');
+    }
+    if (hex.length === 6) {
+      const num = parseInt(hex, 16);
+      if (!isNaN(num)) {
+        return [((num >> 16) & 255) / 255, ((num >> 8) & 255) / 255, (num & 255) / 255, 1.0];
+      }
+    } else if (hex.length === 8) {
+      const num = parseInt(hex, 16);
+      if (!isNaN(num)) {
+        return [((num >> 24) & 255) / 255, ((num >> 16) & 255) / 255, ((num >> 8) & 255) / 255, (num & 255) / 255];
+      }
+    }
+  }
+
+  // 3. Fallback: Use Fabric Color parser if available
+  if (fabric && (fabric as any).Color) {
+    try {
+      const c = new (fabric as any).Color(colorStr);
+      if (c && typeof c.getSource === 'function') {
+        const source = c.getSource();
+        if (source && source.length >= 3) {
+          const a = source.length >= 4 ? source[3] : 1.0;
+          return [source[0] / 255, source[1] / 255, source[2] / 255, a];
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 4. Fallback: Canvas2D fillStyle parsing for named colors or HSL
+  try {
+    if (typeof document !== 'undefined') {
+      const tempCtx = document.createElement('canvas').getContext('2d');
+      if (tempCtx) {
+        tempCtx.fillStyle = colorStr;
+        const computed = tempCtx.fillStyle;
+        const m = computed.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+        if (m) {
+          const a = m[4] !== undefined ? parseFloat(m[4]) : 1.0;
+          return [parseInt(m[1], 10) / 255, parseInt(m[2], 10) / 255, parseInt(m[3], 10) / 255, a];
+        }
+      }
+    }
+  } catch (e) {}
+
+  return [0.0, 1.0, 0.8, 1.0]; // Cyan fallback with full opacity
+}
+
 export class NeonSobelEdgeFilter extends (fabric as any).filters.BaseFilter {
   static type = 'NeonSobelEdge';
   intensity: number = 1.0;
+  color: string = '#00ffcc';
   
   constructor(options: any = {}) {
     super(options);
     this.intensity = options.intensity !== undefined ? options.intensity : 1.0;
+    this.color = options.color || '#00ffcc';
   }
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
+      uniform vec4 uColor;
       varying vec2 vTexCoord;
       
       float luma(vec3 color) {
@@ -344,10 +441,11 @@ export class NeonSobelEdgeFilter extends (fabric as any).filters.BaseFilter {
         float sy = s00 + 2.0 * s01 + s02 - (s20 + 2.0 * s21 + s22);
         float dist = sqrt(sx * sx + sy * sy);
         
-        vec3 neonColor = vec3(0.0, 1.0, 0.8) * dist * 3.0;
+        vec3 edgeGlow = uColor.rgb * dist * 3.0;
+        float glowMix = uColor.a * uIntensity;
         
         vec4 orig = texture2D(uTexture, vTexCoord);
-        gl_FragColor = vec4(mix(orig.rgb, neonColor, uIntensity), orig.a);
+        gl_FragColor = vec4(mix(orig.rgb, edgeGlow, glowMix), orig.a);
       }
     `;
   }
@@ -355,15 +453,18 @@ export class NeonSobelEdgeFilter extends (fabric as any).filters.BaseFilter {
   getUniformLocations(gl: any, program: any) {
     return {
       uIntensity: gl.getUniformLocation(program, 'uIntensity'),
+      uColor: gl.getUniformLocation(program, 'uColor'),
     };
   }
   
   sendUniformData(gl: any, uniformLocations: any) {
     gl.uniform1f(uniformLocations.uIntensity, this.intensity);
+    const rgba = parseHexToRgbaNormalized(this.color);
+    gl.uniform4f(uniformLocations.uColor, rgba[0], rgba[1], rgba[2], rgba[3]);
   }
   
   toObject() {
-    return { ...super.toObject(), intensity: this.intensity };
+    return { ...super.toObject(), intensity: this.intensity, color: this.color };
   }
 }
 
@@ -378,7 +479,11 @@ export class LiquidRippleFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -418,7 +523,11 @@ export class AsciiMatrixFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -471,7 +580,11 @@ export class MandalaMirrorFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -517,7 +630,11 @@ export class GodRaysFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
@@ -573,7 +690,11 @@ export class AnamorphicFlareFilter extends (fabric as any).filters.BaseFilter {
   
   getFragmentSource() {
     return `
+      #ifdef GL_FRAGMENT_PRECISION_HIGH
       precision highp float;
+      #else
+      precision mediump float;
+      #endif
       uniform sampler2D uTexture;
       uniform float uIntensity;
       varying vec2 vTexCoord;
