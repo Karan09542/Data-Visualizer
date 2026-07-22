@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Trash2, HardDrive, CheckCircle2, Loader2, Upload } from 'lucide-react';
+import { X, Download, Trash2, HardDrive, CheckCircle2, Loader2, Upload, Cpu, FileBox } from 'lucide-react';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
 import { useModel } from '../../../../ai/hooks/useModel';
 import { ModelManifest } from '../../../../ai/types';
@@ -13,63 +13,84 @@ interface AIModelManagerModalProps {
 
 const ModelItem = ({ manifest, onCustomDelete }: { manifest: ModelManifest, onCustomDelete?: () => void }) => {
   const { isDownloaded, isDownloading, isChecking, modelSize, preload, deleteModel } = useModel(manifest.id);
+  const isLocalBundle = manifest.sources[0]?.type === 'local';
+  const isCustom = manifest.version === 'custom';
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteModel();
+      if (isCustom) {
+        modelRegistry.deleteCustom(manifest.id);
+        onCustomDelete?.();
+      }
+    } catch (err) {
+      console.error("Failed to delete model", err);
+    }
+  };
 
   return (
-    <div className="flex items-center justify-between p-4 bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl hover:border-[#4A4A4A] transition-colors">
+    <div className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-[#141414] border border-[#2D2D2D] rounded-2xl hover:bg-[#1A1A1A] hover:border-[#3D3D3D] transition-all duration-300 gap-4">
       <div className="flex items-center gap-4">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${isDownloaded ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-[#252525] border-[#333] text-slate-400'}`}>
-          <HardDrive size={18} />
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center border shadow-inner shrink-0 transition-colors ${isDownloaded ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-[#222] border-[#333] text-slate-500'}`}>
+          {isCustom ? <FileBox size={20} /> : <Cpu size={20} />}
         </div>
-        <div>
-          <div className="font-semibold text-white text-sm">{manifest.name}</div>
-          <div className="text-xs text-[#8A8A8A] mt-0.5 flex items-center gap-2">
-            <span>v{manifest.version}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-white text-[15px] truncate flex items-center gap-2">
+            {manifest.name}
+            {isCustom && <span className="bg-blue-500/20 text-blue-400 text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md">Custom</span>}
+          </div>
+          <div className="text-[12px] text-[#8A8A8A] mt-1 flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[10px] bg-[#222] px-1.5 py-0.5 rounded text-slate-400">v{manifest.version}</span>
             <span>•</span>
-            <span className="uppercase">{manifest.task.replace('-', ' ')}</span>
+            <span className="uppercase tracking-wide">{manifest.task.replace('-', ' ')}</span>
             {isDownloaded && modelSize > 0 && (
               <>
                 <span>•</span>
-                <span>{formatFileSize(modelSize, 'B')}</span>
+                <span className="text-slate-300">{formatFileSize(modelSize, 'B')}</span>
+              </>
+            )}
+            {isLocalBundle && (
+              <>
+                <span>•</span>
+                <span className="text-slate-500">Bundled</span>
               </>
             )}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 sm:ml-4 shrink-0 justify-end">
         {isChecking ? (
-          <Loader2 className="animate-spin text-slate-500" size={18} />
+          <div className="flex items-center gap-2 text-slate-500 text-sm bg-[#1A1A1A] px-4 py-2 rounded-xl border border-[#222]">
+            <Loader2 className="animate-spin" size={16} /> Checking...
+          </div>
         ) : isDownloading ? (
-          <div className="flex items-center gap-2 text-blue-400 text-xs font-medium bg-blue-500/10 px-3 py-1.5 rounded-lg">
-            <Loader2 className="animate-spin" size={14} /> Downloading...
+          <div className="flex items-center gap-2 text-blue-400 text-sm font-medium bg-blue-500/10 border border-blue-500/20 px-4 py-2 rounded-xl">
+            <Loader2 className="animate-spin" size={16} /> Downloading...
           </div>
         ) : isDownloaded ? (
-          <>
-            <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium px-2">
-              <CheckCircle2 size={14} /> Installed
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-emerald-400 text-sm font-medium bg-emerald-500/5 border border-emerald-500/10 px-3 py-2 rounded-xl">
+              <CheckCircle2 size={16} /> Installed
             </div>
-            {manifest.sources[0]?.type !== 'local' && (
+            {/* Show delete button if it's NOT a local bundle, OR if it IS a custom model (just to be absolutely safe). */}
+            {(!isLocalBundle || isCustom) && (
               <button
-                onClick={async () => {
-                  await deleteModel();
-                  if (manifest.version === 'custom') {
-                    modelRegistry.deleteCustom(manifest.id);
-                    onCustomDelete?.();
-                  }
-                }}
-                className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20"
+                onClick={handleDelete}
+                className="p-2.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-500/40"
                 title="Delete Model"
               >
-                <Trash2 size={16} />
+                <Trash2 size={18} />
               </button>
             )}
-          </>
+          </div>
         ) : (
           <button
             onClick={preload}
-            className="flex items-center gap-2 bg-[#2E2E2E] hover:bg-[#3A3A3A] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border border-[#444]"
+            className="flex items-center gap-2 bg-white text-black hover:bg-slate-200 px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-white/5"
           >
-            <Download size={14} /> Download
+            <Download size={16} /> Download
           </button>
         )}
       </div>
@@ -83,7 +104,17 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refreshModels = () => setModels(modelRegistry.getAll());
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
+  const refreshModels = () => {
+    setModels([...modelRegistry.getAll()]); // Ensure a new array reference to force re-render
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -119,73 +150,84 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
   };
 
   return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-sans" style={{ zIndex: 99999 }}>
-      <div className="bg-[#141414] border border-[#2D2D2D] rounded-2xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[85vh]">
-        <div className="flex items-center justify-between p-5 border-b border-[#2D2D2D]">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md p-0 sm:p-6 font-sans animate-in fade-in duration-200" style={{ zIndex: 99999 }}>
+      <div className="bg-[#0A0A0A] sm:border border-[#2D2D2D] sm:rounded-3xl w-full h-full sm:h-auto sm:max-h-[90vh] max-w-3xl flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 sm:p-8 border-b border-[#222] bg-[#0A0A0A] shrink-0 sticky top-0 z-10">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <HardDrive size={18} className="text-blue-400" /> AI Model Manager
+            <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-3 tracking-tight">
+              <div className="p-2 bg-blue-500/10 rounded-xl border border-blue-500/20">
+                <HardDrive size={22} className="text-blue-400" />
+              </div>
+              Model Manager
             </h2>
-            <p className="text-xs text-[#8A8A8A] mt-1">
-              Download models locally to your browser (OPFS). Models run completely offline and preserve privacy.
+            <p className="text-sm text-[#8A8A8A] mt-2 max-w-md leading-relaxed hidden sm:block">
+              Manage local AI models. Models execute completely offline in your browser, preserving privacy and saving bandwidth.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+              className="flex items-center gap-2 bg-[#1A1A1A] hover:bg-[#222] border border-[#333] hover:border-[#444] text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95 shadow-sm"
             >
-              <Upload size={14} /> Upload Custom
+              <Upload size={16} className="text-blue-400" /> <span className="hidden sm:inline">Upload Custom</span><span className="sm:hidden">Upload</span>
             </button>
             <input type="file" ref={fileInputRef} className="hidden" accept=".tflite" onChange={handleFileChange} />
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-[#252525] rounded-lg transition-colors"
+              className="p-2.5 text-slate-400 hover:text-white hover:bg-[#1A1A1A] rounded-xl transition-colors border border-transparent hover:border-[#333]"
             >
-              <X size={20} />
+              <X size={24} />
             </button>
           </div>
         </div>
 
+        {/* Upload Banner */}
         {uploadFile && (
-          <div className="p-4 bg-blue-500/10 border-b border-blue-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-5 sm:p-6 bg-blue-500/10 border-b border-blue-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in slide-in-from-top-2 shrink-0">
             <div>
-              <div className="text-sm font-semibold text-blue-400">File: {uploadFile.name}</div>
-              <div className="text-xs text-blue-400/70">What kind of model is this?</div>
+              <div className="text-[15px] font-bold text-blue-400 flex items-center gap-2">
+                <FileBox size={18} /> {uploadFile.name}
+              </div>
+              <div className="text-sm text-blue-400/80 mt-1">Select the model architecture type to install:</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
               <button 
                 disabled={isUploading}
                 onClick={() => handleUpload('esrgan')}
-                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50 active:scale-95 flex-1 sm:flex-none text-center"
               >
                 ESRGAN (Upscale)
               </button>
               <button 
                 disabled={isUploading}
                 onClick={() => handleUpload('mirnet')}
-                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50 active:scale-95 flex-1 sm:flex-none text-center"
               >
                 MIRNet (Low Light)
               </button>
               <button 
                 disabled={isUploading}
                 onClick={() => { setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                className="p-1.5 text-slate-400 hover:text-white bg-black/20 rounded-lg ml-2"
+                className="p-2.5 text-blue-300 hover:text-white bg-black/20 hover:bg-black/40 rounded-xl transition-colors shrink-0"
               >
-                <X size={14} />
+                <X size={18} />
               </button>
             </div>
           </div>
         )}
 
-        <div className="p-5 overflow-y-auto space-y-3 flex-1">
+        {/* List */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 bg-[#0A0A0A]">
           {models.map(manifest => (
             <ModelItem key={manifest.id} manifest={manifest} onCustomDelete={refreshModels} />
           ))}
           {models.length === 0 && (
-            <div className="text-center py-10 text-[#8A8A8A] text-sm">
-              No AI models registered in the platform.
+            <div className="flex flex-col items-center justify-center py-20 text-[#555]">
+              <HardDrive size={48} className="mb-4 opacity-50" />
+              <div className="text-lg font-bold text-white mb-1">No Models Found</div>
+              <div className="text-sm">There are no AI models registered in the platform.</div>
             </div>
           )}
         </div>

@@ -19,4 +19,9 @@ export function registerTasks() {
   taskRegistry.register('auto-enhance', async () => {
     throw new Error('Auto Enhance is a placeholder for a future composite AI pipeline.');
   });
+
+  taskRegistry.register('face-detection', async () => {
+    const { FaceDetectionPipeline } = await import('../pipelines/FaceDetectionPipeline');
+    return new FaceDetectionPipeline();
+  });
 }

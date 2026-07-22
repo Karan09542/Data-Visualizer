@@ -3,11 +3,15 @@ import { ai } from '../../../../ai';
 import { AITask, AIProgressState } from '../../../../ai/types';
 import { aiEventBus } from '../../../../ai/events/AIEventBus';
 import { useSelection } from '../../contexts/SelectionContext';
-import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download } from 'lucide-react';
+import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download, Briefcase } from 'lucide-react';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
-import { RemoveBackgroundCommand, UpscaleCommand, EnhanceLowLightCommand } from '../../commands/ai';
+import { UpscaleCommand } from '../../commands/ai/UpscaleCommand';
+import { EnhanceLowLightCommand } from '../../commands/ai/EnhanceLowLightCommand';
 import { SegmentationCommand } from '../../commands/ai/SegmentationCommand';
+import { FaceUtilityCommand } from '../../commands/ai/FaceUtilityCommand';
 import { AIModelManagerModal } from '../shared/AIModelManagerModal';
+import { SegmentationPanel } from './SegmentationPanel';
+import { OfficeUtilitiesPanel } from './OfficeUtilitiesPanel';
 
 interface AIToolsPanelProps {
   selectionType: string | null;
@@ -15,7 +19,6 @@ interface AIToolsPanelProps {
 }
 
 const TASK_CONFIG: Record<string, { label: string, desc: string, icon: React.ReactNode, commandClass?: any, colorClass: string, accentHex: string }> = {
-  // 'background-removal' is handled by the unified SegmentationPanel
   'upscale': {
     label: 'Upscale Image',
     desc: 'Enhance resolution using AI',
@@ -68,7 +71,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
 }) => {
   const config = TASK_CONFIG[task];
   
-  // Find all models registered for this task
   const models = modelRegistry.getAll().filter(m => m.task === task);
   const [selectedModel, setSelectedModel] = useState(models.length > 0 ? models[0].id : undefined);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -102,7 +104,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
             : 'border-[#2D2D2D] bg-[#1A1A1A] hover:bg-[#222] hover:border-white/20 active:scale-[0.98]'
         }`}
       >
-        {/* Progress bar background */}
         {isActive && (
           <div
             className="absolute inset-0 z-0 transition-all duration-300 ease-out rounded-xl"
@@ -113,7 +114,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
           />
         )}
 
-        {/* Icon */}
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 relative z-[1] ${
           isActive ? 'animate-pulse' : ''
         }`} style={{ backgroundColor: `${config.accentHex}15` }}>
@@ -128,7 +128,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
           )}
         </div>
 
-        {/* Labels */}
         <div className="flex-1 min-w-0 relative z-[1]">
           <div className={`font-semibold text-sm transition-colors ${
             isActive ? 'text-white' : isDone ? 'text-emerald-300' : isFailed ? 'text-red-300' : 'text-white group-hover:text-blue-300'
@@ -151,7 +150,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
               <span className="text-[#8A8A8A]">{config.desc}</span>
             )}
             
-            {/* Custom Dropdown Selector */}
             {models.length > 1 && !isActive && (
               <div 
                 className="relative ml-auto"
@@ -199,7 +197,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
             )}
           </div>
 
-          {/* Inline progress bar for downloading */}
           {isDownloading && progress > 0 && (
             <div className="mt-1.5 h-1 bg-white/5 rounded-full overflow-hidden">
               <div
@@ -214,7 +211,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
           )}
         </div>
 
-        {/* Cancel button */}
         {isActive && (
           <div
             role="button"
@@ -230,21 +226,18 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
   );
 };
 
-import { SegmentationPanel } from './SegmentationPanel';
-
 export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, executeCommand }) => {
   const [showManager, setShowManager] = useState(false);
+  const [activeTab, setActiveTab] = useState<'tools' | 'segmentation' | 'office-utilities'>('tools');
   const { activeObj } = useSelection();
   const tasks = ai?.getAvailableTasks?.() || [];
   
   const [segModel, setSegModel] = useState<string>('ormbg');
 
-  // Track active job per task
   const [taskJobs, setTaskJobs] = useState<Record<string, TaskJobInfo>>({});
-  const activeJobsRef = useRef<Record<string, { task: AITask; unsubscribe: () => void }>>({});
+  const activeJobsRef = useRef<Record<string, { task: string; unsubscribe: () => void }>>({});
 
-  // Subscribe to events for a given jobId+task
-  const trackJob = useCallback((jobId: string, task: AITask) => {
+  const trackJob = useCallback((jobId: string, task: string) => {
     setTaskJobs(prev => ({
       ...prev,
       [task]: { jobId, state: 'queued', progress: 0 }
@@ -256,7 +249,6 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
         [task]: { jobId, state: event.state, progress: event.progress ?? prev[task]?.progress ?? 0 }
       }));
 
-      // Auto-clear finished states after a delay
       if (['completed', 'failed', 'cancelled'].includes(event.state)) {
         setTimeout(() => {
           setTaskJobs(prev => {
@@ -274,7 +266,6 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     activeJobsRef.current[jobId] = { task, unsubscribe: unsub };
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       Object.values(activeJobsRef.current).forEach(({ unsubscribe }) => unsubscribe());
@@ -287,7 +278,6 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       return;
     }
 
-    // Don't allow duplicate runs of the same task
     if (taskJobs[task] && !['completed', 'failed', 'cancelled'].includes(taskJobs[task].state)) {
       return;
     }
@@ -297,14 +287,9 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       const cmd = new config.commandClass(activeObj, modelId);
       executeCommand(cmd);
 
-      // The command calls ai.execute() internally — we can grab the jobId from the AIQueue
-      // by subscribing to the next event on the bus after a microtick
-      // Instead, we patch the command to expose its jobId
       if (cmd.lastJobId) {
         trackJob(cmd.lastJobId, task);
       } else {
-        // Fallback: subscribe globally for this task type within a brief window
-        // The AICommand sets up ai.execute synchronously, so we can read from the queue
         setTimeout(() => {
           if (cmd.lastJobId) {
             trackJob(cmd.lastJobId, task);
@@ -316,10 +301,11 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     }
   };
 
-  const handleCancel = (task: AITask) => {
+  const handleCancel = (task: string) => {
     const jobInfo = taskJobs[task];
     if (jobInfo) {
       ai.cancel(jobInfo.jobId);
+      aiEventBus.emit(jobInfo.jobId, { state: 'cancelled' });
     }
   };
 
@@ -328,11 +314,9 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       alert("Please select an image to apply AI features.");
       return;
     }
-    // We create the new overarching SegmentationCommand
     const cmd = new SegmentationCommand(activeObj as any, segModel, effectId, options);
     executeCommand(cmd);
     
-    // Track job identically to other commands
     setTimeout(() => {
       if (cmd.lastJobId) {
         trackJob(cmd.lastJobId, 'background-removal');
@@ -340,11 +324,46 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     }, 0);
   };
 
+  const handleFaceUtilityExecute = (effectId: string, options?: any) => {
+    if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {
+      alert("Please select an image to apply AI features.");
+      return;
+    }
+    const cmd = new FaceUtilityCommand(activeObj as any, options.modelId, effectId, options);
+    executeCommand(cmd);
+    
+    setTimeout(() => {
+      if (cmd.lastJobId) {
+        trackJob(cmd.lastJobId, 'office-utilities');
+      }
+    }, 0);
+  };
+
+  const TABS = [
+    { id: 'tools', label: 'AI Powers', icon: <Zap size={16} /> },
+    { id: 'segmentation', label: 'Magic Effects', icon: <Sparkles size={16} /> },
+    { id: 'office-utilities', label: 'Office Suite', icon: <Briefcase size={16} /> },
+  ];
+
   return (
     <div className="p-4 space-y-6 text-[#C0C0C0] font-sans h-full flex flex-col">
       <div className="space-y-3">
-        <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
-          <Zap size={11} className="text-blue-400" /> AI Powers
+        {/* Tabs */}
+        <div className="flex bg-[#1C1C1C] rounded-lg p-1 border border-[#2D2D2D] mb-4">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-md transition-all ${
+                activeTab === tab.id 
+                  ? 'bg-[#2D2D2D] text-white shadow-sm' 
+                  : 'text-[#8A8A8A] hover:text-[#C0C0C0] hover:bg-[#252525]'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
         
         {selectionType !== 'image' && (
@@ -354,8 +373,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
         )}
 
         <div className={`grid grid-cols-1 gap-2 ${selectionType !== 'image' ? 'opacity-50 pointer-events-none' : ''}`}>
-          {/* Unified Segmentation Tools */}
-          {tasks.includes('background-removal') && (
+          {activeTab === 'segmentation' && tasks.includes('background-removal') && (
             <SegmentationPanel
               isActive={!!taskJobs['background-removal'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['background-removal'].state)}
               jobState={taskJobs['background-removal']?.state}
@@ -367,8 +385,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
             />
           )}
 
-          {/* Legacy Tools */}
-          {tasks.filter(t => t !== 'background-removal').map(task => (
+          {activeTab === 'tools' && tasks.filter(t => t !== 'background-removal' && t !== 'face-detection').map(task => (
             <AIToolButton 
               key={task} 
               task={task}
@@ -377,6 +394,13 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
               onCancel={() => handleCancel(task)}
             />
           ))}
+
+          {activeTab === 'office-utilities' && (
+            <OfficeUtilitiesPanel 
+              onExecute={handleFaceUtilityExecute}
+              disabled={!!taskJobs['office-utilities'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['office-utilities'].state)}
+            />
+          )}
         </div>
       </div>
 

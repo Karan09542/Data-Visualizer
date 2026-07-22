@@ -1,13 +1,14 @@
 /// <reference lib="webworker" />
 
 import { effectRegistry } from '../../components/image-workspace/effects/EffectRegistry';
-import { SegmentationResult } from '../types';
+import { SegmentationResult, FaceDetectionResult } from '../types';
 
 export interface EffectWorkerRequest {
   id: string;
   effectId: string;
   sourceImage: ImageBitmap;
-  segmentation: SegmentationResult;
+  segmentation?: SegmentationResult;
+  faceDetection?: FaceDetectionResult;
   options: any;
 }
 
@@ -30,11 +31,14 @@ self.onmessage = async (e: MessageEvent<EffectWorkerRequest>) => {
       throw new Error(`Effect ${req.effectId} not found in registry`);
     }
 
-    const canvas = new OffscreenCanvas(req.segmentation.width, req.segmentation.height);
+    const canvasWidth = req.segmentation ? req.segmentation.width : (req.faceDetection ? req.faceDetection.width : req.sourceImage.width);
+    const canvasHeight = req.segmentation ? req.segmentation.height : (req.faceDetection ? req.faceDetection.height : req.sourceImage.height);
+    const canvas = new OffscreenCanvas(canvasWidth, canvasHeight);
 
     const resultData = await effect.execute({
       sourceImage: req.sourceImage,
       segmentation: req.segmentation,
+      faceDetection: req.faceDetection,
       options: req.options,
       canvas: canvas,
       // Note: We don't have abort signal over postMessage natively,

@@ -7,7 +7,8 @@ export type AITask =
   | 'face-restoration'
   | 'caption-generation'
   | 'segmentation'
-  | 'auto-enhance';
+  | 'auto-enhance'
+  | 'face-detection';
 
 export type AIBackend = 'webgpu' | 'webnn' | 'wasm';
 
@@ -56,8 +57,8 @@ export interface AIExecutionOptions {
 }
 
 export interface AIExecutionResult {
-  // Output format can be an ImageBitmap, standard ImageData, or generic Blob
-  output: ImageBitmap | ImageData | Blob | null;
+  // Output format can be an ImageBitmap, standard ImageData, generic Blob, or structured detection result
+  output: ImageBitmap | ImageData | Blob | FaceDetectionResult | null;
   metadata?: Record<string, any>;
 }
 
@@ -66,6 +67,25 @@ export interface SegmentationResult {
   alphaMask: ImageBitmap | ImageData;
   confidenceMask?: Float32Array;
   boundingBox: DOMRect;
+  width: number;
+  height: number;
+  modelId: string;
+  inferenceTime: number;
+}
+
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+export interface DetectedFace {
+  boundingBox: DOMRect;
+  keypoints: Point2D[];
+  score: number;
+}
+
+export interface FaceDetectionResult {
+  faces: DetectedFace[];
   width: number;
   height: number;
   modelId: string;

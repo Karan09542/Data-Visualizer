@@ -181,6 +181,60 @@ export class LiteRTRuntime {
   }
 
   /**
+   * Execute inference and return ALL output tensors as Float32Array[].
+   * Needed for models like BlazeFace that produce multiple outputs
+   * (e.g., regressors + classifiers).
+   */
+  async executeMultiOutput(inputs: Float32Array | any, inputShape?: number[]): Promise<Float32Array[]> {
+    if (!this.session) {
+      throw new Error('LiteRT session not loaded. Call loadModel() first.');
+    }
+    
+    const { Tensor } = await import('@litertjs/core');
+    
+    let inputTensor: InstanceType<typeof Tensor>;
+    
+    if (inputs instanceof Float32Array || inputs instanceof Uint8Array || inputs instanceof Int32Array) {
+      if (!inputShape) {
+        try {
+          const inputDetails = this.session.getInputDetails();
+          if (inputDetails && inputDetails.length > 0) {
+            inputShape = inputDetails[0].shape as number[];
+          }
+        } catch (e) {}
+      }
+      inputTensor = new Tensor(inputs, inputShape);
+    } else {
+      inputTensor = inputs;
+    }
+    
+    console.log('[LiteRTRuntime] Running multi-output inference...');
+    const startTime = performance.now();
+    
+    const outputTensors = await this.session.run([inputTensor]);
+    
+    const elapsed = performance.now() - startTime;
+    console.log(`[LiteRTRuntime] Multi-output inference completed in ${elapsed.toFixed(0)}ms`);
+    
+    const results: Float32Array[] = [];
+    if (Array.isArray(outputTensors)) {
+      for (const t of outputTensors) {
+        const data = await t.data();
+        results.push(new Float32Array(data));
+        try { t.delete(); } catch(_){}
+      }
+    }
+    
+    try { inputTensor.delete(); } catch(_){}
+    
+    if (results.length === 0) {
+      throw new Error('Model produced no output tensors');
+    }
+    
+    return results;
+  }
+
+  /**
    * Free memory associated with the LiteRT session.
    */
   dispose() {

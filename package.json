@@ -54,6 +54,7 @@
     "music-metadata": "^11.13.0",
     "papaparse": "^5.5.3",
     "pdfjs-dist": "^5.7.284",
+    "pexels": "^1.4.0",
     "prism-react-renderer": "^2.4.1",
     "pyodide": "^0.29.4",
     "qrcode.react": "^4.2.0",

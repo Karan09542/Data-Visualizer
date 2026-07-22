@@ -52,5 +52,37 @@
     "supports": [
       "upscale"
     ]
+  },
+  {
+    "id": "blaze_face_short_range",
+    "version": "1.0.0",
+    "task": "face-detection",
+    "name": "BlazeFace (Short Range)",
+    "description": "Fast face detection for close-up portraits",
+    "sources": [
+      {
+        "type": "local",
+        "url": "/models/blaze_face_short_range.tflite"
+      }
+    ],
+    "supports": [
+      "detect"
+    ]
+  },
+  {
+    "id": "blaze_face_full_range",
+    "version": "1.0.0",
+    "task": "face-detection",
+    "name": "BlazeFace (Full Range)",
+    "description": "Face detection for distant or multi-person shots",
+    "sources": [
+      {
+        "type": "local",
+        "url": "/models/blaze_face_full_range.tflite"
+      }
+    ],
+    "supports": [
+      "detect"
+    ]
   }
 ]

@@ -7,7 +7,7 @@ import { ai } from "../../../../ai";
 import { generateId } from "../../../../ai/utils";
 import { aiEventBus } from "../../../../ai/events/AIEventBus";
 
-export class SegmentationCommand implements Command {
+export class FaceUtilityCommand implements Command {
   name: string;
   protected obj: fabric.Image;
   protected modelId: string;
@@ -16,8 +16,10 @@ export class SegmentationCommand implements Command {
   
   protected beforeSrc: string;
   protected beforeData: any;
+  protected beforeTransform: any;
   protected afterSrc: string | null = null;
   protected afterData: any = null;
+  protected afterTransform: any = null;
   public lastJobId: string | null = null;
   private abortController: AbortController | null = null;
 
@@ -33,13 +35,19 @@ export class SegmentationCommand implements Command {
     this.effectOptions = effectOptions;
     
     const effect = effectRegistry.get(effectId);
-    this.name = effect ? effect.name : 'Segmentation';
+    this.name = effect ? effect.name : 'Face Utility';
     this.beforeSrc = obj.getSrc();
     this.beforeData = { ...((obj as any).data || {}) };
-    this.lastJobId = generateId(); // Assign jobId immediately
+    this.beforeTransform = {
+      scaleX: obj.scaleX || 1,
+      scaleY: obj.scaleY || 1,
+      left: obj.left,
+      top: obj.top
+    };
+    this.lastJobId = generateId(); // Assign pseudo jobId immediately
   }
 
-  private async applySrc(canvas: fabric.Canvas, src: string, updateLayers: () => void, targetData?: any) {
+  private async applySrc(canvas: fabric.Canvas, src: string, updateLayers: () => void, targetData?: any, targetTransform?: any) {
     const obj = this.obj;
     const oldWidth = obj.width || 1;
     const oldHeight = obj.height || 1;
@@ -47,8 +55,6 @@ export class SegmentationCommand implements Command {
     const oldScaleY = obj.scaleY || 1;
     
     const savedState = {
-      left: obj.left,
-      top: obj.top,
       angle: obj.angle,
       opacity: obj.opacity,
       filters: [...(obj.filters || [])],
@@ -59,16 +65,58 @@ export class SegmentationCommand implements Command {
       skewX: obj.skewX,
       skewY: obj.skewY
     };
+    
     await obj.setSrc(src, { crossOrigin: 'anonymous' } as any);
     const newWidth = obj.width || 1;
     const newHeight = obj.height || 1;
-    const scaleX = (oldWidth * oldScaleX) / newWidth;
-    const scaleY = (oldHeight * oldScaleY) / newHeight;
+    
+    let finalScaleX = 1;
+    let finalScaleY = 1;
+    let finalLeft = obj.left;
+    let finalTop = obj.top;
+
+    if (targetTransform) {
+      finalScaleX = targetTransform.scaleX;
+      finalScaleY = targetTransform.scaleY;
+      finalLeft = targetTransform.left;
+      finalTop = targetTransform.top;
+    } else {
+      let scaleX = (oldWidth * oldScaleX) / newWidth;
+      let scaleY = (oldHeight * oldScaleY) / newHeight;
+
+      if (this.effectId.includes('crop')) {
+        const oldVisualWidth = oldWidth * oldScaleX;
+        const oldVisualHeight = oldHeight * oldScaleY;
+        
+        const fitScaleW = oldVisualWidth / newWidth;
+        const fitScaleH = oldVisualHeight / newHeight;
+        
+        const uniformScale = Math.min(fitScaleW, fitScaleH);
+        
+        scaleX = uniformScale;
+        scaleY = uniformScale;
+      }
+      
+      finalScaleX = scaleX;
+      finalScaleY = scaleY;
+      
+      // Save it as afterTransform if we haven't already
+      if (!this.afterTransform) {
+        this.afterTransform = {
+          scaleX: finalScaleX,
+          scaleY: finalScaleY,
+          left: finalLeft,
+          top: finalTop
+        };
+      }
+    }
 
     obj.set({
       ...savedState,
-      scaleX,
-      scaleY
+      scaleX: finalScaleX,
+      scaleY: finalScaleY,
+      left: finalLeft,
+      top: finalTop
     });
     
     obj.applyFilters();
@@ -98,13 +146,12 @@ export class SegmentationCommand implements Command {
     }
     this.abortController = new AbortController();
 
-    // Emit queued immediately so the UI picks it up
     if (this.lastJobId) {
       aiEventBus.emit(this.lastJobId, { state: 'queued' });
     }
 
     let imageData: ImageData;
-    let originalSrc = (this.obj as any).data?._segOriginalSrc || this.beforeSrc;
+    let originalSrc = (this.obj as any).data?._faceOriginalSrc || this.beforeSrc;
 
     try {
       if (this.lastJobId) aiEventBus.emit(this.lastJobId, { state: 'preparing-image', progress: 0 });
@@ -129,32 +176,21 @@ export class SegmentationCommand implements Command {
       tempCtx.drawImage(img, 0, 0);
       imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
     } catch (e) {
-      console.error('[SegmentationCommand] Failed to extract image data:', e);
+      console.error('[FaceUtilityCommand] Failed to extract image data:', e);
       return;
     }
 
     try {
-      // 1. Run AI Inference (via Engine which leverages Cache)
-      // Note: We use the existing ai.execute path (which routes to AIQueue for now)
-      // In a full implementation AIEngine would completely encapsulate this
-      // For now, let's pretend AIEngine handles it
-      
-      // We will hash the image data to check cache
       const imageHash = await aiInferenceCache.hashImage(imageData);
       const cacheKey = aiInferenceCache.getCacheKey(imageHash, this.modelId);
       
-      let segResult = aiInferenceCache.get(cacheKey)?.result;
+      let detectionResult = aiInferenceCache.get(cacheKey)?.result;
       
-      if (!segResult) {
-        // Run AI Inference using the unified service
-        const startTime = Date.now();
-        
-        // Use an internal option to hook into the progress events from the AI Queue
-        const { promise, jobId } = ai.execute('background-removal', imageData, { 
+      if (!detectionResult) {
+        const { promise, jobId } = ai.execute('face-detection', imageData, { 
           modelId: this.modelId,
           onProgress: (evt: any) => {
             if (this.lastJobId) {
-              // Pipe the AI Queue's progress into our SegmentationCommand's Job ID
               aiEventBus.emit(this.lastJobId, { state: evt.state, progress: evt.progress });
             }
           }
@@ -171,36 +207,49 @@ export class SegmentationCommand implements Command {
         
         let result;
         try {
-          // Wait for the AI model to finish
           result = await promise;
         } catch (e: any) {
           if (cancelUnsub) cancelUnsub();
           if (this.lastJobId) {
              aiEventBus.emit(this.lastJobId, { state: e.message?.includes('cancelled') ? 'cancelled' : 'failed' });
           }
-          console.warn('[SegmentationCommand] Inference failed or cancelled:', e);
+          console.warn('[FaceUtilityCommand] Inference failed or cancelled:', e);
           return;
         }
         if (cancelUnsub) cancelUnsub();
         
-        if (!(result.output instanceof ImageData)) {
-          throw new Error('AI Inference did not return ImageData');
-        }
-
-        segResult = {
-           foreground: result.output,
-           alphaMask: result.output,
-           boundingBox: new DOMRect(0, 0, imageData.width, imageData.height),
-           width: imageData.width,
-           height: imageData.height,
-           modelId: this.modelId,
-           inferenceTime: Date.now() - startTime
-        };
-        
-        aiInferenceCache.set(cacheKey, this.modelId, imageHash, segResult);
+        detectionResult = result.output;
+        aiInferenceCache.set(cacheKey, this.modelId, imageHash, detectionResult);
       }
 
-      // Execute effect on Web Worker so the UI does not freeze during heavy blurs
+      // Special logic: passport-crop requires background removal
+      let finalSourceImageData = imageData;
+      if (this.effectId === 'passport-crop') {
+        if (this.lastJobId) {
+          aiEventBus.emit(this.lastJobId, { state: 'inference', progress: 0 });
+        }
+        try {
+          const bgHash = await aiInferenceCache.hashImage(imageData);
+          // We don't strictly know the exact model ID here, so we use a generic 'background-removal' cache key
+          const bgCacheKey = aiInferenceCache.getCacheKey(bgHash, 'bg_rm_default');
+          let bgResult = aiInferenceCache.get(bgCacheKey)?.result;
+
+          if (!bgResult) {
+            // Using default background removal model
+            const { promise } = ai.execute('background-removal', imageData, {}, 5);
+            const res = await promise;
+            bgResult = res.output;
+            aiInferenceCache.set(bgCacheKey, 'bg_rm_default', bgHash, bgResult);
+          }
+          if (bgResult instanceof ImageData) {
+            finalSourceImageData = bgResult;
+          }
+        } catch (e) {
+          console.warn('[FaceUtilityCommand] Background removal failed for passport crop, proceeding without it', e);
+        }
+      }
+
+      // Execute effect on Web Worker
       const workerInstance = aiEngine.effectPool.getAvailableWorker();
       if (!workerInstance) {
         throw new Error('No available workers in effect pool');
@@ -212,19 +261,23 @@ export class SegmentationCommand implements Command {
         aiEventBus.emit(this.lastJobId, { state: 'post-processing', progress: 0 });
       }
 
-      // Convert any HTMLImageElement in options to ImageBitmap before sending to worker
       const safeOptions = { ...this.effectOptions };
       const transferables: Transferable[] = [];
       
-      const imageBitmap = await createImageBitmap(imageData);
+      const imageBitmap = await createImageBitmap(finalSourceImageData);
       transferables.push(imageBitmap);
 
       if (safeOptions.image instanceof HTMLImageElement) {
         safeOptions.image = await createImageBitmap(safeOptions.image);
         transferables.push(safeOptions.image);
       }
+      
+      if (safeOptions.backgroundImage instanceof HTMLImageElement) {
+        safeOptions.backgroundImage = await createImageBitmap(safeOptions.backgroundImage);
+        transferables.push(safeOptions.backgroundImage);
+      }
 
-      const finalImage = await new Promise<ImageBitmap | ImageData>((resolve, reject) => {
+      const finalImage = await new Promise<ImageBitmap | ImageData | null>((resolve, reject) => {
         const messageId = Math.random().toString(36).substring(7);
         
         const handleMessage = (e: MessageEvent) => {
@@ -243,12 +296,20 @@ export class SegmentationCommand implements Command {
           id: messageId,
           effectId: this.effectId,
           sourceImage: imageBitmap,
-          segmentation: segResult,
+          faceDetection: detectionResult,
           options: safeOptions
         };
 
         workerInstance.worker.postMessage(request, transferables);
       });
+
+      // Special case: Batch Crop effect might return null and generate new canvases/artboards instead.
+      if (!finalImage) {
+        if (this.lastJobId) {
+          aiEventBus.emit(this.lastJobId, { state: 'completed', progress: 100 });
+        }
+        return;
+      }
 
       if (finalImage instanceof ImageData || finalImage instanceof ImageBitmap) {
         if (this.lastJobId) {
@@ -265,32 +326,31 @@ export class SegmentationCommand implements Command {
         }
         
         this.afterSrc = canvasEl.toDataURL();
-        this.afterData = { ...this.beforeData, _segOriginalSrc: originalSrc };
+        this.afterData = { ...this.beforeData, _faceOriginalSrc: originalSrc };
         this.applySrc(canvas, this.afterSrc, updateLayers, this.afterData);
         
         if (this.lastJobId) {
           aiEventBus.emit(this.lastJobId, { state: 'completed', progress: 100 });
         }
       }
-
-    } catch (e: any) {
-      console.error(`[SegmentationCommand] Effect ${this.effectId} failed:`, e);
+      
+    } catch (error) {
+      console.error('[FaceUtilityCommand]', error);
       if (this.lastJobId) {
-        aiEventBus.emit(this.lastJobId, { state: 'failed', error: e.message || String(e) });
+        aiEventBus.emit(this.lastJobId, { state: 'failed', progress: 0 });
       }
     }
   }
 
   undo(canvas: fabric.Canvas, updateLayers: () => void) {
-    this.applySrc(canvas, this.beforeSrc, updateLayers, this.beforeData);
+    if (this.beforeSrc) {
+      this.applySrc(canvas, this.beforeSrc, updateLayers, this.beforeData, this.beforeTransform);
+    }
   }
 
   redo(canvas: fabric.Canvas, updateLayers: () => void) {
     if (this.afterSrc) {
-      this.applySrc(canvas, this.afterSrc, updateLayers, this.afterData);
-    } else {
-      // If we don't have afterSrc (memory cleared), we regenerate!
-      this.execute(canvas, updateLayers);
+      this.applySrc(canvas, this.afterSrc, updateLayers, this.afterData, this.afterTransform);
     }
   }
 }

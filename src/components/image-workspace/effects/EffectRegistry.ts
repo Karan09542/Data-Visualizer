@@ -1,8 +1,9 @@
-import { SegmentationResult } from '../../../ai/types';
+import { SegmentationResult, FaceDetectionResult } from '../../../ai/types';
 
 export interface EffectContext {
-  sourceImage: ImageBitmap | ImageData;
-  segmentation: SegmentationResult;
+  sourceImage: ImageBitmap;
+  segmentation?: SegmentationResult;
+  faceDetection?: FaceDetectionResult;
   options: any;
   canvas: OffscreenCanvas | HTMLCanvasElement;
   abortSignal?: AbortSignal;
@@ -20,6 +21,13 @@ import { PortraitEffect } from './plugins/PortraitEffect';
 import { PassportEffect } from './plugins/PassportEffect';
 import { BackgroundReplaceEffect } from './plugins/BackgroundReplaceEffect';
 
+import { FaceHighlightEffect } from './office/FaceHighlightEffect';
+import { FaceBlurEffect } from './office/FaceBlurEffect';
+import { AvatarCropEffect } from './office/AvatarCropEffect';
+import { PassportCropEffect } from './office/PassportCropEffect';
+import { ThumbnailCropEffect } from './office/ThumbnailCropEffect';
+import { AutoCropEffect } from './office/AutoCropEffect';
+
 class EffectRegistry {
   private effects: Map<string, SegmentationEffect> = new Map();
 
@@ -28,6 +36,14 @@ class EffectRegistry {
     this.register(new PortraitEffect());
     this.register(new PassportEffect());
     this.register(new BackgroundReplaceEffect());
+    
+    // Office Utilities
+    this.register(new FaceHighlightEffect());
+    this.register(new FaceBlurEffect());
+    this.register(new AvatarCropEffect());
+    this.register(new PassportCropEffect());
+    this.register(new ThumbnailCropEffect());
+    this.register(new AutoCropEffect());
   }
 
   register(effect: SegmentationEffect) {
