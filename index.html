@@ -63,6 +63,19 @@
       console.warn("[Global Shim] require(" + mod + ") called in browser runtime.");
       return {};
     };
+
+    // Auto-reload on chunk load failure (fixes SPA deployments where old chunks are deleted)
+    window.addEventListener('error', function(e) {
+      var target = e.target || e.srcElement;
+      var isScript = target && target.tagName === 'SCRIPT';
+      if (isScript || (e.message && e.message.toLowerCase().includes('failed to load module script'))) {
+        console.error('Chunk load error detected. Forcing hard reload...');
+        if (sessionStorage.getItem('chunk-reload-attempted') !== 'true') {
+          sessionStorage.setItem('chunk-reload-attempted', 'true');
+          window.location.reload(true);
+        }
+      }
+    }, true);
   </script>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>

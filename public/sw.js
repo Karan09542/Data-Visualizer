@@ -152,10 +152,17 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+          const contentType = networkResponse.headers.get('content-type') || '';
+          if (!contentType.includes('text/html')) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          } else if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+            // Server returned HTML for a JS/CSS file. This is an SPA fallback for a missing chunk.
+            // Do not cache this, and instead return an error so the browser triggers the onerror handler
+            return Response.error();
+          }
         }
         return networkResponse;
       }).catch(() => {

@@ -12,6 +12,8 @@ import NotFound from './pages/NotFound';
 import './index.css';
 
 if (typeof window !== 'undefined') {
+  sessionStorage.removeItem('chunk-reload-attempted');
+
   (window as any).global = window;
   (window as any).process = {
     env: { DEBUG: undefined },
