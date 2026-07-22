@@ -8,10 +8,11 @@ import { CustomSelect } from '../shared/CustomSelect';
 
 interface Props {
   onExecute: (effectId: string, options: any) => void;
+  onPrintSheet?: () => void;
   disabled?: boolean;
 }
 
-export const OfficeUtilitiesPanel: React.FC<Props> = ({ onExecute, disabled }) => {
+export const OfficeUtilitiesPanel: React.FC<Props> = ({ onExecute, onPrintSheet, disabled }) => {
   const [activeTab, setActiveTab] = useState<string>('auto-crop');
   const [modelId, setModelId] = useState<string>('blaze_face_short_range');
   
@@ -98,6 +99,15 @@ export const OfficeUtilitiesPanel: React.FC<Props> = ({ onExecute, disabled }) =
               disabled={disabled} 
               label="Apply Passport Layout" 
             />
+            {onPrintSheet && (
+              <button 
+                onClick={onPrintSheet}
+                disabled={disabled}
+                className="w-full mt-2 bg-[#2E2E2E] hover:bg-[#3A3A3A] text-white border border-[#444] rounded-lg py-2.5 text-[12px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+              >
+                Create Print Sheet
+              </button>
+            )}
           </div>
         )}
 

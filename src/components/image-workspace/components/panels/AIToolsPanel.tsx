@@ -4,6 +4,7 @@ import { AITask, AIProgressState } from '../../../../ai/types';
 import { aiEventBus } from '../../../../ai/events/AIEventBus';
 import { useSelection } from '../../contexts/SelectionContext';
 import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download, Briefcase } from 'lucide-react';
+import * as fabric from 'fabric';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
 import { UpscaleCommand } from '../../commands/ai/UpscaleCommand';
 import { EnhanceLowLightCommand } from '../../commands/ai/EnhanceLowLightCommand';
@@ -12,6 +13,7 @@ import { FaceUtilityCommand } from '../../commands/ai/FaceUtilityCommand';
 import { AIModelManagerModal } from '../shared/AIModelManagerModal';
 import { SegmentationPanel } from './SegmentationPanel';
 import { OfficeUtilitiesPanel } from './OfficeUtilitiesPanel';
+import { PassportPrintModal } from '../shared/PassportPrintModal';
 
 interface AIToolsPanelProps {
   selectionType: string | null;
@@ -228,6 +230,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
 
 export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, executeCommand }) => {
   const [showManager, setShowManager] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'tools' | 'segmentation' | 'office-utilities'>('tools');
   const { activeObj } = useSelection();
   const tasks = ai?.getAvailableTasks?.() || [];
@@ -398,6 +401,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
           {activeTab === 'office-utilities' && (
             <OfficeUtilitiesPanel 
               onExecute={handleFaceUtilityExecute}
+              onPrintSheet={() => setShowPrintModal(true)}
               disabled={!!taskJobs['office-utilities'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['office-utilities'].state)}
             />
           )}
@@ -414,6 +418,13 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       </button>
 
       {showManager && <AIModelManagerModal onClose={() => setShowManager(false)} />}
+      
+      {showPrintModal && activeObj && activeObj.type === 'image' && (
+        <PassportPrintModal 
+          sourceImage={(activeObj as fabric.Image).toDataURL({})} 
+          onClose={() => setShowPrintModal(false)} 
+        />
+      )}
     </div>
   );
 };
