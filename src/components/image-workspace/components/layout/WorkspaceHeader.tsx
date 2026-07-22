@@ -37,7 +37,7 @@ export const WorkspaceHeader: React.FC = () => {
 
         <div className="flex-1" />
 
-        <button className={`hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white flex items-center justify-center rounded transition-colors shrink-0 mr-1 ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} title="Shortcuts Info" onClick={() => setShowShortcuts(true)}>
+        <button className={`hidden sm:flex hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white items-center justify-center rounded transition-colors shrink-0 mr-1 h-8 w-8`} title="Shortcuts Info" onClick={() => setShowShortcuts(true)}>
           <Info size={14} />
         </button>
 

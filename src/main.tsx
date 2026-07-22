@@ -225,6 +225,8 @@ if (typeof window !== 'undefined') {
       msgStr.includes('disposed') ||
       msgStr.includes("setting 'js'") ||
       msgStr.includes('setting "js"') ||
+      msgStr.includes('canceled') ||
+      msgStr.includes('cancelled') ||
       !source
     ) {
       const errOverlay = document.getElementById('webpack-dev-server-client-overlay') || 
@@ -250,6 +252,8 @@ if (typeof window !== 'undefined') {
       msgLower.includes('disposed') ||
       msgLower.includes("setting 'js'") ||
       msgLower.includes('setting "js"') ||
+      msgLower.includes('canceled') ||
+      msgLower.includes('cancelled') ||
       !e.filename
     ) {
       const resizeObserverDelegate = document.getElementById('webpack-dev-server-client-overlay') || 

@@ -5575,7 +5575,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                  <div
                                     className="w-full h-full flex flex-col bg-[#121212] text-[#E0E0E0] select-none"
                                     ref={containerRef}
-                                    onContextMenu={handleContextMenu}
                                  >
 
                                     {/* Top Toolbar */}
@@ -5705,6 +5704,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                           {/* Canvas Container */}
                                           <div
                                              className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]"
+                                             onContextMenu={handleContextMenu}
                                              onPointerDown={(e) => {
                                                 // Mobile panel is now a permanent split view, no tap-to-close needed
                                              }}

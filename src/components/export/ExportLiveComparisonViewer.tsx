@@ -461,8 +461,8 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     <div className="absolute inset-0 z-50 bg-[#09090b] flex flex-col overflow-hidden text-slate-200 select-none font-sans">
       
       {/* --- TOP TOOLBAR --- */}
-      <div className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-white/5 bg-[#121214] shadow-sm relative z-50">
-        <div className="flex items-center gap-2 sm:gap-4 overflow-hidden">
+      <div className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-white/5 bg-[#121214] shadow-sm relative z-50 gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 overflow-hidden flex-1 min-w-0">
           <button 
             onClick={() => setActiveTab('properties')}
             className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
@@ -472,7 +472,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
           
           <div className="h-4 w-px bg-white/10 shrink-0" />
           
-          <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5 overflow-x-auto no-scrollbar min-w-0 mask-image-fade-edges">
             {(['original', 'split', 'side-by-side', 'overlay', 'difference'] as const).map(mode => (
               <button
                 key={mode}
@@ -492,7 +492,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 relative shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 relative shrink-0">
           <div className="flex items-center bg-black/40 border border-white/5 rounded-lg p-0.5">
             <button 
               onClick={() => setComparisonZoom(Math.max(0.05, comparisonZoom - 0.2))}
@@ -550,7 +550,8 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       {/* --- CANVAS WORKSPACE --- */}
       <div 
         ref={containerRef}
-        className={`flex-1 relative overflow-hidden outline-none ${isSpaceDown ? 'cursor-grab' : 'cursor-default'} ${isPanning ? 'cursor-grabbing' : ''}`}
+        className={`flex-1 relative overflow-hidden outline-none touch-none ${isSpaceDown ? 'cursor-grab' : 'cursor-default'} ${isPanning ? 'cursor-grabbing' : ''}`}
+        style={{ touchAction: 'none' }}
         onWheel={handleWheel}
         onPointerDown={handlePointerDownLocal}
         onPointerMove={handlePointerMoveLocal}
