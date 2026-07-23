@@ -8,50 +8,50 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   const buildHash = Math.random().toString(36).substring(2, 10);
   
-  return {
-    plugins: [
-      react(), 
-      tailwindcss(),
-      {
-        name: 'sw-versioning',
-        closeBundle() {
-          const swPath = path.resolve(__dirname, 'dist/sw.js');
-          if (fs.existsSync(swPath)) {
-            let sw = fs.readFileSync(swPath, 'utf8');
-            sw = sw.replace(/CACHE_NAME\s*=\s*'[^']+'/, `CACHE_NAME = 'app-cache-${buildHash}'`);
-            fs.writeFileSync(swPath, sw);
-            console.log(`[sw-versioning] Injected cache version: app-cache-${buildHash}`);
+    // Set dynamically for use in app
+    process.env.VITE_APP_VERSION = `v2.0.0-${buildHash}`;
+    
+    return {
+      plugins: [
+        react(), 
+        tailwindcss(),
+        {
+          name: 'sw-versioning',
+          closeBundle() {
+            const swPath = path.resolve(__dirname, 'dist/sw.js');
+            if (fs.existsSync(swPath)) {
+              let sw = fs.readFileSync(swPath, 'utf8');
+              sw = sw.replace(/CACHE_NAME\s*=\s*'[^']+'/, `CACHE_NAME = 'app-cache-${buildHash}'`);
+              fs.writeFileSync(swPath, sw);
+              console.log(`[sw-versioning] Injected cache version: app-cache-${buildHash}`);
+            }
           }
-        }
-      },
-      {
-        name: 'mock-isomorphic-fetch',
-        resolveId(source) {
-          if (source === 'isomorphic-fetch') {
-            return source;
-          }
-          return null;
         },
-        load(id) {
-          if (id === 'isomorphic-fetch') {
-            return 'export default function(){};';
+        {
+          name: 'mock-isomorphic-fetch',
+          resolveId(source) {
+            if (source === 'isomorphic-fetch') {
+              return source;
+            }
+            return null;
+          },
+          load(id) {
+            if (id === 'isomorphic-fetch') {
+              return 'export default function(){};';
+            }
+            return null;
           }
-          return null;
-        }
-      },
-      {
-        name: 'strip-require',
-        transform(code) {
-          if (code.includes('require("isomorphic-fetch")') || code.includes("require('isomorphic-fetch')")) {
-            return { code: code.replace(/require\(['"]isomorphic-fetch['"]\)/g, '{}'), map: null };
+        },
+        {
+          name: 'strip-require',
+          transform(code) {
+            if (code.includes('require("isomorphic-fetch")') || code.includes("require('isomorphic-fetch')")) {
+              return { code: code.replace(/require\(['"]isomorphic-fetch['"]\)/g, '{}'), map: null };
+            }
           }
         }
-      }
-    ],
-    define: {
-      'import.meta.env.VITE_APP_VERSION': JSON.stringify(`v2.0.0-${buildHash}`),
-    },
-    optimizeDeps: {
+      ],
+      optimizeDeps: {
       exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize']
     },
     resolve: {
