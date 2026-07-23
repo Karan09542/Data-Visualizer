@@ -9,10 +9,10 @@ export interface PoolWorker {
 export class WorkerPool {
   private workers: PoolWorker[] = [];
   private poolSize: number;
-  private workerUrl: string | URL;
+  private workerFactory: () => Worker;
 
-  constructor(workerUrl: string | URL, maxSize?: number) {
-    this.workerUrl = workerUrl;
+  constructor(workerFactory: () => Worker, maxSize?: number) {
+    this.workerFactory = workerFactory;
     // 2-core CPU -> 1 worker
     // 4-core CPU -> 3 workers
     // 8/16-core CPU -> 4 workers max
@@ -22,7 +22,7 @@ export class WorkerPool {
   }
 
   private createWorker(): PoolWorker {
-    const worker = new Worker(this.workerUrl, { type: 'module' });
+    const worker = this.workerFactory();
     const poolWorker: PoolWorker = { id: generateId(), worker, isBusy: false };
     this.workers.push(poolWorker);
     return poolWorker;

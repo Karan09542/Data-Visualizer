@@ -23,6 +23,29 @@ export default defineConfig(({mode}) => {
             console.log(`[sw-versioning] Injected cache version: app-cache-${buildHash}`);
           }
         }
+      },
+      {
+        name: 'mock-isomorphic-fetch',
+        resolveId(source) {
+          if (source === 'isomorphic-fetch') {
+            return source;
+          }
+          return null;
+        },
+        load(id) {
+          if (id === 'isomorphic-fetch') {
+            return 'export default function(){};';
+          }
+          return null;
+        }
+      },
+      {
+        name: 'strip-require',
+        transform(code) {
+          if (code.includes('require("isomorphic-fetch")') || code.includes("require('isomorphic-fetch')")) {
+            return { code: code.replace(/require\(['"]isomorphic-fetch['"]\)/g, '{}'), map: null };
+          }
+        }
       }
     ],
     define: {
@@ -38,11 +61,22 @@ export default defineConfig(({mode}) => {
         'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
         'react-router-dom$': path.resolve(__dirname, 'node_modules/react-router-dom'),
         'react-router$': path.resolve(__dirname, 'node_modules/react-router'),
+        'isomorphic-fetch': path.resolve(__dirname, 'src/dummy.js'),
       },
       dedupe: ['react', 'react-dom', 'react-router-dom', 'react-router'],
     },
     worker: {
       format: 'es',
+      plugins: () => [
+        {
+          name: 'strip-require',
+          transform(code) {
+            if (code.includes('require("isomorphic-fetch")') || code.includes("require('isomorphic-fetch')")) {
+              return { code: code.replace(/require\(['"]isomorphic-fetch['"]\)/g, '{}'), map: null };
+            }
+          }
+        }
+      ]
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

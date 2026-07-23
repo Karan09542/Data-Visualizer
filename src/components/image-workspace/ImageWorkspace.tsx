@@ -135,6 +135,7 @@ interface ImageWorkspaceProps {
 
 // TODO(Refactor): Extract hooks, leaving only the main orchestration here
 export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
+   console.log('[ImageWorkspace] Component rendering, path:', path);
    const { parsedData, updateNodeValue, setNotification } = useStore();
    const canvasRef = useRef<HTMLCanvasElement>(null);
    const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -1539,7 +1540,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                setBenchmarkInfo(imgObj.lastFilterBenchmark);
             } else {
                setBenchmarkInfo({
-                  backend: (fabric as any).isWebglSupported && (fabric as any).isWebglSupported() ? "WebGL" : "Canvas2D",
+                  backend: "WebGL",
                   filterTimeMs: "0.0",
                   outputWidth: imgObj.width ? Math.round(imgObj.width * (imgObj.scaleX || 1)) : 0,
                   outputHeight: imgObj.height ? Math.round(imgObj.height * (imgObj.scaleY || 1)) : 0

@@ -7,7 +7,7 @@ class AIEngine {
   private pendingRequests: Map<string, { resolve: Function, reject: Function, onProgress?: Function }> = new Map();
   
   // Dedicated pool for heavy Canvas Offscreen operations
-  public effectPool = new WorkerPool(new URL('../workers/EffectWorker.ts', import.meta.url), 2);
+  public effectPool = new WorkerPool(() => new Worker(new URL('../workers/EffectWorker.ts', import.meta.url), { type: 'module' }), 2);
 
   private getWorker(): Worker {
     if (!this.worker) {

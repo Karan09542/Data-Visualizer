@@ -465,7 +465,12 @@ const initialParsedData = JSON.parse(initialCode);
 
 export const useStore = create<StoreState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      // Expose for debugging
+      if (typeof window !== "undefined") {
+        (window as any).useStore = { getState: get, setState: set };
+      }
+      return {
       ...defaultSettings,
       code: initialCode,
       globalSearchErrors: [],
@@ -1291,7 +1296,8 @@ export const useStore = create<StoreState>()(
         set({ ...defaultSettings, dragOverrides: {} });
         import('./dexieSync').then(m => m.clearPositionsInDexie());
       },
-    }),
+    };
+  },
     {
       name: "json-graph-viewer-settings",
       partialize: (state) => {
