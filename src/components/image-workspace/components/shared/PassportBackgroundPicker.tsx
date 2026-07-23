@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Image as ImageIcon, Upload, Palette, Search, Globe, X, ZoomIn } from 'lucide-react';
 import { ColorPickerTrigger } from './ColorPickers';
-import { createClient } from 'pexels';
+import { AssetGallery } from '../../../image-import/gallery/AssetGallery';
 
 export interface PassportBackground {
   type: 'color' | 'image';
@@ -17,47 +17,9 @@ interface Props {
 }
 
 export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, disabled }) => {
-  const [tab, setTab] = useState<'color' | 'upload' | 'pexels'>('color');
+  const [tab, setTab] = useState<'color' | 'upload' | 'gallery'>('color');
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [pexelsModalOpen, setPexelsModalOpen] = useState(false);
-  
-  // Pexels state
-  const [search, setSearch] = useState('');
-  const [pexelsPhotos, setPexelsPhotos] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const pexelsClient = useMemo(() => {
-    const key = import.meta.env.VITE_PEXELS_API_KEY;
-    if (key) return createClient(key);
-    return null;
-  }, []);
-
-  // Fetch Pexels images
-  useEffect(() => {
-    if (tab !== 'pexels' || !pexelsClient) return;
-
-    const timer = setTimeout(() => {
-      setLoading(true);
-      const query = search.trim();
-      const request = query 
-        ? pexelsClient.photos.search({ query, per_page: 20 })
-        : pexelsClient.photos.curated({ per_page: 20 });
-
-      request.then((response: any) => {
-        if (response && 'photos' in response) {
-          setPexelsPhotos(response.photos);
-        } else {
-          setPexelsPhotos([]);
-        }
-      }).catch(err => {
-        console.error("Pexels fetch error", err);
-      }).finally(() => {
-        setLoading(false);
-      });
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [tab, search, pexelsClient]);
+  const [galleryModalOpen, setGalleryModalOpen] = useState(false);
 
   const loadImage = (url: string) => {
     const img = new Image();
@@ -92,7 +54,7 @@ export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, dis
       <div className="flex items-center gap-1 bg-[#0a0a0a] p-1 rounded-lg border border-[#222]">
         <TabBtn active={tab === 'color'} onClick={() => setTab('color')} icon={<Palette size={13} />} label="Color" disabled={disabled} />
         <TabBtn active={tab === 'upload'} onClick={() => setTab('upload')} icon={<Upload size={13} />} label="Upload" disabled={disabled} />
-        <TabBtn active={tab === 'pexels'} onClick={() => setTab('pexels')} icon={<Globe size={13} />} label="Pexels" disabled={disabled} />
+        <TabBtn active={tab === 'gallery'} onClick={() => setTab('gallery')} icon={<Globe size={13} />} label="Gallery" disabled={disabled} />
       </div>
 
       <div className="flex gap-3">
@@ -134,78 +96,32 @@ export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, dis
             </div>
           )}
 
-          {tab === 'pexels' && (
+          {tab === 'gallery' && (
              <div className="flex flex-col justify-center items-center h-full min-h-[48px]">
                <button 
-                 onClick={() => setPexelsModalOpen(true)}
+                 onClick={() => setGalleryModalOpen(true)}
                  className="flex items-center gap-2 px-4 py-2 bg-[#1A1A1A] hover:bg-[#222] border border-[#333] hover:border-[#444] text-white text-[11px] font-medium rounded-lg transition-all shadow-sm active:scale-95"
                  disabled={disabled}
                >
                  <Search size={14} className="text-slate-400" />
-                 Search Pexels Gallery
+                 Search Asset Gallery
                </button>
              </div>
           )}
         </div>
       </div>
 
-      {/* Pexels Search Modal */}
-      {pexelsModalOpen && (
-        <div className="fixed inset-0 z-[10070] flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 md:p-8 animate-in fade-in duration-200" onClick={() => setPexelsModalOpen(false)}>
-           <div className="w-full h-full md:max-w-5xl md:h-[85vh] bg-[#111] border border-[#222] md:rounded-xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-             {/* Header */}
-             <div className="flex items-center justify-between p-4 border-b border-[#222] bg-[#161616]">
-                <div className="flex items-center gap-2">
-                  <Globe size={18} className="text-blue-400" />
-                  <h2 className="text-white font-medium text-sm md:text-base">Pexels Backgrounds</h2>
-                </div>
-                <button onClick={() => setPexelsModalOpen(false)} className="p-2 hover:bg-[#222] rounded-lg text-slate-400 hover:text-white transition-colors">
-                  <X size={20} />
-                </button>
-             </div>
-             
-             {/* Toolbar */}
-             <div className="p-3 md:p-4 border-b border-[#222] bg-[#181818]">
-               <div className="relative max-w-2xl mx-auto">
-                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                 <input 
-                   type="text" 
-                   placeholder="Search for studio backgrounds, gradients, nature..."
-                   value={search}
-                   onChange={e => setSearch(e.target.value)}
-                   className="w-full bg-[#111] border border-[#333] rounded-lg pl-10 pr-4 py-2.5 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                 />
-               </div>
-             </div>
-             
-             {/* Grid */}
-             <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-[#0D0D0D]">
-               {!pexelsClient ? (
-                 <div className="flex h-full items-center justify-center text-red-400 text-sm">VITE_PEXELS_API_KEY missing in environment variables.</div>
-               ) : loading ? (
-                 <div className="flex h-full flex-col gap-4 items-center justify-center text-slate-500 text-sm">
-                   <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-                   Searching...
-                 </div>
-               ) : (
-                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 max-w-6xl mx-auto">
-                   {pexelsPhotos.map(p => (
-                     <div 
-                        key={p.id} 
-                        onClick={() => {
-                          loadImage(p.src.large2x || p.src.original);
-                          setPexelsModalOpen(false);
-                        }}
-                        className={`aspect-[3/4] cursor-pointer rounded-xl border-2 overflow-hidden hover:opacity-80 transition-all hover:shadow-lg bg-[#161616] ${value.imageUrl === (p.src.large2x || p.src.original) ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)] scale-[0.98]' : 'border-[#222] hover:border-[#444]'}`}
-                     >
-                        <img src={p.src.medium} alt="Pexels" className="w-full h-full object-cover pointer-events-none" loading="lazy" />
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
-           </div>
-        </div>
+      {/* Asset Gallery Modal */}
+      {galleryModalOpen && (
+        <AssetGallery 
+          onClose={() => setGalleryModalOpen(false)}
+          onImport={(assets) => {
+             if (assets.length > 0) {
+                loadImage(assets[0].url);
+                setGalleryModalOpen(false);
+             }
+          }}
+        />
       )}
 
       {/* Big Preview Modal */}

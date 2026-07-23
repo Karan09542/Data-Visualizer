@@ -143,59 +143,61 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
   const isCurrentLoading = activeTab === 'local' ? loading : pexelsLoading;
 
   return (
-    <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#111] border border-[#222] rounded-xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-[#111] border border-[#222] sm:rounded-xl w-full max-w-5xl h-full sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[#222] bg-[#161616]">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 pr-4 border-r border-[#333]">
-              <Box size={20} className="text-blue-400" />
-              <h2 className="text-white font-medium text-lg">Asset Gallery</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border-b border-[#222] bg-[#161616] gap-3 sm:gap-0 relative">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 pr-8 sm:pr-0">
+            <div className="flex items-center gap-2 sm:pr-4 sm:border-r border-[#333]">
+              <Box size={20} className="text-blue-400 shrink-0" />
+              <h2 className="text-white font-medium text-base sm:text-lg whitespace-nowrap">Asset Gallery</h2>
             </div>
             
-            <div className="flex items-center gap-1 bg-[#0a0a0a] p-1 rounded-lg border border-[#222]">
+            <div className="flex items-center gap-1 bg-[#0a0a0a] p-1 rounded-lg border border-[#222] self-start sm:self-auto overflow-x-auto w-full sm:w-auto">
               <button
                 onClick={() => setActiveTab('local')}
-                className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${activeTab === 'local' ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'local' ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 Local Assets
               </button>
               <button
                 onClick={() => setActiveTab('pexels')}
-                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${activeTab === 'pexels' ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'pexels' ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
               >
-                <Globe size={14} /> Pexels
+                <Globe size={14} className="shrink-0" /> Pexels
               </button>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-[#222] rounded-lg text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="absolute right-3 top-3 sm:static sm:right-auto sm:top-auto p-2 hover:bg-[#222] rounded-lg text-slate-400 hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
         {/* Toolbar */}
-        <div className="p-4 border-b border-[#222] flex gap-4 items-center bg-[#181818]">
-          <div className="relative flex-1 max-w-md">
+        <div className="p-3 sm:p-4 border-b border-[#222] flex flex-wrap gap-3 sm:gap-4 items-center bg-[#181818]">
+          <div className="relative flex-1 min-w-[200px] w-full sm:max-w-md">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input 
               type="text" 
               placeholder={activeTab === 'local' ? "Search local assets..." : "Search Pexels..."}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full bg-[#111] border border-[#333] rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+              className="w-full bg-[#111] border border-[#333] rounded-lg pl-9 pr-3 sm:pl-10 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
             />
           </div>
-          <div className="flex-1" />
-          <div className="text-slate-400 text-sm">
-            {selectedAssets.size} selected
+          <div className="flex-1 hidden sm:block" />
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="text-slate-400 text-xs sm:text-sm whitespace-nowrap">
+              {selectedAssets.size} selected
+            </div>
+            <button 
+              disabled={selectedAssets.size === 0}
+              onClick={handleImport}
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-xs sm:text-sm font-medium rounded-lg transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap"
+            >
+              Import {selectedAssets.size > 0 ? `(${selectedAssets.size})` : ''}
+            </button>
           </div>
-          <button 
-            disabled={selectedAssets.size === 0}
-            onClick={handleImport}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-          >
-            Import {selectedAssets.size > 0 ? `(${selectedAssets.size})` : ''}
-          </button>
         </div>
 
         {activeTab === 'pexels' && !import.meta.env.VITE_PEXELS_API_KEY && (

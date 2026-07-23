@@ -1361,9 +1361,20 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
              const cloned = (window as any)._fabricInternalClipboard;
              cloned.clone().then((clonedObj: any) => {
                  fabricRef.current?.discardActiveObject();
+                 let newLeft = (clonedObj.left || 0) + 20;
+                 let newTop = (clonedObj.top || 0) + 20;
+                 const canvas = fabricRef.current;
+                 if (canvas && canvas.vptCoords) {
+                     const { tl, br } = canvas.vptCoords;
+                     if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                         const center = canvas.getVpCenter();
+                         newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
+                         newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
+                     }
+                 }
                  clonedObj.set({
-                    left: (clonedObj.left || 0) + 20,
-                    top: (clonedObj.top || 0) + 20,
+                    left: newLeft,
+                    top: newTop,
                     id: Date.now().toString() + Math.random().toString(),
                     artboardId: activeArtboardId || undefined
                  });
@@ -4752,9 +4763,20 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (activeObj) {
          activeObj.clone(['id', 'artboardId']).then((cloned) => {
             fabricRef.current?.discardActiveObject();
+            let newLeft = (cloned.left || 0) + 20;
+            let newTop = (cloned.top || 0) + 20;
+            const canvas = fabricRef.current;
+            if (canvas && canvas.vptCoords) {
+                const { tl, br } = canvas.vptCoords;
+                if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                    const center = canvas.getVpCenter();
+                    newLeft = cloned.originX === 'center' ? center.x : center.x - ((cloned.width || 0) * (cloned.scaleX || 1)) / 2;
+                    newTop = cloned.originY === 'center' ? center.y : center.y - ((cloned.height || 0) * (cloned.scaleY || 1)) / 2;
+                }
+            }
             cloned.set({
-               left: cloned.left! + 20,
-               top: cloned.top! + 20,
+               left: newLeft,
+               top: newTop,
                id: Date.now().toString() + Math.random().toString(),
                artboardId: (activeObj as any).artboardId || activeArtboardIdRef.current
             });
@@ -6534,9 +6556,20 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                       if (cloned) {
                                                          cloned.clone().then((clonedObj: any) => {
                                                             fabricRef.current?.discardActiveObject();
+                                                            let newLeft = (clonedObj.left || 0) + 20;
+                                                            let newTop = (clonedObj.top || 0) + 20;
+                                                            const canvas = fabricRef.current;
+                                                            if (canvas && canvas.vptCoords) {
+                                                                const { tl, br } = canvas.vptCoords;
+                                                                if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                                                                    const center = canvas.getVpCenter();
+                                                                    newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
+                                                                    newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
+                                                                }
+                                                            }
                                                             clonedObj.set({
-                                                               left: clonedObj.left + 20,
-                                                               top: clonedObj.top + 20,
+                                                               left: newLeft,
+                                                               top: newTop,
                                                                id: Date.now().toString() + Math.random().toString(),
                                                                evented: true,
                                                             });

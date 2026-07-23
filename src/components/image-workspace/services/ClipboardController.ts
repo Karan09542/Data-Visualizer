@@ -83,9 +83,19 @@ export class ClipboardController {
 
       activeObj.clone(['id', 'artboardId']).then((cloned) => {
          deps.canvas.discardActiveObject();
+         let newLeft = (cloned.left || 0) + 20;
+         let newTop = (cloned.top || 0) + 20;
+         if (deps.canvas.vptCoords) {
+             const { tl, br } = deps.canvas.vptCoords;
+             if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                 const center = deps.canvas.getVpCenter();
+                 newLeft = cloned.originX === 'center' ? center.x : center.x - ((cloned.width || 0) * (cloned.scaleX || 1)) / 2;
+                 newTop = cloned.originY === 'center' ? center.y : center.y - ((cloned.height || 0) * (cloned.scaleY || 1)) / 2;
+             }
+         }
          cloned.set({
-            left: (cloned.left || 0) + 20,
-            top: (cloned.top || 0) + 20,
+            left: newLeft,
+            top: newTop,
             id: Date.now().toString() + Math.random().toString(),
             artboardId: (activeObj as any).artboardId || deps.getActiveArtboardId()
          });
