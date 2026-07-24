@@ -47,6 +47,7 @@ interface NodeProps {
   layoutMode: string;
   isSelectedPath?: boolean;
   isSelected?: boolean;
+  isIsolatedMode?: boolean;
   onContextMenu?: (e: React.MouseEvent, node: TreeNode) => void;
 }
 
@@ -111,6 +112,7 @@ function NodeRenderer({
   layoutMode,
   isSelectedPath,
   isSelected,
+  isIsolatedMode,
   onContextMenu,
 }: NodeProps) {
   const nodeTheme = useStore((state) => state.nodeTheme);
@@ -271,7 +273,7 @@ function NodeRenderer({
     (!hasQuery &&
       !isSelected &&
       !isSelectedPath &&
-      useStore.getState().selectedNodeId != null);
+      isIsolatedMode);
 
   const strVal = data.value !== undefined ? String(data.value) : "";
 
@@ -1393,6 +1395,7 @@ function NodeRenderer({
             onClick={(e) => {
               e.stopPropagation();
               setSelectedNodeId(data.id);
+              useStore.getState().setIsolatedNodeId(null);
             }}
             onContextMenu={(e) => {
               const target = e.target as HTMLElement;
@@ -1413,6 +1416,8 @@ function NodeRenderer({
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
+              setSelectedNodeId(data.id);
+              useStore.getState().setIsolatedNodeId(data.id);
               if (hasChildren) toggleNodeCollapse(data.id);
             }}
           >

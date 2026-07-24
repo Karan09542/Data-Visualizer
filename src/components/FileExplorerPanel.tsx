@@ -606,6 +606,8 @@ function isFileSystemMeaningful(value: any): boolean {
       setExpandedJsNodeId(finalPath);
     }
 
+    setSelectedNodeId(finalPath);
+
     setCreatingInPath(null);
     setCreatingType(null);
     setCreatingValue("");

@@ -11,8 +11,17 @@ const TextPreviewPopup: React.FC = () => {
   const [viewMode, setViewMode] = React.useState<'raw' | 'markdown' | 'html' | 'edit'>('raw');
   const [editText, setEditText] = React.useState('');
 
+  const initializedPathRef = React.useRef<string | null>(null);
+  const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   React.useEffect(() => {
-    if (activePreviewText) {
+    if (!activePreviewPath) {
+      initializedPathRef.current = null;
+      return;
+    }
+    
+    if (activePreviewText && activePreviewPath !== initializedPathRef.current) {
+      initializedPathRef.current = activePreviewPath;
       setEditText(activePreviewText);
       const val = activePreviewText.toLowerCase().trim();
       if (
@@ -31,7 +40,13 @@ const TextPreviewPopup: React.FC = () => {
         setViewMode('raw');
       }
     }
-  }, [activePreviewText]);
+  }, [activePreviewText, activePreviewPath]);
+
+  React.useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
 
   if (!activePreviewText) return null;
 
@@ -41,13 +56,7 @@ const TextPreviewPopup: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSave = async () => {
-    if (activePreviewPath) {
-      await updateNodeValue(activePreviewPath, editText);
-      setActivePreviewText(editText, activePreviewPath);
-      setViewMode('raw');
-    }
-  };
+
 
   return createPortal(
     <AnimatePresence>
@@ -146,26 +155,35 @@ const TextPreviewPopup: React.FC = () => {
                   <textarea
                     autoFocus
                     value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      setEditText(newValue);
+                      
+                      if (saveTimeoutRef.current) {
+                        clearTimeout(saveTimeoutRef.current);
+                      }
+                      
+                      saveTimeoutRef.current = setTimeout(async () => {
+                        if (activePreviewPath) {
+                          await updateNodeValue(activePreviewPath, newValue);
+                          setActivePreviewText(newValue, activePreviewPath);
+                        }
+                      }, 500);
+                    }}
                     className="flex-1 bg-slate-900/50 text-slate-200 font-mono text-sm leading-relaxed outline-none resize-none p-4 border border-slate-800 rounded-lg focus:border-indigo-500/30 transition-colors custom-scrollbar"
                     placeholder="Enter content here..."
                   />
                   <div className="flex justify-end items-center gap-3">
+                    <span className="text-slate-500 text-xs italic flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 animate-pulse"></div>
+                      Auto-saving on type...
+                    </span>
                     <button
-                      onClick={() => {
-                        setEditText(activePreviewText);
-                        setViewMode('raw');
-                      }}
-                      className="text-slate-500 hover:text-slate-300 text-xs font-medium transition-colors"
+                      onClick={() => setViewMode('raw')}
+                      className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95"
                     >
-                      Discard changes
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-lg shadow-indigo-600/10"
-                    >
-                      <Save size={14} />
-                      Save
+                      <Check size={14} />
+                      Done
                     </button>
                   </div>
                 </div>
@@ -207,9 +225,9 @@ const TextPreviewPopup: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 {viewMode === 'edit' ? (
-                  <div className="flex items-center gap-1.5 text-amber-500/80">
-                    <div className="w-1 h-1 rounded-full bg-amber-500 animate-pulse"></div>
-                    UNSAVED
+                  <div className="flex items-center gap-1.5 text-indigo-400">
+                    <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse"></div>
+                    EDITING
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-slate-500 uppercase tracking-widest">

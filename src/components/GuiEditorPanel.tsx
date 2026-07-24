@@ -43,7 +43,7 @@ interface LeafField {
 }
 
 export default function GuiEditorPanel() {
-  const { codeFormat, code, setCode, parsedData, appTheme } = useStore();
+  const { codeFormat, code, setCode, parsedData, appTheme, setSelectedNodeId } = useStore();
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -159,6 +159,7 @@ export default function GuiEditorPanel() {
         ...prev,
         [objectPath]: { value: "", type: "string", key: "" },
       }));
+      setSelectedNodeId(objectPath === "root" ? `root.${input.key}` : `${objectPath}.${input.key}`);
     }
   };
 
@@ -189,6 +190,7 @@ export default function GuiEditorPanel() {
         ...prev,
         [arrayPath]: { value: "", type: "string" },
       }));
+      setSelectedNodeId(`${arrayPath}[${target.length - 1}]`);
     }
   };
 
@@ -530,6 +532,7 @@ export default function GuiEditorPanel() {
 
     setIsMobileDrawerOpen(false);
     triggerToast(`Created attribute "${key}" successfully`, "success");
+    setSelectedNodeId(newParentPath === "root" ? `root.${key}` : `${newParentPath}.${key}`);
   };
 
   // CRUD: Update single value inline

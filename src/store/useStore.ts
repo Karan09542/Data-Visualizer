@@ -292,6 +292,7 @@ export interface StoreState {
   nextMatch: () => void;
   prevMatch: () => void;
   selectedNodeId: string | null;
+  isolatedNodeId: string | null;
   isEditorPanelOpen: boolean;
   isAdvancedPanelOpen: boolean;
   isMobileMenuOpen: boolean;
@@ -367,6 +368,7 @@ export interface StoreState {
   toggleNodeCollapse: (id: string) => void;
   setCollapsedNodes: (nodes: Set<string>) => void;
   setSelectedNodeId: (id: string | null) => void;
+  setIsolatedNodeId: (id: string | null) => void;
   setIsEditorPanelOpen: (isOpen: boolean) => void;
   setIsAdvancedPanelOpen: (isOpen: boolean) => void;
   setIsMobileMenuOpen: (isOpen: boolean) => void;
@@ -485,6 +487,7 @@ export const useStore = create<StoreState>()(
       activeMatchIndex: null,
       activeMatchId: null,
       selectedNodeId: null,
+      isolatedNodeId: null,
       isEditorPanelOpen: true,
       isAdvancedPanelOpen: false,
       isMobileMenuOpen: false,
@@ -1043,6 +1046,7 @@ export const useStore = create<StoreState>()(
       },
       setCollapsedNodes: (nodes: Set<string>) => set({ collapsedNodes: nodes }),
       setSelectedNodeId: (id: string | null) => set({ selectedNodeId: id }),
+      setIsolatedNodeId: (id: string | null) => set({ isolatedNodeId: id }),
       setApiMethod: (method: string) => set({ apiMethod: method }),
       setApiUrl: (url: string) => set({ apiUrl: url }),
       setApiHeaders: (headers: string) => set({ apiHeaders: headers }),
