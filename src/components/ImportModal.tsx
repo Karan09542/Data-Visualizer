@@ -239,6 +239,7 @@ export function ImportModal() {
       const currentData = parsedData || {};
       let actualKey = targetKey;
       let finalData = currentData;
+      let targetPath = `root.${actualKey}`;
 
       if (
         typeof currentData === "object" &&
@@ -252,10 +253,13 @@ export function ImportModal() {
               counter++;
             }
             actualKey = `${targetKey}_${counter}`;
+            targetPath = `root.${actualKey}`;
             finalData = { ...currentData, [actualKey]: finalResultData };
           } else if (collisionAction === "replace_key") {
+            targetPath = `root.${actualKey}`;
             finalData = { ...currentData, [actualKey]: finalResultData };
           } else if (collisionAction === "merge") {
+            targetPath = `root.${actualKey}`;
             const existingVal = currentData[actualKey];
             if (Array.isArray(existingVal) && Array.isArray(finalResultData)) {
               finalData = {
@@ -277,9 +281,11 @@ export function ImportModal() {
             }
           }
         } else {
+          targetPath = `root.${actualKey}`;
           finalData = { ...currentData, [actualKey]: finalResultData };
         }
       } else if (Array.isArray(currentData)) {
+        targetPath = `root[${currentData.length}]`;
         // if they append to an array, and resultData is an array, concat
         if (Array.isArray(finalResultData)) {
           finalData = [...currentData, ...finalResultData];
@@ -287,6 +293,7 @@ export function ImportModal() {
           finalData = [...currentData, finalResultData];
         }
       } else {
+        targetPath = `root.${actualKey}`;
         finalData = { [actualKey]: finalResultData };
       }
 
@@ -294,11 +301,13 @@ export function ImportModal() {
         import("js-yaml")
           .then((yaml) => {
             useStore.getState().setCode(yaml.default.dump(finalData));
+            useStore.getState().setSelectedNodeId(targetPath);
             setPendingImport(null);
           })
           .catch((e) => {
             useStore.getState().setCode(JSON.stringify(finalData, null, 2));
             useStore.getState().setCodeFormat("json");
+            useStore.getState().setSelectedNodeId(targetPath);
             setPendingImport(null);
           });
         return;
@@ -306,6 +315,7 @@ export function ImportModal() {
 
       useStore.getState().setCode(JSON.stringify(finalData, null, 2));
       useStore.getState().setCodeFormat("json");
+      useStore.getState().setSelectedNodeId(targetPath);
       setPendingImport(null);
     };
 
@@ -733,12 +743,14 @@ export function ImportModal() {
 
         <div className="p-4 px-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1117] flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
           <button
+            id="cancel-import-btn"
             onClick={() => setPendingImport(null)}
             className="px-4 py-2 rounded-lg font-medium text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             Cancel
           </button>
           <button
+            id="confirm-import-btn"
             onClick={applyImport}
             className="px-5 py-2 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md shadow-indigo-500/20 active:scale-[0.98] flex items-center gap-2"
           >

@@ -1,0 +1,98 @@
+export const LAYOUT_MODES = [
+  "vertical",
+  "horizontal",
+  "radial",
+  "force",
+  "compact",
+  "mindmap",
+] as const;
+
+export const CODE_FORMATS = ["json", "yaml"] as const;
+
+export const NODE_THEMES = [
+  "vscode",
+  "github",
+  "glassmorphism",
+  "cyberpunk",
+  "minimal",
+  "gradient",
+  "pastel",
+  "terminal",
+  "material",
+  "blueprint",
+  "retro",
+  "holographic",
+  "notebook",
+  "custom",
+  "nature",
+  "circuit",
+  "galaxy",
+  "glass",
+  "neon",
+  "math",
+  "neural",
+  "river",
+  "tree",
+  "pixel",
+  "hacker",
+  "cloud",
+  "dna",
+  "lava",
+  "ocean",
+  "rhythm",
+  "rune",
+  "zen",
+  "abstract",
+  "architect",
+  "ludo",
+  "chess",
+  "octopus",
+  "nature2",
+  "hydrogen",
+  "seed",
+  "banyan",
+  "peepal",
+] as const;
+
+export const EDGE_STYLES = [
+  "curved",
+  "bezier",
+  "straight",
+  "step",
+  "animated",
+  "dashed",
+  "neon",
+  "double",
+  "pipe",
+  "thin",
+  "orgChart",
+  "circuit",
+  "glow",
+  "zigzag",
+  "pulse",
+  "ludo",
+  "chess",
+  "octopus",
+  "nature2",
+  "hydrogen",
+  "seed",
+  "metro",
+  "angled-step",
+] as const;
+
+export const NODE_SHAPES = [
+  "default",
+  "circle",
+  "rectangle",
+  "triangle",
+  "hexagon",
+  "pill",
+  "diamond",
+  "parallelogram",
+] as const;
+
+export type LayoutMode = typeof LAYOUT_MODES[number];
+export type CodeFormat = typeof CODE_FORMATS[number];
+export type NodeTheme = typeof NODE_THEMES[number];
+export type EdgeStyle = typeof EDGE_STYLES[number];
+export type NodeShape = typeof NODE_SHAPES[number];

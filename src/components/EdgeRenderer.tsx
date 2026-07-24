@@ -27,7 +27,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   let strokeWidth = 1.5;
   let strokeDasharray = "none";
   let inlines: React.CSSProperties = {
-    transition: 'all 300ms ease-out',
+    transition: 'stroke 300ms ease-out, stroke-width 300ms ease-out, filter 300ms ease-out, opacity 300ms ease-out',
     opacity: 1,
     filter: 'none'
   };
@@ -64,7 +64,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     strokeWidth = 0.5;
   } else if (style === 'animated') {
     strokeDasharray = "8,8";
-    inlines.animation = "dash 20s linear infinite"; 
+    inlines.animation = "flow 1.5s linear infinite"; 
   }
 
   // JS Node Edge Override
@@ -73,7 +73,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     strokeWidth = 2;
     strokeDasharray = "6,4";
     inlines.filter = "drop-shadow(0 0 6px rgba(234, 179, 8, 0.4))";
-    inlines.animation = "dash 1.5s linear infinite";
+    inlines.animation = "flow 1.5s linear infinite";
     
     const isError = jsNodeErrors[targetData.path];
     const isSuccess = jsNodeResponses[targetData.path] !== undefined;
@@ -85,7 +85,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     } else if (isSuccess) {
       stroke = "#22c55e";
       inlines.filter = "drop-shadow(0 0 6px rgba(34, 197, 94, 0.6))";
-      inlines.animation = "dash 3s linear infinite"; // slower pulse
+      inlines.animation = "flow 3s linear infinite"; // slower pulse
     }
   }
 
@@ -120,7 +120,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   } else if (nodeTheme === 'neural') {
     stroke = "rgba(96, 165, 250, 0.5)";
     strokeDasharray = "2,4";
-    inlines.animation = "dash 5s linear infinite";
+    inlines.animation = "flow 5s linear infinite";
   } else if (nodeTheme === 'river') {
     stroke = "#00b4d8";
     strokeWidth = 3;
@@ -274,7 +274,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
              fill="none"
              stroke="#a5b4fc"
              strokeWidth={strokeWidth * 0.15}
-             style={{ opacity: 0.9, pointerEvents: 'none', filter: "drop-shadow(0 0 3px #6366f1)" }}
+             style={{ ...inlines, opacity: 0.9, pointerEvents: 'none', filter: "drop-shadow(0 0 3px #6366f1)" }}
            />
         </>
       )}

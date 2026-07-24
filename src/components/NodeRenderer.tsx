@@ -487,7 +487,9 @@ function NodeRenderer({
       case "gradient":
         return "bg-gradient-to-br from-indigo-500 to-purple-600 border-transparent text-white shadow-lg";
       case "pastel":
-        return "bg-[#fdfcdc] border-[#f0ead2] text-[#6d6875] shadow-sm";
+        return appTheme === "dark"
+          ? "bg-gradient-to-br from-[#2a1b38] to-[#1a233a] border-[#3b2d4a] text-[#e5b3fe] shadow-lg"
+          : "bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 border-pink-100 text-purple-900 shadow-md ring-1 ring-purple-100/50";
       case "terminal":
         return "bg-black border-[#33ff00] text-[#33ff00] shadow-none font-mono";
       case "material":
@@ -504,8 +506,8 @@ function NodeRenderer({
         return "bg-gradient-to-br from-[#124219] via-[#1a5b28] to-[#0b2911] border-white/15 text-white shadow-[0_20px_45px_rgba(0,0,0,0.5)] backdrop-blur-md ring-1 ring-emerald-300/20 font-bold";
       case "nature2":
         return data.id === "root"
-          ? "bg-[#36573c] border border-[#2b4c30] text-white shadow-xl"
-          : "bg-[#eaf1e2] border border-[#d2e0c6] text-[#1c3821] shadow-sm";
+          ? `bg-[#36573c] text-white shadow-xl ${nodeShape === 'default' ? 'nature2-border-root' : 'border-4 border-[#5c4033]'}`
+          : `bg-[#eaf1e2] text-[#1c3821] shadow-sm ${nodeShape === 'default' ? 'nature2-border-child' : 'border-4 border-[#4a7c59]'}`;
       case "seed":
         return data.id === "root"
           ? "bg-[#3b5336] text-white shadow-[0_10px_20px_rgba(59,83,54,0.4)] border-none"
@@ -517,17 +519,19 @@ function NodeRenderer({
       case "circuit":
         return "bg-[#0b0e14] border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)] font-mono border-2";
       case "galaxy":
-        return "bg-gradient-to-br from-[#0b0014] to-[#1a0033] border-purple-500/50 text-purple-100 shadow-[0_0_20px_rgba(168,85,247,0.4)]";
+        return "bg-gradient-to-br from-[#0b0014] via-[#1a0033] to-[#2d004d] border-purple-500/40 text-purple-100 shadow-[0_0_25px_rgba(168,85,247,0.5),inset_0_0_15px_rgba(255,255,255,0.05)] ring-1 ring-purple-400/20";
       case "glass":
         return "bg-white/5 border-white/30 text-white backdrop-blur-xl shadow-2xl ring-1 ring-white/10";
       case "neon":
         return "bg-black border-[#ff00ff] text-[#ff00ff] shadow-[0_0_20px_#ff00ff] font-bold tracking-wider";
       case "math":
-        return "bg-[#f8f9fa] border-slate-300 text-slate-800 shadow-none font-mono border-dashed";
+        return appTheme === "dark"
+          ? "bg-[#0f172a] border-[#1e293b] border-l-[#3b82f6] text-slate-200 math-node-dark shadow-lg font-serif ring-1 ring-black/50"
+          : "bg-white border-blue-200 border-l-blue-500 text-slate-800 math-node-light shadow-md font-serif";
       case "neural":
         return "bg-[#0a192f] border-blue-400/50 text-blue-200 shadow-[0_0_15px_rgba(96,165,250,0.2)] rounded-full animate-pulse-subtle";
       case "river":
-        return "bg-gradient-to-r from-blue-600/80 to-cyan-500/80 border-transparent text-white shadow-lg rounded-3xl";
+        return "bg-gradient-to-r from-[#003049] via-[#023e8a] to-[#0077b6] text-[#e0fbfc] shadow-[0_4px_15px_rgba(0,119,182,0.5),inset_0_-4px_15px_rgba(0,150,199,0.4)] ring-1 ring-cyan-300/30 river-node";
       case "tree":
         return "bg-[#2d3a3a] border-[#6b8e23] text-[#f5f5dc] border-b-4 border-r-2";
       case "pixel":
@@ -535,9 +539,11 @@ function NodeRenderer({
       case "hacker":
         return "bg-black border-[#00ff41] text-[#00ff41] shadow-[0_0_5px_#00ff41] font-mono lowercase animate-scanline";
       case "cloud":
-        return "bg-white border-sky-200 text-sky-900 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)] rounded-xl";
+        return appTheme === "dark" 
+          ? "bg-slate-800 text-yellow-400 drop-shadow-[0_10px_25px_rgba(250,204,21,0.2)] thunder-cloud" 
+          : "bg-white text-sky-900 drop-shadow-xl";
       case "dna":
-        return "bg-[#1a1a2e] border-fuchsia-500/60 text-fuchsia-200 shadow-[inset_0_0_10px_rgba(217,70,239,0.2)]";
+        return "bg-[#1a1a2e] border-fuchsia-500/60 text-fuchsia-200 shadow-[0_0_15px_rgba(217,70,239,0.3),inset_0_0_15px_rgba(59,130,246,0.3)] ring-1 ring-blue-500/50";
       case "lava":
         return "bg-[#2a0800] border-[#ff4500] text-[#ff4500] shadow-[0_0_25px_#ff4500] border-t-2";
       case "ocean":
@@ -545,19 +551,23 @@ function NodeRenderer({
       case "rhythm":
         return "bg-[#1a1a1a] border-[#ff0055] text-white shadow-[0_0_30px_rgba(255,0,85,0.4)] animate-pulse-subtle";
       case "rune":
-        return "bg-[#1c1c1c] border-[#d4af37]/40 text-[#d4af37] shadow-inner font-serif italic";
+        return "bg-gradient-to-br from-[#1c1c1c] to-[#2a2a2a] border-[#d4af37]/60 text-[#d4af37] shadow-[inset_0_0_20px_rgba(212,175,55,0.15)] ring-1 ring-[#d4af37]/30 font-serif font-semibold tracking-wider";
       case "zen":
-        return "bg-[#fafafa] border-transparent text-slate-400 shadow-none hover:text-slate-900 transition-all";
+        return appTheme === "dark"
+          ? "bg-[#18181b] border-slate-700 text-slate-400 shadow-none hover:text-slate-200 transition-all"
+          : "bg-white border-slate-300 text-slate-500 shadow-sm hover:text-slate-900 transition-all";
       case "abstract":
-        return "bg-gradient-to-tr from-[#6366f1] via-[#d946ef] to-[#f43f5e] border-transparent text-white shadow-2xl";
+        return "abstract-node border-white/10 text-[#f8fafc] shadow-[0_0_25px_rgba(255,0,128,0.15)] ring-1 ring-white/10";
       case "architect":
-        return "bg-slate-50 border-slate-400 text-slate-800 shadow-none font-mono";
+        return appTheme === "dark"
+          ? "bg-slate-900 border-slate-600 text-slate-300 shadow-none font-mono"
+          : "bg-slate-50 border-slate-400 text-slate-800 shadow-none font-mono";
       case "ludo":
         return "bg-white/80 border-2 text-slate-900 shadow-xl backdrop-blur-md";
       case "chess":
         return "bg-[#151b29] border border-[#bfa76f]/40 text-[#e2d8c3] shadow-lg font-serif";
       case "octopus":
-        return "bg-[#0f172a]/80 backdrop-blur-md border border-[#38bdf8]/50 text-[#e0f2fe] shadow-[0_0_15px_rgba(56,189,248,0.3)] rounded-full";
+        return "bg-gradient-to-br from-[#0f172a]/90 to-[#1e1b4b]/90 backdrop-blur-md border border-[#38bdf8]/50 text-[#e0f2fe] shadow-[0_0_20px_rgba(56,189,248,0.25)]";
       case "holographic":
         return "bg-gradient-to-tr from-fuchsia-500/30 via-cyan-500/30 to-violet-500/30 border-cyan-400/50 text-cyan-100 backdrop-blur-xl shadow-[0_0_15px_rgba(34,211,238,0.5)]";
       case "notebook":
@@ -871,15 +881,25 @@ function NodeRenderer({
       "chess",
       "octopus",
     ].includes(nodeTheme) ||
+    (nodeTheme === "cloud" && appTheme === "dark") ||
+    (nodeTheme === "pastel" && appTheme === "dark") ||
+    (nodeTheme === "math" && appTheme === "dark") ||
+    (nodeTheme === "zen" && appTheme === "dark") ||
+    (nodeTheme === "architect" && appTheme === "dark") ||
     (nodeTheme === "vscode" && appTheme === "dark") ||
     (nodeTheme === "github" && appTheme === "dark") ||
     (nodeTheme === "nature2" && data.id === "root") ||
     (nodeTheme === "hydrogen" && appTheme === "dark") ||
     (nodeTheme === "seed" && data.id === "root");
   const isLightBase =
-    ["minimal", "pastel", "math", "cloud", "zen", "architect", "ludo"].includes(
+    ["minimal", "ludo", "notebook"].includes(
       nodeTheme,
     ) ||
+    (nodeTheme === "math" && appTheme !== "dark") ||
+    (nodeTheme === "zen" && appTheme !== "dark") ||
+    (nodeTheme === "architect" && appTheme !== "dark") ||
+    (nodeTheme === "cloud" && appTheme !== "dark") ||
+    (nodeTheme === "pastel" && appTheme !== "dark") ||
     (nodeTheme === "vscode" && appTheme !== "dark") ||
     (nodeTheme === "github" && appTheme !== "dark") ||
     (nodeTheme === "nature2" && data.id !== "root") ||
@@ -898,6 +918,8 @@ function NodeRenderer({
         ? "text-[#5d8048]"
         : nodeTheme === "nature2" && data.id !== "root"
           ? "text-[#385c40]"
+          : nodeTheme === "pastel"
+            ? appTheme === "dark" ? "text-purple-300/70" : "text-purple-600/70"
           : isDarkBase
             ? "text-white/50"
             : isLightBase
@@ -915,9 +937,11 @@ function NodeRenderer({
         ? "text-black"
         : nodeTheme === "seed" && data.id !== "root"
           ? "text-[#1c2e19]"
-          : nodeTheme === "nature2" && data.id !== "root"
-            ? "text-[#1a3821]"
-            : isDarkBase
+            : nodeTheme === "nature2" && data.id !== "root"
+              ? "text-[#1a3821]"
+              : nodeTheme === "pastel"
+                ? appTheme === "dark" ? "text-purple-200" : "text-purple-800"
+              : isDarkBase
               ? "text-white/90"
               : isLightBase
                 ? "text-slate-900"
@@ -1066,19 +1090,19 @@ function NodeRenderer({
           "polygon(50% 16%, 38% 6%, 24% 4%, 10% 12%, 3% 26%, 1% 42%, 6% 56%, 18% 68%, 32% 76%, 42% 82%, 45% 88%, 43% 94%, 39% 100%, 41% 100%, 46% 94%, 48% 88%, 50% 82%, 60% 76%, 74% 68%, 88% 56%, 97% 42%, 99% 26%, 90% 12%, 76% 4%, 62% 6%)";
         break;
       case "nature2":
-        shapeClasses = "px-5 py-2.5 min-w-[140px] rounded-full";
+        shapeClasses = "px-6 py-4 min-w-[150px]";
         break;
       case "seed":
         shapeClasses =
           data.id === "root"
-            ? "px-6 py-3 min-w-[150px] rounded-full"
-            : "px-5 py-2.5 min-w-[140px] rounded-full";
+            ? "px-6 py-3 min-w-[150px] rounded-[16px_16px_24px_24px] overflow-hidden"
+            : "px-5 py-3 min-w-[140px] rounded-[12px_12px_20px_20px] overflow-hidden";
         break;
       case "hydrogen":
         shapeClasses =
           data.id === "root"
-            ? "px-8 py-4 min-w-[180px] rounded-[2rem]"
-            : "px-5 py-2.5 min-w-[140px] rounded-full";
+            ? "px-8 py-4 min-w-[180px] rounded-[24px] overflow-hidden"
+            : "px-5 py-3 min-w-[140px] rounded-[20px] overflow-hidden";
         break;
       case "circuit":
         shapeClasses = "px-4 py-2 min-w-[140px]";
@@ -1086,9 +1110,8 @@ function NodeRenderer({
           "polygon(0% 15%, 15% 0%, 85% 0%, 100% 15%, 100% 85%, 85% 100%, 15% 100%, 0% 85%)";
         break;
       case "galaxy":
-        shapeClasses =
-          "px-5 py-5 min-w-[150px] aspect-square justify-center text-center";
-        shapeStyle.borderRadius = "50%";
+        shapeClasses = "px-6 py-4 min-w-[150px] border";
+        shapeStyle.borderRadius = "24px";
         break;
       case "glass":
         shapeClasses = "px-4 py-2 min-w-[130px]";
@@ -1100,16 +1123,20 @@ function NodeRenderer({
         shapeStyle.borderRadius = "0px";
         break;
       case "math":
-        shapeClasses = "px-5 py-1.5 min-w-[120px]";
-        shapeStyle.borderRadius = "4px 20px 4px 20px";
+        shapeClasses = "px-5 py-3 min-w-[140px] border-l-4";
+        shapeStyle.borderRadius = "4px";
         break;
       case "neural":
-        shapeClasses =
-          "px-6 py-6 min-w-[160px] aspect-square rounded-full flex-col";
+        shapeClasses = "px-5 py-3 min-w-[140px]";
+        shapeStyle.borderRadius = "16px";
         break;
       case "river":
         shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.borderRadius = "40px 10px 40px 10px";
+        shapeStyle.borderRadius = "24px";
+        break;
+      case "pastel":
+        shapeClasses = "px-5 py-3 min-w-[140px]";
+        shapeStyle.borderRadius = "20px";
         break;
       case "tree":
         shapeClasses = "px-4 py-2 min-w-[130px]";
@@ -1125,37 +1152,40 @@ function NodeRenderer({
         shapeClasses = "px-4 py-2 min-w-[130px] border-x-2 border-y-0";
         break;
       case "cloud":
-        shapeClasses = "px-6 py-4 min-w-[150px]";
-        shapeStyle.borderRadius = "50px 50px 10px 10px";
+        shapeClasses = "px-6 py-4 min-w-[150px] cloud-node border-none";
+        shapeStyle.borderRadius = "40px";
         break;
       case "dna":
-        shapeClasses = "px-3 py-6 min-w-[100px] flex-col";
-        shapeStyle.borderRadius = "100px";
+        shapeClasses = "px-5 py-3 min-w-[140px]";
+        shapeStyle.borderRadius = "32px";
         break;
       case "lava":
         shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.clipPath =
-          "polygon(0% 20%, 20% 0%, 100% 10%, 90% 90%, 10% 100%)";
+        shapeStyle.borderRadius = "12px 12px 24px 24px";
         break;
       case "ocean":
-        shapeClasses = "px-4 py-4 min-w-[150px]";
-        shapeStyle.borderRadius = "30% 70% 70% 30% / 30% 30% 70% 70%";
+        shapeClasses = "px-5 py-4 min-w-[150px] overflow-hidden";
+        shapeStyle.borderRadius = "24px";
         break;
       case "rhythm":
         shapeClasses = "px-4 py-2 min-w-[130px] border-l-4";
         break;
       case "rune":
-        shapeClasses = "px-6 py-3 min-w-[140px]";
+        shapeClasses = "px-5 py-3 min-w-[140px]";
         shapeStyle.clipPath =
-          "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
+          "polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px)";
         break;
       case "zen":
         shapeClasses = "px-8 py-2 min-w-[140px] border-b";
         shapeStyle.borderRadius = "0px";
         break;
       case "abstract":
-        shapeClasses = "px-4 py-3 min-w-[150px]";
-        shapeStyle.clipPath = "polygon(10% 0%, 100% 20%, 90% 100%, 0% 80%)";
+        shapeClasses = "px-5 py-4 min-w-[150px] overflow-hidden";
+        shapeStyle.borderRadius = "24px";
+        break;
+      case "octopus":
+        shapeClasses = "px-5 py-3 min-w-[150px] border-b-4 border-b-[#38bdf8]/60 overflow-hidden";
+        shapeStyle.borderRadius = "20px 20px 28px 28px";
         break;
       case "ludo": {
         const ludoColors = [
@@ -1229,10 +1259,10 @@ function NodeRenderer({
   if (!isDefaultShape && !isSpecialNode) {
     switch (nodeShape) {
       case "circle":
-        fWidth = isMedia ? 320 : 200;
-        fHeight = isMedia ? 240 : 200;
+        fWidth = isMedia ? 280 : 200;
+        fHeight = isMedia ? 280 : 200;
         shapeClasses =
-          "rounded-full justify-center text-center p-6 min-w-[160px] max-w-[200px]";
+          `rounded-full justify-center text-center ${isMedia ? 'p-0' : 'p-6'} min-w-[160px] ${isMedia ? 'max-w-[280px]' : 'max-w-[200px]'} overflow-hidden`;
         shapeStyle.aspectRatio = "1";
         break;
       case "pill":
@@ -1724,13 +1754,7 @@ function NodeRenderer({
                 />
               </>
             )}
-            {nodeTheme === "octopus" && !isSpecialNode && (
-              <div className="absolute right-3 top-1/2 flex flex-col gap-1.5 -translate-y-1/2 opacity-70">
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_#67e8f9]"></div>
-              </div>
-            )}
+
             <div
               className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isSpecialNode ? "p-0" : ""}`}
             >
@@ -2017,7 +2041,11 @@ function NodeRenderer({
                 className="flex flex-col w-full mt-2 relative group/media-container"
               >
                 <div
-                  className={`w-full rounded bg-slate-100 dark:bg-black/20 overflow-hidden border border-slate-200 dark:border-white/5 relative ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"}`}
+                  className={`w-full rounded overflow-hidden border relative ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"} ${
+                    isDarkBase 
+                      ? "bg-black/20 border-white/5" 
+                      : "bg-slate-100 border-slate-200"
+                  }`}
                   style={{ pointerEvents: isDraggingLocally ? "none" : "auto" }}
                 >
                   {mediaType === "image" && (
@@ -2060,15 +2088,15 @@ function NodeRenderer({
                     />
                   )}
                   {mediaType === "pdf" && (
-                    <div className="flex flex-col items-center justify-center p-4 w-full h-[160px] bg-gradient-to-br from-rose-500/5 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/20 rounded border border-rose-500/20 text-center gap-1.5 cursor-pointer">
+                    <div className={`flex flex-col items-center justify-center p-4 w-full h-[160px] bg-gradient-to-br rounded border border-rose-500/20 text-center gap-1.5 cursor-pointer ${isDarkBase ? "from-rose-500/10 to-rose-600/20" : "from-rose-500/5 to-rose-600/10"}`}>
                       <div className="p-2 rounded-full bg-rose-500/10 text-rose-500 animate-pulse">
                         <FileText size={22} />
                       </div>
-                      <div className="text-xs font-semibold text-rose-700 dark:text-rose-400 font-sans">
+                      <div className={`text-xs font-semibold font-sans ${isDarkBase ? "text-rose-400" : "text-rose-700"}`}>
                         PDF Document
                       </div>
                       <div
-                        className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-full px-2"
+                        className={`text-[10px] font-mono truncate max-w-full px-2 ${isDarkBase ? "text-slate-400" : "text-slate-500"}`}
                         title={strVal.split("/").pop()}
                       >
                         {strVal.split("/").pop() || "document.pdf"}
@@ -2088,23 +2116,23 @@ function NodeRenderer({
                 </div>
 
                 {assetDetails && (
-                  <div className="mt-1.5 px-1.5 py-1 bg-slate-50 dark:bg-black/40 rounded border border-slate-200 dark:border-white/5 text-[9px] font-mono text-slate-500 dark:text-slate-400 space-y-0.5 select-none leading-normal font-sans">
+                  <div className={`mt-1.5 px-1.5 py-1 rounded border text-[9px] font-mono space-y-0.5 select-none leading-normal font-sans ${isDarkBase ? "bg-black/40 border-white/5 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-500"}`}>
                     <div className="flex justify-between gap-2 overflow-hidden">
-                      <span className="text-slate-400 dark:text-slate-500 font-sans shrink-0">
+                      <span className={`font-sans shrink-0 ${isDarkBase ? "text-slate-500" : "text-slate-400"}`}>
                         Name:
                       </span>
                       <span
-                        className="text-slate-800 dark:text-white font-medium truncate shrink"
+                        className={`font-medium truncate shrink ${isDarkBase ? "text-white" : "text-slate-800"}`}
                         title={assetDetails.filename}
                       >
                         {assetDetails.filename || "Unnamed"}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400 dark:text-slate-500 font-sans">
+                      <span className={`font-sans ${isDarkBase ? "text-slate-500" : "text-slate-400"}`}>
                         Size:
                       </span>
-                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                      <span className={`font-medium ${isDarkBase ? "text-slate-300" : "text-slate-700"}`}>
                         {formatFileSize(assetDetails.size, 'B')}
                       </span>
                     </div>
@@ -2113,10 +2141,10 @@ function NodeRenderer({
                       assetDetails.width > 0 &&
                       assetDetails.height > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-slate-400 dark:text-slate-500 font-sans">
+                          <span className={`font-sans ${isDarkBase ? "text-slate-500" : "text-slate-400"}`}>
                             Dims:
                           </span>
-                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                          <span className={`font-medium ${isDarkBase ? "text-slate-300" : "text-slate-700"}`}>
                             {assetDetails.width} × {assetDetails.height} px
                           </span>
                         </div>
@@ -2125,7 +2153,7 @@ function NodeRenderer({
                 )}
 
                 <button
-                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 bg-white/90 dark:bg-black/60 hover:bg-indigo-600 dark:hover:bg-indigo-600 backdrop-blur-md text-slate-800 hover:text-white dark:text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border border-slate-200 dark:border-white/10 z-20 whitespace-nowrap`}
+                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 hover:bg-indigo-600 backdrop-blur-md hover:text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border z-20 whitespace-nowrap ${isDarkBase ? "bg-black/60 text-white border-white/10" : "bg-white/90 text-slate-800 border-slate-200"}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setActivePreviewMedia({
@@ -2159,6 +2187,7 @@ export default React.memo(NodeRenderer, (prevProps, nextProps) => {
     prevProps.layoutMode === nextProps.layoutMode &&
     prevProps.isSelectedPath === nextProps.isSelectedPath &&
     prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isIsolatedMode === nextProps.isIsolatedMode &&
     prevProps.node.data.id === nextProps.node.data.id &&
     prevProps.node.data.name === nextProps.node.data.name &&
     prevProps.node.data.value === nextProps.node.data.value

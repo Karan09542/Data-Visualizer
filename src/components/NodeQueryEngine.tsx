@@ -22,8 +22,9 @@ export default function NodeQueryEngine() {
 
   // Initial sync and external reset sync
   useEffect(() => {
-    if (searchQuery === '' && localSearch !== '') {
-        setLocalSearch('');
+    if (searchQuery !== lastSubmittedQuery.current) {
+        setLocalSearch(searchQuery);
+        lastSubmittedQuery.current = searchQuery;
     }
   }, [searchQuery]);
 

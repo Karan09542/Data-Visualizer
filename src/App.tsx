@@ -33,6 +33,8 @@ const ProductivityLayer = React.lazy(() => import("./components/ProductivityLaye
 const StickyNotesManager = React.lazy(() => import("./components/StickyNotesManager"));
 const AudioPlayerModal = React.lazy(() => import("./audio/components/AudioPlayerModal"));
 const MiniPlayer = React.lazy(() => import("./audio/components/MiniPlayer"));
+import { FloatingMic } from "./voice/components/FloatingMic";
+import { useVoice } from "./voice/useVoice";
 
 function getValueByPath(parsedData: any, path: string): string {
   if (!parsedData || !path) return "";
@@ -85,15 +87,15 @@ function getJsNodeInputData(parsedData: any, path: string): any {
   return parsedData;
 }
 
-class GlobalErrorBoundary extends React.Component {
-  constructor(props) {
+class GlobalErrorBoundary extends React.Component<any, any> {
+  constructor(props: any) {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: any) {
     return { hasError: true, error };
   }
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: any, errorInfo: any) {
     console.error("TOP LEVEL REACT ERROR:", error, errorInfo);
   }
   render() {
@@ -126,6 +128,7 @@ function App() {
   const isFileProcessing = useStore((state) => state.isFileProcessing);
 
   useKeyboardMediaShortcuts();
+  useVoice();
 
   // JS Node Workspace States
   const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
@@ -637,6 +640,8 @@ function App() {
         <AudioPlayerModal />
         <MiniPlayer />
       </Suspense>
+
+      <FloatingMic />
 
       {isFileProcessing && (
         <div id="file-processing-loader" className="absolute inset-0 z-[10000] flex flex-col items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200">

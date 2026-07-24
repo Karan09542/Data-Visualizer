@@ -795,6 +795,71 @@ function SchemaVisualizerInner() {
   const searchQuery = useStore((s) => s.searchQuery);
   const searchMatches = useStore((s) => s.searchMatches);
   const activeMatchId = useStore((s) => s.activeMatchId);
+  const { setViewport, getViewport } = useReactFlow();
+
+
+
+  useEffect(() => {
+    const onVoiceZoom = (e: Event) => {
+      if (useStore.getState().visualizerMode !== 'schema') return;
+      
+      const detail = (e as CustomEvent).detail;
+      const currentViewport = getViewport();
+      
+      let newZoom = currentViewport.zoom;
+      if (detail.op === 'in') {
+         newZoom *= (detail.factor || 1.5);
+      } else {
+         newZoom /= (detail.factor || 1.5);
+      }
+      
+      let dx = 0; let dy = 0;
+      const panAmount = 300;
+      if (detail.direction) {
+        if (detail.direction.includes('left')) dx = panAmount;
+        if (detail.direction.includes('right')) dx = -panAmount;
+        if (detail.direction.includes('top')) dy = panAmount;
+        if (detail.direction.includes('bottom')) dy = -panAmount;
+      }
+      
+      setViewport({ 
+         x: currentViewport.x + dx, 
+         y: currentViewport.y + dy, 
+         zoom: newZoom 
+      }, { duration: 400 });
+    };
+    
+    window.addEventListener('voice-zoom', onVoiceZoom);
+
+    const onVoiceMove = (e: Event) => {
+      if (useStore.getState().visualizerMode !== 'schema') return;
+      
+      const detail = (e as CustomEvent).detail;
+      const currentViewport = getViewport();
+      
+      let dx = 0; let dy = 0;
+      const panAmount = 300 * (detail.factor || 1);
+      
+      if (detail.direction.includes('left')) dx = panAmount;
+      if (detail.direction.includes('right')) dx = -panAmount;
+      if (detail.direction.includes('top')) dy = panAmount;
+      if (detail.direction.includes('bottom')) dy = -panAmount;
+      
+      setViewport({ 
+         x: currentViewport.x + dx, 
+         y: currentViewport.y + dy, 
+         zoom: currentViewport.zoom 
+      }, { duration: 400 });
+    };
+
+    window.addEventListener('voice-move', onVoiceMove);
+    
+    return () => {
+        window.removeEventListener('voice-zoom', onVoiceZoom);
+        window.removeEventListener('voice-move', onVoiceMove);
+    };
+  }, [getViewport, setViewport]);
+
   const [hasSelection, setHasSelection] = useState(false);
   const { fitView } = useReactFlow();
 

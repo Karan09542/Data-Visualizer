@@ -41,6 +41,7 @@ import { estimateShareSize } from "../utils/shareUtils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { db } from "../lib/db";
 import NodeHelpModal from "./NodeHelpModal";
+import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const {
@@ -133,6 +134,19 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
   const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
 
+  const exportHDImageRef = useRef<((type?: string) => Promise<void>) | null>(null);
+  
+  useEffect(() => {
+    const handleVoiceExport = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.format && exportHDImageRef.current) {
+        exportHDImageRef.current(detail.format);
+      }
+    };
+    window.addEventListener("voice-export", handleVoiceExport);
+    return () => window.removeEventListener("voice-export", handleVoiceExport);
+  }, []);
+
   useEffect(() => {
     // Warm up SnapDOM cache without blocking the main thread
     if (typeof window !== "undefined") {
@@ -180,87 +194,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     }
   };
 
-  const layoutModes: LayoutMode[] = [
-    "vertical",
-    "horizontal",
-    "radial",
-    "force",
-    "compact",
-    "mindmap",
-  ];
-  const nodeThemes: NodeTheme[] = [
-    "vscode",
-    "github",
-    "glassmorphism",
-    "cyberpunk",
-    "minimal",
-    "gradient",
-    "pastel",
-    "terminal",
-    "material",
-    "blueprint",
-    "retro",
-    "holographic",
-    "notebook",
-    "custom",
-    "nature",
-    "circuit",
-    "galaxy",
-    "glass",
-    "neon",
-    "math",
-    "neural",
-    "river",
-    "tree",
-    "pixel",
-    "hacker",
-    "cloud",
-    "dna",
-    "lava",
-    "ocean",
-    "rhythm",
-    "rune",
-    "zen",
-    "abstract",
-    "architect",
-    "ludo",
-    "chess",
-    "octopus",
-    "nature2",
-    "hydrogen",
-    "seed",
-    "banyan",
-    "peepal",
-  ];
-  const edgeStyles: EdgeStyle[] = [
-    "curved",
-    "bezier",
-    "straight",
-    "step",
-    "animated",
-    "dashed",
-    "neon",
-    "double",
-    "pipe",
-    "thin",
-    "orgChart",
-    "circuit",
-    "glow",
-    "zigzag",
-    "pulse",
-    "metro",
-    "angled-step",
-  ];
-  const nodeShapes: NodeShape[] = [
-    "default",
-    "circle",
-    "rectangle",
-    "triangle",
-    "hexagon",
-    "pill",
-    "diamond",
-    "parallelogram",
-  ];
 
   const expandAll = () => {
     setCollapsedNodes(new Set());
@@ -768,6 +701,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     }
   };
 
+  useEffect(() => {
+    exportHDImageRef.current = exportHDImage;
+  }, [exportHDImage]);
+
   return (
     <>
       {isExporting && (
@@ -846,10 +783,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               label="Format"
               value={codeFormat}
               onChange={(val) => convertFormat(val as any)}
-              options={[
-                { label: "JSON", value: "json", icon: <FileType size={12} /> },
-                { label: "YAML", value: "yaml", icon: <FileType size={12} /> },
-              ]}
+              options={CODE_FORMATS.map(f => ({ label: f.toUpperCase(), value: f, icon: <FileType size={12} /> }))}
               className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
             />
 
@@ -857,10 +791,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               label="Layout"
               value={layoutMode}
               onChange={(val) => {
-                setLayoutMode(val as LayoutMode);
+                setLayoutMode(val as any);
                 useStore.getState().clearDragOverrides();
               }}
-              options={layoutModes}
+              options={[...LAYOUT_MODES]}
               className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
             />
             <button
@@ -878,7 +812,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               label="Theme"
               value={nodeTheme}
               onChange={(val) => setNodeTheme(val as NodeTheme)}
-              options={nodeThemes}
+              options={[...NODE_THEMES]}
               className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
             />
 
@@ -887,7 +821,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 label="Edge"
                 value={edgeStyle}
                 onChange={(val) => setEdgeStyle(val as EdgeStyle)}
-                options={edgeStyles}
+                options={[...EDGE_STYLES]}
               />
               <button
                 onClick={handleEdgeWidthButtonClick}
@@ -902,7 +836,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               label="Shape"
               value={nodeShape}
               onChange={(val) => setNodeShape(val as NodeShape)}
-              options={nodeShapes}
+              options={[...NODE_SHAPES]}
               className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
             />
           </div>
@@ -1032,8 +966,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   Upload File
                 </span>
                 <input
+                  id="main-file-upload"
                   type="file"
-                  key={Date.now()}
                   className="hidden"
                   multiple
                   accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf"
@@ -1042,6 +976,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               </label>
 
               <button
+                id="main-info-btn"
                 onClick={() => setIsApiHelpOpen(true)}
                 className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all border border-emerald-500/25 hover:-translate-y-px mr-2 relative overflow-hidden group/info-btn"
                 title="Interactive Nodes Integrations Guide"
@@ -1161,10 +1096,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <CustomSelect
                   value={layoutMode}
                   onChange={(val) => {
-                    setLayoutMode(val as LayoutMode);
+                    setLayoutMode(val as any);
                     useStore.getState().clearDragOverrides();
                   }}
-                  options={layoutModes}
+                  options={[...LAYOUT_MODES]}
                 />
               </div>
 
@@ -1172,7 +1107,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 label="Theme"
                 value={nodeTheme}
                 onChange={(val) => setNodeTheme(val as NodeTheme)}
-                options={nodeThemes}
+                options={[...NODE_THEMES]}
                 className="flex flex-col items-start gap-2 col-span-1"
               />
 
@@ -1180,7 +1115,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 label="Edge Style"
                 value={edgeStyle}
                 onChange={(val) => setEdgeStyle(val as EdgeStyle)}
-                options={edgeStyles}
+                options={[...EDGE_STYLES]}
                 className="flex flex-col items-start gap-2 col-span-1"
               />
 
@@ -1220,7 +1155,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 label="Node Shape"
                 value={nodeShape}
                 onChange={(val) => setNodeShape(val as NodeShape)}
-                options={nodeShapes}
+                options={[...NODE_SHAPES]}
                 className="flex flex-col items-start gap-2 col-span-1"
               />
 

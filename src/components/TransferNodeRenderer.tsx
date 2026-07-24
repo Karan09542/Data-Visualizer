@@ -429,8 +429,7 @@ const VideoPlayer = ({ media, isSelected }: { media: Message; isSelected: boolea
 
 export const TransferNodeRenderer: React.FC<{
   node: HierarchyPointNode<TreeNode>;
-  isSelected?: boolean;
-}> = ({ node, isSelected }) => {
+}> = ({ node }) => {
   const { parsedData, setCode, appTheme, setNotification, codeFormat } =
     useStore();
   const nodeKey = node.data.path.split(".").pop() || "transfer";
@@ -4868,3 +4867,4 @@ export const TransferNodeRenderer: React.FC<{
     </div>
   );
 };
+

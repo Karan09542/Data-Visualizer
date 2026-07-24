@@ -310,12 +310,12 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
         
         if (layoutMode === 'vertical' || ['compact', 'grid'].includes(layoutMode)) {
             const ym = (y1 + y2) / 2;
-            const h_slant = Math.min(Math.abs(dx) * 0.5, Math.abs(dy) * 0.35, 30);
+            const h_slant = Math.min(Math.abs(dx) * 0.5, Math.abs(dy) * 0.35, 30) * (Math.sign(dy) || 1);
             
             const midY1 = ym - h_slant;
             const midY2 = ym + h_slant;
             
-            if (Math.abs(dy) <= h_slant * 2) {
+            if (Math.abs(dy) <= Math.abs(h_slant * 2)) {
                 return `M ${x1},${y1} L ${x2},${y2}`;
             }
             
@@ -328,12 +328,12 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
             }
         } else {
             const xm = (x1 + x2) / 2;
-            const w_slant = Math.min(Math.abs(dy) * 0.5, Math.abs(dx) * 0.35, 30);
+            const w_slant = Math.min(Math.abs(dy) * 0.5, Math.abs(dx) * 0.35, 30) * (Math.sign(dx) || 1);
             
             const midX1 = xm - w_slant;
             const midX2 = xm + w_slant;
             
-            if (Math.abs(dx) <= w_slant * 2) {
+            if (Math.abs(dx) <= Math.abs(w_slant * 2)) {
                 return `M ${x1},${y1} L ${x2},${y2}`;
             }
             

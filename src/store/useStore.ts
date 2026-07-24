@@ -14,89 +14,8 @@ if (typeof window !== "undefined") {
   searchWorkerInstance = new SearchWorker();
 }
 
-export type LayoutMode =
-  | "vertical"
-  | "horizontal"
-  | "radial"
-  | "force"
-  | "compact"
-  | "mindmap";
-export type NodeTheme =
-  | "glassmorphism"
-  | "vscode"
-  | "github"
-  | "cyberpunk"
-  | "minimal"
-  | "gradient"
-  | "pastel"
-  | "terminal"
-  | "material"
-  | "blueprint"
-  | "retro"
-  | "holographic"
-  | "notebook"
-  | "custom"
-  | "nature"
-  | "circuit"
-  | "galaxy"
-  | "glass"
-  | "neon"
-  | "math"
-  | "neural"
-  | "river"
-  | "tree"
-  | "pixel"
-  | "hacker"
-  | "cloud"
-  | "dna"
-  | "lava"
-  | "ocean"
-  | "rhythm"
-  | "rune"
-  | "zen"
-  | "abstract"
-  | "architect"
-  | "ludo"
-  | "chess"
-  | "octopus"
-  | "nature2"
-  | "hydrogen"
-  | "seed"
-  | "banyan"
-  | "peepal";
-export type EdgeStyle =
-  | "curved"
-  | "bezier"
-  | "straight"
-  | "step"
-  | "animated"
-  | "dashed"
-  | "neon"
-  | "double"
-  | "pipe"
-  | "thin"
-  | "orgChart"
-  | "circuit"
-  | "glow"
-  | "zigzag"
-  | "pulse"
-  | "ludo"
-  | "chess"
-  | "octopus"
-  | "nature2"
-  | "hydrogen"
-  | "seed"
-  | "metro"
-  | "angled-step";
-export type NodeShape =
-  | "default"
-  | "circle"
-  | "rectangle"
-  | "triangle"
-  | "hexagon"
-  | "pill"
-  | "diamond"
-  | "parallelogram";
+import { LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape } from "../constants/visualizer";
+export type { LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape };
 export type CanvasTheme = "none" | "dots" | "grid" | "lines";
 export type AppTheme = "dark" | "light";
 export type GradientType = "linear" | "radial";
@@ -141,8 +60,6 @@ export const defaultSettings = {
   lastSavedCode: null as string | null,
   stickyNotesEnabled: false,
 };
-
-export type CodeFormat = "json" | "yaml";
 
 export type ApiNodeDiagnosticError = {
   type: string;

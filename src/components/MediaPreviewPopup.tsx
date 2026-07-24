@@ -343,49 +343,53 @@ const MediaPreviewPopup: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              {activePreviewMedia.type === 'image' && (
-                <>
-                  <button
-                    onClick={() => setRotation((prev) => (prev + 90) % 360)}
-                    disabled={isResolvingAsset}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-indigo-400/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Rotate image"
-                  >
-                    <RotateCw size={15} />
-                    <span className="hidden sm:inline">Rotate</span>
-                  </button>
-                  <button
-                    onClick={copyImage}
-                    disabled={isCopyingImage || isResolvingAsset}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-indigo-400/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Copy image"
-                  >
-                    {isCopyingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
-                    <span className="hidden sm:inline">Copy image</span>
-                  </button>
-                  <button
-                    onClick={downloadCurrentImage}
-                    disabled={isDownloading || isResolvingAsset}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-indigo-400/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Download image"
-                  >
-                    {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                    <span className="hidden sm:inline">Download</span>
-                  </button>
-                </>
-              )}
-              <button
-                onClick={copySource}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-200 transition-colors hover:border-indigo-400/60 hover:bg-slate-800"
-                title="Copy source"
-              >
-                <ExternalLink size={15} />
-                <span className="hidden lg:inline">Copy source</span>
-              </button>
+            <div className="flex shrink-0 items-center gap-3">
+              <div className="flex items-center gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 p-1 shadow-sm">
+                {activePreviewMedia.type === 'image' && (
+                  <>
+                    <button
+                      onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                      disabled={isResolvingAsset}
+                      className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Rotate image"
+                    >
+                      <RotateCw size={15} />
+                      <span className="hidden sm:inline">Rotate</span>
+                    </button>
+                    <button
+                      onClick={copyImage}
+                      disabled={isCopyingImage || isResolvingAsset}
+                      className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Copy image"
+                    >
+                      {isCopyingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
+                      <span className="hidden sm:inline">Copy image</span>
+                    </button>
+                    <button
+                      onClick={downloadCurrentImage}
+                      disabled={isDownloading || isResolvingAsset}
+                      className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Download image"
+                    >
+                      {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                      <span className="hidden sm:inline">Download</span>
+                    </button>
+                    <div className="mx-1 h-4 w-[1px] bg-slate-700" />
+                  </>
+                )}
+                <button
+                  onClick={copySource}
+                  className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100"
+                  title="Copy source"
+                >
+                  <ExternalLink size={15} />
+                  <span className="hidden sm:inline">Copy source</span>
+                </button>
+              </div>
+
               <button
                 onClick={() => setActivePreviewMedia(null)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 transition-colors hover:border-rose-400/50 hover:bg-rose-500/10 hover:text-white"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/60 text-slate-400 transition-all hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400"
                 title="Close preview"
               >
                 <X size={18} />
