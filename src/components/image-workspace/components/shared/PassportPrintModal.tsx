@@ -638,14 +638,25 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             <div 
               className="relative bg-white shadow-2xl transition-all duration-200 shrink-0"
               style={{ 
-                aspectRatio: `${layout.pWidth} / ${layout.pHeight}`,
-                // Dynamic scaling based on viewport size and user zoom
-                maxHeight: `${78 * (zoomLevel / 100)}vh`,
                 maxWidth: `${85 * (zoomLevel / 100)}%`,
-                height: `${78 * (zoomLevel / 100)}vh`,
+                maxHeight: `${78 * (zoomLevel / 100)}vh`,
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)'
               }}
             >
+              {/* Invisible SVG to maintain exact aspect ratio bounded by max width/height */}
+              <svg 
+                width={layout.pWidth * 100} 
+                height={layout.pHeight * 100} 
+                className="opacity-0 pointer-events-none select-none"
+                style={{
+                  display: 'block',
+                  maxWidth: '100%',
+                  maxHeight: `${78 * (zoomLevel / 100)}vh`,
+                  width: 'auto',
+                  height: 'auto'
+                }}
+              />
+
               {/* Photos rendering */}
               {Array.from({ length: layout.rows }).map((_, r) => (
                 Array.from({ length: layout.cols }).map((_, c) => {

@@ -75,6 +75,12 @@ export type ApiNodeDiagnosticError = {
   };
 };
 
+export interface ProxyServer {
+  id: string;
+  url: string;
+  isEnabled: boolean;
+}
+
 export interface WorkspaceTab {
   path: string;
   isPreview: boolean;
@@ -82,6 +88,16 @@ export interface WorkspaceTab {
 }
 
 export interface StoreState {
+  proxyServers: ProxyServer[];
+  setProxyServers: (proxies: ProxyServer[] | ((prev: ProxyServer[]) => ProxyServer[])) => void;
+  isProxyModalOpen: boolean;
+  setIsProxyModalOpen: (isOpen: boolean) => void;
+  useDefaultProxy: boolean;
+  setUseDefaultProxy: (use: boolean) => void;
+
+  globalAlert: { title: string; message: string; codeSnippet?: string } | null;
+  setGlobalAlert: (alert: { title: string; message: string; codeSnippet?: string } | null) => void;
+
   codeFormat: CodeFormat;
   setCodeFormat: (format: CodeFormat) => void;
   convertFormat: (targetFormat: CodeFormat) => Promise<void>;
@@ -412,6 +428,17 @@ export const useStore = create<StoreState>()(
       isMathHelpOpen: false,
       isYoutubeSearchOpen: false,
       isSavedDocsOpen: false,
+      proxyServers: [],
+      setProxyServers: (proxies) =>
+        set((s) => ({
+          proxyServers: typeof proxies === 'function' ? proxies(s.proxyServers) : proxies
+        })),
+      isProxyModalOpen: false,
+      setIsProxyModalOpen: (isOpen) => set({ isProxyModalOpen: isOpen }),
+      useDefaultProxy: true,
+      setUseDefaultProxy: (use) => set({ useDefaultProxy: use }),
+      globalAlert: null,
+      setGlobalAlert: (alert) => set({ globalAlert: alert }),
       pendingImport: null,
       setPendingImport: (importData) => set({ pendingImport: importData }),
 

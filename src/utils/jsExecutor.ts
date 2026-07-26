@@ -127,7 +127,44 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
       }
     }
 
+    const enabledProxies = store.proxyServers.filter(p => p.isEnabled).map(p => p.url);
+    if (store.useDefaultProxy) {
+        enabledProxies.push("https://go.data-visualizer.workers.dev/?url=");
+    }
     const workerCode = `
+         const originalFetch = self.fetch;
+         const enabledProxies = ${JSON.stringify(enabledProxies)};
+         self.fetch = async function(input, init) {
+             let urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : input.url);
+             try {
+                 return await originalFetch(input, init);
+             } catch (err) {
+                 if (err.name === "TypeError" && err.message === "Failed to fetch") {
+                     if (typeof urlStr === "string" && (urlStr.startsWith("http://") || urlStr.startsWith("https://"))) {
+                         let isCrossOrigin = false;
+                         try {
+                             const parsed = new URL(urlStr);
+                             isCrossOrigin = parsed.origin !== self.location.origin;
+                         } catch (e) {}
+
+                         if (isCrossOrigin) {
+                             for (const proxyBaseUrl of enabledProxies) {
+                                 if (urlStr.includes(proxyBaseUrl)) continue; // avoid proxying to itself
+                                 try {
+                                     console.warn("[JS Fetch]: CORS/network error. Retrying via proxy: " + proxyBaseUrl);
+                                     const proxyUrl = proxyBaseUrl + urlStr;
+                                     return await originalFetch(proxyUrl, init);
+                                 } catch (proxyErr) {
+                                     console.warn("[JS Fetch]: Proxy fallback failed for " + proxyBaseUrl, proxyErr);
+                                 }
+                             }
+                         }
+                     }
+                 }
+                 throw err;
+             }
+         };
+
          self.addEventListener('error', (e) => {
              e.preventDefault();
              self.postMessage({ success: false, error: e.message || 'Worker global error', stack: e.error ? e.error.stack : undefined });
@@ -165,6 +202,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                const addLog = (type, args) => {
                    const safeArgs = args.map(a => {
                        if (typeof a === 'function') return '[Function]';
+                       if (a instanceof Promise || (a && typeof a.then === 'function')) return '[Promise]';
                        if (a instanceof Error) return a.toString();
                        return a;
                    });

@@ -31,6 +31,7 @@ import {
   Image as ImageIcon,
   Sun,
   Moon,
+  Info,
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
@@ -40,6 +41,8 @@ import { PyPackagesPanel } from "./PyPackagesPanel";
 import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
 import { TodoWorkspace } from "./TodoWorkspace";
+import { ProxySettingsModal } from "./ProxySettingsModal";
+import { GlobalAlertModal } from "./GlobalAlertModal";
 const ImageWorkspace = React.lazy(() => import("./image-workspace/ImageWorkspace"));
 import { SearchNodeWorkspace } from "./SearchNodeWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
@@ -158,6 +161,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     setActivePrompt,
     setAppTheme,
     uploadedMediaMetadata,
+    setIsProxyModalOpen,
+    setGlobalAlert,
   } = useStore();
   const isAssistantEnabled = useAssistantStore((s) => s.isEnabled);
   const setIsAssistantEnabled = useAssistantStore((s) => s.setIsEnabled);
@@ -1596,6 +1601,33 @@ declare const console: {
                       )}
                     </button>
 
+                    <button
+                      onClick={() => {
+                        setIsMinimapMenuOpen(false);
+                        setIsProxyModalOpen(true);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors text-blue-600 dark:text-blue-400 font-medium"
+                    >
+                      <span>Manage Proxy Servers...</span>
+                    </button>
+
+                    {(isTs || isJs) && (
+                      <button
+                        onClick={() => {
+                          setIsMinimapMenuOpen(false);
+                          setGlobalAlert({
+                            title: "Async / Fetch Guidelines for JS/TS Nodes",
+                            message: "Since the entire node's code runs inside an asynchronous wrapper function, you MUST use `await` for any async operations like `fetch()` or `setTimeout()`.\n\nIf you use `.then().catch()` without `await`ing or returning the Promise, the main execution function will finish and clean up immediately, terminating your background network requests before they complete!",
+                            codeSnippet: "await fetch(\"https://jsonplaceholder.typicode.com/todos/1\")\n  .then(res => res.json())\n  .then(data => console.log(data))\n  .catch(console.log);"
+                          });
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 flex items-center transition-colors text-amber-600 dark:text-amber-400 font-medium border-t border-amber-200 dark:border-amber-900/50"
+                      >
+                        <Info size={14} className="mr-2" />
+                        <span>Async / Fetch Rules</span>
+                      </button>
+                    )}
+
                     <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
                     <div className="px-3 py-1.5 font-bold text-[10px] uppercase text-slate-500 select-none">
                       Appearance
@@ -2623,6 +2655,8 @@ declare const console: {
           </div>
         </div>
       </div>
+      <ProxySettingsModal />
+      <GlobalAlertModal />
     </div>,
     document.body,
   );

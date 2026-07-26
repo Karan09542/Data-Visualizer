@@ -337,13 +337,18 @@ export const executePyNode = async (path: string, codeToRun: string) => {
              }
          }
          const entryPath = getVirtualPath(path, parsedData);
+         const enabledProxies = state.proxyServers.filter(p => p.isEnabled).map(p => p.url);
+         if (state.useDefaultProxy) {
+            enabledProxies.push("https://go.data-visualizer.workers.dev/?url=");
+         }
          worker.postMessage({ 
             code: codeToRun, 
             input: inputData, 
             id: executionId,
             vfs,
             entryPath,
-            cacheEnabled: usePyPackageStore.getState().pyPackageCacheEnabled
+            cacheEnabled: usePyPackageStore.getState().pyPackageCacheEnabled,
+            enabledProxies
          });
       });
 

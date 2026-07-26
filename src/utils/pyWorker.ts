@@ -1,6 +1,8 @@
 import { loadPyodide } from "pyodide";
 import { getInstalledPackages, pyDb } from "./pyDb";
 
+let activeEnabledProxies: string[] = [];
+
 // Set up shims for window and document so python scripts can import them and perform actions like downloads
 (self as any).window = self;
 
@@ -68,40 +70,60 @@ self.fetch = async (
     } catch (err) {
       console.warn("[Pyodide Cache]: Dexie wheel read failed:", err);
     }
-
-    try {
-      const response = await originalFetch(input, init);
-      if (response.ok) {
-        const clonedRes = response.clone();
-        clonedRes
-          .arrayBuffer()
-          .then((buffer) => {
-            pyDb.wheels
-              .put({
-                url: urlStr,
-                data: buffer,
-                cachedAt: Date.now(),
-              })
-              .catch((err) => {
-                console.warn("[Pyodide Cache]: Failed to cache wheel:", err);
-              });
-          })
-          .catch((err) => {
-            console.warn(
-              "[Pyodide Cache]: Failed to extract array buffer:",
-              err,
-            );
-          });
-
-        return response;
-      }
-      return response;
-    } catch (err) {
-      return originalFetch(input, init);
-    }
   }
 
-  return originalFetch(input, init);
+  try {
+    const response = await originalFetch(input, init);
+    if (response.ok && cacheEnabled && urlStr.endsWith(".whl")) {
+      const clonedRes = response.clone();
+      clonedRes
+        .arrayBuffer()
+        .then((buffer) => {
+          pyDb.wheels
+            .put({
+              url: urlStr,
+              data: buffer,
+              cachedAt: Date.now(),
+            })
+            .catch((err) => {
+              console.warn("[Pyodide Cache]: Failed to cache wheel:", err);
+            });
+        })
+        .catch((err) => {
+          console.warn("[Pyodide Cache]: Failed to extract array buffer:", err);
+        });
+    }
+    return response;
+  } catch (err: any) {
+    if (err.name === "TypeError" && err.message === "Failed to fetch") {
+      if (
+        typeof urlStr === "string" &&
+        (urlStr.startsWith("http://") || urlStr.startsWith("https://"))
+      ) {
+        let isCrossOrigin = false;
+        try {
+          const parsed = new URL(urlStr);
+          isCrossOrigin = parsed.origin !== self.location.origin;
+        } catch (e) {}
+
+        if (isCrossOrigin) {
+          for (const proxyBaseUrl of activeEnabledProxies) {
+            if (urlStr.includes(proxyBaseUrl)) continue;
+            try {
+              console.warn(
+                `[Pyodide Fetch]: CORS or network error for ${urlStr}. Retrying via proxy: ${proxyBaseUrl}`,
+              );
+              const proxyUrl = proxyBaseUrl + urlStr;
+              return await originalFetch(proxyUrl, init);
+            } catch (proxyErr) {
+              console.warn(`[Pyodide Fetch]: Proxy fallback failed for ${proxyBaseUrl}`, proxyErr);
+            }
+          }
+        }
+      }
+    }
+    throw err;
+  }
 };
 
 let pyodide: any = null;
@@ -123,7 +145,7 @@ self.addEventListener("unhandledrejection", (e) => {
   let msg = "Worker unhandled rejection";
   try {
     msg = e.reason ? String(e.reason.message || e.reason) : msg;
-  } catch (err) {}
+  } catch (err) { }
   self.postMessage({ type: "finish", success: false, error: msg });
 });
 
@@ -141,7 +163,7 @@ async function installPackageInWorker(
       if (name === "matplotlib") {
         try {
           pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-        } catch {}
+        } catch { }
       }
       version =
         pyodide.runPython(
@@ -152,11 +174,11 @@ async function installPackageInWorker(
         if (name === "matplotlib") {
           try {
             pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-          } catch {}
+          } catch { }
         }
         version =
           pyodide.runPython(`import ${name}; ${name}.__version__`) || "latest";
-      } catch {}
+      } catch { }
     }
     addLog("log", [
       `[Pyodide Pip]: Successfully loaded prebuilt library "${name}" (v${version})`,
@@ -177,7 +199,7 @@ await micropip.install('${name}')
         if (name === "matplotlib") {
           try {
             pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-          } catch {}
+          } catch { }
         }
         version =
           pyodide.runPython(
@@ -188,12 +210,12 @@ await micropip.install('${name}')
           if (name === "matplotlib") {
             try {
               pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-            } catch {}
+            } catch { }
           }
           version =
             pyodide.runPython(`import ${name}; ${name}.__version__`) ||
             "latest";
-        } catch {}
+        } catch { }
       }
       addLog("log", [
         `[Pyodide Pip]: Successfully installed "${name}" (v${version}) from PyPI!`,
@@ -210,9 +232,12 @@ await micropip.install('${name}')
 }
 
 self.onmessage = async (e) => {
-  const { code, input, id, type, cacheEnabled: msgCacheEnabled } = e.data;
+  const { code, input, id, type, cacheEnabled: msgCacheEnabled, enabledProxies } = e.data;
   if (msgCacheEnabled !== undefined) {
     cacheEnabled = msgCacheEnabled;
+  }
+  if (enabledProxies !== undefined) {
+    activeEnabledProxies = enabledProxies;
   }
   currentSessionId = id || "";
 
@@ -221,7 +246,7 @@ self.onmessage = async (e) => {
     return;
   }
 
-  let flushLogs = () => {};
+  let flushLogs = () => { };
 
   try {
     const getTime = () => {
@@ -254,7 +279,7 @@ self.onmessage = async (e) => {
         ];
         try {
           self.postMessage({ type: "logs", logs: logBatch });
-        } catch (err2) {}
+        } catch (err2) { }
         logBatch = [];
       }
     };
@@ -353,7 +378,7 @@ self.onmessage = async (e) => {
               if (pkg.name === "matplotlib") {
                 try {
                   pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-                } catch {}
+                } catch { }
               }
             } catch (loadErr: any) {
               // If load failed, attempt micropip
@@ -367,7 +392,7 @@ self.onmessage = async (e) => {
                     pyodide.runPython(
                       "import matplotlib; matplotlib.use('Agg')",
                     );
-                  } catch {}
+                  } catch { }
                 }
               } catch (e: any) {
                 addLog("error", [
@@ -467,12 +492,12 @@ importlib.invalidate_caches()
             dir += "/" + parts[i];
             try {
               pyodide.FS.mkdir(dir);
-            } catch {}
+            } catch { }
             try {
               if (!e.data.vfs[dir + "/__init__.py"]) {
                 pyodide.FS.writeFile(dir + "/__init__.py", "");
               }
-            } catch {}
+            } catch { }
           }
           try {
             pyodide.FS.writeFile("/" + parts.join("/"), vCode);
@@ -548,7 +573,7 @@ except Exception:
 `;
       try {
         await pyodide.runPythonAsync(matplotlibPatch);
-      } catch (err) {}
+      } catch (err) { }
     }
 
     if (e.data.entryPath) {
@@ -560,7 +585,7 @@ except Exception:
       try {
         pyodide.globals.set("__package__", packageName);
         pyodide.globals.set("__file__", e.data.entryPath);
-      } catch (err) {}
+      } catch (err) { }
     }
 
     const result = await pyodide.runPythonAsync(code);
@@ -608,7 +633,7 @@ except Exception:
     if (currentFlushInterval) clearInterval(currentFlushInterval);
     try {
       if (typeof flushLogs === "function") flushLogs();
-    } catch (e) {}
+    } catch (e) { }
 
     let eMsg = error ? String(error.message || error) : "Unknown Error";
     self.postMessage({ type: "finish", id, success: false, error: eMsg });
