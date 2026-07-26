@@ -1,64 +1,59 @@
-import { ExportLiveComparisonViewer } from '../export/ExportLiveComparisonViewer';
+import React, { useEffect, useRef, useState, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
+import * as fabric from "fabric";
+
 import { WorkspaceHeader } from './components/layout/WorkspaceHeader';
 import { LeftToolbar } from './components/layout/LeftToolbar';
-import { PropertiesTab } from './components/panels/PropertiesTab';
-import { ArtboardsTab } from './components/panels/ArtboardsTab';
 import { HistoryProvider } from './contexts/HistoryContext';
 import { WorkspaceUIProvider } from './contexts/WorkspaceUIContext';
 import { LayersProvider } from './contexts/LayersContext';
-import { LayersTab } from './components/panels/LayersTab';
 import { ToolProvider } from './contexts/ToolContext';
 import { CanvasProvider } from './contexts/CanvasContext';
 import { SelectionProvider } from './contexts/SelectionContext';
 import { AIProvider } from './contexts/AIContext';
-import { AIToolsPanel } from './components/panels/AIToolsPanel';
 import { AIProgressModal } from './components/shared/AIProgressModal';
+
+const ExportLiveComparisonViewer = React.lazy(() => import('../export/ExportLiveComparisonViewer').then(m => ({ default: m.ExportLiveComparisonViewer })));
+const PropertiesTab = React.lazy(() => import('./components/panels/PropertiesTab').then(m => ({ default: m.PropertiesTab })));
+const ArtboardsTab = React.lazy(() => import('./components/panels/ArtboardsTab').then(m => ({ default: m.ArtboardsTab })));
+const LayersTab = React.lazy(() => import('./components/panels/LayersTab').then(m => ({ default: m.LayersTab })));
+const AIToolsPanel = React.lazy(() => import('./components/panels/AIToolsPanel').then(m => ({ default: m.AIToolsPanel })));
+const FilterStudioTab = React.lazy(() => import('./components/panels/FilterStudioTab').then(m => ({ default: m.FilterStudioTab })));
+const QuickActionsTab = React.lazy(() => import('./components/panels/QuickActionsTab').then(m => ({ default: m.QuickActionsTab })));
+const ExportStudio = React.lazy(() => import('../export/ExportStudio').then(m => ({ default: m.ExportStudio })));
+const AssetGallery = React.lazy(() => import('../image-import/gallery/AssetGallery').then(m => ({ default: m.AssetGallery })));
+
 import { ARTBOARD_PRESETS } from './types/artboards';
 import { useArtboardState } from "./hooks/useArtboardState";
 import { useShapePropertiesState, ShapePropertiesProvider } from "./hooks/useShapeProperties";
 import { useCollageConfigState, CollageConfigProvider } from "./hooks/useCollageConfig";
-import { ColorPickerPortal, ColorPickerTrigger } from "./components/shared/ColorPickers";
+import { ColorPickerTrigger } from "./components/shared/ColorPickers";
 import { TabBtn } from "./components/shared/TabBtn";
 import { ToolBtn } from "./components/shared/ToolBtn";
 import { ContextMenuItem } from "./components/shared/ContextMenuItem";
-import { ModernCheckbox } from "./components/shared/ModernCheckbox";
 import { dataURLtoFile } from "./utils/file";
-import { BrushPreview } from "./components/panels/BrushPreview";
-import { ObjectDimensionsPanel } from "./components/panels/ObjectDimensionsPanel";
 import { formatFileSize } from "../../lib/formatFileSize";
-import React, { useEffect, useRef, useState, useCallback, useMemo, useLayoutEffect } from "react";
-import { createPortal } from "react-dom";
-import * as fabric from "fabric";
 import { loadFromDexie, saveToDexie } from "../../utils/fabricDexieSync";
 import { useStore } from "../../store/useStore";
 import { resolveAssetUrl, importFile } from "../../utils/assetManager";
 import { getValueAtPath } from "../../utils/pathUtils";
 import {
-   Type, Upload, Download, Undo, Redo,
-   Layers, MousePointer2, Brush, Circle, Square, Minus, Triangle, Edit2, RotateCw, RotateCcw, Image as ImageIcon,
-   SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, FlipHorizontal, FlipVertical, BringToFront, SendToBack, ArrowUp, ArrowDown,
-   Eye, EyeOff, AlignLeft, AlignCenter, AlignRight, AlignJustify, Bold, Italic, Underline,
-   Sparkles, ChevronUp, ChevronDown, Plus, Power, Activity, Bookmark, Sliders, Check, Grid, Expand, Maximize, Focus, Target,
-   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-   Pipette, Star, MoreHorizontal, Hand, LayoutGrid, ZoomIn, ChevronLeft, Droplets, Image as LucideImage, Layout, Printer, Palette, Settings2, FileText, Instagram, ShoppingBag, Images, Info, Keyboard, Clipboard, Library, Link,
+   Type, Upload, Download,
+   Layers, MousePointer2, Brush, Circle, Minus, Edit2, Image as ImageIcon,
+   SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, BringToFront, SendToBack, ArrowUp, ArrowDown, AlignLeft, AlignCenter, AlignRight,
+   Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, Target, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
    Zap
 } from "lucide-react";
 import JSZip from "jszip";
-import { RgbaStringColorPicker } from "react-colorful";
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import ImageWorker from "../../utils/imageWorker?worker";
 import { ExportSettings, DEFAULT_EXPORT_SETTINGS } from "../../types/export";
-import { FontPicker } from "../FontPicker";
-import { TypographyPresets } from "../TypographyPresets";
-import { ExportStudio } from "../export/ExportStudio";
 import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../../lib/imagePresets";
 import { useImageImport } from "../image-import/hooks/useImageImport";
 import { processPasteEvent } from "../image-import/clipboard/clipboardImporter";
-import { AssetGallery } from "../image-import/gallery/AssetGallery";
 
 import './fabric/overrides';
 
-import { isPngInitialised, isResizeInitialised, isJpegInitialised, isWebpInitialised, isAvifInitialised, loadWasmModule, hasSimd, hasThreads, pngWasmUrl, jpegWasmUrl, webpWasmUrl, webpSimdWasmUrl, avifWasmUrl, avifMtWasmUrl, resizeWasmUrl, jxlWasmUrl } from "./services/export/jsquash";
+import { loadWasmModule, hasSimd, hasThreads, pngWasmUrl, jpegWasmUrl, webpWasmUrl, webpSimdWasmUrl, avifWasmUrl, avifMtWasmUrl, resizeWasmUrl, jxlWasmUrl } from "./services/export/jsquash";
 
 
 interface ImageWorkspaceProps {
@@ -107,10 +102,6 @@ import { FilterConfig } from "./types/filters";
 import { rebuildFabricFilters } from "./services/filters/rebuildFabricFilters";
 
 
-import { FilterPipelineCommand } from "./commands/filter/FilterPipelineCommand";
-
-
-
 import { Artboard } from "./types/artboards";
 
 
@@ -124,9 +115,6 @@ import { DeleteArtboardCommand } from "./commands/artboard/DeleteArtboardCommand
 
 
 import { ArtboardPropertyCommand } from "./commands/artboard/ArtboardPropertyCommand";
-import { FilterStudioTab } from './components/panels/FilterStudioTab';
-import { QuickActionsTab } from './components/panels/QuickActionsTab';
-
 
 // Modern Checkbox Component
 interface ImageWorkspaceProps {
@@ -168,20 +156,20 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    // Shape Properties states
    const shapeProps = useShapePropertiesState();
    const {
-      shapeFillColor, setShapeFillColor,
+      setShapeFillColor,
       shapeStrokeColor, setShapeStrokeColor,
       shapeStrokeWidth, setShapeStrokeWidth,
       shapeBorderStyle, setShapeBorderStyle,
-      shapeCornerRadius, setShapeCornerRadius,
-      shapeUseIndividualCorners, setShapeUseIndividualCorners,
-      shapeCornerTL, setShapeCornerTL,
-      shapeCornerTR, setShapeCornerTR,
-      shapeCornerBL, setShapeCornerBL,
-      shapeCornerBR, setShapeCornerBR,
-      shapeOpacity, setShapeOpacity,
-      shapeBlendMode, setShapeBlendMode,
-      shapeStrokeLineJoin, setShapeStrokeLineJoin,
-      shapeStrokeLineCap, setShapeStrokeLineCap
+      setShapeCornerRadius,
+      setShapeUseIndividualCorners,
+      setShapeCornerTL,
+      setShapeCornerTR,
+      setShapeCornerBL,
+      setShapeCornerBR,
+      setShapeOpacity,
+      setShapeBlendMode,
+      setShapeStrokeLineJoin,
+      setShapeStrokeLineCap
    } = shapeProps;
 
    const [zoomPercent, setZoomPercent] = useState(100);
@@ -235,7 +223,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const [isShiftPressed, setIsShiftPressed] = useState(false);
    const [isCtrlPressed, setIsCtrlPressed] = useState(false);
    const [isSpacePressed, setIsSpacePressed] = useState(false);
-   const [guides, setGuides] = useState<{ type: 'v' | 'h'; pos: number }[]>([]);
    const [exportTarget, setExportTarget] = useState<"current" | "selected" | "all">("current");
    const [selectedExportIds, setSelectedExportIds] = useState<Record<string, boolean>>(() => ({
       "artboard_default": true
@@ -286,10 +273,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
 
    const [showMobileArtboardsGallery, setShowMobileArtboardsGallery] = useState(false);
-   const [showMobileToolbox, setShowMobileToolbox] = useState(false);
    const [showMobileDiagnosticsSheet, setShowMobileDiagnosticsSheet] = useState(false);
-   const [showAdvancedMobileExport, setShowAdvancedMobileExport] = useState(false);
-   const [mobileSettingsTab, setMobileSettingsTab] = useState<'format' | 'resize' | 'metadata'>('format');
    const [showMobileCompareSwitcher, setShowMobileCompareSwitcher] = useState(false);
 
    useEffect(() => {
@@ -519,19 +503,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    // Filter Studio State
    const [imageFilters, setImageFilters] = useState<FilterConfig[]>([]);
    const [customPresets, setCustomPresets] = useState<{ name: string; stack: FilterConfig[] }[]>([]);
-   const [newPresetName, setNewPresetName] = useState("");
-   const [showSavePresetModal, setShowSavePresetModal] = useState(false);
    const [benchmarkInfo, setBenchmarkInfo] = useState<any>(null);
 
    // History Command stacks
-   const [commandsList, setCommandsList] = useState<Command[]>([]);
    const [commandIndex, setCommandIndex] = useState(-1);
    const [historyNames, setHistoryNames] = useState<string[]>([]);
    const isInternalChange = useRef(false);
    const saveTimeoutRef = useRef<any>(null);
-
-   const [draggedArtboardIdx, setDraggedArtboardIdx] = useState<number | null>(null);
-   const [dragOverArtboardIdx, setDragOverArtboardIdx] = useState<number | null>(null);
 
    // Command control references to prevent stale closures
    const commandIndexRef = useRef(-1);
@@ -1323,7 +1301,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    });
    const [frameBorderWidth, setFrameBorderWidth] = useState(20);
 
-   const fontSizeStartRef = useRef<number>(40);
    const textStartValueRef = useRef<string>("");
 
 
@@ -1351,54 +1328,54 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          let isInternal = false;
          try {
-             const txt = e.clipboardData?.getData('text/plain');
-             if (txt && txt.includes('__fabricInternalClipboard')) {
-                 isInternal = true;
-             }
-         } catch(err) {}
+            const txt = e.clipboardData?.getData('text/plain');
+            if (txt && txt.includes('__fabricInternalClipboard')) {
+               isInternal = true;
+            }
+         } catch (err) { }
 
          if (isInternal && (window as any)._fabricInternalClipboard) {
-             const cloned = (window as any)._fabricInternalClipboard;
-             cloned.clone().then((clonedObj: any) => {
-                 fabricRef.current?.discardActiveObject();
-                 let newLeft = (clonedObj.left || 0) + 20;
-                 let newTop = (clonedObj.top || 0) + 20;
-                 const canvas = fabricRef.current;
-                 if (canvas && canvas.vptCoords) {
-                     const { tl, br } = canvas.vptCoords;
-                     if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
-                         const center = canvas.getVpCenter();
-                         newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
-                         newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
-                     }
-                 }
-                 clonedObj.set({
-                    left: newLeft,
-                    top: newTop,
-                    id: Date.now().toString() + Math.random().toString(),
-                    artboardId: activeArtboardId || undefined
-                 });
-                 
-                 if (clonedObj.type === 'activeSelection') {
-                     clonedObj.canvas = fabricRef.current;
-                     clonedObj.forEachObject((obj: any) => {
-                         obj.id = Date.now().toString() + Math.random().toString();
-                         obj.artboardId = activeArtboardId || undefined;
-                         fabricRef.current?.add(obj);
-                     });
-                     clonedObj.setCoords();
-                 } else {
-                     fabricRef.current?.add(clonedObj);
-                 }
-                 
-                 const cmd = new AddObjectCommand("Paste Object", clonedObj);
-                 executeCommand(cmd);
-                 fabricRef.current?.setActiveObject(clonedObj);
-                 fabricRef.current?.requestRenderAll();
-                 updateLayersList();
-             });
-             e.preventDefault();
-             return;
+            const cloned = (window as any)._fabricInternalClipboard;
+            cloned.clone().then((clonedObj: any) => {
+               fabricRef.current?.discardActiveObject();
+               let newLeft = (clonedObj.left || 0) + 20;
+               let newTop = (clonedObj.top || 0) + 20;
+               const canvas = fabricRef.current;
+               if (canvas && canvas.vptCoords) {
+                  const { tl, br } = canvas.vptCoords;
+                  if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                     const center = canvas.getVpCenter();
+                     newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
+                     newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
+                  }
+               }
+               clonedObj.set({
+                  left: newLeft,
+                  top: newTop,
+                  id: Date.now().toString() + Math.random().toString(),
+                  artboardId: activeArtboardId || undefined
+               });
+
+               if (clonedObj.type === 'activeSelection') {
+                  clonedObj.canvas = fabricRef.current;
+                  clonedObj.forEachObject((obj: any) => {
+                     obj.id = Date.now().toString() + Math.random().toString();
+                     obj.artboardId = activeArtboardId || undefined;
+                     fabricRef.current?.add(obj);
+                  });
+                  clonedObj.setCoords();
+               } else {
+                  fabricRef.current?.add(clonedObj);
+               }
+
+               const cmd = new AddObjectCommand("Paste Object", clonedObj);
+               executeCommand(cmd);
+               fabricRef.current?.setActiveObject(clonedObj);
+               fabricRef.current?.requestRenderAll();
+               updateLayersList();
+            });
+            e.preventDefault();
+            return;
          }
 
          const results = await processPasteEvent(e);
@@ -2427,8 +2404,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
    };
 
-   const addArtboard = createArtboard; // Alias for context menu
-
    const duplicateArtboard = (board: Artboard) => {
       let maxX = 0;
       artboards.forEach((b) => {
@@ -2584,27 +2559,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       } else {
          updateArtboardProp(id, prop, val);
       }
-   };
-
-   const moveArtboard = (sourceIndex: number, destIndex: number) => {
-      if (sourceIndex === destIndex) return;
-      const newArtboards = [...artboards];
-      const [removed] = newArtboards.splice(sourceIndex, 1);
-      newArtboards.splice(destIndex, 0, removed);
-
-      // Command history integration
-      const cmd: Command = {
-         name: "Reorder Artboards",
-         execute: () => { setArtboards(newArtboards); },
-         undo: () => {
-            const revertArtboards = [...newArtboards];
-            const [popped] = revertArtboards.splice(destIndex, 1);
-            revertArtboards.splice(sourceIndex, 0, popped);
-            setArtboards(revertArtboards);
-         },
-         redo: () => { setArtboards(newArtboards); }
-      };
-      executeCommand(cmd);
    };
 
    // Dynamic Brush Settings Configurator
@@ -3981,12 +3935,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                }
             }
          }
-         
+
          if (e.key.toLowerCase() === 'c' && ctrlOrCmd && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
             if (!isCropping) {
                const activeObj = fabricRef.current?.getActiveObject();
                if (activeObj) {
-                  navigator.clipboard.writeText(JSON.stringify({ __fabricInternalClipboard: true })).catch(()=>{});
+                  navigator.clipboard.writeText(JSON.stringify({ __fabricInternalClipboard: true })).catch(() => { });
                   activeObj.clone(['id', 'artboardId']).then((cloned) => {
                      (window as any)._fabricInternalClipboard = cloned;
                      setNotification({ message: 'Object copied', type: 'success' });
@@ -4767,12 +4721,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             let newTop = (cloned.top || 0) + 20;
             const canvas = fabricRef.current;
             if (canvas && canvas.vptCoords) {
-                const { tl, br } = canvas.vptCoords;
-                if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
-                    const center = canvas.getVpCenter();
-                    newLeft = cloned.originX === 'center' ? center.x : center.x - ((cloned.width || 0) * (cloned.scaleX || 1)) / 2;
-                    newTop = cloned.originY === 'center' ? center.y : center.y - ((cloned.height || 0) * (cloned.scaleY || 1)) / 2;
-                }
+               const { tl, br } = canvas.vptCoords;
+               if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                  const center = canvas.getVpCenter();
+                  newLeft = cloned.originX === 'center' ? center.x : center.x - ((cloned.width || 0) * (cloned.scaleX || 1)) / 2;
+                  newTop = cloned.originY === 'center' ? center.y : center.y - ((cloned.height || 0) * (cloned.scaleY || 1)) / 2;
+               }
             }
             cloned.set({
                left: newLeft,
@@ -6091,48 +6045,50 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              )}
 
                                              {/* Squoosh-like image comparison viewer component */}
-                                             <ExportLiveComparisonViewer
-                                                comparisonMode={comparisonMode}
-                                                isMobile={isMobile}
-                                                activeTab={activeTab}
-                                                setActiveTab={setActiveTab}
-                                                handleExport={handleExport}
-                                                comparisonPreviewMode={comparisonPreviewMode}
-                                                setComparisonPreviewMode={setComparisonPreviewMode}
-                                                comparisonZoom={comparisonZoom}
-                                                setComparisonZoom={setComparisonZoom}
-                                                transformComponentRef={transformComponentRef}
-                                                sliderRef={sliderRef}
-                                                handlePointerMove={handlePointerMove}
-                                                handlePointerUp={handlePointerUp}
-                                                handleKeyDown={handleKeyDown}
-                                                artboards={artboards}
-                                                activeArtboardId={activeArtboardId}
-                                                isDraggingDivider={isDraggingDivider}
-                                                originalPreviewDims={originalPreviewDims}
-                                                optimizedPreviewDims={optimizedPreviewDims}
-                                                optimizedImageUrl={optimizedImageUrl}
-                                                originalImageUrl={originalImageUrl}
-                                                comparisonDivider={comparisonDivider}
-                                                handlePointerDown={handlePointerDown}
-                                                setComparisonDivider={setComparisonDivider}
-                                                showDiagnostics={showDiagnostics}
-                                                setShowDiagnostics={setShowDiagnostics}
-                                                originalSize={originalSize}
-                                                optimizedSize={optimizedSize}
-                                                exportSettings={exportSettings}
-                                                setExportSettings={setExportSettings}
-                                                exportTarget={exportTarget}
-                                                psnr={psnr}
-                                                isGeneratingPreview={isGeneratingPreview}
-                                                currentPreviewOp={currentPreviewOp}
-                                                showMobileCompareSwitcher={showMobileCompareSwitcher}
-                                                setShowMobileCompareSwitcher={setShowMobileCompareSwitcher}
-                                                showMobileDiagnosticsSheet={showMobileDiagnosticsSheet}
-                                                setShowMobileDiagnosticsSheet={setShowMobileDiagnosticsSheet}
-                                                mobileDetailsExpanded={mobileDetailsExpanded}
-                                                setMobileDetailsExpanded={setMobileDetailsExpanded}
-                                             />
+                                             <React.Suspense fallback={null}>
+                                                <ExportLiveComparisonViewer
+                                                   comparisonMode={comparisonMode}
+                                                   isMobile={isMobile}
+                                                   activeTab={activeTab}
+                                                   setActiveTab={setActiveTab}
+                                                   handleExport={handleExport}
+                                                   comparisonPreviewMode={comparisonPreviewMode}
+                                                   setComparisonPreviewMode={setComparisonPreviewMode}
+                                                   comparisonZoom={comparisonZoom}
+                                                   setComparisonZoom={setComparisonZoom}
+                                                   transformComponentRef={transformComponentRef}
+                                                   sliderRef={sliderRef}
+                                                   handlePointerMove={handlePointerMove}
+                                                   handlePointerUp={handlePointerUp}
+                                                   handleKeyDown={handleKeyDown}
+                                                   artboards={artboards}
+                                                   activeArtboardId={activeArtboardId}
+                                                   isDraggingDivider={isDraggingDivider}
+                                                   originalPreviewDims={originalPreviewDims}
+                                                   optimizedPreviewDims={optimizedPreviewDims}
+                                                   optimizedImageUrl={optimizedImageUrl}
+                                                   originalImageUrl={originalImageUrl}
+                                                   comparisonDivider={comparisonDivider}
+                                                   handlePointerDown={handlePointerDown}
+                                                   setComparisonDivider={setComparisonDivider}
+                                                   showDiagnostics={showDiagnostics}
+                                                   setShowDiagnostics={setShowDiagnostics}
+                                                   originalSize={originalSize}
+                                                   optimizedSize={optimizedSize}
+                                                   exportSettings={exportSettings}
+                                                   setExportSettings={setExportSettings}
+                                                   exportTarget={exportTarget}
+                                                   psnr={psnr}
+                                                   isGeneratingPreview={isGeneratingPreview}
+                                                   currentPreviewOp={currentPreviewOp}
+                                                   showMobileCompareSwitcher={showMobileCompareSwitcher}
+                                                   setShowMobileCompareSwitcher={setShowMobileCompareSwitcher}
+                                                   showMobileDiagnosticsSheet={showMobileDiagnosticsSheet}
+                                                   setShowMobileDiagnosticsSheet={setShowMobileDiagnosticsSheet}
+                                                   mobileDetailsExpanded={mobileDetailsExpanded}
+                                                   setMobileDetailsExpanded={setMobileDetailsExpanded}
+                                                />
+                                             </React.Suspense>
 
                                              {/* Floating Canvas Navigation & Zoom Controller */}
                                              <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
@@ -6289,7 +6245,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                           >
                                              {/* Mobile Resize Pill Handle */}
                                              {isMobile && (
-                                                <div 
+                                                <div
                                                    className="w-full h-4 bg-[#1A1A1A] flex items-center justify-center shrink-0 cursor-row-resize z-10 active:bg-[#1A1A1A]/80 transition-colors"
                                                    onPointerDown={(e) => {
                                                       setIsResizingPanel(true);
@@ -6333,88 +6289,89 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              </div>
 
                                              <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                                                <React.Suspense fallback={<div className="p-4 text-center text-sm text-[#8A8A8A]">Loading panel...</div>}>
+                                                   {/* PROPERTIES PANEL */}
+                                                   {activeTab === 'properties' && (
+                                                      <PropertiesTab />
+                                                   )}
+                                                   {/* ARTBOARDS PANEL */}
+                                                   {activeTab === 'artboards' && (
+                                                      <ArtboardsTab />
 
-                                                {/* PROPERTIES PANEL */}
-                                                {activeTab === 'properties' && (
-                                                   <PropertiesTab />
-                                                )}
-                                                {/* ARTBOARDS PANEL */}
-                                                {activeTab === 'artboards' && (
-                                                   <ArtboardsTab />
+                                                   )}
+                                                   {/* QUICK ACTIONS PANEL */}
+                                                   {activeTab === 'quick' && (
+                                                      <QuickActionsTab
+                                                         selectionType={selectionType}
+                                                         addFilterToPipeline={addFilterToPipeline}
+                                                         applyFilter={applyFilter}
+                                                         resetCrop={resetCrop}
+                                                         alignSelection={alignSelection}
+                                                         applyFrame={applyFrame}
+                                                         frameBorderWidth={frameBorderWidth}
+                                                         updateFrameBorderWidth={updateFrameBorderWidth}
+                                                         createArtboardFromPreset={createArtboardFromPreset}
+                                                      />
+                                                   )}
 
-                                                )}
-                                                {/* QUICK ACTIONS PANEL */}
-                                                {activeTab === 'quick' && (
-                                                   <QuickActionsTab
-                                                      selectionType={selectionType}
-                                                      addFilterToPipeline={addFilterToPipeline}
-                                                      applyFilter={applyFilter}
-                                                      resetCrop={resetCrop}
-                                                      alignSelection={alignSelection}
-                                                      applyFrame={applyFrame}
-                                                      frameBorderWidth={frameBorderWidth}
-                                                      updateFrameBorderWidth={updateFrameBorderWidth}
-                                                      createArtboardFromPreset={createArtboardFromPreset}
-                                                   />
-                                                )}
+                                                   {/* AI PANEL */}
+                                                   {(activeTab as string) === 'ai' && (
+                                                      <AIToolsPanel
+                                                         selectionType={selectionType}
+                                                         executeCommand={executeCommand}
+                                                      />
+                                                   )}
 
-                                                {/* AI PANEL */}
-                                                {(activeTab as string) === 'ai' && (
-                                                   <AIToolsPanel
-                                                      selectionType={selectionType}
-                                                      executeCommand={executeCommand}
-                                                   />
-                                                )}
+                                                   {/* FILTERS PANEL */}
+                                                   {activeTab === 'filters' && <FilterStudioTab />}
 
-                                                {/* FILTERS PANEL */}
-                                                {activeTab === 'filters' && <FilterStudioTab />}
+                                                   {/* LAYERS PANEL */}
+                                                   {activeTab === 'layers' && <LayersTab />}
 
-                                                {/* LAYERS PANEL */}
-                                                {activeTab === 'layers' && <LayersTab />}
-
-                                                {/* HISTORY PANEL */}
-                                                {activeTab === 'history' && (
-                                                   <div className="p-2">
-                                                      <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 ml-2 mt-2">Action History</div>
-                                                      <div className="space-y-1">
-                                                         {historyNames.map((name, idx) => {
-                                                            const isCurrent = idx === commandIndex;
-                                                            const isFuture = idx > commandIndex;
-                                                            return (
-                                                               <div key={idx} onClick={() => jumpToHistory(idx)} className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-xs transition-colors ${isCurrent ? 'bg-blue-600/20 text-blue-300 font-medium' : isFuture ? 'text-[#6A6A6A] hover:bg-[#2C2C2C]' : 'text-[#C0C0C0] hover:bg-[#2C2C2C]'}`}>
-                                                                  <div className={`w-2 h-2 rounded-full mr-3 ${isCurrent ? 'bg-blue-500' : isFuture ? 'bg-[#3A3A3A]' : 'bg-[#6A6A6A]'}`} />
-                                                                  {name}
-                                                               </div>
-                                                            );
-                                                         })}
-                                                         {historyNames.length === 0 && (
-                                                            <div className="p-4 text-xs text-[#8A8A8A] text-center italic mt-10">No history track found.</div>
-                                                         )}
+                                                   {/* HISTORY PANEL */}
+                                                   {activeTab === 'history' && (
+                                                      <div className="p-2">
+                                                         <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 ml-2 mt-2">Action History</div>
+                                                         <div className="space-y-1">
+                                                            {historyNames.map((name, idx) => {
+                                                               const isCurrent = idx === commandIndex;
+                                                               const isFuture = idx > commandIndex;
+                                                               return (
+                                                                  <div key={idx} onClick={() => jumpToHistory(idx)} className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-xs transition-colors ${isCurrent ? 'bg-blue-600/20 text-blue-300 font-medium' : isFuture ? 'text-[#6A6A6A] hover:bg-[#2C2C2C]' : 'text-[#C0C0C0] hover:bg-[#2C2C2C]'}`}>
+                                                                     <div className={`w-2 h-2 rounded-full mr-3 ${isCurrent ? 'bg-blue-500' : isFuture ? 'bg-[#3A3A3A]' : 'bg-[#6A6A6A]'}`} />
+                                                                     {name}
+                                                                  </div>
+                                                               );
+                                                            })}
+                                                            {historyNames.length === 0 && (
+                                                               <div className="p-4 text-xs text-[#8A8A8A] text-center italic mt-10">No history track found.</div>
+                                                            )}
+                                                         </div>
                                                       </div>
-                                                   </div>
-                                                )}
+                                                   )}
 
-                                                {/* EXPORT WORKSPACE (jSquash with Artboards) */}
-                                                {activeTab === 'export' && (
-                                                   <ExportStudio
-                                                      settings={exportSettings}
-                                                      onChange={setExportSettings}
-                                                      onExport={handleExport}
-                                                      isExporting={isExporting}
-                                                      originalSize={originalSize}
-                                                      optimizedSize={optimizedSize}
-                                                      originalWidth={artboards.find(b => b.id === activeArtboardId)?.width || 800}
-                                                      originalHeight={artboards.find(b => b.id === activeArtboardId)?.height || 600}
-                                                      psnr={psnr}
-                                                      artboards={artboards}
-                                                      activeArtboardId={activeArtboardId}
-                                                      setActiveArtboardId={setActiveArtboardId}
-                                                      exportTarget={exportTarget}
-                                                      setExportTarget={setExportTarget}
-                                                      selectedExportIds={selectedExportIds}
-                                                      setSelectedExportIds={setSelectedExportIds}
-                                                   />
-                                                )}
+                                                   {/* EXPORT WORKSPACE (jSquash with Artboards) */}
+                                                   {activeTab === 'export' && (
+                                                      <ExportStudio
+                                                         settings={exportSettings}
+                                                         onChange={setExportSettings}
+                                                         onExport={handleExport}
+                                                         isExporting={isExporting}
+                                                         originalSize={originalSize}
+                                                         optimizedSize={optimizedSize}
+                                                         originalWidth={artboards.find(b => b.id === activeArtboardId)?.width || 800}
+                                                         originalHeight={artboards.find(b => b.id === activeArtboardId)?.height || 600}
+                                                         psnr={psnr}
+                                                         artboards={artboards}
+                                                         activeArtboardId={activeArtboardId}
+                                                         setActiveArtboardId={setActiveArtboardId}
+                                                         exportTarget={exportTarget}
+                                                         setExportTarget={setExportTarget}
+                                                         selectedExportIds={selectedExportIds}
+                                                         setSelectedExportIds={setSelectedExportIds}
+                                                      />
+                                                   )}
+                                                </React.Suspense>
                                              </div>
                                           </div>
                                        )}
@@ -6541,7 +6498,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    {activeContextMenu.obj?.type !== 'image' && (
                                                       <ContextMenuItem icon={Copy} label="Copy to Clipboard (SVG)" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
                                                    )}
-                                                   <ContextMenuItem icon={Copy} label="Copy Object" shortcut="Ctrl+C" onClick={() => { 
+                                                   <ContextMenuItem icon={Copy} label="Copy Object" shortcut="Ctrl+C" onClick={() => {
                                                       const active = fabricRef.current?.getActiveObject();
                                                       if (active) {
                                                          active.clone(['id', 'artboardId']).then((cloned) => {
@@ -6549,9 +6506,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             setNotification({ message: 'Object copied', type: 'success' });
                                                          });
                                                       }
-                                                      closeContextMenu(); 
+                                                      closeContextMenu();
                                                    }} />
-                                                   <ContextMenuItem icon={Clipboard} label="Paste Object" shortcut="Ctrl+V" onClick={() => { 
+                                                   <ContextMenuItem icon={Clipboard} label="Paste Object" shortcut="Ctrl+V" onClick={() => {
                                                       const cloned = (window as any)._fabricInternalClipboard;
                                                       if (cloned) {
                                                          cloned.clone().then((clonedObj: any) => {
@@ -6560,12 +6517,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             let newTop = (clonedObj.top || 0) + 20;
                                                             const canvas = fabricRef.current;
                                                             if (canvas && canvas.vptCoords) {
-                                                                const { tl, br } = canvas.vptCoords;
-                                                                if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
-                                                                    const center = canvas.getVpCenter();
-                                                                    newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
-                                                                    newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
-                                                                }
+                                                               const { tl, br } = canvas.vptCoords;
+                                                               if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                                                                  const center = canvas.getVpCenter();
+                                                                  newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
+                                                                  newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
+                                                               }
                                                             }
                                                             clonedObj.set({
                                                                left: newLeft,
@@ -6588,7 +6545,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             updateLayersList();
                                                          });
                                                       }
-                                                      closeContextMenu(); 
+                                                      closeContextMenu();
                                                    }} />
                                                    <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
                                                    {activeContextMenu.obj?.type === 'group' && (
@@ -6970,13 +6927,15 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                        )}
 
                                        {showAssetGallery && (
-                                          <AssetGallery
-                                             onClose={() => setShowAssetGallery(false)}
-                                             onImport={(assets) => {
-                                                importAssets(assets);
-                                                setShowAssetGallery(false);
-                                             }}
-                                          />
+                                          <React.Suspense fallback={null}>
+                                             <AssetGallery
+                                                onClose={() => setShowAssetGallery(false)}
+                                                onImport={(assets) => {
+                                                   importAssets(assets);
+                                                   setShowAssetGallery(false);
+                                                }}
+                                             />
+                                          </React.Suspense>
                                        )}
                                        <AIProgressModal />
                                     </div>

@@ -11,19 +11,21 @@ const getMaxSupportedTextureSize = (): number => {
       if (gl) {
         const maxHardwareSize = (gl as WebGLRenderingContext).getParameter((gl as WebGLRenderingContext).MAX_TEXTURE_SIZE);
         if (typeof maxHardwareSize === 'number' && maxHardwareSize > 0) {
-          // Cap at 4096 to prevent mobile memory pressure while supporting high-res filtering
-          return Math.min(maxHardwareSize, 4096);
+          return maxHardwareSize;
         }
       }
     }
   } catch (e) {
     console.warn("Could not query GPU max texture size, using fallback limit", e);
   }
-  return 2048; // Safe mobile GPU fallback limit
+  return 8192; // Safe fallback limit
 };
 
 if (fabric.config) {
-  fabric.config.textureSize = getMaxSupportedTextureSize();
+  const maxSize = getMaxSupportedTextureSize();
+  fabric.config.textureSize = maxSize;
+  fabric.config.maxCacheSideLimit = maxSize;
+  fabric.config.perfLimitSizeTotal = maxSize * maxSize;
 }
 
 export function rebuildFabricFilters(obj: any, filtersObj: any) {

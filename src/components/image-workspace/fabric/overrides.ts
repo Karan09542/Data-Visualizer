@@ -1,5 +1,26 @@
 import * as fabric from "fabric";
 
+// Dynamically determine the maximum WebGL texture size to prevent clipping with advanced filters.
+// This ensures images aren't cropped when applying WebGL effects on high-res screens.
+try {
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    let maxSize = 8192;
+    if (gl) {
+      const glMaxSize = (gl as WebGLRenderingContext).getParameter((gl as WebGLRenderingContext).MAX_TEXTURE_SIZE);
+      if (glMaxSize) maxSize = glMaxSize;
+    }
+    fabric.config.textureSize = maxSize;
+    fabric.config.maxCacheSideLimit = maxSize;
+    fabric.config.perfLimitSizeTotal = maxSize * maxSize;
+  }
+} catch (e) {
+  fabric.config.textureSize = 8192;
+  fabric.config.maxCacheSideLimit = 8192;
+  fabric.config.perfLimitSizeTotal = 8192 * 8192;
+}
+
 // Custom Fabric.Rect render override to support percentage and individual corner rounding
 if (fabric && fabric.Rect && fabric.Rect.prototype) {
   const originalRectRender = fabric.Rect.prototype._render;

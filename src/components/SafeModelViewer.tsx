@@ -322,7 +322,9 @@ export function SafeModelViewer({
           exposure="1.2"
           onLoad={onModelLoad}
           style={{ width: "100%", height: "100%", background: "transparent" }}
-        />
+        >
+          <div slot="poster"></div>
+        </ModelViewer>
 
         {/* Controls Overlay */}
         <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 flex flex-wrap md:flex-nowrap items-center justify-center gap-2 p-2 bg-slate-950/85 md:bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl opacity-100 md:opacity-0 md:group-hover/viewer:opacity-100 transition-all duration-300 w-[92%] sm:w-auto max-w-[480px] md:max-w-none z-50">
@@ -579,7 +581,9 @@ export function SafeModelViewer({
       camera-controls={cameraControls ? "true" : undefined}
       shadow-intensity="1"
       exposure="1.2"
-      style={style}
-    />
+      style={{ width: "100%", height: "100%", background: "transparent", ...style }}
+    >
+      <div slot="poster"></div>
+    </ModelViewer>
   );
 }
