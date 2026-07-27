@@ -7,7 +7,6 @@ import { RgbaColorPicker } from 'react-colorful';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { PWADiagnosticsPanel } from './PWADiagnosticsPanel';
 
 const canvasThemes: CanvasTheme[] = ['none', 'dots', 'grid', 'lines'];
 const nodeThemes: NodeTheme[] = ['vscode', 'github', 'glassmorphism', 'cyberpunk', 'minimal', 'gradient', 'pastel', 'terminal', 'material', 'blueprint', 'retro', 'holographic', 'notebook', 'custom', 'nature', 'circuit', 'galaxy', 'glass', 'neon', 'math', 'neural', 'river', 'tree', 'pixel', 'hacker', 'cloud', 'dna', 'lava', 'ocean', 'rhythm', 'rune', 'zen', 'abstract', 'architect', 'ludo', 'chess', 'octopus', 'nature2', 'hydrogen', 'seed', 'banyan', 'peepal'];
@@ -962,11 +961,6 @@ export default function AdvancedPanel() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* PWA Diagnostics Panel */}
-        <div className="px-4 pb-2">
-          <PWADiagnosticsPanel />
         </div>
 
         {/* Global Reset and Shortcuts */}

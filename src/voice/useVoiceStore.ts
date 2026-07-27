@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type VoiceState = "idle" | "listening" | "processing" | "success" | "error";
 
@@ -13,13 +14,21 @@ interface VoiceStoreState {
   setIsVoiceEnabled: (enabled: boolean) => void;
 }
 
-export const useVoiceStore = create<VoiceStoreState>((set) => ({
-  state: "idle",
-  lastCommand: null,
-  errorMessage: null,
-  isVoiceEnabled: true,
-  setState: (state) => set({ state }),
-  setLastCommand: (command) => set({ lastCommand: command }),
-  setErrorMessage: (error) => set({ errorMessage: error }),
-  setIsVoiceEnabled: (enabled) => set({ isVoiceEnabled: enabled }),
-}));
+export const useVoiceStore = create<VoiceStoreState>()(
+  persist(
+    (set) => ({
+      state: "idle",
+      lastCommand: null,
+      errorMessage: null,
+      isVoiceEnabled: true,
+      setState: (state) => set({ state }),
+      setLastCommand: (command) => set({ lastCommand: command }),
+      setErrorMessage: (error) => set({ errorMessage: error }),
+      setIsVoiceEnabled: (enabled) => set({ isVoiceEnabled: enabled }),
+    }),
+    {
+      name: "voice-store",
+      partialize: (state) => ({ isVoiceEnabled: state.isVoiceEnabled }),
+    }
+  )
+);
