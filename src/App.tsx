@@ -13,26 +13,28 @@ import { parseShareUrl } from "./utils/shareUtils";
 import { initDexieSync } from "./store/dexieSync";
 import { setupSyncSubscribers } from "./store/syncSubscribers";
 import { ServiceWorkerUpdater } from "./components/ServiceWorkerUpdater";
+import { OfflineBanner } from "./components/OfflineBanner";
 import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcuts";
+import { lazyWithRetry } from "./utils/lazyWithRetry";
 
-const ImportModal = React.lazy(() => import("./components/ImportModal").then(module => ({ default: module.ImportModal })));
-const IsolatedNodeView = React.lazy(() => import("./components/IsolatedNodeView").then(module => ({ default: module.IsolatedNodeView })));
-const SchemaVisualizer = React.lazy(() => import("./components/SchemaVisualizer"));
-const DrawingToolbar = React.lazy(() => import("./components/DrawingToolbar"));
-const AdvancedPanel = React.lazy(() => import("./components/AdvancedPanel"));
-const ShortcutsPopup = React.lazy(() => import("./components/ShortcutsPopup"));
-const MathHelpPopup = React.lazy(() => import("./components/MathHelpPopup"));
-const YoutubeSearchPanel = React.lazy(() => import("./components/YoutubeSearchPanel"));
-const ShareDialog = React.lazy(() => import("./components/ShareDialog"));
-const SavedDocumentsModal = React.lazy(() => import("./components/SavedDocumentsModal"));
-const TextPreviewPopup = React.lazy(() => import("./components/TextPreviewPopup"));
-const MediaPreviewPopup = React.lazy(() => import("./components/MediaPreviewPopup"));
-const CodeWorkspace = React.lazy(() => import("./components/CodeWorkspace").then(module => ({ default: module.CodeWorkspace })));
-const PyMissingPromptModal = React.lazy(() => import("./components/PyMissingPromptModal").then(module => ({ default: module.PyMissingPromptModal })));
-const ProductivityLayer = React.lazy(() => import("./components/ProductivityLayer"));
-const StickyNotesManager = React.lazy(() => import("./components/StickyNotesManager"));
-const AudioPlayerModal = React.lazy(() => import("./audio/components/AudioPlayerModal"));
-const MiniPlayer = React.lazy(() => import("./audio/components/MiniPlayer"));
+const ImportModal = lazyWithRetry(() => import("./components/ImportModal").then(module => ({ default: module.ImportModal })), 'ImportModal');
+const IsolatedNodeView = lazyWithRetry(() => import("./components/IsolatedNodeView").then(module => ({ default: module.IsolatedNodeView })), 'IsolatedNodeView');
+const SchemaVisualizer = lazyWithRetry(() => import("./components/SchemaVisualizer"), 'SchemaVisualizer');
+const DrawingToolbar = lazyWithRetry(() => import("./components/DrawingToolbar"), 'DrawingToolbar');
+const AdvancedPanel = lazyWithRetry(() => import("./components/AdvancedPanel"), 'AdvancedPanel');
+const ShortcutsPopup = lazyWithRetry(() => import("./components/ShortcutsPopup"), 'ShortcutsPopup');
+const MathHelpPopup = lazyWithRetry(() => import("./components/MathHelpPopup"), 'MathHelpPopup');
+const YoutubeSearchPanel = lazyWithRetry(() => import("./components/YoutubeSearchPanel"), 'YoutubeSearchPanel');
+const ShareDialog = lazyWithRetry(() => import("./components/ShareDialog"), 'ShareDialog');
+const SavedDocumentsModal = lazyWithRetry(() => import("./components/SavedDocumentsModal"), 'SavedDocumentsModal');
+const TextPreviewPopup = lazyWithRetry(() => import("./components/TextPreviewPopup"), 'TextPreviewPopup');
+const MediaPreviewPopup = lazyWithRetry(() => import("./components/MediaPreviewPopup"), 'MediaPreviewPopup');
+const CodeWorkspace = lazyWithRetry(() => import("./components/CodeWorkspace").then(module => ({ default: module.CodeWorkspace })), 'CodeWorkspace');
+const PyMissingPromptModal = lazyWithRetry(() => import("./components/PyMissingPromptModal").then(module => ({ default: module.PyMissingPromptModal })), 'PyMissingPromptModal');
+const ProductivityLayer = lazyWithRetry(() => import("./components/ProductivityLayer"), 'ProductivityLayer');
+const StickyNotesManager = lazyWithRetry(() => import("./components/StickyNotesManager"), 'StickyNotesManager');
+const AudioPlayerModal = lazyWithRetry(() => import("./audio/components/AudioPlayerModal"), 'AudioPlayerModal');
+const MiniPlayer = lazyWithRetry(() => import("./audio/components/MiniPlayer"), 'MiniPlayer');
 import { FloatingMic } from "./voice/components/FloatingMic";
 import { useVoice } from "./voice/useVoice";
 
@@ -511,6 +513,7 @@ function App() {
           </div>
         </div>
       )}
+      <OfflineBanner />
       <ServiceWorkerUpdater />
       <AutosaveManager />
       <NotificationToast />

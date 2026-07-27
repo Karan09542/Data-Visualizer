@@ -1,10 +1,12 @@
+
 import React, { useEffect, useState } from "react";
 import { Download, X, RefreshCw } from "lucide-react";
+import { Workbox } from 'workbox-window';
 
 export function ServiceWorkerUpdater() {
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isPWA, setIsPWA] = useState(false);
+  const [wb, setWb] = useState<Workbox | null>(null);
 
   useEffect(() => {
     // Detect if running in standalone mode (PWA)
@@ -21,40 +23,22 @@ export function ServiceWorkerUpdater() {
     const handleChange = () => checkIsPWA();
     mediaQuery.addEventListener('change', handleChange);
 
-    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
-      return;
-    }
-
-    navigator.serviceWorker.getRegistration().then((reg) => {
-      if (!reg) return;
-
-      if (reg.waiting) {
-        setWaitingWorker(reg.waiting);
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      const workbox = new Workbox('/sw.js');
+      
+      workbox.addEventListener('waiting', () => {
         setShowPrompt(true);
-      }
+      });
 
-      reg.addEventListener("updatefound", () => {
-        if (reg.installing) {
-          reg.installing.addEventListener("statechange", () => {
-            if (reg.waiting) {
-              if (navigator.serviceWorker.controller) {
-                // There is a current controller and a new worker is waiting
-                setWaitingWorker(reg.waiting);
-                setShowPrompt(true);
-              }
-            }
-          });
+      workbox.addEventListener('controlling', (event) => {
+        if (event.isUpdate) {
+          window.location.reload();
         }
       });
-    });
 
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
-      }
-    });
+      workbox.register();
+      setWb(workbox);
+    }
 
     return () => {
       mediaQuery.removeEventListener('change', handleChange);
@@ -62,8 +46,8 @@ export function ServiceWorkerUpdater() {
   }, []);
 
   const handleUpdate = () => {
-    if (waitingWorker) {
-      waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    if (wb) {
+      wb.messageSkipWaiting();
     }
     setShowPrompt(false);
   };
@@ -96,7 +80,7 @@ export function ServiceWorkerUpdater() {
             </p>
           </div>
         </div>
-        <button 
+        <button
           onClick={handleDismiss}
           className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           aria-label="Dismiss"

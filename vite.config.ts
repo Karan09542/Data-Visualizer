@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
 import { defineConfig, loadEnv } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
@@ -15,18 +16,32 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      {
-        name: 'sw-versioning',
-        closeBundle() {
-          const swPath = path.resolve(__dirname, 'dist/sw.js');
-          if (fs.existsSync(swPath)) {
-            let sw = fs.readFileSync(swPath, 'utf8');
-            sw = sw.replace(/CACHE_NAME\s*=\s*'[^']+'/, `CACHE_NAME = 'app-cache-${buildHash}'`);
-            fs.writeFileSync(swPath, sw);
-            console.log(`[sw-versioning] Injected cache version: app-cache-${buildHash}`);
-          }
+      VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
+        registerType: 'prompt',
+        injectRegister: null,
+        devOptions: {
+          enabled: true
+        },
+        manifest: {
+          name: 'Data Visualizer',
+          short_name: 'Visualizer',
+          theme_color: '#ffffff',
+          icons: [
+            {
+              src: '/app-icon.png',
+              sizes: '192x192',
+              type: 'image/png'
+            }
+          ]
+        },
+        injectManifest: {
+          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,json,wasm}']
         }
-      },
+      }),
       {
         name: 'mock-isomorphic-fetch',
         resolveId(source) {
