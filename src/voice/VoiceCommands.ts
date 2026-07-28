@@ -153,9 +153,6 @@ export const registerAllVoiceCommands = () => {
       query = query.replace(/[.,!?]/g, '').trim();
 
       store.setSearchQuery(query);
-      if (!store.isEditorPanelOpen) {
-        store.setIsEditorPanelOpen(true);
-      }
     }
   });
 

@@ -1,6 +1,7 @@
 import { useStore } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
+import { lazyWithRetry } from "../utils/lazyWithRetry";
 import {
   Play,
   Code,
@@ -18,9 +19,10 @@ import {
   SmartFetchOptions,
   SmartFetchResult,
 } from "../utils/smartJsonFetch";
-const SmartFetchErrorUI = lazy(() => import("./SmartFetchErrorUI"));
-const GuiEditorPanel = lazy(() => import("./GuiEditorPanel"));
-const FileExplorerPanel = lazy(() => import("./FileExplorerPanel"));
+
+const SmartFetchErrorUI = lazyWithRetry(() => import("./SmartFetchErrorUI"), "SmartFetchErrorUI");
+const GuiEditorPanel = lazyWithRetry(() => import("./GuiEditorPanel"), "GuiEditorPanel");
+const FileExplorerPanel = lazyWithRetry(() => import("./FileExplorerPanel"), "FileExplorerPanel");
 
 export default function EditorPanel() {
   const {

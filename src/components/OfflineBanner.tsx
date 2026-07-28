@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { WifiOff, RefreshCw } from 'lucide-react';
+import { WifiOff, RefreshCw, X } from 'lucide-react';
 
 export function OfflineBanner() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = () => {
+      setIsOffline(false);
+      setIsDismissed(false); // Reset dismiss state when coming back online
+    };
     const handleOffline = () => setIsOffline(true);
 
     window.addEventListener('online', handleOnline);
@@ -17,7 +21,7 @@ export function OfflineBanner() {
     };
   }, []);
 
-  if (!isOffline) return null;
+  if (!isOffline || isDismissed) return null;
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[100000] bg-orange-500 text-white px-4 py-2 flex items-center justify-between text-sm shadow-md animate-in slide-in-from-top-full">
@@ -25,13 +29,22 @@ export function OfflineBanner() {
         <WifiOff size={16} />
         <span>You are currently offline. Some features may be unavailable.</span>
       </div>
-      <button 
-        onClick={() => window.location.reload()}
-        className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded transition-colors"
-      >
-        <RefreshCw size={14} />
-        Retry
-      </button>
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded transition-colors"
+        >
+          <RefreshCw size={14} />
+          Retry
+        </button>
+        <button
+          onClick={() => setIsDismissed(true)}
+          className="p-1 bg-white/20 hover:bg-white/30 rounded transition-colors"
+          aria-label="Dismiss"
+        >
+          <X size={16} />
+        </button>
+      </div>
     </div>
   );
 }
