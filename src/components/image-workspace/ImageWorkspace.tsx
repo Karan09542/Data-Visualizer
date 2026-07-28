@@ -5594,6 +5594,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                                fabricRef.current.setViewportTransform(newVpt);
                                                             }
                                                          }}
+                                                         onContextMenu={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            setArtboardDropdown({ id: b.id, x: e.clientX, y: e.clientY });
+                                                         }}
                                                       >
                                                          <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-[#E0E0E0]' : ''}`}>
                                                             {isActive && <div className="w-[4px] h-[4px] rounded-full bg-blue-500" />}

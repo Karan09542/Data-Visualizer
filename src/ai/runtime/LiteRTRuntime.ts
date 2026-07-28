@@ -94,6 +94,19 @@ export class LiteRTRuntime {
 
     // Load and compile the model
     const modelBuffer = new Uint8Array(modelData);
+    
+    if (modelBuffer.length > 8) {
+      const magicBytes = String.fromCharCode(...modelBuffer.slice(4, 8));
+      if (magicBytes !== 'TFL3') {
+        const isHtml = String.fromCharCode(...modelBuffer.slice(0, 5)).toLowerCase() === '<!doc' || String.fromCharCode(...modelBuffer.slice(0, 4)).toLowerCase() === '<htm';
+        if (isHtml) {
+          throw new Error('Failed to load model: The model file is corrupted with HTML. If this is a custom model, please delete it from the Model Manager and re-upload.');
+        } else {
+          throw new Error(`Failed to load model: Invalid model format. Expected TFLite magic bytes 'TFL3' but got '${magicBytes}'. Please delete and re-upload the model.`);
+        }
+      }
+    }
+
     const compileOptions = {};
     
     console.log(`[LiteRTRuntime] Compiling model (${(modelData.byteLength / 1024 / 1024).toFixed(1)} MB)...`);

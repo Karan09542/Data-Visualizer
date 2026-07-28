@@ -1322,11 +1322,12 @@ function NodeRenderer({
       y={node.y - foHeight / 2}
       width={foWidth}
       height={foHeight}
-      className={`transition-all duration-500 ease-out origin-center ${isDimmed ? "opacity-30 grayscale scale-95" : "opacity-100"} ${isMatch || isSelected ? "z-[100]" : isAncestor || isSelectedPath ? "z-[90]" : "z-[50]"}`}
+      className={`origin-center ${isDimmed ? "opacity-30 grayscale scale-95" : "opacity-100"} ${isMatch || isSelected ? "z-[100]" : isAncestor || isSelectedPath ? "z-[90]" : "z-[50]"}`}
       style={{
         overflow: "visible",
         touchAction: "none",
         pointerEvents: "none",
+        transition: isDraggingLocally ? "none" : "opacity 500ms ease-out, filter 500ms ease-out, transform 500ms ease-out",
       }}
     >
       <div className="w-full h-full flex items-center justify-center">

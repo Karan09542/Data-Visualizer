@@ -16,7 +16,12 @@ export class ModelLoader {
       if (onProgress) onProgress('loading');
       const data = await opfsStorage.loadModel(manifest);
       if (data) return data;
-      // If data is null somehow, fallback to downloading
+      // If data is null somehow, fallback to downloading (unless custom)
+    }
+
+    const isCustom = manifest.sources[0]?.type === 'custom';
+    if (isCustom) {
+      throw new Error(`Custom model ${manifest.id} is missing from local storage. Please upload it again.`);
     }
 
     // 2. Download Model

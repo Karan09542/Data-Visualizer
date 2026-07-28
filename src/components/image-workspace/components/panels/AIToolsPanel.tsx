@@ -170,28 +170,30 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
                 </div>
 
                 {isDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-[#1A1A1A] border border-[#333] rounded-lg shadow-2xl z-[100] animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col">
-                    <div className="px-3 py-2 border-b border-[#2D2D2D] bg-[#111] rounded-t-lg">
-                      <div className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Select AI Model</div>
-                    </div>
-                    <div className="max-h-[220px] overflow-y-auto rounded-b-lg">
-                      {models.map(m => (
-                        <div 
-                          key={m.id}
-                          onClick={() => {
-                            setSelectedModel(m.id);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`px-3 py-2.5 cursor-pointer transition-colors border-b border-[#222] last:border-0 ${m.id === selectedModel ? 'bg-blue-500/10' : 'hover:bg-[#252525]'}`}
-                        >
-                          <div className={`text-[10px] font-bold uppercase tracking-wider ${m.id === selectedModel ? 'text-blue-400' : 'text-white/90'}`}>
-                            {m.id}
+                  <div className="absolute right-0 top-full pt-2 z-[100]">
+                    <div className="w-56 bg-[#1A1A1A] border border-[#333] rounded-lg shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col overflow-hidden">
+                      <div className="px-3 py-2 border-b border-[#2D2D2D] bg-[#111] rounded-t-lg">
+                        <div className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Select AI Model</div>
+                      </div>
+                      <div className="max-h-[220px] overflow-y-auto">
+                        {models.map(m => (
+                          <div 
+                            key={m.id}
+                            onClick={() => {
+                              setSelectedModel(m.id);
+                              setIsDropdownOpen(false);
+                            }}
+                            className={`px-3 py-2.5 cursor-pointer transition-colors border-b border-[#222] last:border-0 ${m.id === selectedModel ? 'bg-blue-500/10' : 'hover:bg-[#252525]'}`}
+                          >
+                            <div className={`text-[10px] font-bold uppercase tracking-wider ${m.id === selectedModel ? 'text-blue-400' : 'text-white/90'}`}>
+                              {m.id}
+                            </div>
+                            <div className={`text-[9px] mt-1 leading-snug ${m.id === selectedModel ? 'text-blue-300/70' : 'text-[#888]'}`}>
+                              {m.name}
+                            </div>
                           </div>
-                          <div className={`text-[9px] mt-1 leading-snug ${m.id === selectedModel ? 'text-blue-300/70' : 'text-[#888]'}`}>
-                            {m.name}
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}

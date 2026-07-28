@@ -1,7 +1,8 @@
 import { formatFileSize } from "../lib/formatFileSize";
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Copy, Check, AlertTriangle, Info, Share2, Zap, Link as LinkIcon, Download } from 'lucide-react';
+import { X, Copy, Check, AlertTriangle, Info, Share2, Zap, Link as LinkIcon, Download, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useStore } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { estimateShareSize, getShareUrl, compressState, serializeState, simplifyAnnotations } from '../utils/shareUtils';
@@ -28,7 +29,11 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
   
   const [useOptimized, setUseOptimized] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [websiteCopied, setWebsiteCopied] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [activeTab, setActiveTab] = useState<'visualization' | 'website'>('visualization');
+  
+  const websiteUrl = "https://datavisualizer.urlmediainspector.dev/";
 
   const currentSettings = {
     layoutMode,
@@ -59,12 +64,28 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
     }
   }, [copied]);
 
+  useEffect(() => {
+    if (websiteCopied) {
+      const timer = setTimeout(() => setWebsiteCopied(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [websiteCopied]);
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
     } catch (err) {
       console.error('Failed to copy share URL:', err);
+    }
+  };
+
+  const handleCopyWebsite = async () => {
+    try {
+      await navigator.clipboard.writeText(websiteUrl);
+      setWebsiteCopied(true);
+    } catch (err) {
+      console.error('Failed to copy website URL:', err);
     }
   };
 
@@ -151,156 +172,210 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
             </button>
           </div>
 
+          <div className="flex border-b border-slate-100 dark:border-slate-800">
+            <button
+              onClick={() => setActiveTab('visualization')}
+              className={`flex-1 py-3 text-sm font-semibold transition-colors border-b-2 ${activeTab === 'visualization' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            >
+              Visualization State
+            </button>
+            <button
+              onClick={() => setActiveTab('website')}
+              className={`flex-1 py-3 text-sm font-semibold transition-colors border-b-2 flex items-center justify-center gap-2 ${activeTab === 'website' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            >
+              <QrCode size={16} /> Website Link
+            </button>
+          </div>
+
           <div className="p-6 space-y-6">
-            {/* Status Card */}
-            <div className={`p-4 rounded-2xl border ${config.borderColor} ${config.bgColor} space-y-2`}>
-              <div className="flex items-center gap-2">
-                {config.icon}
-                <span className={`font-bold ${config.color} uppercase tracking-wider text-xs`}>{config.title}</span>
-              </div>
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                {config.description}
-              </p>
-            </div>
+            {activeTab === 'visualization' && (
+              <>
+                {/* Status Card */}
+                <div className={`p-4 rounded-2xl border ${config.borderColor} ${config.bgColor} space-y-2`}>
+                  <div className="flex items-center gap-2">
+                    {config.icon}
+                    <span className={`font-bold ${config.color} uppercase tracking-wider text-xs`}>{config.title}</span>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {config.description}
+                  </p>
+                </div>
 
-            {/* Analysis & Optimization */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Zap size={16} className="text-slate-400" />
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Efficiency</span>
-                </div>
-                <div className="flex items-center gap-4">
-                   <label className="flex items-center gap-2 cursor-pointer group">
-                     <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors uppercase">Optimize Data</span>
-                     <div 
-                       className={`w-8 h-4 rounded-full relative transition-colors ${useOptimized ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}
-                       onClick={() => setUseOptimized(!useOptimized)}
-                     >
-                       <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow-sm ${useOptimized ? 'left-4.5' : 'left-0.5'}`} />
-                     </div>
-                   </label>
-                </div>
-              </div>
-
-              {/* Progress-like Size Bar */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
-                  <span>URL Payload Capacity</span>
-                  <span>{Math.round((shareInfo.urlLength / 32000) * 100)}% Used</span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(100, (shareInfo.urlLength / 32000) * 100)}%` }}
-                    className={`h-full rounded-full ${
-                      shareInfo.status === 'safe' ? 'bg-green-500' :
-                      shareInfo.status === 'moderate' ? 'bg-yellow-500' :
-                      shareInfo.status === 'large' ? 'bg-orange-500' : 'bg-red-500'
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Action Area */}
-            {shareInfo.status !== 'unsafe' ? (
-              <div className="space-y-3">
-                 <div className="relative group">
-                    <input 
-                      readOnly
-                      value={shareUrl}
-                      className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-xs font-mono text-slate-500 truncate pr-10 focus:ring-0 outline-none"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors">
-                      <LinkIcon size={14} />
+                {/* Analysis & Optimization */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap size={16} className="text-slate-400" />
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Efficiency</span>
                     </div>
-                 </div>
-                 
-                 <button
-                    onClick={handleCopy}
-                    disabled={copied}
-                    className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${
-                      copied 
-                        ? 'bg-green-500 text-white shadow-green-500/20' 
-                        : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-slate-900/10'
-                    }`}
-                 >
-                   {copied ? <Check size={18} /> : <Copy size={18} />}
-                   {copied ? 'Copied to Clipboard!' : 'Copy Sharing Link'}
-                 </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                 <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/10 flex flex-col gap-3">
-                   <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Recommended Actions</span>
-                   <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-2 list-disc pl-4 italic">
-                     <li>Reduce large JSON data size</li>
-                     <li>Simplify complex annotation paths (use hand-drawn sparingly)</li>
-                     <li>Export as project file instead</li>
-                   </ul>
-                 </div>
-                 <button
-                    onClick={() => {
-                        // Trigger file download fallback if needed
-                        try {
-                          const formatStr = codeFormat || 'json';
-                          const blob = new Blob([code], { type: formatStr === 'json' ? 'application/json' : 'application/yaml' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `exported_data.${formatStr}`;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
-                          useStore.getState().setNotification({ message: `Successfully exported and downloaded exported_data.${formatStr}`, type: 'success' });
-                        } catch (err) {
-                          useStore.getState().setNotification({ message: 'Failed to download data file.', type: 'error' });
-                        }
-                    }}
-                    className="w-full py-3 border-2 border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                 >
-                   <Download size={18} /> Export as {String(codeFormat || 'json').toUpperCase()} File Instead
-                 </button>
-              </div>
+                    <div className="flex items-center gap-4">
+                       <label className="flex items-center gap-2 cursor-pointer group">
+                         <span className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors uppercase">Optimize Data</span>
+                         <div 
+                           className={`w-8 h-4 rounded-full relative transition-colors ${useOptimized ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                           onClick={() => setUseOptimized(!useOptimized)}
+                         >
+                           <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow-sm ${useOptimized ? 'left-4.5' : 'left-0.5'}`} />
+                         </div>
+                       </label>
+                    </div>
+                  </div>
+
+                  {/* Progress-like Size Bar */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
+                      <span>URL Payload Capacity</span>
+                      <span>{Math.round((shareInfo.urlLength / 32000) * 100)}% Used</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(100, (shareInfo.urlLength / 32000) * 100)}%` }}
+                        className={`h-full rounded-full ${
+                          shareInfo.status === 'safe' ? 'bg-green-500' :
+                          shareInfo.status === 'moderate' ? 'bg-yellow-500' :
+                          shareInfo.status === 'large' ? 'bg-orange-500' : 'bg-red-500'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Area */}
+                {shareInfo.status !== 'unsafe' ? (
+                  <div className="space-y-3">
+                     <div className="relative group">
+                        <input 
+                          readOnly
+                          value={shareUrl}
+                          className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-xs font-mono text-slate-500 truncate pr-10 focus:ring-0 outline-none"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-blue-500 transition-colors">
+                          <LinkIcon size={14} />
+                        </div>
+                     </div>
+                     
+                     <button
+                        onClick={handleCopy}
+                        disabled={copied}
+                        className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${
+                          copied 
+                            ? 'bg-green-500 text-white shadow-green-500/20' 
+                            : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-slate-900/10'
+                        }`}
+                     >
+                       {copied ? <Check size={18} /> : <Copy size={18} />}
+                       {copied ? 'Copied to Clipboard!' : 'Copy Sharing Link'}
+                     </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                     <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/10 flex flex-col gap-3">
+                       <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Recommended Actions</span>
+                       <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-2 list-disc pl-4 italic">
+                         <li>Reduce large JSON data size</li>
+                         <li>Simplify complex annotation paths (use hand-drawn sparingly)</li>
+                         <li>Export as project file instead</li>
+                       </ul>
+                     </div>
+                     <button
+                        onClick={() => {
+                            // Trigger file download fallback if needed
+                            try {
+                              const formatStr = codeFormat || 'json';
+                              const blob = new Blob([code], { type: formatStr === 'json' ? 'application/json' : 'application/yaml' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `exported_data.${formatStr}`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                              useStore.getState().setNotification({ message: `Successfully exported and downloaded exported_data.${formatStr}`, type: 'success' });
+                            } catch (err) {
+                              useStore.getState().setNotification({ message: 'Failed to download data file.', type: 'error' });
+                            }
+                        }}
+                        className="w-full py-3 border-2 border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                     >
+                       <Download size={18} /> Export as {String(codeFormat || 'json').toUpperCase()} File Instead
+                     </button>
+                  </div>
+                )}
+
+                {/* Diagnostics Toggle */}
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                   <button 
+                     onClick={() => setShowDiagnostics(!showDiagnostics)}
+                     className="flex items-center gap-2 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest transition-colors mb-3"
+                   >
+                     <Info size={12} />
+                     {showDiagnostics ? 'Hide System Diagnostics' : 'Show System Diagnostics'}
+                   </button>
+                   
+                   {showDiagnostics && (
+                     <motion.div 
+                       initial={{ height: 0, opacity: 0 }}
+                       animate={{ height: 'auto', opacity: 1 }}
+                       className="grid grid-cols-2 gap-3"
+                     >
+                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
+                          <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Raw Data</span>
+                          <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatFileSize(shareInfo.rawSize, 'B')}</span>
+                       </div>
+                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
+                          <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Compressed</span>
+                          <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatFileSize(shareInfo.compressedSize, 'B')}</span>
+                       </div>
+                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
+                          <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Compression Ratio</span>
+                          <span className="text-sm font-mono text-blue-500">{shareInfo.ratio.toFixed(1)}%</span>
+                       </div>
+                       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
+                          <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Final URL Length</span>
+                          <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{shareInfo.urlLength} chars</span>
+                       </div>
+                     </motion.div>
+                   )}
+                </div>
+              </>
             )}
 
-            {/* Diagnostics Toggle */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-               <button 
-                 onClick={() => setShowDiagnostics(!showDiagnostics)}
-                 className="flex items-center gap-2 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest transition-colors mb-3"
-               >
-                 <Info size={12} />
-                 {showDiagnostics ? 'Hide System Diagnostics' : 'Show System Diagnostics'}
-               </button>
-               
-               {showDiagnostics && (
-                 <motion.div 
-                   initial={{ height: 0, opacity: 0 }}
-                   animate={{ height: 'auto', opacity: 1 }}
-                   className="grid grid-cols-2 gap-3"
-                 >
-                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
-                      <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Raw Data</span>
-                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatFileSize(shareInfo.rawSize, 'B')}</span>
+            {activeTab === 'website' && (
+              <div className="flex flex-col items-center space-y-6 pt-2">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                  <QRCodeSVG value={websiteUrl} size={180} level="M" includeMargin={false} />
+                </div>
+                
+                <p className="text-sm text-slate-500 text-center px-4">
+                  Scan this QR code with a mobile device to quickly open Data Visualizer.
+                </p>
+
+                <div className="w-full space-y-3">
+                   <div className="relative group">
+                      <input 
+                        readOnly
+                        value={websiteUrl}
+                        className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm font-mono text-slate-600 dark:text-slate-300 text-center focus:ring-0 outline-none"
+                      />
                    </div>
-                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
-                      <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Compressed</span>
-                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{formatFileSize(shareInfo.compressedSize, 'B')}</span>
-                   </div>
-                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
-                      <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Compression Ratio</span>
-                      <span className="text-sm font-mono text-blue-500">{shareInfo.ratio.toFixed(1)}%</span>
-                   </div>
-                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-800 flex flex-col">
-                      <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter">Final URL Length</span>
-                      <span className="text-sm font-mono text-slate-600 dark:text-slate-300">{shareInfo.urlLength} chars</span>
-                   </div>
-                 </motion.div>
-               )}
-            </div>
+                   
+                   <button
+                      onClick={handleCopyWebsite}
+                      disabled={websiteCopied}
+                      className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${
+                        websiteCopied 
+                          ? 'bg-blue-500 text-white shadow-blue-500/20' 
+                          : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-slate-900/10'
+                      }`}
+                   >
+                     {websiteCopied ? <Check size={18} /> : <Copy size={18} />}
+                     {websiteCopied ? 'Website Link Copied!' : 'Copy Website Link'}
+                   </button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
