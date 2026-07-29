@@ -14,6 +14,7 @@ import { AIModelManagerModal } from '../shared/AIModelManagerModal';
 import { SegmentationPanel } from './SegmentationPanel';
 import { OfficeUtilitiesPanel } from './OfficeUtilitiesPanel';
 import { PassportPrintModal } from '../shared/PassportPrintModal';
+import { aiQueue } from '../../../../ai/manager/AIQueue';
 
 interface AIToolsPanelProps {
   selectionType: string | null;
@@ -95,7 +96,6 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
     <div className={`relative rounded-xl ${isDropdownOpen ? 'z-50' : 'z-10'}`}>
       <button
         onClick={isActive ? undefined : () => onClick(selectedModel)}
-        disabled={!!isActive}
         className={`w-full p-3 border rounded-xl text-left transition duration-150 group flex items-center gap-3 relative z-[1] ${
           isActive
             ? 'border-white/10 bg-[#1A1A1A] cursor-wait'
@@ -242,10 +242,10 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   const [taskJobs, setTaskJobs] = useState<Record<string, TaskJobInfo>>({});
   const activeJobsRef = useRef<Record<string, { task: string; unsubscribe: () => void }>>({});
 
-  const trackJob = useCallback((jobId: string, task: string) => {
+  const trackJob = useCallback((jobId: string, task: string, initialState: AIProgressState = 'queued') => {
     setTaskJobs(prev => ({
       ...prev,
-      [task]: { jobId, state: 'queued', progress: 0 }
+      [task]: { jobId, state: initialState, progress: 0 }
     }));
 
     const unsub = aiEventBus.subscribe(jobId, (event) => {
@@ -272,10 +272,18 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   }, []);
 
   useEffect(() => {
+    // Restore active jobs from the background queue when panel mounts
+    const activeJobs = aiQueue.getActiveJobs();
+    activeJobs.forEach(job => {
+      if (job.type === 'EXECUTE_TASK' && job.task && !job.isCancelled) {
+        trackJob(job.id, job.task, 'inference'); 
+      }
+    });
+
     return () => {
       Object.values(activeJobsRef.current).forEach(({ unsubscribe }) => unsubscribe());
     };
-  }, []);
+  }, [trackJob]);
 
   const handleTaskClick = (task: AITask, modelId?: string) => {
     if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {

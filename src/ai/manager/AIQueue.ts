@@ -15,6 +15,7 @@ export interface AIJob {
   reject: (error: Error) => void;
   isCancelled: boolean;
   priority: number;
+  abortController: AbortController;
 }
 
 /**
@@ -33,6 +34,10 @@ class AIQueue {
   private isProcessing = false;
   private maxConcurrent = 1; // Process one job at a time to avoid OOM with large models
 
+  public getActiveJobs(): AIJob[] {
+    return [...Array.from(this.activeJobs.values()), ...this.queue];
+  }
+
   public enqueue(
     task: AITask,
     image: ImageBitmap | ImageData,
@@ -42,16 +47,22 @@ class AIQueue {
     const jobId = generateId();
     
     const promise = new Promise<AIExecutionResult>((resolve, reject) => {
+      const abortController = new AbortController();
+      if (options?.signal) {
+        options.signal.addEventListener('abort', () => abortController.abort());
+      }
+      
       const job: AIJob = {
         id: jobId,
         type: 'EXECUTE_TASK',
         task,
         image,
-        options,
+        options: { ...options, signal: abortController.signal },
         resolve,
         reject,
         isCancelled: false,
-        priority
+        priority,
+        abortController
       };
       
       this.queue.push(job);
@@ -68,6 +79,8 @@ class AIQueue {
     const jobId = generateId();
     
     const promise = new Promise<void>((resolve, reject) => {
+      const abortController = new AbortController();
+
       const job: AIJob = {
         id: jobId,
         type: 'PRELOAD_MODEL',
@@ -75,7 +88,8 @@ class AIQueue {
         resolve: () => resolve(),
         reject,
         isCancelled: false,
-        priority
+        priority,
+        abortController
       };
       
       this.queue.push(job);
@@ -93,7 +107,8 @@ class AIQueue {
     if (index !== -1) {
       const [job] = this.queue.splice(index, 1);
       job.isCancelled = true;
-      job.reject(new Error('Job cancelled'));
+      job.abortController.abort();
+      job.reject(new Error('AbortError'));
       aiEventBus.emit(jobId, { state: 'cancelled' });
       return;
     }
@@ -102,6 +117,7 @@ class AIQueue {
     const active = this.activeJobs.get(jobId);
     if (active) {
       active.isCancelled = true;
+      active.abortController.abort();
       aiEventBus.emit(jobId, { state: 'cancelled' });
     }
   }
@@ -157,10 +173,12 @@ class AIQueue {
         }
       }
     } catch (error) {
-      if (!job.isCancelled) {
+      if (!job.isCancelled && error !== 'AbortError' && (error as Error)?.message !== 'AbortError') {
         const errMsg = error instanceof Error ? error.message : String(error);
         aiEventBus.emit(job.id, { state: 'failed', error: errMsg });
         job.reject(error instanceof Error ? error : new Error(errMsg));
+      } else {
+        job.reject(new Error('AbortError'));
       }
     } finally {
       this.activeJobs.delete(job.id);

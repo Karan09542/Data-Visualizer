@@ -1,6 +1,6 @@
 import { useState, useRef, useLayoutEffect, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check, Search } from "lucide-react";
 
 interface Option {
   label: string;
@@ -17,6 +17,7 @@ interface CustomSelectProps {
   className?: string;
   disabled?: boolean;
   placeholder?: string;
+  searchable?: boolean;
 }
 
 export default function CustomSelect({
@@ -28,14 +29,20 @@ export default function CustomSelect({
   className = "",
   disabled = false,
   placeholder = "Select...",
+  searchable = false,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
   const options = rawOptions.map((opt) =>
     typeof opt === "string" ? { label: opt, value: opt } : opt
+  );
+
+  const filteredOptions = options.filter(opt => 
+    !searchable || opt.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const selectedOption = options.find((opt) => opt.value === value);
@@ -75,6 +82,7 @@ export default function CustomSelect({
         !containerRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
+        if (searchable) setSearchQuery("");
       }
     };
 
@@ -84,7 +92,7 @@ export default function CustomSelect({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isOpen]);
+  }, [isOpen, searchable]);
 
   return (
     <div
@@ -141,8 +149,24 @@ export default function CustomSelect({
             }}
             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl overflow-hidden py-1"
           >
+            {searchable && (
+              <div className="p-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="relative">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs rounded-md pl-7 pr-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
             <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-              {options.map((option) => (
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => (
                 <button
                   key={option.value}
                   type="button"
@@ -164,7 +188,10 @@ export default function CustomSelect({
                   </div>
                   {value === option.value && <Check size={12} />}
                 </button>
-              ))}
+              ))
+            ) : (
+              <div className="p-3 text-xs text-center text-slate-500">No results found</div>
+            )}
             </div>
           </motion.div>
         )}

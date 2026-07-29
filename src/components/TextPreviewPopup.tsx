@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X, Copy, Check, Type, Edit3, Save, FileText, Layout, Globe,
-  Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu
+  Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
+  ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,6 +12,108 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { Highlight, themes } from 'prism-react-renderer';
+import mermaid from 'mermaid';
+import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
+import CustomSelect from './CustomSelect';
+
+const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) => {
+  const [svg, setSvg] = useState<string>('');
+  const [hasError, setHasError] = useState(false);
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const id = useMemo(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`, []);
+
+  useEffect(() => {
+    const isDark = ['notebook-dark', 'default-dark', 'github-dark', 'retro-arcade', 'synthwave', 'chalkboard'].includes(theme || '');
+    mermaid.initialize({ 
+      startOnLoad: false, 
+      theme: isDark ? 'dark' : 'default',
+      fontFamily: 'Inter, system-ui, Avenir, Helvetica, Arial, sans-serif'
+    });
+    mermaid.render(id, code).then((result) => {
+      setSvg(result.svg);
+      setHasError(false);
+    }).catch(e => {
+      console.error('Mermaid render error:', e);
+      setHasError(true);
+    });
+  }, [code, id]);
+
+  const handleZoomIn = () => setScale(s => Math.min(s + 0.25, 4));
+  const handleZoomOut = () => setScale(s => Math.max(s - 0.25, 0.25));
+  const handleReset = () => { setScale(1); setPos({ x: 0, y: 0 }); };
+  const handlePan = (dx: number, dy: number) => setPos(p => ({ x: p.x + dx, y: p.y + dy }));
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+  };
+  
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
+  if (hasError) {
+    return (
+      <div className="relative group rounded-lg overflow-hidden my-4 border border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between px-4 py-2 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+          <span className="text-xs font-mono text-slate-500 uppercase">mermaid (fallback)</span>
+        </div>
+        <pre className="p-4 overflow-x-auto bg-[#1e1e1e] text-[#c9d1d9] text-[13px] font-mono leading-relaxed whitespace-pre-wrap">
+          {code}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="relative group rounded-lg border border-black/10 dark:border-white/10 my-6 overflow-hidden bg-black/5 h-[400px]"
+    >
+      <div 
+        className={`w-full h-full flex items-center justify-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <div 
+          className="mermaid not-prose font-sans !leading-normal [&_text]:!font-sans [&>svg]:!max-w-full [&>svg]:!w-[800px] [&>svg]:!h-auto [&>svg]:min-w-[400px]" 
+          dangerouslySetInnerHTML={{ __html: svg }} 
+          style={{ 
+            transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
+            transition: isDragging ? 'none' : 'transform 0.2s ease-in-out',
+            transformOrigin: 'center center'
+          }}
+        />
+      </div>
+
+      {/* Floating Controls */}
+      <div className="absolute right-4 bottom-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <div className="flex bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700/50 shadow-xl overflow-hidden p-1 flex-col gap-1 items-center self-end">
+          <button onClick={() => handlePan(0, 50)} title="Pan Up" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ChevronUp size={16} /></button>
+          <div className="flex gap-1">
+            <button onClick={() => handlePan(50, 0)} title="Pan Left" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ChevronLeft size={16} /></button>
+            <button onClick={handleReset} title="Reset View" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded bg-slate-800/50"><RotateCcw size={16} /></button>
+            <button onClick={() => handlePan(-50, 0)} title="Pan Right" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ChevronRight size={16} /></button>
+          </div>
+          <button onClick={() => handlePan(0, -50)} title="Pan Down" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ChevronDown size={16} /></button>
+        </div>
+        
+        <div className="flex bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700/50 shadow-xl overflow-hidden p-1 gap-1 items-center self-end">
+          <button onClick={handleZoomOut} title="Zoom Out" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ZoomOut size={16} /></button>
+          <span className="text-xs text-slate-400 font-mono w-10 text-center select-none">{Math.round(scale * 100)}%</span>
+          <button onClick={handleZoomIn} title="Zoom In" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ZoomIn size={16} /></button>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 // Types for Document Outline
 interface Heading {
@@ -19,7 +122,7 @@ interface Heading {
   level: number;
 }
 
-const CodeBlock = ({ children, className }: any) => {
+const CodeBlock = ({ children, className, theme, ...props }: any) => {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : '';
@@ -33,10 +136,14 @@ const CodeBlock = ({ children, className }: any) => {
 
   if (!match) {
     return (
-      <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800 dark:text-slate-200">
+      <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800 dark:text-slate-200" {...props}>
         {children}
       </code>
     );
+  }
+
+  if (language === 'mermaid') {
+    return <MermaidDiagram code={code} theme={theme} />;
   }
 
   return (
@@ -123,13 +230,228 @@ const HeadingRenderer = (props: any) => {
   ]);
 };
 
+const getThemeClasses = (theme: string) => {
+  switch (theme) {
+    case 'github-light':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-slate-900 custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:border-b prose-headings:border-slate-200 prose-headings:pb-2 " +
+               "prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline " +
+               "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
+               "prose-code:bg-slate-100 prose-code:text-slate-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
+               "prose-table:border prose-table:border-slate-200 prose-th:bg-slate-50 prose-th:p-2 prose-td:p-2 " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-slate-300 prose-blockquote:text-slate-500 prose-blockquote:not-italic " +
+               "markdown-body pb-32"
+      };
+    case 'github-dark':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#0d1117] text-[#c9d1d9] custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base prose-invert max-w-3xl mx-auto " +
+               "prose-headings:text-[#c9d1d9] prose-headings:border-b prose-headings:border-[#21262d] prose-headings:pb-2 " +
+               "prose-a:text-[#58a6ff] prose-a:no-underline hover:prose-a:underline " +
+               "prose-p:text-[#c9d1d9] prose-li:text-[#c9d1d9] prose-strong:text-[#c9d1d9] " +
+               "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
+               "prose-code:bg-[#161b22] prose-code:text-[#c9d1d9] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
+               "prose-table:border prose-table:border-[#30363d] prose-th:bg-[#161b22] prose-th:p-2 prose-td:p-2 " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-[#30363d] prose-blockquote:text-[#8b949e] prose-blockquote:not-italic " +
+               "markdown-body pb-32"
+      };
+    case 'default-dark':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white dark:bg-[#0d1117] custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
+               "prose-headings:tracking-tight prose-headings:border-b prose-headings:border-slate-200 dark:prose-headings:border-slate-800/50 prose-headings:pb-2 " +
+               "prose-a:text-indigo-500 dark:prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline " +
+               "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
+               "prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-indigo-50 dark:prose-code:bg-indigo-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
+               "prose-table:border prose-table:border-slate-200 dark:prose-table:border-slate-800 prose-th:bg-slate-50 dark:prose-th:bg-slate-900 prose-th:p-2 prose-td:p-2 " +
+               "prose-img:rounded-lg prose-img:shadow-sm " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50 dark:prose-blockquote:bg-indigo-500/10 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic prose-blockquote:text-slate-700 dark:prose-blockquote:text-slate-300 " +
+               "markdown-body pb-32"
+      };
+    case 'notebook-dark':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#1e1e2e] text-slate-300 custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_31px,#3b82f61a_32px)] bg-[length:100%_32px]",
+        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto font-[Comic_Sans_MS,cursive,sans-serif] " +
+               "prose-headings:font-[Comic_Sans_MS,cursive,sans-serif] prose-headings:border-b-2 prose-headings:border-blue-500/20 prose-headings:pb-2 prose-headings:text-indigo-300 " +
+               "prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline " +
+               "prose-p:leading-8 prose-li:leading-8 prose-headings:leading-8 " +
+               "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
+               "prose-code:bg-yellow-900/30 prose-code:text-yellow-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
+               "prose-table:border prose-table:border-blue-900/50 prose-th:bg-blue-900/20 prose-th:p-2 prose-td:p-2 " +
+               "prose-img:rounded-lg prose-img:shadow-md " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-red-500/50 prose-blockquote:bg-red-900/10 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-400 " +
+               "markdown-body pb-32 relative " + 
+               "before:absolute before:inset-0 before:w-px before:bg-red-500/30 before:-left-6 sm:before:-left-8 before:h-[200%] before:-top-[50%]"
+      };
+    case 'borderlands':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#e5e5e5] text-black font-sans custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:font-black prose-headings:uppercase prose-headings:-skew-x-3 prose-headings:text-yellow-400 prose-headings:drop-shadow-[2px_2px_0_#000] prose-headings:border-b-4 prose-headings:border-black prose-headings:pb-2 " +
+               "prose-a:text-red-500 prose-a:font-bold prose-a:no-underline hover:prose-a:underline hover:prose-a:bg-yellow-400 hover:prose-a:text-black " +
+               "prose-p:font-bold prose-p:text-black prose-strong:text-black prose-strong:font-black " +
+               "prose-pre:bg-white prose-pre:border-4 prose-pre:border-black prose-pre:shadow-[4px_4px_0_#000] prose-pre:rounded-none " +
+               "prose-code:text-red-600 prose-code:font-bold prose-code:bg-white prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 prose-code:shadow-[2px_2px_0_#000] " +
+               "prose-table:border-4 prose-table:border-black prose-th:bg-yellow-400 prose-th:border-b-4 prose-th:border-black prose-th:text-black prose-th:uppercase prose-th:font-black prose-td:border-b-2 prose-td:border-black " +
+               "prose-img:border-4 prose-img:border-black prose-img:shadow-[6px_6px_0_#000] prose-img:rounded-none " +
+               "prose-blockquote:border-l-8 prose-blockquote:border-black prose-blockquote:bg-yellow-400 prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:italic prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:shadow-[4px_4px_0_#000] " +
+               "markdown-body pb-32"
+      };
+    case 'comic-minimal':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-slate-800 font-[Comic_Sans_MS,cursive,sans-serif] custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:text-blue-500 prose-headings:border-b-4 prose-headings:border-yellow-400 prose-headings:rounded-full prose-headings:px-4 prose-headings:py-1 prose-headings:inline-block " +
+               "prose-a:text-red-500 hover:prose-a:text-blue-500 " +
+               "prose-pre:bg-blue-50 prose-pre:border-4 prose-pre:border-blue-200 prose-pre:rounded-2xl " +
+               "prose-code:text-red-500 prose-code:bg-yellow-100 prose-code:px-2 prose-code:py-1 prose-code:rounded-full " +
+               "prose-blockquote:border-l-0 prose-blockquote:bg-blue-50 prose-blockquote:rounded-2xl prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:text-blue-800 " +
+               "markdown-body pb-32"
+      };
+    case 'anime-pastel':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fff0f5] text-[#7851a9] font-sans custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:text-[#ffb6c1] prose-headings:drop-shadow-[1px_1px_0_#7851a9] prose-headings:border-b-2 prose-headings:border-[#ff69b4] prose-headings:border-dashed " +
+               "prose-a:text-[#00ced1] hover:prose-a:text-[#ff69b4] " +
+               "prose-pre:bg-[#e6e6fa] prose-pre:border-2 prose-pre:border-[#ffb6c1] prose-pre:rounded-xl " +
+               "prose-code:text-[#ff69b4] prose-code:bg-[#fff] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-md prose-code:border prose-code:border-[#ffb6c1] " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-[#ff69b4] prose-blockquote:bg-[#ffe4e1] prose-blockquote:rounded-r-xl prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:text-[#ff69b4] " +
+               "markdown-body pb-32"
+      };
+    case 'manga-scan':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-black font-serif custom-scrollbar scroll-smooth " +
+                   "bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px] [background-position:0_0,8px_8px] opacity-90",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto bg-white p-8 border-4 border-black " +
+               "prose-headings:font-black prose-headings:text-black prose-headings:uppercase prose-headings:border-b-8 prose-headings:border-black prose-headings:pb-1 " +
+               "prose-a:text-black prose-a:bg-gray-200 prose-a:font-bold prose-a:no-underline hover:prose-a:bg-black hover:prose-a:text-white " +
+               "prose-p:font-medium prose-p:text-black " +
+               "prose-pre:bg-white prose-pre:border-4 prose-pre:border-black prose-pre:rounded-none " +
+               "prose-code:text-black prose-code:font-bold prose-code:bg-gray-200 prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 " +
+               "prose-img:border-8 prose-img:border-black prose-img:rounded-none prose-img:grayscale " +
+               "prose-blockquote:border-l-8 prose-blockquote:border-black prose-blockquote:bg-gray-100 prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:italic prose-blockquote:py-3 prose-blockquote:px-6 " +
+               "markdown-body pb-32"
+      };
+    case 'cyberpunk':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fbee0f] text-black font-mono custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:font-black prose-headings:text-[#00ffff] prose-headings:bg-black prose-headings:inline-block prose-headings:px-4 prose-headings:py-1 prose-headings:uppercase prose-headings:tracking-widest prose-headings:-skew-x-6 " +
+               "prose-a:text-[#ff003c] prose-a:font-bold prose-a:bg-black prose-a:px-1 hover:prose-a:text-black hover:prose-a:bg-[#00ffff] " +
+               "prose-p:font-medium prose-p:text-black " +
+               "prose-pre:bg-black prose-pre:border-l-8 prose-pre:border-[#ff003c] prose-pre:rounded-none " +
+               "prose-code:text-[#00ffff] prose-code:font-bold prose-code:bg-black prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-none " +
+               "prose-img:border-4 prose-img:border-black prose-img:rounded-none prose-img:shadow-[8px_8px_0_#ff003c] " +
+               "prose-blockquote:border-l-8 prose-blockquote:border-[#00ffff] prose-blockquote:bg-black prose-blockquote:text-[#ff003c] prose-blockquote:font-mono prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:-skew-x-6 " +
+               "markdown-body pb-32"
+      };
+    case 'retro-arcade':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-black text-[#00ff00] font-mono custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
+               "prose-headings:font-black prose-headings:text-[#ff00ff] prose-headings:uppercase prose-headings:tracking-widest prose-headings:border-b-4 prose-headings:border-[#ff00ff] prose-headings:border-dashed " +
+               "prose-a:text-[#00ffff] prose-a:uppercase hover:prose-a:bg-[#00ffff] hover:prose-a:text-black " +
+               "prose-p:text-[#00ff00] " +
+               "prose-pre:bg-[#111] prose-pre:border-4 prose-pre:border-[#00ff00] prose-pre:rounded-none " +
+               "prose-code:text-[#ff00ff] prose-code:bg-[#222] prose-code:border prose-code:border-[#ff00ff] prose-code:px-1.5 prose-code:py-0.5 prose-code:uppercase " +
+               "prose-blockquote:border-l-8 prose-blockquote:border-[#00ffff] prose-blockquote:bg-[#0a0a0a] prose-blockquote:text-[#00ffff] prose-blockquote:uppercase prose-blockquote:py-3 prose-blockquote:px-6 " +
+               "markdown-body pb-32"
+      };
+    case 'synthwave':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#1a0b2e] text-[#b399ff] font-sans custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_0%,rgba(255,0,255,0.1)_50%,transparent_100%)] bg-[length:100%_4px]",
+        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
+               "prose-headings:font-black prose-headings:text-transparent prose-headings:bg-clip-text prose-headings:bg-gradient-to-r prose-headings:from-[#ff00a0] prose-headings:to-[#00d2ff] prose-headings:drop-shadow-[0_0_8px_rgba(255,0,160,0.8)] " +
+               "prose-a:text-[#00d2ff] hover:prose-a:text-[#ff00a0] hover:prose-a:drop-shadow-[0_0_5px_rgba(255,0,160,0.8)] " +
+               "prose-pre:bg-[#0d0221] prose-pre:border prose-pre:border-[#00d2ff] prose-pre:shadow-[0_0_15px_rgba(0,210,255,0.3)] " +
+               "prose-code:text-[#ff00a0] prose-code:bg-[#2b0f4c] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-[#ff00a0] prose-blockquote:bg-[#2b0f4c]/50 prose-blockquote:text-[#00d2ff] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:shadow-[inset_4px_0_10px_rgba(255,0,160,0.2)] " +
+               "markdown-body pb-32"
+      };
+    case 'neubrutalism':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#ffd600] text-black font-sans custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:font-black prose-headings:text-white prose-headings:bg-black prose-headings:px-4 prose-headings:py-2 prose-headings:inline-block prose-headings:shadow-[8px_8px_0_#ff4500] prose-headings:border-4 prose-headings:border-black prose-headings:rotate-1 " +
+               "prose-a:text-black prose-a:bg-[#ff4500] prose-a:px-1 prose-a:font-bold prose-a:border-2 prose-a:border-black prose-a:shadow-[2px_2px_0_#000] hover:prose-a:translate-y-[2px] hover:prose-a:translate-x-[2px] hover:prose-a:shadow-none hover:prose-a:bg-[#00ff00] " +
+               "prose-p:font-medium prose-p:text-black prose-p:bg-white prose-p:p-4 prose-p:border-4 prose-p:border-black prose-p:shadow-[6px_6px_0_#000] " +
+               "prose-pre:bg-[#00ff00] prose-pre:border-4 prose-pre:border-black prose-pre:shadow-[8px_8px_0_#000] prose-pre:rounded-none prose-pre:rotate-[-1deg] " +
+               "prose-code:text-black prose-code:font-bold prose-code:bg-white prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 prose-code:shadow-[2px_2px_0_#000] " +
+               "prose-img:border-4 prose-img:border-black prose-img:shadow-[8px_8px_0_#000] prose-img:rounded-none " +
+               "prose-blockquote:border-4 prose-blockquote:border-black prose-blockquote:bg-[#ff4500] prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:shadow-[8px_8px_0_#000] prose-blockquote:-rotate-1 " +
+               "markdown-body pb-32"
+      };
+    case 'kawaii':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fff0f5] text-[#555] font-sans custom-scrollbar scroll-smooth",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
+               "prose-headings:font-bold prose-headings:text-[#ff69b4] prose-headings:bg-white prose-headings:rounded-full prose-headings:px-6 prose-headings:py-2 prose-headings:shadow-sm prose-headings:border-2 prose-headings:border-[#ffb6c1] prose-headings:text-center " +
+               "prose-a:text-[#00ced1] prose-a:font-bold hover:prose-a:text-[#ff69b4] " +
+               "prose-p:bg-white prose-p:rounded-3xl prose-p:p-5 prose-p:shadow-sm prose-p:border-2 prose-p:border-[#ffefd5] " +
+               "prose-pre:bg-[#f0f8ff] prose-pre:border-2 prose-pre:border-[#add8e6] prose-pre:rounded-3xl prose-pre:shadow-sm " +
+               "prose-code:text-[#ff69b4] prose-code:bg-[#fff] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-full prose-code:border prose-code:border-[#ffe4e1] " +
+               "prose-img:rounded-3xl prose-img:border-4 prose-img:border-white prose-img:shadow-md " +
+               "prose-blockquote:border-0 prose-blockquote:bg-[#ffe4e1] prose-blockquote:text-[#ff69b4] prose-blockquote:rounded-3xl prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:shadow-sm prose-blockquote:text-center prose-blockquote:font-medium " +
+               "markdown-body pb-32"
+      };
+    case 'chalkboard':
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#2b3a32] text-[#f4f4f0] font-[Comic_Sans_MS,cursive,sans-serif] custom-scrollbar scroll-smooth " +
+                   "bg-[radial-gradient(circle,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:10px_10px]",
+        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
+               "prose-headings:font-[Comic_Sans_MS,cursive,sans-serif] prose-headings:text-[#f4f4f0] prose-headings:border-b-2 prose-headings:border-white/20 prose-headings:pb-2 prose-headings:drop-shadow-[1px_1px_1px_rgba(255,255,255,0.3)] " +
+               "prose-a:text-[#ffdfba] hover:prose-a:text-[#ffffba] prose-a:underline prose-a:decoration-wavy " +
+               "prose-p:text-[#e0e0e0] prose-strong:text-[#ffffba] " +
+               "prose-pre:bg-[#1f2b25] prose-pre:border-2 prose-pre:border-white/10 prose-pre:rounded-sm " +
+               "prose-code:text-[#bae1ff] prose-code:bg-[#1f2b25] prose-code:px-1.5 prose-code:py-0.5 prose-code:border border-white/20 " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-[#ffb3ba] prose-blockquote:bg-[#1f2b25] prose-blockquote:text-[#ffb3ba] prose-blockquote:py-2 prose-blockquote:px-4 " +
+               "markdown-body pb-32"
+      };
+    case 'notebook':
+    default:
+      return {
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fdfaf6] text-slate-800 custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_31px,#3b82f633_32px)] bg-[length:100%_32px]",
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto font-[Comic_Sans_MS,cursive,sans-serif] " +
+               "prose-headings:font-[Comic_Sans_MS,cursive,sans-serif] prose-headings:border-b-2 prose-headings:border-blue-300/30 prose-headings:pb-2 prose-headings:text-indigo-900 " +
+               "prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline " +
+               "prose-p:leading-8 prose-li:leading-8 prose-headings:leading-8 " +
+               "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
+               "prose-code:bg-yellow-100 prose-code:text-slate-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
+               "prose-table:border prose-table:border-blue-200 prose-th:bg-blue-50 prose-th:p-2 prose-td:p-2 " +
+               "prose-img:rounded-lg prose-img:shadow-md " +
+               "prose-blockquote:border-l-4 prose-blockquote:border-red-400 prose-blockquote:bg-red-50/50 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-700 " +
+               "markdown-body pb-32 relative " + 
+               "before:absolute before:inset-0 before:w-px before:bg-red-400/60 before:-left-6 sm:before:-left-8 before:h-[200%] before:-top-[50%]"
+      };
+  }
+};
 
 const TextPreviewPopup: React.FC = () => {
   const { activePreviewText, activePreviewPath, setActivePreviewText, updateNodeValue } = useStore();
   const [copied, setCopied] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'raw' | 'markdown' | 'html' | 'edit'>('raw');
+  const [mdTheme, setMdTheme] = React.useState<string>(() => localStorage.getItem('mdTheme') || 'notebook-dark');
+  const [mdFont, setMdFont] = React.useState<string>(() => localStorage.getItem('mdFont') || 'System Default');
+
+  React.useEffect(() => {
+    localStorage.setItem('mdTheme', mdTheme);
+  }, [mdTheme]);
+
+  React.useEffect(() => {
+    localStorage.setItem('mdFont', mdFont);
+    if (mdFont !== 'System Default') {
+      const fontNode = FONTS.find(f => f.fontFamily === mdFont);
+      if (fontNode) {
+        loadGoogleFont(fontNode.googleFontName);
+      }
+    }
+  }, [mdFont]);
   const [editText, setEditText] = React.useState('');
   const [showOutline, setShowOutline] = React.useState(false);
+  const [showSettings, setShowSettings] = React.useState(false);
   const [activeHeadingId, setActiveHeadingId] = React.useState<string>('');
 
   const initializedPathRef = React.useRef<string | null>(null);
@@ -249,6 +571,27 @@ const TextPreviewPopup: React.FC = () => {
   // We apply a little trick: remark-slug or custom heading renderer is needed.
   // We wrote HeadingRenderer above. We'll pass it to components.
 
+  const markdownComponents = React.useMemo(() => ({
+    code: ({node, inline, className, children, ...props}: any) => <CodeBlock className={className} theme={mdTheme} {...props}>{children}</CodeBlock>,
+    h1: (props: any) => <HeadingRenderer level={1} {...props} />,
+    h2: (props: any) => <HeadingRenderer level={2} {...props} />,
+    h3: (props: any) => <HeadingRenderer level={3} {...props} />,
+    h4: (props: any) => <HeadingRenderer level={4} {...props} />,
+    h5: (props: any) => <HeadingRenderer level={5} {...props} />,
+    h6: (props: any) => <HeadingRenderer level={6} {...props} />,
+    table: ({node, ...props}: any) => (
+      <div className="overflow-x-auto my-6 rounded-lg border border-slate-200 dark:border-slate-800">
+        <table className="w-full text-left border-collapse m-0" {...props} />
+      </div>
+    ),
+    input: ({node, ...props}: any) => {
+      if (props.type === 'checkbox') {
+        return <input type="checkbox" className="mr-2 rounded text-indigo-500 focus:ring-indigo-500 dark:bg-slate-800 dark:border-slate-700" {...props} disabled={false} readOnly />
+      }
+      return <input {...props} />
+    }
+  }), [mdTheme]);
+
   return createPortal(
     <AnimatePresence>
       {activePreviewText && (
@@ -265,8 +608,8 @@ const TextPreviewPopup: React.FC = () => {
              className="relative w-full max-w-6xl h-[100dvh] sm:h-full max-h-none sm:max-h-[90vh] bg-slate-900 border-0 sm:border border-slate-800 shadow-2xl rounded-none sm:rounded-xl flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="flex flex-row items-center justify-between gap-3 pl-4 pr-2 py-2 sm:py-2.5 bg-slate-900 border-b border-slate-800 shrink-0 relative z-10">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-4 pr-3 sm:pr-2 py-3 sm:py-2.5 bg-slate-900 border-b border-slate-800 shrink-0 relative z-10">
+              <div className="flex items-center gap-3 min-w-0 w-full sm:flex-1">
                 <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
                   <Type size={16} />
                 </div>
@@ -285,7 +628,7 @@ const TextPreviewPopup: React.FC = () => {
                 </div>
               </div>
               
-              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
                 {/* Mobile Outline Toggle */}
                 {viewMode === 'markdown' && headings.length > 0 && (
                   <button
@@ -297,6 +640,15 @@ const TextPreviewPopup: React.FC = () => {
                 )}
 
                 {/* Mode Toggles */}
+                {viewMode === 'markdown' && (
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="p-1.5 rounded-md transition-all text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800"
+                    title="Appearance Settings"
+                  >
+                    <Settings size={18} />
+                  </button>
+                )}
                 <div className="flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
                   <button
                     onClick={() => setViewMode('raw')}
@@ -415,6 +767,75 @@ const TextPreviewPopup: React.FC = () => {
                 )}
               </AnimatePresence>
 
+              {/* Settings Sidebar (Right Drawer) */}
+              <AnimatePresence>
+                {showSettings && (
+                  <>
+                    <motion.div 
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      className="absolute inset-0 bg-black/50 z-40"
+                      onClick={() => setShowSettings(false)}
+                    />
+                    <motion.div 
+                      initial={{ x: 300, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: 300, opacity: 0 }}
+                      className="absolute right-0 top-0 bottom-0 z-50 w-64 bg-slate-900 border-l border-slate-800 flex flex-col shadow-2xl"
+                    >
+                      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 backdrop-blur sticky top-0">
+                        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                          <Settings size={14} /> Appearance
+                        </h4>
+                        <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white transition-colors">
+                          <X size={18} />
+                        </button>
+                      </div>
+                      <div className="p-4 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+                        <div className="flex flex-col gap-2.5">
+                          <label className="text-xs text-slate-400 font-medium">Font Family</label>
+                          <CustomSelect
+                            value={mdFont}
+                            onChange={(val) => setMdFont(val)}
+                            searchable={true}
+                            options={[
+                              { label: "System Font", value: "System Default" },
+                              ...FONTS.map(f => ({ label: f.fontFamily, value: f.fontFamily }))
+                            ]}
+                            className="w-full [&>button]:w-full [&>button]:py-2 [&>button]:px-3 [&>button]:bg-slate-950 [&>button]:border-slate-800 [&>button]:text-sm"
+                          />
+                        </div>
+                        
+                        <div className="flex flex-col gap-2.5">
+                          <label className="text-xs text-slate-400 font-medium">Theme</label>
+                          <CustomSelect
+                            value={mdTheme}
+                            onChange={(val) => setMdTheme(val as any)}
+                            options={[
+                              { label: 'Notebook (Light)', value: 'notebook' },
+                              { label: 'Notebook (Dark)', value: 'notebook-dark' },
+                              { label: 'Default Dark', value: 'default-dark' },
+                              { label: 'GitHub Light', value: 'github-light' },
+                              { label: 'GitHub Dark', value: 'github-dark' },
+                              { label: 'Borderlands', value: 'borderlands' },
+                              { label: 'Comic Minimal', value: 'comic-minimal' },
+                              { label: 'Anime Pastel', value: 'anime-pastel' },
+                              { label: 'Manga Scan', value: 'manga-scan' },
+                              { label: 'Cyberpunk 2077', value: 'cyberpunk' },
+                              { label: 'Retro Arcade', value: 'retro-arcade' },
+                              { label: 'Synthwave', value: 'synthwave' },
+                              { label: 'Neubrutalism', value: 'neubrutalism' },
+                              { label: 'Kawaii Cute', value: 'kawaii' },
+                              { label: 'Chalkboard', value: 'chalkboard' }
+                            ]}
+                            className="w-full [&>button]:w-full [&>button]:py-2 [&>button]:px-3 [&>button]:bg-slate-950 [&>button]:border-slate-800 [&>button]:text-sm"
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+
               {/* Main Content Pane */}
               {viewMode === 'edit' ? (
                 <div className="flex-1 p-3 sm:p-4 flex flex-col gap-3 relative bg-slate-950">
@@ -461,39 +882,15 @@ const TextPreviewPopup: React.FC = () => {
                   </div>
                 </div>
               ) : viewMode === 'markdown' ? (
-                <div ref={contentRef} className="flex-1 p-4 sm:p-8 overflow-auto bg-white dark:bg-[#0d1117] custom-scrollbar scroll-smooth">
-                  <div className="prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto
-                                prose-headings:tracking-tight prose-headings:border-b prose-headings:border-slate-200 dark:prose-headings:border-slate-800/50 prose-headings:pb-2
-                                prose-a:text-indigo-500 dark:prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
-                                prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0
-                                prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-indigo-50 dark:prose-code:bg-indigo-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
-                                prose-table:border prose-table:border-slate-200 dark:prose-table:border-slate-800 prose-th:bg-slate-50 dark:prose-th:bg-slate-900 prose-th:p-2 prose-td:p-2
-                                prose-img:rounded-lg prose-img:shadow-sm
-                                prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50 dark:prose-blockquote:bg-indigo-500/10 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic prose-blockquote:text-slate-700 dark:prose-blockquote:text-slate-300
-                                markdown-body pb-32">
+                <div ref={contentRef} className={getThemeClasses(mdTheme).container}>
+                  <div 
+                    className={getThemeClasses(mdTheme).prose}
+                    style={mdFont !== 'System Default' ? { fontFamily: `'${mdFont}', sans-serif` } : undefined}
+                  >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
-                      components={{
-                        code: CodeBlock,
-                        h1: (props) => <HeadingRenderer level={1} {...props} />,
-                        h2: (props) => <HeadingRenderer level={2} {...props} />,
-                        h3: (props) => <HeadingRenderer level={3} {...props} />,
-                        h4: (props) => <HeadingRenderer level={4} {...props} />,
-                        h5: (props) => <HeadingRenderer level={5} {...props} />,
-                        h6: (props) => <HeadingRenderer level={6} {...props} />,
-                        table: ({node, ...props}) => (
-                          <div className="overflow-x-auto my-6 rounded-lg border border-slate-200 dark:border-slate-800">
-                            <table className="w-full text-left border-collapse m-0" {...props} />
-                          </div>
-                        ),
-                        input: ({node, ...props}) => {
-                          if (props.type === 'checkbox') {
-                            return <input type="checkbox" className="mr-2 rounded text-indigo-500 focus:ring-indigo-500 dark:bg-slate-800 dark:border-slate-700" {...props} disabled={false} readOnly />
-                          }
-                          return <input {...props} />
-                        }
-                      }}
+                      components={markdownComponents}
                     >
                       {editText}
                     </ReactMarkdown>

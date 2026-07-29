@@ -127,6 +127,10 @@ export abstract class AICommand implements Command {
         }
       }
     }).catch(e => {
+       if (e === 'AbortError' || (e as Error)?.message === 'AbortError') {
+         console.log(`[AICommand] Task ${this.task} was cancelled.`);
+         return;
+       }
        console.error(`[AICommand] Task ${this.task} failed:`, e);
        alert(`AI Task Failed: ${e.message || e}`);
     });

@@ -123,7 +123,7 @@ interface ImageWorkspaceProps {
 
 // TODO(Refactor): Extract hooks, leaving only the main orchestration here
 export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
-   console.log('[ImageWorkspace] Component rendering, path:', path);
+   // console.log('[ImageWorkspace] Component rendering, path:', path);
    const { parsedData, updateNodeValue, setNotification } = useStore();
    const canvasRef = useRef<HTMLCanvasElement>(null);
    const fabricRef = useRef<fabric.Canvas | null>(null);

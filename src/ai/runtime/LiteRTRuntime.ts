@@ -107,7 +107,9 @@ export class LiteRTRuntime {
       }
     }
 
-    const compileOptions = {};
+    const compileOptions: any = {
+      accelerator: this.backend
+    };
     
     console.log(`[LiteRTRuntime] Compiling model (${(modelData.byteLength / 1024 / 1024).toFixed(1)} MB)...`);
     this.session = await litert.loadAndCompile(modelBuffer, compileOptions);
@@ -168,24 +170,25 @@ export class LiteRTRuntime {
       inputTensor = inputs;
     }
     
-    console.log('[LiteRTRuntime] Running inference...');
+    // console.log('[LiteRTRuntime] Running inference...');
     const startTime = performance.now();
     
     // Run with positional input (single tensor as array)
     const outputTensors = await this.session.run([inputTensor]);
     
     const elapsed = performance.now() - startTime;
-    console.log(`[LiteRTRuntime] Inference completed in ${elapsed.toFixed(0)}ms`);
+    // console.log(`[LiteRTRuntime] Inference completed in ${elapsed.toFixed(0)}ms`);
     
     // Extract output data
     // outputTensors is Tensor[] when using positional inputs
     if (Array.isArray(outputTensors) && outputTensors.length > 0) {
-      const outputData = await outputTensors[0].data();
+      const rawData = await outputTensors[0].data();
+      const outputData = new Float32Array(rawData);
       // Clean up output tensors
       outputTensors.forEach((t: any) => { try { t.delete(); } catch(_){} });
       // Clean up input tensor
       try { inputTensor.delete(); } catch(_){}
-      return outputData as Float32Array;
+      return outputData;
     }
     
     // Clean up input tensor
@@ -221,13 +224,13 @@ export class LiteRTRuntime {
       inputTensor = inputs;
     }
     
-    console.log('[LiteRTRuntime] Running multi-output inference...');
+    // console.log('[LiteRTRuntime] Running multi-output inference...');
     const startTime = performance.now();
     
     const outputTensors = await this.session.run([inputTensor]);
     
     const elapsed = performance.now() - startTime;
-    console.log(`[LiteRTRuntime] Multi-output inference completed in ${elapsed.toFixed(0)}ms`);
+    // console.log(`[LiteRTRuntime] Multi-output inference completed in ${elapsed.toFixed(0)}ms`);
     
     const results: Float32Array[] = [];
     if (Array.isArray(outputTensors)) {

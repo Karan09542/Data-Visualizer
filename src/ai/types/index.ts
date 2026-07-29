@@ -1,3 +1,5 @@
+import { ModelConfig } from '../config/ModelConfig';
+
 export type AITask = 
   | 'background-removal'
   | 'upscale'
@@ -26,6 +28,7 @@ export interface ModelManifest {
   sources: ModelSource[];
   size?: number; // Estimated size in bytes
   supports?: string[]; // E.g., ['remove', 'portrait', 'passport']
+  customConfig?: ModelConfig;
 }
 
 export type AIProgressState = 

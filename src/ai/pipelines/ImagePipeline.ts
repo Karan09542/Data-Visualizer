@@ -23,6 +23,8 @@ export abstract class ImagePipeline implements TaskPipeline {
       if (onProgress) onProgress(state, progress || 0);
     };
 
+    if (options?.signal?.aborted) throw new Error('AbortError');
+
     // Allow overriding the default model for this pipeline
     if (options?.modelId) {
       this.modelId = options.modelId;
@@ -33,6 +35,7 @@ export abstract class ImagePipeline implements TaskPipeline {
     this.runtime = await aiSessionManager.getRuntime(this.modelId, options?.preferredBackend, notify);
 
     notify('preparing-image', 0);
+    await new Promise(resolve => setTimeout(resolve, 5));
     const imageData = await imageToImageData(image);
     // Extract inputShape from runtime if available
     let inputShape: number[] | undefined;
@@ -44,6 +47,8 @@ export abstract class ImagePipeline implements TaskPipeline {
     const inputResult = this.preprocess(imageData, inputShape);
     notify('preparing-image', 100);
 
+    if (options?.signal?.aborted) throw new Error('AbortError');
+
     let tensorData = inputResult;
     let actualShape: number[] | undefined;
     
@@ -53,11 +58,17 @@ export abstract class ImagePipeline implements TaskPipeline {
     }
 
     notify('inference', 0);
+    await new Promise(resolve => setTimeout(resolve, 5));
     const outputTensor = await this.runtime.execute(tensorData, actualShape);
+    
+    if (options?.signal?.aborted) throw new Error('AbortError');
     notify('inference', 100);
 
     notify('post-processing', 0);
+    await new Promise(resolve => setTimeout(resolve, 5));
     const resultImage = this.postprocess(outputTensor, imageData.width, imageData.height, imageData);
+    
+    if (options?.signal?.aborted) throw new Error('AbortError');
     notify('post-processing', 100);
 
     notify('encoding', 100);
