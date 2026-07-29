@@ -450,6 +450,7 @@ const TextPreviewPopup: React.FC = () => {
     }
   }, [mdFont]);
   const [editText, setEditText] = React.useState('');
+  const [showHeader, setShowHeader] = React.useState(true);
   const [showOutline, setShowOutline] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
   const [activeHeadingId, setActiveHeadingId] = React.useState<string>('');
@@ -603,9 +604,28 @@ const TextPreviewPopup: React.FC = () => {
              exit={{ opacity: 0, scale: 0.98, y: 10 }}
              className="relative w-full max-w-6xl h-[100dvh] sm:h-full max-h-none sm:max-h-[90vh] bg-slate-900 border-0 sm:border border-slate-800 shadow-2xl rounded-none sm:rounded-xl flex flex-col overflow-hidden"
           >
+            {/* Toggle Header Button (Mobile) */}
+            <button
+              onClick={() => setShowHeader(!showHeader)}
+              className="sm:hidden absolute top-0 left-1/2 -translate-x-1/2 z-50 bg-slate-800/90 backdrop-blur border border-slate-700 border-t-0 text-slate-400 py-0.5 px-8 rounded-b-full shadow-lg hover:text-white transition-colors flex items-center justify-center h-5"
+            >
+              <motion.div animate={{ rotate: showHeader ? 180 : 0 }} transition={{ duration: 0.2 }} className="mt-0.5">
+                <ChevronDown size={14} />
+              </motion.div>
+            </button>
+
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-4 pr-3 sm:pr-2 py-3 sm:py-2.5 bg-slate-900 border-b border-slate-800 shrink-0 relative z-10">
-              <div className="flex items-center gap-3 min-w-0 w-full sm:flex-1">
+            <AnimatePresence initial={false}>
+              {showHeader && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="shrink-0 relative z-10 overflow-hidden bg-slate-900 border-b border-slate-800"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-4 pr-3 sm:pr-2 py-3 sm:py-2.5">
+                    <div className="flex items-center gap-3 min-w-0 w-full sm:flex-1">
                 <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
                   <Type size={16} />
                 </div>
@@ -696,6 +716,9 @@ const TextPreviewPopup: React.FC = () => {
                 </div>
               </div>
             </div>
+            </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Content Area with optional Sidebar */}
             <div className="flex-1 overflow-hidden flex flex-row bg-slate-950 relative">
