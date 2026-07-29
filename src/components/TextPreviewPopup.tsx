@@ -94,7 +94,7 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
       </div>
 
       {/* Floating Controls */}
-      <div className="absolute right-4 bottom-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+      <div className="absolute right-4 bottom-4 flex flex-col gap-2 opacity-40 hover:opacity-100 focus-within:opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity z-10">
         <div className="flex bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700/50 shadow-xl overflow-hidden p-1 flex-col gap-1 items-center self-end">
           <button onClick={() => handlePan(0, 50)} title="Pan Up" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ChevronUp size={16} /></button>
           <div className="flex gap-1">
@@ -273,8 +273,8 @@ const getThemeClasses = (theme: string) => {
     case 'notebook-dark':
       return {
         container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#1e1e2e] text-slate-300 custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_31px,#3b82f61a_32px)] bg-[length:100%_32px]",
-        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto font-[Comic_Sans_MS,cursive,sans-serif] " +
-               "prose-headings:font-[Comic_Sans_MS,cursive,sans-serif] prose-headings:border-b-2 prose-headings:border-blue-500/20 prose-headings:pb-2 prose-headings:text-indigo-300 " +
+        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] " +
+               "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:border-b-2 prose-headings:border-blue-500/20 prose-headings:pb-2 prose-headings:text-indigo-300 " +
                "prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline " +
                "prose-p:leading-8 prose-li:leading-8 prose-headings:leading-8 " +
                "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
@@ -301,7 +301,7 @@ const getThemeClasses = (theme: string) => {
       };
     case 'comic-minimal':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-slate-800 font-[Comic_Sans_MS,cursive,sans-serif] custom-scrollbar scroll-smooth",
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-slate-800 font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] custom-scrollbar scroll-smooth",
         prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
                "prose-headings:text-blue-500 prose-headings:border-b-4 prose-headings:border-yellow-400 prose-headings:rounded-full prose-headings:px-4 prose-headings:py-1 prose-headings:inline-block " +
                "prose-a:text-red-500 hover:prose-a:text-blue-500 " +
@@ -399,10 +399,10 @@ const getThemeClasses = (theme: string) => {
       };
     case 'chalkboard':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#2b3a32] text-[#f4f4f0] font-[Comic_Sans_MS,cursive,sans-serif] custom-scrollbar scroll-smooth " +
+        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#2b3a32] text-[#f4f4f0] font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] custom-scrollbar scroll-smooth " +
                    "bg-[radial-gradient(circle,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:10px_10px]",
         prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
-               "prose-headings:font-[Comic_Sans_MS,cursive,sans-serif] prose-headings:text-[#f4f4f0] prose-headings:border-b-2 prose-headings:border-white/20 prose-headings:pb-2 prose-headings:drop-shadow-[1px_1px_1px_rgba(255,255,255,0.3)] " +
+               "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:text-[#f4f4f0] prose-headings:border-b-2 prose-headings:border-white/20 prose-headings:pb-2 prose-headings:drop-shadow-[1px_1px_1px_rgba(255,255,255,0.3)] " +
                "prose-a:text-[#ffdfba] hover:prose-a:text-[#ffffba] prose-a:underline prose-a:decoration-wavy " +
                "prose-p:text-[#e0e0e0] prose-strong:text-[#ffffba] " +
                "prose-pre:bg-[#1f2b25] prose-pre:border-2 prose-pre:border-white/10 prose-pre:rounded-sm " +
@@ -414,8 +414,8 @@ const getThemeClasses = (theme: string) => {
     default:
       return {
         container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fdfaf6] text-slate-800 custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_31px,#3b82f633_32px)] bg-[length:100%_32px]",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto font-[Comic_Sans_MS,cursive,sans-serif] " +
-               "prose-headings:font-[Comic_Sans_MS,cursive,sans-serif] prose-headings:border-b-2 prose-headings:border-blue-300/30 prose-headings:pb-2 prose-headings:text-indigo-900 " +
+        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] " +
+               "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:border-b-2 prose-headings:border-blue-300/30 prose-headings:pb-2 prose-headings:text-indigo-900 " +
                "prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline " +
                "prose-p:leading-8 prose-li:leading-8 prose-headings:leading-8 " +
                "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
@@ -523,6 +523,27 @@ const TextPreviewPopup: React.FC = () => {
 
   const headings = useMemo(() => extractHeadings(editText), [editText]);
 
+  const markdownComponents = React.useMemo(() => ({
+    code: ({node, inline, className, children, ...props}: any) => <CodeBlock className={className} theme={mdTheme} {...props}>{children}</CodeBlock>,
+    h1: (props: any) => <HeadingRenderer level={1} {...props} />,
+    h2: (props: any) => <HeadingRenderer level={2} {...props} />,
+    h3: (props: any) => <HeadingRenderer level={3} {...props} />,
+    h4: (props: any) => <HeadingRenderer level={4} {...props} />,
+    h5: (props: any) => <HeadingRenderer level={5} {...props} />,
+    h6: (props: any) => <HeadingRenderer level={6} {...props} />,
+    table: ({node, ...props}: any) => (
+      <div className="overflow-x-auto my-6 rounded-lg border border-slate-200 dark:border-slate-800">
+        <table className="w-full text-left border-collapse m-0" {...props} />
+      </div>
+    ),
+    input: ({node, ...props}: any) => {
+      if (props.type === 'checkbox') {
+        return <input type="checkbox" className="mr-2 rounded text-indigo-500 focus:ring-indigo-500 dark:bg-slate-800 dark:border-slate-700" {...props} disabled={false} readOnly />
+      }
+      return <input {...props} />
+    }
+  }), [mdTheme]);
+
   if (!activePreviewText) return null;
 
   const handleCopy = () => {
@@ -566,31 +587,6 @@ const TextPreviewPopup: React.FC = () => {
       }
     }, 500);
   };
-
-  // Generate ID for markdown renderer
-  // We apply a little trick: remark-slug or custom heading renderer is needed.
-  // We wrote HeadingRenderer above. We'll pass it to components.
-
-  const markdownComponents = React.useMemo(() => ({
-    code: ({node, inline, className, children, ...props}: any) => <CodeBlock className={className} theme={mdTheme} {...props}>{children}</CodeBlock>,
-    h1: (props: any) => <HeadingRenderer level={1} {...props} />,
-    h2: (props: any) => <HeadingRenderer level={2} {...props} />,
-    h3: (props: any) => <HeadingRenderer level={3} {...props} />,
-    h4: (props: any) => <HeadingRenderer level={4} {...props} />,
-    h5: (props: any) => <HeadingRenderer level={5} {...props} />,
-    h6: (props: any) => <HeadingRenderer level={6} {...props} />,
-    table: ({node, ...props}: any) => (
-      <div className="overflow-x-auto my-6 rounded-lg border border-slate-200 dark:border-slate-800">
-        <table className="w-full text-left border-collapse m-0" {...props} />
-      </div>
-    ),
-    input: ({node, ...props}: any) => {
-      if (props.type === 'checkbox') {
-        return <input type="checkbox" className="mr-2 rounded text-indigo-500 focus:ring-indigo-500 dark:bg-slate-800 dark:border-slate-700" {...props} disabled={false} readOnly />
-      }
-      return <input {...props} />
-    }
-  }), [mdTheme]);
 
   return createPortal(
     <AnimatePresence>
