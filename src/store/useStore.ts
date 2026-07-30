@@ -228,6 +228,8 @@ export interface StoreState {
   isolatedNodeId: string | null;
   isEditorPanelOpen: boolean;
   isAdvancedPanelOpen: boolean;
+  isAISettingsPanelOpen: boolean;
+  isAIPaletteOpen: boolean;
   isMobileMenuOpen: boolean;
   isShortcutsOpen: boolean;
   isMathHelpOpen: boolean;
@@ -304,6 +306,8 @@ export interface StoreState {
   setIsolatedNodeId: (id: string | null) => void;
   setIsEditorPanelOpen: (isOpen: boolean) => void;
   setIsAdvancedPanelOpen: (isOpen: boolean) => void;
+  setIsAISettingsPanelOpen: (isOpen: boolean) => void;
+  setIsAIPaletteOpen: (isOpen: boolean) => void;
   setIsMobileMenuOpen: (isOpen: boolean) => void;
   setIsShortcutsOpen: (isOpen: boolean) => void;
   setIsMathHelpOpen: (isOpen: boolean) => void;
@@ -423,6 +427,8 @@ export const useStore = create<StoreState>()(
       isolatedNodeId: null,
       isEditorPanelOpen: true,
       isAdvancedPanelOpen: false,
+      isAISettingsPanelOpen: false,
+      isAIPaletteOpen: false,
       isMobileMenuOpen: false,
       isShortcutsOpen: false,
       isMathHelpOpen: false,
@@ -435,6 +441,8 @@ export const useStore = create<StoreState>()(
         })),
       isProxyModalOpen: false,
       setIsProxyModalOpen: (isOpen) => set({ isProxyModalOpen: isOpen }),
+      setIsAISettingsPanelOpen: (isOpen) => set({ isAISettingsPanelOpen: isOpen }),
+      setIsAIPaletteOpen: (isOpen) => set({ isAIPaletteOpen: isOpen }),
       useDefaultProxy: true,
       setUseDefaultProxy: (use) => set({ useDefaultProxy: use }),
       globalAlert: null,

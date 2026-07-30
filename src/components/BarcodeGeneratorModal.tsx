@@ -271,7 +271,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+            className="absolute inset-0 bg-white/70 dark:bg-slate-950/70 backdrop-blur-md"
             onClick={onClose}
           />
           
@@ -279,38 +279,38 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
             initial={{ opacity: 0, scale: 0.96, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 15 }}
-            className="relative w-full h-[100dvh] sm:h-auto sm:max-w-2xl sm:max-h-[92vh] flex flex-col bg-slate-900 border-0 sm:border border-slate-800 shadow-2xl rounded-none sm:rounded-2xl overflow-hidden text-slate-100"
+            className="relative w-full h-[100dvh] sm:h-auto sm:max-w-2xl sm:max-h-[92vh] flex flex-col bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-800 shadow-2xl rounded-none sm:rounded-2xl overflow-hidden text-slate-900 dark:text-slate-100"
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 sm:px-6 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:px-6 border-b border-slate-200 dark:border-slate-800/80 bg-white/90 dark:bg-slate-900/90 backdrop-blur shrink-0 gap-3 sm:gap-0 relative">
+              <div className="flex items-center gap-3 pr-8 sm:pr-0">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
                   {mode === 'barcode' ? <Barcode size={22} /> : <QrCode size={22} />}
                 </div>
                 <div>
-                  <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Code Studio</h2>
-                  <p className="text-xs text-slate-400">Generate custom Barcodes and QR Codes</p>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">Code Studio</h2>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 line-clamp-1">Generate custom Barcodes and QR Codes</p>
                 </div>
               </div>
 
               {/* Mode Switcher Tabs */}
-              <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800 w-full sm:w-auto mt-1 sm:mt-0">
                 <button
                   onClick={() => setMode('barcode')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  className={`flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     mode === 'barcode'
                       ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                 >
                   <Barcode size={14} /> Barcode
                 </button>
                 <button
                   onClick={() => setMode('qrcode')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  className={`flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     mode === 'qrcode'
                       ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                 >
                   <QrCode size={14} /> QR Code
@@ -319,7 +319,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
 
               <button
                 onClick={onClose}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors ml-2"
+                className="absolute top-4 right-4 sm:relative sm:top-0 sm:right-0 p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors sm:ml-2"
                 title="Close"
               >
                 <X size={20} />
@@ -339,11 +339,11 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                     {/* Value Input */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                           Encoded Data / Value
                         </label>
                         {mode === 'barcode' && currentSpec && (
-                          <span className="text-[10px] text-slate-500 flex items-center gap-1" title={currentSpec.hint}>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1" title={currentSpec.hint}>
                             <HelpCircle size={10} /> {currentSpec.name} Format
                           </span>
                         )}
@@ -352,7 +352,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                         type="text"
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500/50 text-white font-mono text-xs shadow-inner"
+                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500/50 text-slate-900 dark:text-white font-mono text-xs shadow-inner"
                         placeholder="Enter text or numbers..."
                       />
                     </div>
@@ -360,7 +360,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                     {mode === 'barcode' ? (
                       <div className="space-y-2.5">
                         <div className="space-y-1">
-                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                             Barcode Standard
                           </label>
                           <CustomSelect
@@ -376,8 +376,8 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
 
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
-                            <label className="block text-[11px] font-semibold text-slate-400">
-                              Bar Width: <span className="text-blue-400 font-mono text-[11px]">{barWidth}px</span>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              Bar Width: <span className="text-blue-600 dark:text-blue-400 font-mono text-[11px]">{barWidth}px</span>
                             </label>
                             <input
                               type="range"
@@ -386,12 +386,12 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                               step="1"
                               value={barWidth}
                               onChange={(e) => setBarWidth(Number(e.target.value))}
-                              className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                              className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="block text-[11px] font-semibold text-slate-400">
-                              Height: <span className="text-blue-400 font-mono text-[11px]">{barHeight}px</span>
+                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              Height: <span className="text-blue-600 dark:text-blue-400 font-mono text-[11px]">{barHeight}px</span>
                             </label>
                             <input
                               type="range"
@@ -400,17 +400,17 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                               step="5"
                               value={barHeight}
                               onChange={(e) => setBarHeight(Number(e.target.value))}
-                              className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                              className="w-full h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                             />
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800 text-xs">
-                          <span className="font-medium text-slate-300 text-[11px]">Display Text Below</span>
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs">
+                          <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">Display Text Below</span>
                           <button
                             onClick={() => setDisplayValue(!displayValue)}
                             className={`w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors ${
-                              displayValue ? 'bg-blue-600' : 'bg-slate-800'
+                              displayValue ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-800'
                             }`}
                           >
                             <div
@@ -424,7 +424,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                     ) : (
                       <div className="space-y-2.5">
                         <div className="space-y-1">
-                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                             Error Correction Level (Density)
                           </label>
                           <CustomSelect
@@ -437,10 +437,10 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
 
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                               QR Size
                             </label>
-                            <span className="text-blue-400 font-mono text-[11px] font-bold">{qrSize}px</span>
+                            <span className="text-blue-600 dark:text-blue-400 font-mono text-[11px] font-bold">{qrSize}px</span>
                           </div>
                           <input
                             type="range"
@@ -449,16 +449,16 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                             step="10"
                             value={qrSize}
                             onChange={(e) => setQrSize(Number(e.target.value))}
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                            className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                           />
                         </div>
 
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800 text-xs">
-                          <span className="font-medium text-slate-300 text-[11px]">Quiet Margin</span>
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-xs">
+                          <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">Quiet Margin</span>
                           <button
                             onClick={() => setQrMargin(!qrMargin)}
                             className={`w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors ${
-                              qrMargin ? 'bg-blue-600' : 'bg-slate-800'
+                              qrMargin ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-800'
                             }`}
                           >
                             <div
@@ -470,9 +470,9 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                         </div>
 
                         {/* Embed Logo / Photo */}
-                        <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800 space-y-1.5">
+                        <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Center Logo</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Center Logo</span>
                             {logoUrl ? (
                               <div className="flex items-center gap-1.5">
                                 <img src={logoUrl} alt="Logo" className="w-5 h-5 object-contain rounded bg-white p-0.5" />
@@ -481,7 +481,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                             ) : (
                               <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded transition-colors"
+                                className="flex items-center gap-1 px-2 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-medium rounded transition-colors"
                               >
                                 <Upload size={11} /> Upload Image
                               </button>
@@ -496,7 +496,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                           </div>
                           {logoUrl && (
                             <div className="flex items-center gap-2 pt-0.5">
-                              <span className="text-[10px] text-slate-400">Size ({logoSize}px)</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">Size ({logoSize}px)</span>
                               <input
                                 type="range"
                                 min="20"
@@ -504,7 +504,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                                 step="2"
                                 value={logoSize}
                                 onChange={(e) => setLogoSize(Number(e.target.value))}
-                                className="flex-1 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                className="flex-1 h-1 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                               />
                             </div>
                           )}
@@ -514,7 +514,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
 
                     {/* Preset Colors */}
                     <div className="space-y-1 pt-1">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         Color Theme
                       </label>
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -528,12 +528,12 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                             title={preset.name}
                             className={`flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all ${
                               fgColor === preset.fg && bgColor === preset.bg
-                                ? 'border-blue-500 bg-blue-500/15 text-blue-300'
-                                : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200'
+                                ? 'border-blue-500 bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                                : 'border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                             }`}
                           >
                             <span
-                              className="w-2.5 h-2.5 rounded-full border border-slate-700 shrink-0"
+                              className="w-2.5 h-2.5 rounded-full border border-slate-300 dark:border-slate-700 shrink-0"
                               style={{ backgroundColor: preset.fg }}
                             />
                             <span>{preset.name.split(' ')[0]}</span>
@@ -545,13 +545,13 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                 )}
 
                 {/* Right Column / Full Area: Live Code Preview Box */}
-                <div className={`flex flex-col items-center justify-center p-6 bg-slate-950 border border-slate-800 rounded-2xl relative group overflow-hidden shadow-inner transition-all ${
+                <div className={`flex flex-col items-center justify-center p-6 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl relative group overflow-hidden shadow-inner transition-all ${
                   isFullscreenPreview ? 'col-span-full min-h-[380px] sm:min-h-[420px]' : 'min-h-[240px]'
                 }`}>
                   {/* Toggle Full View Button */}
                   <button
                     onClick={() => setIsFullscreenPreview(!isFullscreenPreview)}
-                    className="absolute top-3 right-3 p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 shadow-md transition-all z-20 flex items-center gap-1.5 text-xs font-semibold"
+                    className="absolute top-3 right-3 p-2 rounded-xl bg-white/90 dark:bg-slate-900/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 shadow-md transition-all z-20 flex items-center gap-1.5 text-xs font-semibold"
                     title={isFullscreenPreview ? "Exit Full View" : "Full View Mode"}
                   >
                     {isFullscreenPreview ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -594,14 +594,14 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                     {/* Barcode Container (Always mounted, hidden when mode !== barcode) */}
                     <div className={mode === 'barcode' ? 'block' : 'hidden'}>
                       {barcodeError ? (
-                        <div className="flex flex-col items-center justify-center p-4 text-center text-amber-400 max-w-xs bg-slate-900/90 rounded-xl border border-amber-500/20">
+                        <div className="flex flex-col items-center justify-center p-4 text-center text-amber-600 dark:text-amber-400 max-w-xs bg-white/90 dark:bg-slate-900/90 rounded-xl border border-amber-500/20">
                           <AlertTriangle size={24} className="mb-2 text-amber-500" />
                           <span className="text-xs font-bold mb-1">Barcode Format Error</span>
-                          <span className="text-[11px] text-slate-400 mb-3">{barcodeError}</span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">{barcodeError}</span>
                           {currentSpec && (
                             <button
                               onClick={() => setValue(currentSpec.example)}
-                              className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-all active:scale-95"
+                              className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-all active:scale-95"
                             >
                               Use Valid Sample Data ({currentSpec.example})
                             </button>
@@ -614,7 +614,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                   </div>
 
                   {/* Format tag badge */}
-                  <div className="absolute bottom-3 right-3 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800">
+                  <div className="absolute bottom-3 right-3 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800">
                     {mode === 'qrcode' ? `QR (${qrDensity})` : barcodeFormat}
                   </div>
                 </div>
@@ -623,10 +623,10 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
             </div>
 
             {/* Footer Action Bar */}
-            <div className="p-4 sm:px-6 border-t border-slate-800 bg-slate-900/90 backdrop-blur flex items-center justify-between gap-3 shrink-0">
+            <div className="p-4 sm:px-6 border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur flex items-center justify-between gap-3 shrink-0">
               <button
                 onClick={handleCopySvg}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold transition-all text-xs active:scale-95 shadow-sm"
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl font-bold transition-all text-xs active:scale-95 shadow-sm"
               >
                 {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
                 {copied ? 'SVG Copied!' : 'Copy SVG'}

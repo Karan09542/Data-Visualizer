@@ -2,9 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type SavedDocument } from '../lib/db';
 import { useStore } from '../store/useStore';
-import { X, Save, FolderOpen, Trash2, Search, Plus, MoreVertical, Copy, Edit2, Pin, Clock, AlertTriangle } from 'lucide-react';
+import { X, Save, FolderOpen, Trash2, Search, Plus, Copy, Edit2, Pin, Clock, AlertTriangle, FileCode, Check, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
+import CustomSelect from './CustomSelect';
 
 export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { code, setCode, activeDocumentId, setActiveDocumentId, setIsDirty, isDirty, setActiveDocumentName } = useStore();
@@ -148,109 +149,119 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center sm:p-4">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+          />
+
           <motion.div 
-            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+            initial={{ opacity: 0, scale: 0.96, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: 10 }}
-            className="relative w-full max-w-4xl h-[100dvh] sm:h-full max-h-none sm:max-h-[85vh] bg-slate-900 border-0 sm:border border-slate-800 shadow-2xl rounded-none sm:rounded-xl flex flex-col overflow-hidden"
+            exit={{ opacity: 0, scale: 0.96, y: 15 }}
+            className="relative w-full max-w-4xl h-[100dvh] sm:h-[85vh] bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-800 shadow-2xl rounded-none sm:rounded-3xl flex flex-col overflow-hidden text-slate-900 dark:text-slate-100"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0">
+            <div className="flex items-center justify-between px-5 py-4 bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800/80 backdrop-blur shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg shrink-0">
-                  <FolderOpen size={18} />
+                <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl border border-blue-500/20">
+                  <FolderOpen size={22} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-white tracking-tight">Document Manager</h2>
-                  <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Saved Collections</p>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">Document Manager</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Manage, organize, and switch your saved visualizations</p>
                 </div>
               </div>
               <button 
                 onClick={onClose} 
-                className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                title="Close"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Toolbar */}
-            <div className="p-4 bg-slate-900/50 border-b border-slate-800 space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            {/* Controls Bar: Search, Sort & Create */}
+            <div className="p-4 sm:p-5 bg-slate-50/70 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800/80 space-y-3 shrink-0">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Search Box */}
+                <div className="relative sm:col-span-2">
+                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input 
                     type="text" 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search documents..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs outline-none focus:border-indigo-500/30 text-slate-200 transition-colors placeholder:text-slate-600"
+                    placeholder="Search documents by name..."
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/40 text-slate-900 dark:text-slate-100 transition-all placeholder:text-slate-400"
                   />
                 </div>
                 
-                <select
+                {/* Custom Sort By Dropdown */}
+                <CustomSelect
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500/30 text-slate-300 appearance-none cursor-pointer"
-                >
-                  <option value="modified">Recently Modified</option>
-                  <option value="created">Created Date</option>
-                  <option value="name">Name</option>
-                </select>
+                  onChange={(val) => setSortBy(val as any)}
+                  options={[
+                    { label: "Recently Modified", value: "modified" },
+                    { label: "Created Date", value: "created" },
+                    { label: "Name (A-Z)", value: "name" },
+                  ]}
+                  className="w-full"
+                  icon={<Filter size={13} />}
+                />
               </div>
 
-              <div className="flex gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
+              {/* Create New Document Bar */}
+              <div className="flex gap-2 p-1.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <input 
                   type="text" 
                   value={docName}
                   onChange={(e) => setDocName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateNew()}
-                  placeholder="New document name..."
-                  className="flex-1 bg-transparent px-3 py-1.5 text-xs outline-none text-slate-200 placeholder:text-slate-600"
+                  placeholder="Enter new document name..."
+                  className="flex-1 bg-transparent px-3 py-1.5 text-xs outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
                 />
                 <button 
                   onClick={handleCreateNew}
-                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] transition-all active:scale-95 shadow-lg shadow-indigo-600/10"
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-md shadow-blue-500/20"
                 >
-                  <Plus size={14} /> 
-                  <span className="hidden sm:inline">Create New</span>
-                  <span className="sm:hidden">Create</span>
+                  <Plus size={15} /> 
+                  <span>Create Document</span>
                 </button>
               </div>
             </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-950 custom-scrollbar relative min-h-0">
+            {/* Document List View */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-100/50 dark:bg-slate-950/80 custom-scrollbar relative min-h-0">
               {documents === undefined ? (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-xs font-mono tracking-widest animate-pulse">LOADING DOCUMENTS...</div>
+                <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-xs font-mono tracking-widest animate-pulse">LOADING DOCUMENTS...</div>
               ) : filteredAndSortedDocs.length === 0 ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 p-8 text-center">
-                  <div className="p-4 bg-slate-900 rounded-full mb-4 border border-slate-800">
-                    <FolderOpen size={32} className="text-slate-700" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+                  <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl mb-3 border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <FolderOpen size={36} className="text-slate-400" />
                   </div>
-                  <p className="text-xs font-mono uppercase tracking-widest">No documents found</p>
-                  <p className="text-[10px] mt-2 opacity-60">Create a new document to get started</p>
+                  <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Documents Found</h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs">Create a new document above or try adjusting your search filter.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                   {filteredAndSortedDocs.map((doc) => (
                     <div 
                       key={doc.id} 
-                      className={`group flex flex-col p-3 rounded-xl border transition-all duration-200
+                      className={`group flex flex-col p-4 rounded-2xl border transition-all duration-200 relative overflow-hidden
                         ${activeDocumentId === doc.id 
-                            ? 'border-indigo-500/50 bg-indigo-500/5 shadow-lg shadow-indigo-500/5' 
-                            : 'border-slate-800 bg-slate-900 hover:border-slate-700 hover:bg-slate-900/80 shadow-sm'
+                            ? 'border-blue-500 bg-white dark:bg-slate-900 ring-2 ring-blue-500/20 shadow-lg' 
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-md'
                         }`}
                     >
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <button 
-                            onClick={() => handleTogglePin(doc)}
-                            className={`shrink-0 transition-colors ${doc.isPinned ? 'text-indigo-400' : 'text-slate-700 hover:text-slate-500'}`}
-                            title={doc.isPinned ? "Unpin" : "Pin"}
-                          >
-                            <Pin size={12} className={doc.isPinned ? "fill-current" : ""} />
-                          </button>
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          <div className={`p-2 rounded-xl shrink-0 ${activeDocumentId === doc.id ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
+                            <FileCode size={16} />
+                          </div>
                           
                           {editingId === doc.id ? (
                             <input
@@ -262,60 +273,63 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
                                 if (e.key === 'Enter') handleSaveRename(doc.id);
                                 if (e.key === 'Escape') setEditingId(null);
                               }}
-                              className="flex-1 bg-slate-950 border border-indigo-500/50 rounded px-2 py-0.5 text-xs outline-none text-white"
+                              className="flex-1 bg-slate-50 dark:bg-slate-950 border border-blue-500 rounded-lg px-2 py-1 text-xs outline-none text-slate-900 dark:text-white"
                             />
                           ) : (
                             <span 
                               onClick={() => handleLoad(doc)}
-                              className="text-xs font-semibold text-slate-200 truncate cursor-pointer hover:text-indigo-400 transition-colors"
+                              className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                              title={doc.name}
                             >
                               {doc.name}
                             </span>
                           )}
                         </div>
                         
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button onClick={(e) => { e.stopPropagation(); setEditingId(doc.id); setEditName(doc.name); }} className="p-1.5 hover:bg-slate-800 rounded-md transition-colors text-slate-500 hover:text-slate-300" title="Rename"><Edit2 size={12} /></button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDuplicate(doc); }} className="p-1.5 hover:bg-slate-800 rounded-md transition-colors text-slate-500 hover:text-slate-300" title="Duplicate"><Copy size={12} /></button>
-                          <button onClick={(e) => handleDelete(doc.id, e)} className="p-1.5 hover:bg-red-500/10 rounded-md transition-colors text-slate-500 hover:text-red-400" title="Delete"><Trash2 size={12} /></button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button 
+                            onClick={() => handleTogglePin(doc)}
+                            className={`p-1.5 rounded-lg transition-colors ${doc.isPinned ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                            title={doc.isPinned ? "Unpin Document" : "Pin Document"}
+                          >
+                            <Pin size={13} className={doc.isPinned ? "fill-current" : ""} />
+                          </button>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-800/50">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="flex items-center gap-1.5 text-[9px] text-slate-600 font-mono">
-                            <Clock size={10} /> {new Date(doc.updatedAt).toLocaleDateString()}
-                          </span>
-                          <span className="text-[9px] text-slate-700 font-mono ml-4">
-                            {new Date(doc.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                          </span>
+
+                      {/* Card Footer Info */}
+                      <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                        <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                          <Clock size={11} className="text-slate-400 shrink-0" />
+                          <span>{new Date(doc.updatedAt).toLocaleDateString()} {new Date(doc.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </div>
-                        
+
                         {activeDocumentId === doc.id ? (
-                          <div className="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md flex items-center gap-1.5 tracking-widest border border-indigo-500/20">
-                            <div className="w-1 h-1 rounded-full bg-indigo-400 animate-pulse"></div>
-                            ACTIVE
+                          <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md flex items-center gap-1 tracking-wider border border-emerald-500/20">
+                            <Check size={10} strokeWidth={3} />
+                            <span>ACTIVE</span>
                           </div>
                         ) : (
                           <button 
                              onClick={() => handleLoad(doc)}
-                             className="text-[10px] font-bold text-slate-500 hover:text-indigo-400 transition-colors uppercase tracking-widest"
+                             className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline uppercase tracking-wider"
                           >
                             Open →
                           </button>
                         )}
+                      </div>
+
+                      {/* Action hover overlay bar */}
+                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 dark:bg-slate-900/95 p-1 rounded-xl shadow-md border border-slate-200 dark:border-slate-800 backdrop-blur z-10">
+                        <button onClick={(e) => { e.stopPropagation(); setEditingId(doc.id); setEditName(doc.name); }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Rename"><Edit2 size={12} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDuplicate(doc); }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Duplicate"><Copy size={12} /></button>
+                        <button onClick={(e) => handleDelete(doc.id, e)} className="p-1 hover:bg-red-500/10 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-500 transition-colors" title="Delete"><Trash2 size={12} /></button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-
-            {/* Backdrop Click */}
-            <div 
-              className="absolute inset-0 -z-10" 
-              onClick={onClose}
-            />
 
             {/* Confirm Overlay */}
             <AnimatePresence>
@@ -324,21 +338,21 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4"
+                  className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4"
                 >
                   <motion.div 
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 0.95, opacity: 0 }}
-                    className="bg-slate-900 p-6 rounded-xl shadow-2xl border border-slate-800 max-w-sm w-full"
+                    className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-sm w-full"
                   >
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className={`p-2 rounded-lg ${confirmAction.type === 'delete' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`p-2.5 rounded-xl ${confirmAction.type === 'delete' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'}`}>
                         <AlertTriangle size={20} />
                       </div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">{confirmAction.title}</h3>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">{confirmAction.title}</h3>
                     </div>
-                    <p className="text-slate-400 text-xs leading-relaxed mb-6">{confirmAction.message}</p>
+                    <p className="text-slate-600 dark:text-slate-300 text-xs leading-relaxed mb-5">{confirmAction.message}</p>
                     <div className="flex flex-col gap-2">
                       <button 
                         onClick={() => {
@@ -348,15 +362,15 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
                             performLoad(confirmAction.doc);
                           }
                         }}
-                        className={`w-full py-2 text-xs font-bold text-white rounded-lg transition-all active:scale-95 ${confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-600/10' : 'bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/10'}`}
+                        className={`w-full py-2.5 text-xs font-bold text-white rounded-xl transition-all active:scale-95 shadow-md ${confirmAction.type === 'delete' ? 'bg-red-600 hover:bg-red-500 shadow-red-600/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'}`}
                       >
                         {confirmAction.type === 'delete' ? 'Confirm Delete' : 'Discard & Switch'}
                       </button>
                       <button 
                         onClick={() => setConfirmAction(null)}
-                        className="w-full py-2 text-xs font-bold text-slate-500 hover:text-slate-300 transition-colors"
+                        className="w-full py-2 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                       >
-                        Go back
+                        Cancel
                       </button>
                     </div>
                   </motion.div>
@@ -370,4 +384,3 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
     document.body
   );
 }
-

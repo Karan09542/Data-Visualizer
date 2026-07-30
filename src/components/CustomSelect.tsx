@@ -18,6 +18,7 @@ interface CustomSelectProps {
   disabled?: boolean;
   placeholder?: string;
   searchable?: boolean;
+  variant?: "default" | "toolbar";
 }
 
 export default function CustomSelect({
@@ -30,6 +31,7 @@ export default function CustomSelect({
   disabled = false,
   placeholder = "Select...",
   searchable = false,
+  variant = "default",
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,7 +43,7 @@ export default function CustomSelect({
     typeof opt === "string" ? { label: opt, value: opt } : opt
   );
 
-  const filteredOptions = options.filter(opt => 
+  const filteredOptions = options.filter(opt =>
     !searchable || opt.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -108,11 +110,14 @@ export default function CustomSelect({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center justify-between gap-2 px-2 py-1 text-xs font-semibold rounded border transition-all outline-none
-          ${
-            isOpen
+        className={`flex items-center justify-between gap-2 text-xs font-semibold transition-all outline-none w-full
+          ${variant === "toolbar"
+            ? `px-2.5 py-1 rounded border border-white/[0.08] bg-white/[0.04] dark:bg-transparent hover:bg-black dark:hover:bg-white/[0.08] hover:border-white/[0.12] ${isOpen ? "bg-white/[0.1] dark:bg-black border-white/[0.15]" : ""
+            }`
+            : `px-3 py-2 rounded-xl border ${isOpen
               ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/50 dark:bg-blue-900/10"
-              : "border-slate-200 dark:border-slate-800/60 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800"
+              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+            }`
           }
           ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
           text-slate-800 dark:text-slate-200
@@ -125,10 +130,9 @@ export default function CustomSelect({
           </span>
         </div>
         <ChevronDown
-          size={14}
-          className={`text-slate-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          size={12}
+          className={`text-slate-400 dark:text-slate-500 transition-transform duration-200 flex-shrink-0 ${isOpen ? "rotate-180" : ""
+            }`}
         />
       </button>
 
@@ -167,31 +171,30 @@ export default function CustomSelect({
             <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
               {filteredOptions.length > 0 ? (
                 filteredOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value);
-                    setIsOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors
-                    ${
-                      value === option.value
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors
+                    ${value === option.value
                         ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                         : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                    }
+                      }
                   `}
-                >
-                  <div className="flex items-center gap-2">
-                    {option.icon}
-                    <span>{option.label}</span>
-                  </div>
-                  {value === option.value && <Check size={12} />}
-                </button>
-              ))
-            ) : (
-              <div className="p-3 text-xs text-center text-slate-500">No results found</div>
-            )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {option.icon}
+                      <span>{option.label}</span>
+                    </div>
+                    {value === option.value && <Check size={12} />}
+                  </button>
+                ))
+              ) : (
+                <div className="p-3 text-xs text-center text-slate-500">No results found</div>
+              )}
             </div>
           </motion.div>
         )}

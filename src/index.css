@@ -639,3 +639,18 @@ input[type="number"] {
   border: 6px solid;
   border-image: linear-gradient(to bottom right, #4a7c59, #6c8f5c, #95b876, #6c8f5c, #4a7c59) 1;
 }
+
+/* Enable text selection and touch interactions in Monaco Editor on mobile */
+.monaco-editor,
+.monaco-editor .view-lines,
+.monaco-editor .view-line,
+.monaco-editor .lines-content {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  touch-action: pan-x pan-y !important;
+}
+
+.monaco-editor .inputarea {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}

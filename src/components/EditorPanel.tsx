@@ -23,6 +23,8 @@ import {
 const SmartFetchErrorUI = lazyWithRetry(() => import("./SmartFetchErrorUI"), "SmartFetchErrorUI");
 const GuiEditorPanel = lazyWithRetry(() => import("./GuiEditorPanel"), "GuiEditorPanel");
 const FileExplorerPanel = lazyWithRetry(() => import("./FileExplorerPanel"), "FileExplorerPanel");
+import { Sparkles } from "lucide-react";
+import { applyPatch } from "fast-json-patch";
 
 export default function EditorPanel() {
   const {
@@ -45,6 +47,8 @@ export default function EditorPanel() {
     setActiveTab,
     resetApiConfig,
     setIsEditorPanelOpen,
+    isAIPaletteOpen,
+    setIsAIPaletteOpen,
   } = useStore();
   const editorRef = useRef<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -115,15 +119,14 @@ export default function EditorPanel() {
 
   useEffect(() => {
     const handleFormat = async () => {
+      // existing handleFormat logic
       if (activeTab === "raw") {
         const { codeFormat, code, setCode } = useStore.getState();
         if (codeFormat === "json") {
           try {
             const parsed = JSON.parse(code);
             setCode(JSON.stringify(parsed, null, 2));
-          } catch (e) {
-            // Do not format if invalid
-          }
+          } catch (e) {}
         } else if (codeFormat === "yaml") {
           try {
             const yaml = (await import("js-yaml")).default;
@@ -131,15 +134,37 @@ export default function EditorPanel() {
             if (typeof parsed === "object") {
               setCode(yaml.dump(parsed));
             }
-          } catch (e) {
-            // Do not format if invalid
-          }
+          } catch (e) {}
         }
       }
     };
     window.addEventListener("format-editor", handleFormat);
     return () => window.removeEventListener("format-editor", handleFormat);
   }, [activeTab]);
+
+  const handleApplyAIPatch = (patch: any) => {
+    if (parsedData === null || typeof parsedData !== 'object') {
+       alert("No valid JSON to patch.");
+       return;
+    }
+    try {
+      const result = applyPatch(JSON.parse(JSON.stringify(parsedData)), patch);
+      setCode(JSON.stringify(result.newDocument, null, 2));
+    } catch (e: any) {
+      alert("Failed to apply patch: " + e.message);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsAIPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
@@ -911,6 +936,7 @@ export default function EditorPanel() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -136,7 +136,7 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center sm:p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -148,19 +148,19 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
 
         {/* Dialog Content */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          initial={{ opacity: 0, scale: 0.96, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+          exit={{ opacity: 0, scale: 0.96, y: 15 }}
+          className="relative w-full h-[100dvh] sm:h-auto sm:max-w-lg bg-white dark:bg-slate-900 rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between p-4 sm:px-6 border-b border-slate-100 dark:border-slate-800 shrink-0">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl">
                 <Share2 size={24} />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 italic">Share Visualization</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 italic">Share Visualization</h2>
                 <p className="text-xs text-slate-500 font-medium">Create a persistent sharing link</p>
               </div>
             </div>
@@ -172,7 +172,7 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
             </button>
           </div>
 
-          <div className="flex border-b border-slate-100 dark:border-slate-800">
+          <div className="flex border-b border-slate-100 dark:border-slate-800 shrink-0">
             <button
               onClick={() => setActiveTab('visualization')}
               className={`flex-1 py-3 text-sm font-semibold transition-colors border-b-2 ${activeTab === 'visualization' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
@@ -187,7 +187,7 @@ export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
             </button>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
             {activeTab === 'visualization' && (
               <>
                 {/* Status Card */}

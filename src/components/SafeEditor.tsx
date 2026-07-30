@@ -130,10 +130,23 @@ function SafeEditor(props: EditorProps) {
     : `lang-${lang}-${componentId}`;
 
   const mergedOptions = React.useMemo(() => {
-    return {
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
+    const options: any = {
       fixedOverflowWidgets: true,
+      automaticLayout: true,
+      scrollBeyondLastLine: false,
+      wordWrap: "on",
+      ...(isMobile ? {
+        selectionClipboard: false,
+        domReadOnly: false,
+        mouseWheelZoom: false,
+        links: true,
+        contextmenu: true,
+        selectOnLineNumbers: true,
+      } : {}),
       ...(props.options || {}),
     };
+    return options;
   }, [props.options]);
 
   const handleOnMount = (editor: any, monaco: any) => {

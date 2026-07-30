@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, Suspense, useMemo } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Maximize, Minimize, Maximize2, Undo2, Redo2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import EditorPanel from "./components/EditorPanel";
 import GraphVisualizer from "./components/GraphVisualizer";
@@ -22,8 +22,11 @@ const IsolatedNodeView = lazyWithRetry(() => import("./components/IsolatedNodeVi
 const SchemaVisualizer = lazyWithRetry(() => import("./components/SchemaVisualizer"), 'SchemaVisualizer');
 const DrawingToolbar = lazyWithRetry(() => import("./components/DrawingToolbar"), 'DrawingToolbar');
 const AdvancedPanel = lazyWithRetry(() => import("./components/AdvancedPanel"), 'AdvancedPanel');
+const AISettingsSidebar = lazyWithRetry(() => import("./components/AI/AISettingsSidebar"), 'AISettingsSidebar');
 const ShortcutsPopup = lazyWithRetry(() => import("./components/ShortcutsPopup"), 'ShortcutsPopup');
 const MathHelpPopup = lazyWithRetry(() => import("./components/MathHelpPopup"), 'MathHelpPopup');
+import { AICommandPalette } from "./components/AI/AICommandPalette";
+import { applyPatch } from "fast-json-patch";
 const YoutubeSearchPanel = lazyWithRetry(() => import("./components/YoutubeSearchPanel"), 'YoutubeSearchPanel');
 const ShareDialog = lazyWithRetry(() => import("./components/ShareDialog"), 'ShareDialog');
 const SavedDocumentsModal = lazyWithRetry(() => import("./components/SavedDocumentsModal"), 'SavedDocumentsModal');
@@ -121,20 +124,22 @@ function App() {
   const isEditorPanelOpen = useStore((state) => state.isEditorPanelOpen);
   const setIsEditorPanelOpen = useStore((state) => state.setIsEditorPanelOpen);
   const appTheme = useStore((state) => state.appTheme);
-  const setCode = useStore((state) => state.setCode);
   const isMathHelpOpen = useStore((state) => state.isMathHelpOpen);
   const setIsMathHelpOpen = useStore((state) => state.setIsMathHelpOpen);
   const isSavedDocsOpen = useStore((state) => state.isSavedDocsOpen);
   const setIsSavedDocsOpen = useStore((state) => state.setIsSavedDocsOpen);
   const visualizerMode = useStore((state) => state.visualizerMode);
   const isFileProcessing = useStore((state) => state.isFileProcessing);
+  const undoStack = useStore((state) => state.undoStack);
+  const redoStack = useStore((state) => state.redoStack);
+  const undo = useStore((state) => state.undo);
+  const redo = useStore((state) => state.redo);
 
   useKeyboardMediaShortcuts();
   useVoice();
 
   // JS Node Workspace States
   const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
-  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
   const jsNodeCodeOverrides = useStore((state) => state.jsNodeCodeOverrides);
   const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
   const jsNodeLoading = useStore((state) => state.jsNodeLoading);
@@ -145,6 +150,21 @@ function App() {
   const [searchParams] = useSearchParams();
   const focusNodePath = searchParams.get('focusNode');
   const forceWorkspace = searchParams.get('forceWorkspace');
+
+  const { setExpandedJsNodeId, setCode, isAIPaletteOpen, setIsAIPaletteOpen } = useStore();
+
+  const handleApplyAIPatch = useCallback((patch: any) => {
+    if (parsedData === null || typeof parsedData !== 'object') {
+      alert("No valid JSON to patch.");
+      return;
+    }
+    try {
+      const result = applyPatch(JSON.parse(JSON.stringify(parsedData)), patch);
+      setCode(JSON.stringify(result.newDocument, null, 2));
+    } catch (e: any) {
+      alert("Failed to apply patch: " + e.message);
+    }
+  }, [parsedData, setCode]);
 
   // We determine if focusNode is a "workspace" node based on naming conventions used by NodeRenderer
   const focusNodeType = useMemo(() => {
@@ -203,7 +223,7 @@ function App() {
             const historyCodes = [...state.undoStack, ...state.redoStack].map(s => s.code);
             const { deleteUnusedAssets } = await import("./utils/assetManager");
             await deleteUnusedAssets(state.parsedData, historyCodes);
-            
+
             const { discoverAudio } = await import("./audio/services/audioDiscovery");
             const tracks = await discoverAudio();
             window.dispatchEvent(new CustomEvent('audio-library-updated', { detail: tracks }));
@@ -518,6 +538,13 @@ function App() {
       <AutosaveManager />
       <NotificationToast />
 
+      <AICommandPalette
+        isOpen={isAIPaletteOpen}
+        onClose={() => setIsAIPaletteOpen(false)}
+        contextData={parsedData}
+        onApplyContext={handleApplyAIPatch}
+      />
+
       {focusNodePath ? (
         <div className="w-full h-full relative">
           {focusNodeType === 'workspace' ? (
@@ -611,12 +638,83 @@ function App() {
                   <GraphVisualizer />
                 )}
               </ErrorBoundary>
+
+              {/* Mobile Canvas Floating Controls (Bottom-Left) */}
+              {!isEditorPanelOpen && (
+                <div className="lg:hidden absolute bottom-4 left-4 z-[350] flex items-center bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-md border border-slate-700/40 dark:border-slate-800/60 rounded-xl p-1 shadow-lg opacity-60 hover:opacity-100 transition-all duration-200">
+                  <button
+                    onClick={undo}
+                    disabled={undoStack.length === 0}
+                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    title="Undo (Ctrl+Z)"
+                  >
+                    <Undo2 size={14} className={undoStack.length > 0 ? "text-red-400" : ""} />
+                    <span className="text-[11px]">Undo</span>
+                  </button>
+                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <button
+                    onClick={redo}
+                    disabled={redoStack.length === 0}
+                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    title="Redo (Ctrl+Y)"
+                  >
+                    <Redo2 size={14} className={redoStack.length > 0 ? "text-red-400" : ""} />
+                    <span className="text-[11px]">Redo</span>
+                  </button>
+                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <button
+                    onClick={() => {
+                      const btnId = document.getElementById("fit-graph-btn");
+                      if (btnId) btnId.click();
+                    }}
+                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    title="Fit View"
+                  >
+                    <Maximize2 size={14} />
+                    <span className="text-[11px]">Fit</span>
+                  </button>
+                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <button
+                    onClick={() => {
+                      useStore.getState().setCollapsedNodes(new Set());
+                      window.dispatchEvent(new CustomEvent("schema-expand-all"));
+                    }}
+                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    title="Expand All"
+                  >
+                    <Maximize size={14} />
+                    <span className="text-[11px]">Expand</span>
+                  </button>
+                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <button
+                    onClick={() => {
+                      const treeData = useStore.getState().treeData;
+                      const allIds = new Set<string>();
+                      const traverse = (node: any) => {
+                        if (node?.children) {
+                          allIds.add(node.id);
+                          node.children.forEach(traverse);
+                        }
+                      };
+                      if (treeData) traverse(treeData);
+                      useStore.getState().setCollapsedNodes(allIds);
+                      window.dispatchEvent(new CustomEvent("schema-collapse-all"));
+                    }}
+                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    title="Collapse All"
+                  >
+                    <Minimize size={14} />
+                    <span className="text-[11px]">Collapse</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </>
       )}
       <Suspense fallback={null}>
         <AdvancedPanel />
+        <AISettingsSidebar />
         <YoutubeSearchPanel />
         <ShortcutsPopup />
         <MathHelpPopup

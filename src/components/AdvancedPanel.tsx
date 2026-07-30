@@ -3,6 +3,7 @@ import { useStore, CanvasTheme, defaultSettings, NodeTheme, EdgeStyle } from '..
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { useVoiceStore } from '../voice/useVoiceStore';
 import { VoiceHelpModal } from '../voice/components/VoiceHelpModal';
+import { AISettingsPanel } from './AI/AISettingsPanel';
 import { RgbaColorPicker } from 'react-colorful';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -50,6 +51,38 @@ export default function AdvancedPanel() {
 
   const { isVoiceEnabled, setIsVoiceEnabled } = useVoiceStore();
   const [isVoiceHelpOpen, setIsVoiceHelpOpen] = useState(false);
+
+  const [panelWidth, setPanelWidth] = useState(320);
+  const isResizing = useRef(false);
+  
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizing.current) return;
+    const newWidth = window.innerWidth - e.clientX;
+    if (newWidth >= 280 && newWidth <= 800) {
+      setPanelWidth(newWidth);
+    }
+  };
+
+  const handleMouseUp = () => {
+    isResizing.current = false;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
 
   const [showBgPicker, setShowBgPicker] = useState(false);
   const [showPatternPicker, setShowPatternPicker] = useState(false);
@@ -215,14 +248,22 @@ export default function AdvancedPanel() {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-[400] transition-opacity duration-300 ${isAdvancedPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-[600] transition-opacity duration-300 ${isAdvancedPanelOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsAdvancedPanelOpen(false)}
       />
 
       {/* Panel */}
       <div
-        className={`fixed top-0 right-0 bottom-0 w-80 bg-slate-50 dark:bg-[#0b1120] border-l border-slate-300 dark:border-slate-800 z-[410] transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 bottom-0 bg-slate-50 dark:bg-[#0b1120] border-l border-slate-300 dark:border-slate-800 z-[610] transform transition-transform duration-300 ease-out flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 ${isAdvancedPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        style={{ width: windowWidth < 640 ? '100%' : `${panelWidth}px` }}
       >
+        {/* Resize Handle */}
+        <div 
+          className="absolute top-0 bottom-0 -left-1 w-2 cursor-col-resize group z-10 hidden sm:flex justify-center"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="w-0.5 h-full bg-transparent group-hover:bg-blue-500 transition-colors" />
+        </div>
         <div className="flex items-center justify-between p-4 border-b border-slate-300 dark:border-slate-800 bg-white dark:bg-[#0b1120]">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Advanced Options</h2>
           <button
@@ -546,6 +587,32 @@ export default function AdvancedPanel() {
                   />
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* AI Settings Sidebar Trigger */}
+          <div className="flex flex-col gap-3 p-3 bg-white dark:bg-[#0F172A] rounded-lg border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-blue-500/10 text-blue-500 rounded-md shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-slate-800 dark:text-slate-200">AI Platform Settings</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">Configure providers and parameters</div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  useStore.getState().setIsAdvancedPanelOpen(false);
+                  useStore.getState().setIsAISettingsPanelOpen(true);
+                }}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+              >
+                Configure
+              </button>
             </div>
           </div>
 

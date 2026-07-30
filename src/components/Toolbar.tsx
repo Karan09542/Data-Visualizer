@@ -36,6 +36,7 @@ import {
   FileImage,
   FileType,
   Barcode,
+  Sparkles,
 } from "lucide-react";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
@@ -773,6 +774,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           <div className="flex items-center gap-2 xl:gap-5 lg:gap-3">
             <CustomSelect
               label="Mode"
+              variant="toolbar"
               value={visualizerMode}
               onChange={(val) => setVisualizerMode(val as any)}
               options={[
@@ -784,6 +786,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
             <CustomSelect
               label="Format"
+              variant="toolbar"
               value={codeFormat}
               onChange={(val) => convertFormat(val as any)}
               options={CODE_FORMATS.map(f => ({ label: f.toUpperCase(), value: f, icon: <FileType size={12} /> }))}
@@ -792,6 +795,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
             <CustomSelect
               label="Layout"
+              variant="toolbar"
               value={layoutMode}
               onChange={(val) => {
                 setLayoutMode(val as any);
@@ -813,6 +817,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
             <CustomSelect
               label="Theme"
+              variant="toolbar"
               value={nodeTheme}
               onChange={(val) => setNodeTheme(val as NodeTheme)}
               options={[...NODE_THEMES]}
@@ -822,6 +827,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0 group">
               <CustomSelect
                 label="Edge"
+                variant="toolbar"
                 value={edgeStyle}
                 onChange={(val) => setEdgeStyle(val as EdgeStyle)}
                 options={[...EDGE_STYLES]}
@@ -837,6 +843,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
             <CustomSelect
               label="Shape"
+              variant="toolbar"
               value={nodeShape}
               onChange={(val) => setNodeShape(val as NodeShape)}
               options={[...NODE_SHAPES]}
@@ -845,6 +852,19 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
 
           <div className="flex items-center gap-1 xl:gap-4 lg:gap-2">
+            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-2 xl:pr-4 flex-shrink-0">
+              <button
+                onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
+                className="group flex items-center gap-1.5 px-2.5 py-1 rounded border border-purple-500/30 bg-gradient-to-r from-purple-600/15 via-indigo-500/15 to-blue-500/15 hover:from-purple-600/25 hover:via-indigo-500/25 hover:to-blue-500/25 hover:border-purple-400/40 text-slate-100 transition-all cursor-pointer text-xs font-semibold"
+                title="Open AI Command Palette (Ctrl+J)"
+              >
+                <Sparkles size={12} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
+                <span className="truncate">Ask AI</span>
+                <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 rounded border border-purple-500/20 bg-purple-500/10 text-[9px] font-mono text-purple-300/70">
+                  ⌘J
+                </kbd>
+              </button>
+            </div>
             <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
               <button
                 onClick={expandAll}
@@ -1047,7 +1067,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
         </div>
 
-        <div className="lg:hidden">
+        <div className="lg:hidden flex items-center gap-2">
+          <button
+            onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold shadow-sm active:scale-95 transition-all"
+            title="Ask AI Command Palette"
+          >
+            <Sparkles size={13} className="animate-pulse" />
+            <span>Ask AI</span>
+          </button>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="p-2 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
@@ -1063,8 +1091,37 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             className="lg:hidden fixed inset-0 z-[490]"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="lg:hidden absolute top-[57px] left-0 right-0 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-300 dark:border-slate-800 z-[495] shadow-xl overflow-y-auto max-h-[80vh] custom-scrollbar">
-            <div className="p-4 grid grid-cols-2 gap-4">
+          <div className="lg:hidden fixed top-[48px] left-0 right-0 bottom-0 bg-slate-50 dark:bg-[#0f172a] z-[510] shadow-2xl overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="p-4 pb-16 grid grid-cols-2 gap-4">
+              {/* AI Features Section */}
+              <div className="col-span-2 p-3 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 dark:from-purple-950/40 dark:via-indigo-950/40 dark:to-slate-900/40 border border-purple-200 dark:border-purple-800/40 rounded-xl flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
+                    <Sparkles size={14} className="text-purple-500" />
+                    <span>AI Intelligence</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      useStore.getState().setIsAIPaletteOpen(true);
+                    }}
+                    className="flex items-center justify-center gap-2 p-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
+                  >
+                    <Sparkles size={14} /> Ask AI
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      useStore.getState().setIsAISettingsPanelOpen(true);
+                    }}
+                    className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 transition-all"
+                  >
+                    <SlidersHorizontal size={14} className="text-purple-500" /> AI Settings
+                  </button>
+                </div>
+              </div>
               <CustomSelect
                 label="Mode"
                 value={visualizerMode}
@@ -1169,171 +1226,157 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 className="flex flex-col items-start gap-2 col-span-1"
               />
 
-              <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-3">
-                <button
-                  onClick={undo}
-                  disabled={undoStack.length === 0}
-                  className={`flex items-center justify-center gap-2 p-2 rounded-md transition-colors text-sm font-medium disabled:opacity-30 border ${
-                    undoStack.length > 0 
-                      ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
-                      : "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 border-transparent"
-                  }`}
-                >
-                  <Undo2 size={16} /> Undo
-                </button>
-                <button
-                  onClick={redo}
-                  disabled={redoStack.length === 0}
-                  className={`flex items-center justify-center gap-2 p-2 rounded-md transition-colors text-sm font-medium disabled:opacity-30 border ${
-                    redoStack.length > 0 
-                      ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
-                      : "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 border-transparent"
-                  }`}
-                >
-                  <Redo2 size={16} /> Redo
-                </button>
-              </div>
+              {/* Document & File Management Grid */}
+              <div className="col-span-2 mt-2 pt-3 border-t border-slate-200 dark:border-slate-800/80">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 block">
+                  Document & Storage
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
+                    className={`flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${
+                      isAutosaveEnabled
+                        ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                        : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isAutosaveEnabled ? <Cloud size={16} className="text-blue-500" /> : <CloudOff size={16} />}
+                      <span>Autosave</span>
+                    </div>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                      isAutosaveEnabled ? "bg-blue-500 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                    }`}>
+                      {isAutosaveEnabled ? "ON" : "OFF"}
+                    </span>
+                  </button>
 
-              <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-3">
-                <button
-                  onClick={expandAll}
-                  className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
-                >
-                  <Maximize size={16} /> Expand All
-                </button>
-                <button
-                  onClick={collapseAll}
-                  className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
-                >
-                  <Minimize size={16} /> Collapse All
-                </button>
-              </div>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsSavedDocsOpen(true);
+                    }}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                  >
+                    <FolderOpen size={16} className="text-blue-500" />
+                    <span className="truncate">Saved Docs</span>
+                  </button>
 
-              <div className="col-span-2 grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    const btnId = document.getElementById("fit-graph-btn");
-                    if (btnId) btnId.click();
-                  }}
-                  className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
-                >
-                  <Maximize2 size={16} /> Fit View
-                </button>
-                <button
-                  onClick={formatCode}
-                  className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
-                >
-                  <Paintbrush size={16} /> Format
-                </button>
-              </div>
-
-              <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 flex flex-col gap-3">
-                <button
-                  onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
-                  className={`w-full flex items-center justify-center gap-2 p-2.5 rounded-md transition-colors text-sm font-medium ${isAutosaveEnabled ? "bg-blue-600 hover:bg-blue-700 text-white shadow-m shadow-blue-500/20" : "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700"}`}
-                >
-                  {isAutosaveEnabled ? (
-                    <Cloud size={16} />
+                  {activeDocumentId ? (
+                    <button
+                      onClick={async () => {
+                        setIsMobileMenuOpen(false);
+                        await db.documents.update(activeDocumentId, {
+                          code,
+                          updatedAt: Date.now()
+                        });
+                        setLastSavedCode(code);
+                        setIsDirty(false);
+                        setNotification({ message: 'Document updated successfully', type: 'success' });
+                      }}
+                      className="flex items-center gap-2 p-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white border border-blue-500/30 rounded-xl text-xs font-semibold transition-all shadow-sm"
+                    >
+                      <Save size={16} />
+                      <span>Quick Save</span>
+                    </button>
                   ) : (
-                    <CloudOff size={16} />
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setIsSavedDocsOpen(true);
+                      }}
+                      className="flex items-center gap-2 p-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white border border-amber-500/30 rounded-xl text-xs font-semibold transition-all shadow-sm"
+                    >
+                      <Save size={16} />
+                      <span>Save New</span>
+                    </button>
                   )}
-                  {isAutosaveEnabled ? "Autosave is On" : "Turn On Autosave"}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsSavedDocsOpen(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
-                >
-                  <FolderOpen size={16} /> Saved Documents
-                </button>
-                {activeDocumentId && (
-                  <button
-                    onClick={async () => {
-                      setIsMobileMenuOpen(false);
-                      await db.documents.update(activeDocumentId, {
-                        code,
-                        updatedAt: Date.now()
-                      });
-                      setLastSavedCode(code);
-                      setIsDirty(false);
-                      setNotification({ message: 'Document updated successfully', type: 'success' });
-                    }}
-                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-100 dark:bg-blue-900/30 rounded-md text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors text-sm font-medium"
-                  >
-                    <Save size={16} /> Quick Save
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsApiHelpOpen(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-2.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 rounded-md transition-all text-sm font-medium relative overflow-hidden group/info-btn"
-                >
-                  <span className="font-bold text-sm leading-none flex items-center justify-center w-[16px] h-[16px] border border-current rounded-full text-[12px]">?</span> Info Guide
-                  <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                </button>
-                <label className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium cursor-pointer">
-                  <Database size={16} /> Upload File
-                  <input
-                    type="file"
-                    className="hidden"
-                    multiple
-                    accept=".json,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf"
-                    onChange={(e) => {
-                      setIsMobileMenuOpen(false);
-                      handleFileUpload(e);
-                    }}
-                  />
-                </label>
+
+                  <label className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition-all cursor-pointer">
+                    <Database size={16} />
+                    <span className="truncate">Upload File</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      multiple
+                      accept=".json,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf"
+                      onChange={(e) => {
+                        setIsMobileMenuOpen(false);
+                        handleFileUpload(e);
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 block">
-                  Appearance & Sharing
+              {/* Tools & Preferences Grid */}
+              <div className="col-span-2 mt-1 pt-3 border-t border-slate-200 dark:border-slate-800/80">
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2.5 block">
+                  Tools & Options
                 </label>
-                <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
-                    onClick={toggleTheme}
-                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsApiHelpOpen(true);
+                    }}
+                    className="flex items-center gap-2 p-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 rounded-xl text-xs font-semibold text-emerald-600 dark:text-emerald-400 transition-all relative overflow-hidden group"
                   >
-                    {appTheme === "dark" ? (
-                      <Sun size={16} />
-                    ) : (
-                      <Moon size={16} />
-                    )}
-                    {appTheme === "dark" ? "Light Mode" : "Dark Mode"}
+                    <span className="font-bold text-xs leading-none flex items-center justify-center w-4 h-4 border border-current rounded-full">?</span>
+                    <span>Info Guide</span>
+                    <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
                   </button>
+
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       setIsBarcodeGeneratorOpen(true);
                     }}
-                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
                   >
-                    <Barcode size={16} /> Barcode Generator
+                    <Barcode size={16} className="text-blue-500" />
+                    <span>Barcode</span>
                   </button>
+
                   <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onOpenShare();
-                    }}
-                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium shadow-m shadow-blue-500/20 active:scale-95"
+                    onClick={toggleTheme}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
                   >
-                    <Share2 size={16} /> Share Tool
-                    <div className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded bg-black/20 text-[9px] uppercase tracking-tighter">
-                      <div
-                        className={`w-1.5 h-1.5 rounded-full ${shareIndicator?.color}`}
-                      />
-                      {shareIndicator?.label}
-                    </div>
+                    {appTheme === "dark" ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-indigo-500" />}
+                    <span>{appTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+                  </button>
+
+                  <button
+                    onClick={formatCode}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                  >
+                    <Paintbrush size={16} className="text-purple-500" />
+                    <span>Format</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Share & Export */}
+              <div className="col-span-2 mt-1 pt-3 border-t border-slate-200 dark:border-slate-800/80">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onOpenShare();
+                  }}
+                  className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 mb-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <Share2 size={16} />
+                    <span>Share Workspace</span>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-black/20 text-[9px] uppercase tracking-wider">
+                    <div className={`w-1.5 h-1.5 rounded-full ${shareIndicator?.color}`} />
+                    {shareIndicator?.label}
+                  </div>
+                </button>
               </div>
 
               <div className="col-span-2 mt-2 pt-4 border-t border-slate-300 dark:border-slate-800">
