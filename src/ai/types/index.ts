@@ -15,7 +15,7 @@ export type AITask =
 export type AIBackend = 'webgpu' | 'webnn' | 'wasm';
 
 export interface ModelSource {
-  type: 'huggingface' | 'cdn' | 'local';
+  type: 'huggingface' | 'cdn' | 'local' | 'custom';
   url: string;
 }
 

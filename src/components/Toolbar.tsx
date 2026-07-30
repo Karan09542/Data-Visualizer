@@ -35,12 +35,14 @@ import {
   Check,
   FileImage,
   FileType,
+  Barcode,
 } from "lucide-react";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { db } from "../lib/db";
 import NodeHelpModal from "./NodeHelpModal";
+import BarcodeGeneratorModal from "./BarcodeGeneratorModal";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
@@ -133,6 +135,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   }, [shareSizeInfo.status]);
 
   const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
+  const [isBarcodeGeneratorOpen, setIsBarcodeGeneratorOpen] = useState(false);
 
   const exportHDImageRef = useRef<((type?: string) => Promise<void>) | null>(null);
   
@@ -990,6 +993,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </span>
               </button>
               <button
+                onClick={() => setIsBarcodeGeneratorOpen(true)}
+                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                title="Barcode Generator"
+              >
+                <Barcode size={16} />
+              </button>
+              <button
                 onClick={toggleTheme}
                 className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
                 title="Toggle Theme"
@@ -1302,6 +1312,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
+                      setIsBarcodeGeneratorOpen(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-slate-200 dark:bg-slate-800 rounded-md text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors text-sm font-medium"
+                  >
+                    <Barcode size={16} /> Barcode Generator
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
                       onOpenShare();
                     }}
                     className="w-full flex items-center justify-center gap-2 p-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium shadow-m shadow-blue-500/20 active:scale-95"
@@ -1544,6 +1563,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       <NodeHelpModal
         isOpen={isApiHelpOpen}
         onClose={() => setIsApiHelpOpen(false)}
+      />
+
+      <BarcodeGeneratorModal
+        isOpen={isBarcodeGeneratorOpen}
+        onClose={() => setIsBarcodeGeneratorOpen(false)}
       />
     </>
   );
