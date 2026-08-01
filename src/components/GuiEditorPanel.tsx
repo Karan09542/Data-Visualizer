@@ -359,12 +359,13 @@ export default function GuiEditorPanel() {
       currentPath = "root",
     ): { path: string; label: string }[] {
       const paths: { path: string; label: string }[] = [
-        { path: currentPath, label: currentPath },
+        { path: currentPath, label: currentPath === "root" ? "root (Top Level)" : currentPath },
       ];
-      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-        for (const key of Object.keys(obj)) {
-          const val = obj[key];
-          if (val && typeof val === "object" && !Array.isArray(val)) {
+      if (obj && typeof obj === "object") {
+        const keys = Object.keys(obj);
+        for (const key of keys) {
+          const val = obj[key as keyof typeof obj];
+          if (val && typeof val === "object") {
             const nestedPath =
               currentPath === "root" ? `root.${key}` : `${currentPath}.${key}`;
             paths.push(...getObjectPaths(val, nestedPath));
@@ -479,7 +480,7 @@ export default function GuiEditorPanel() {
       return;
     }
 
-    const updatedData = parsedData
+    const updatedData = parsedData !== undefined && parsedData !== null
       ? JSON.parse(JSON.stringify(parsedData))
       : {};
 
@@ -494,17 +495,8 @@ export default function GuiEditorPanel() {
       }
     }
 
-    if (
-      !targetParent ||
-      typeof targetParent !== "object" ||
-      Array.isArray(targetParent)
-    ) {
+    if (!targetParent || typeof targetParent !== "object") {
       setFormError("Target location path is invalid");
-      return;
-    }
-
-    if (key in targetParent) {
-      setFormError(`Key "${key}" already exists within "${newParentPath}"`);
       return;
     }
 
@@ -519,7 +511,19 @@ export default function GuiEditorPanel() {
     else if (newKeyType === "object") finalValue = {};
     else if (["api_node", "js_node", "ts_node", "py_node", "math_node", "todo_node", "image_node", "transfer_node", "search_node"].includes(newKeyType)) finalValue = "";
 
-    targetParent[key] = finalValue;
+    let createdPath = "";
+    if (Array.isArray(targetParent)) {
+      targetParent.push({ [key]: finalValue });
+      const newIndex = targetParent.length - 1;
+      createdPath = newParentPath === "root" ? `root.${newIndex}.${key}` : `${newParentPath}.${newIndex}.${key}`;
+    } else {
+      if (key in targetParent) {
+        setFormError(`Key "${key}" already exists within "${newParentPath}"`);
+        return;
+      }
+      targetParent[key] = finalValue;
+      createdPath = newParentPath === "root" ? `root.${key}` : `${newParentPath}.${key}`;
+    }
 
     saveUpdatedData(updatedData);
 
@@ -532,7 +536,7 @@ export default function GuiEditorPanel() {
 
     setIsMobileDrawerOpen(false);
     triggerToast(`Created attribute "${key}" successfully`, "success");
-    setSelectedNodeId(newParentPath === "root" ? `root.${key}` : `${newParentPath}.${key}`);
+    setSelectedNodeId(createdPath);
   };
 
   // CRUD: Update single value inline
@@ -649,18 +653,29 @@ export default function GuiEditorPanel() {
 
     const lastKey = parts[parts.length - 1];
     if (parent && typeof parent === "object") {
-      let copyKey = `${lastKey}_copy`;
-      let counter = 1;
-      while (copyKey in parent) {
-        copyKey = `${lastKey}_copy_${counter}`;
-        counter++;
-      }
+      if (Array.isArray(parent)) {
+        const idx = parseInt(lastKey, 10);
+        if (!isNaN(idx)) {
+          snapshotHistory();
+          const cloned = JSON.parse(JSON.stringify(parent[idx]));
+          parent.splice(idx + 1, 0, cloned);
+          saveUpdatedData(updatedData);
+          triggerToast(`Duplicated element at index ${idx}`, "success");
+        }
+      } else {
+        let copyKey = `${lastKey}_copy`;
+        let counter = 1;
+        while (copyKey in parent) {
+          copyKey = `${lastKey}_copy_${counter}`;
+          counter++;
+        }
 
-      snapshotHistory();
-      // Clone value
-      parent[copyKey] = JSON.parse(JSON.stringify(parent[lastKey]));
-      saveUpdatedData(updatedData);
-      triggerToast(`Duplicated into "${copyKey}"`, "success");
+        snapshotHistory();
+        // Clone value
+        parent[copyKey] = JSON.parse(JSON.stringify(parent[lastKey]));
+        saveUpdatedData(updatedData);
+        triggerToast(`Duplicated into "${copyKey}"`, "success");
+      }
     }
   };
 
@@ -687,7 +702,12 @@ export default function GuiEditorPanel() {
     const valueToMove = JSON.parse(JSON.stringify(targetParent[movingKey]));
 
     // Remove from original spot
-    delete targetParent[movingKey];
+    if (Array.isArray(targetParent)) {
+      const idx = parseInt(movingKey, 10);
+      if (!isNaN(idx)) targetParent.splice(idx, 1);
+    } else {
+      delete targetParent[movingKey];
+    }
 
     // Find destination path to inject
     let destParent = updatedData;
@@ -699,17 +719,20 @@ export default function GuiEditorPanel() {
       }
     }
 
-    if (movingKey in destParent) {
-      triggerToast(
-        `Key conflict: "${movingKey}" already exists in destination`,
-        "error",
-      );
-      setMovingPath(null);
-      return;
-    }
-
     snapshotHistory();
-    destParent[movingKey] = valueToMove;
+    if (Array.isArray(destParent)) {
+      destParent.push({ [movingKey]: valueToMove });
+    } else {
+      if (movingKey in destParent) {
+        triggerToast(
+          `Key conflict: "${movingKey}" already exists in destination`,
+          "error",
+        );
+        setMovingPath(null);
+        return;
+      }
+      destParent[movingKey] = valueToMove;
+    }
     saveUpdatedData(updatedData);
     triggerToast(
       `Moved field under "${moveToPath === "root" ? "top level" : moveToPath}"`,

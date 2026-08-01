@@ -186,12 +186,15 @@ const extractHeadings = (text: string): Heading[] => {
       inCodeBlock = !inCodeBlock;
     }
     if (!inCodeBlock) {
-      const match = line.match(/^(#{1,4})\s+(.+)$/);
+      const match = line.match(/^(#{1,6})\s+(.+)$/);
       if (match) {
         const level = match[1].length;
         const rawText = match[2];
-        // Remove simple markdown formatting from heading text for the outline
-        const cleanText = rawText.replace(/[*_~`]/g, '').trim();
+        // Remove markdown formatting from heading text for the outline
+        const cleanText = rawText
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/[*_~`]/g, '')
+          .trim();
         // Generate a URL-friendly slug
         const id = cleanText.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '');
         headings.push({ level, text: cleanText, id });
@@ -213,21 +216,49 @@ const flatten = (text: string, child: any): string => {
 };
 
 const HeadingRenderer = (props: any) => {
-  const children = React.Children.toArray(props.children);
-  const text = (children.reduce(flatten, '') as string) || '';
-  // the ID here should match the one generated in extractHeadings. We can approximate or just use the text.
-  // Actually, to make them match exactly, it's tricky without a shared counter. 
-  // Let's use a simpler slug and assume users don't have exactly duplicate headers, 
-  // or use the text + position if we could.
-  // For simplicity, we just slugify the text here. It might break if there are exact duplicates.
+  const { level, children, id: propId, onHeadingClick, ...restProps } = props;
+  const childArray = React.Children.toArray(children);
+  const text = (childArray.reduce(flatten, '') as string) || '';
   const slug = text.toLowerCase().replace(/[^\w]+/g, '-').replace(/(^-|-$)/g, '');
-  const id = props.id || slug; // if remark-slug was used, props.id would be there
-  return React.createElement(`h${props.level}`, { id, className: 'scroll-mt-20 group relative' }, [
-    <a href={`#${id}`} key="anchor" className="absolute -left-6 top-1 opacity-0 group-hover:opacity-100 text-slate-400 hidden sm:block">
-      <LinkIcon size={16} />
-    </a>,
-    ...children
-  ]);
+  const id = propId || slug;
+
+  const handleClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const closestAnchor = target.closest('a');
+    if (closestAnchor && closestAnchor.getAttribute('href') !== `#${id}`) {
+      return;
+    }
+    e.preventDefault();
+    if (onHeadingClick) {
+      onHeadingClick(id);
+    }
+  };
+
+  return React.createElement(
+    `h${level}`,
+    {
+      id,
+      onClick: handleClick,
+      className: 'scroll-mt-20 group relative cursor-pointer hover:opacity-90 transition-opacity',
+      ...restProps
+    },
+    [
+      <a
+        href={`#${id}`}
+        key="anchor"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (onHeadingClick) onHeadingClick(id);
+        }}
+        className="absolute -left-6 top-1 opacity-0 group-hover:opacity-100 text-slate-400 hidden sm:block hover:text-indigo-400 transition-colors"
+        title="Direct link to section"
+      >
+        <LinkIcon size={16} />
+      </a>,
+      ...childArray
+    ]
+  );
 };
 
 const getThemeClasses = (theme: string) => {
@@ -242,7 +273,7 @@ const getThemeClasses = (theme: string) => {
                "prose-code:bg-slate-100 prose-code:text-slate-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
                "prose-table:border prose-table:border-slate-200 prose-th:bg-slate-50 prose-th:p-2 prose-td:p-2 " +
                "prose-blockquote:border-l-4 prose-blockquote:border-slate-300 prose-blockquote:text-slate-500 prose-blockquote:not-italic " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'github-dark':
       return {
@@ -255,7 +286,7 @@ const getThemeClasses = (theme: string) => {
                "prose-code:bg-[#161b22] prose-code:text-[#c9d1d9] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
                "prose-table:border prose-table:border-[#30363d] prose-th:bg-[#161b22] prose-th:p-2 prose-td:p-2 " +
                "prose-blockquote:border-l-4 prose-blockquote:border-[#30363d] prose-blockquote:text-[#8b949e] prose-blockquote:not-italic " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'default-dark':
       return {
@@ -268,7 +299,7 @@ const getThemeClasses = (theme: string) => {
                "prose-table:border prose-table:border-slate-200 dark:prose-table:border-slate-800 prose-th:bg-slate-50 dark:prose-th:bg-slate-900 prose-th:p-2 prose-td:p-2 " +
                "prose-img:rounded-lg prose-img:shadow-sm " +
                "prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50 dark:prose-blockquote:bg-indigo-500/10 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic prose-blockquote:text-slate-700 dark:prose-blockquote:text-slate-300 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'notebook-dark':
       return {
@@ -282,8 +313,8 @@ const getThemeClasses = (theme: string) => {
                "prose-table:border prose-table:border-blue-900/50 prose-th:bg-blue-900/20 prose-th:p-2 prose-td:p-2 " +
                "prose-img:rounded-lg prose-img:shadow-md " +
                "prose-blockquote:border-l-4 prose-blockquote:border-red-500/50 prose-blockquote:bg-red-900/10 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-400 " +
-               "markdown-body pb-32 relative " + 
-               "before:absolute before:inset-0 before:w-px before:bg-red-500/30 before:-left-6 sm:before:-left-8 before:h-[200%] before:-top-[50%]"
+               "markdown-body pb-12 relative " + 
+               "before:absolute before:top-0 before:bottom-0 before:w-px before:bg-red-500/30 before:-left-6 sm:before:-left-8"
       };
     case 'borderlands':
       return {
@@ -297,7 +328,7 @@ const getThemeClasses = (theme: string) => {
                "prose-table:border-4 prose-table:border-black prose-th:bg-yellow-400 prose-th:border-b-4 prose-th:border-black prose-th:text-black prose-th:uppercase prose-th:font-black prose-td:border-b-2 prose-td:border-black " +
                "prose-img:border-4 prose-img:border-black prose-img:shadow-[6px_6px_0_#000] prose-img:rounded-none " +
                "prose-blockquote:border-l-8 prose-blockquote:border-black prose-blockquote:bg-yellow-400 prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:italic prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:shadow-[4px_4px_0_#000] " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'comic-minimal':
       return {
@@ -308,7 +339,7 @@ const getThemeClasses = (theme: string) => {
                "prose-pre:bg-blue-50 prose-pre:border-4 prose-pre:border-blue-200 prose-pre:rounded-2xl " +
                "prose-code:text-red-500 prose-code:bg-yellow-100 prose-code:px-2 prose-code:py-1 prose-code:rounded-full " +
                "prose-blockquote:border-l-0 prose-blockquote:bg-blue-50 prose-blockquote:rounded-2xl prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:text-blue-800 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'anime-pastel':
       return {
@@ -319,7 +350,7 @@ const getThemeClasses = (theme: string) => {
                "prose-pre:bg-[#e6e6fa] prose-pre:border-2 prose-pre:border-[#ffb6c1] prose-pre:rounded-xl " +
                "prose-code:text-[#ff69b4] prose-code:bg-[#fff] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-md prose-code:border prose-code:border-[#ffb6c1] " +
                "prose-blockquote:border-l-4 prose-blockquote:border-[#ff69b4] prose-blockquote:bg-[#ffe4e1] prose-blockquote:rounded-r-xl prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:text-[#ff69b4] " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'manga-scan':
       return {
@@ -333,7 +364,7 @@ const getThemeClasses = (theme: string) => {
                "prose-code:text-black prose-code:font-bold prose-code:bg-gray-200 prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 " +
                "prose-img:border-8 prose-img:border-black prose-img:rounded-none prose-img:grayscale " +
                "prose-blockquote:border-l-8 prose-blockquote:border-black prose-blockquote:bg-gray-100 prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:italic prose-blockquote:py-3 prose-blockquote:px-6 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'cyberpunk':
       return {
@@ -346,7 +377,7 @@ const getThemeClasses = (theme: string) => {
                "prose-code:text-[#00ffff] prose-code:font-bold prose-code:bg-black prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-none " +
                "prose-img:border-4 prose-img:border-black prose-img:rounded-none prose-img:shadow-[8px_8px_0_#ff003c] " +
                "prose-blockquote:border-l-8 prose-blockquote:border-[#00ffff] prose-blockquote:bg-black prose-blockquote:text-[#ff003c] prose-blockquote:font-mono prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:-skew-x-6 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'retro-arcade':
       return {
@@ -358,7 +389,7 @@ const getThemeClasses = (theme: string) => {
                "prose-pre:bg-[#111] prose-pre:border-4 prose-pre:border-[#00ff00] prose-pre:rounded-none " +
                "prose-code:text-[#ff00ff] prose-code:bg-[#222] prose-code:border prose-code:border-[#ff00ff] prose-code:px-1.5 prose-code:py-0.5 prose-code:uppercase " +
                "prose-blockquote:border-l-8 prose-blockquote:border-[#00ffff] prose-blockquote:bg-[#0a0a0a] prose-blockquote:text-[#00ffff] prose-blockquote:uppercase prose-blockquote:py-3 prose-blockquote:px-6 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'synthwave':
       return {
@@ -369,7 +400,7 @@ const getThemeClasses = (theme: string) => {
                "prose-pre:bg-[#0d0221] prose-pre:border prose-pre:border-[#00d2ff] prose-pre:shadow-[0_0_15px_rgba(0,210,255,0.3)] " +
                "prose-code:text-[#ff00a0] prose-code:bg-[#2b0f4c] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded " +
                "prose-blockquote:border-l-4 prose-blockquote:border-[#ff00a0] prose-blockquote:bg-[#2b0f4c]/50 prose-blockquote:text-[#00d2ff] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:shadow-[inset_4px_0_10px_rgba(255,0,160,0.2)] " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'neubrutalism':
       return {
@@ -382,7 +413,7 @@ const getThemeClasses = (theme: string) => {
                "prose-code:text-black prose-code:font-bold prose-code:bg-white prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 prose-code:shadow-[2px_2px_0_#000] " +
                "prose-img:border-4 prose-img:border-black prose-img:shadow-[8px_8px_0_#000] prose-img:rounded-none " +
                "prose-blockquote:border-4 prose-blockquote:border-black prose-blockquote:bg-[#ff4500] prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:shadow-[8px_8px_0_#000] prose-blockquote:-rotate-1 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'kawaii':
       return {
@@ -395,7 +426,7 @@ const getThemeClasses = (theme: string) => {
                "prose-code:text-[#ff69b4] prose-code:bg-[#fff] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-full prose-code:border prose-code:border-[#ffe4e1] " +
                "prose-img:rounded-3xl prose-img:border-4 prose-img:border-white prose-img:shadow-md " +
                "prose-blockquote:border-0 prose-blockquote:bg-[#ffe4e1] prose-blockquote:text-[#ff69b4] prose-blockquote:rounded-3xl prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:shadow-sm prose-blockquote:text-center prose-blockquote:font-medium " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'chalkboard':
       return {
@@ -408,7 +439,7 @@ const getThemeClasses = (theme: string) => {
                "prose-pre:bg-[#1f2b25] prose-pre:border-2 prose-pre:border-white/10 prose-pre:rounded-sm " +
                "prose-code:text-[#bae1ff] prose-code:bg-[#1f2b25] prose-code:px-1.5 prose-code:py-0.5 prose-code:border border-white/20 " +
                "prose-blockquote:border-l-4 prose-blockquote:border-[#ffb3ba] prose-blockquote:bg-[#1f2b25] prose-blockquote:text-[#ffb3ba] prose-blockquote:py-2 prose-blockquote:px-4 " +
-               "markdown-body pb-32"
+               "markdown-body pb-12"
       };
     case 'notebook':
     default:
@@ -423,8 +454,8 @@ const getThemeClasses = (theme: string) => {
                "prose-table:border prose-table:border-blue-200 prose-th:bg-blue-50 prose-th:p-2 prose-td:p-2 " +
                "prose-img:rounded-lg prose-img:shadow-md " +
                "prose-blockquote:border-l-4 prose-blockquote:border-red-400 prose-blockquote:bg-red-50/50 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-700 " +
-               "markdown-body pb-32 relative " + 
-               "before:absolute before:inset-0 before:w-px before:bg-red-400/60 before:-left-6 sm:before:-left-8 before:h-[200%] before:-top-[50%]"
+               "markdown-body pb-12 relative " + 
+               "before:absolute before:top-0 before:bottom-0 before:w-px before:bg-red-400/60 before:-left-6 sm:before:-left-8"
       };
   }
 };
@@ -458,7 +489,24 @@ const TextPreviewPopup: React.FC = () => {
   const initializedPathRef = React.useRef<string | null>(null);
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
+  const outlineRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const handleHeadingClick = React.useCallback((id: string) => {
+    setActiveHeadingId(id);
+    if (contentRef.current) {
+      const el = document.getElementById(id);
+      if (el) {
+        const container = contentRef.current;
+        const containerTop = container.getBoundingClientRect().top;
+        const elTop = el.getBoundingClientRect().top;
+        container.scrollTo({
+          top: container.scrollTop + (elTop - containerTop) - 20,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!activePreviewPath) {
@@ -466,24 +514,28 @@ const TextPreviewPopup: React.FC = () => {
       return;
     }
     
-    if (activePreviewText && activePreviewPath !== initializedPathRef.current) {
+    if (activePreviewText !== null && activePreviewText !== undefined && activePreviewPath !== initializedPathRef.current) {
       initializedPathRef.current = activePreviewPath;
       setEditText(activePreviewText);
-      const val = activePreviewText.toLowerCase().trim();
-      if (
-        val.startsWith('<html') || 
-        val.startsWith('<!doc') || 
-        val.includes('<head>') || 
-        val.includes('<body>') || 
-        val.includes('</div>') || 
-        val.includes('</p>') ||
-        val.includes('</a>')
-      ) {
-        setViewMode('html');
-      } else if (activePreviewText.startsWith('#') || activePreviewText.includes('\n# ') || activePreviewPath.endsWith('.md')) {
-        setViewMode('markdown');
+      if (!activePreviewText) {
+        setViewMode('edit');
       } else {
-        setViewMode('raw');
+        const val = activePreviewText.toLowerCase().trim();
+        if (
+          val.startsWith('<html') || 
+          val.startsWith('<!doc') || 
+          val.includes('<head>') || 
+          val.includes('<body>') || 
+          val.includes('</div>') || 
+          val.includes('</p>') ||
+          val.includes('</a>')
+        ) {
+          setViewMode('html');
+        } else if (activePreviewText.startsWith('#') || activePreviewText.includes('\n# ') || activePreviewPath.endsWith('.md')) {
+          setViewMode('markdown');
+        } else {
+          setViewMode('raw');
+        }
       }
     }
   }, [activePreviewText, activePreviewPath]);
@@ -494,18 +546,32 @@ const TextPreviewPopup: React.FC = () => {
     };
   }, []);
 
+  // Scroll active item into view in outline sidebar
+  React.useEffect(() => {
+    if (activeHeadingId && outlineRef.current) {
+      try {
+        const activeEl = outlineRef.current.querySelector(`[data-outline-id="${CSS.escape(activeHeadingId)}"]`);
+        if (activeEl) {
+          activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      } catch (err) {
+        // Fallback if querySelector fails
+      }
+    }
+  }, [activeHeadingId]);
+
   // Update active heading based on scroll
   React.useEffect(() => {
     if (viewMode !== 'markdown') return;
 
     const handleScroll = () => {
       if (!contentRef.current) return;
-      const headings = Array.from(contentRef.current.querySelectorAll('h1, h2, h3, h4'));
+      const headings = Array.from(contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6'));
       let currentActiveId = '';
       
       for (const heading of headings) {
         const rect = heading.getBoundingClientRect();
-        if (rect.top <= 100) { // Offset for the sticky header
+        if (rect.top <= 120) { // Offset for the sticky header
           currentActiveId = heading.id;
         } else {
           break; // Stop once we find a heading below the offset
@@ -526,12 +592,30 @@ const TextPreviewPopup: React.FC = () => {
 
   const markdownComponents = React.useMemo(() => ({
     code: ({node, inline, className, children, ...props}: any) => <CodeBlock className={className} theme={mdTheme} {...props}>{children}</CodeBlock>,
-    h1: (props: any) => <HeadingRenderer level={1} {...props} />,
-    h2: (props: any) => <HeadingRenderer level={2} {...props} />,
-    h3: (props: any) => <HeadingRenderer level={3} {...props} />,
-    h4: (props: any) => <HeadingRenderer level={4} {...props} />,
-    h5: (props: any) => <HeadingRenderer level={5} {...props} />,
-    h6: (props: any) => <HeadingRenderer level={6} {...props} />,
+    h1: (props: any) => <HeadingRenderer level={1} onHeadingClick={handleHeadingClick} {...props} />,
+    h2: (props: any) => <HeadingRenderer level={2} onHeadingClick={handleHeadingClick} {...props} />,
+    h3: (props: any) => <HeadingRenderer level={3} onHeadingClick={handleHeadingClick} {...props} />,
+    h4: (props: any) => <HeadingRenderer level={4} onHeadingClick={handleHeadingClick} {...props} />,
+    h5: (props: any) => <HeadingRenderer level={5} onHeadingClick={handleHeadingClick} {...props} />,
+    h6: (props: any) => <HeadingRenderer level={6} onHeadingClick={handleHeadingClick} {...props} />,
+    a: ({ node, href, children, ...props }: any) => {
+      if (href && href.startsWith('#')) {
+        const targetId = href.substring(1);
+        return (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              handleHeadingClick(targetId);
+            }}
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      }
+      return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+    },
     table: ({node, ...props}: any) => (
       <div className="overflow-x-auto my-6 rounded-lg border border-slate-200 dark:border-slate-800">
         <table className="w-full text-left border-collapse m-0" {...props} />
@@ -543,9 +627,9 @@ const TextPreviewPopup: React.FC = () => {
       }
       return <input {...props} />
     }
-  }), [mdTheme]);
+  }), [mdTheme, handleHeadingClick]);
 
-  if (!activePreviewText) return null;
+  if (activePreviewText === null || activePreviewText === undefined) return null;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(editText);
@@ -591,7 +675,7 @@ const TextPreviewPopup: React.FC = () => {
 
   return createPortal(
     <AnimatePresence>
-      {activePreviewText && (
+      {(activePreviewText !== null && activePreviewText !== undefined) && (
         <div 
           className="fixed inset-0 z-[10000] flex items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-sm"
           onKeyDown={(e) => e.stopPropagation()}
@@ -747,27 +831,17 @@ const TextPreviewPopup: React.FC = () => {
                           <ListOrdered size={14} /> Outline
                         </h4>
                       </div>
-                      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                      <div ref={outlineRef} className="flex-1 overflow-y-auto p-2 custom-scrollbar">
                         {headings.map((h, i) => {
                           const isActive = activeHeadingId === h.id || activeHeadingId.startsWith(h.id);
                           return (
                             <a
                               key={i}
+                              data-outline-id={h.id}
                               href={`#${h.id}`}
                               onClick={(e) => {
                                 e.preventDefault();
-                                const el = document.getElementById(h.id);
-                                if (el && contentRef.current) {
-                                  const container = contentRef.current;
-                                  const containerTop = container.getBoundingClientRect().top;
-                                  const elTop = el.getBoundingClientRect().top;
-                                  // Scroll the container, not window
-                                  container.scrollTo({
-                                    top: container.scrollTop + (elTop - containerTop) - 20,
-                                    behavior: 'smooth'
-                                  });
-                                  setActiveHeadingId(h.id);
-                                }
+                                handleHeadingClick(h.id);
                                 if (window.innerWidth < 640) setShowOutline(false);
                               }}
                               className={`block py-1.5 px-2 rounded-md text-sm truncate transition-colors ${
