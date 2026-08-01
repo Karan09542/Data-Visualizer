@@ -1,5 +1,6 @@
 import { IAIProvider, AIModel, AIGenerateOptions, AIGenerationResult } from "./IAIProvider";
 import { AxiosTransport } from "../transports/AxiosTransport";
+import { useAIStore } from "../../store/useAIStore";
 
 export class NVIDIANIMProvider implements IAIProvider {
   id = "nvidia";
@@ -13,6 +14,16 @@ export class NVIDIANIMProvider implements IAIProvider {
 
   constructor() {
     this.transport = new AxiosTransport(this.baseURL);
+  }
+
+  private getApiKey(): string | null {
+    if (this.apiKey) return this.apiKey;
+    try {
+      const storeState = useAIStore.getState();
+      return storeState?.apiKeys?.[this.id] || storeState?.apiKeys?.["nvidia"] || null;
+    } catch {
+      return null;
+    }
   }
 
   async initialize(): Promise<void> {
@@ -194,11 +205,14 @@ export class NVIDIANIMProvider implements IAIProvider {
     }
     messages.push({ role: "user", content: prompt });
 
+    const userKey = this.getApiKey();
+
     return {
       model: options.modelId || "meta/llama-3.1-70b-instruct",
       messages,
       temperature: options.temperature ?? 0.7,
       stream: false,
+      ...(userKey ? { apiKey: userKey } : {}),
     };
   }
 
@@ -207,14 +221,17 @@ export class NVIDIANIMProvider implements IAIProvider {
     options: AIGenerateOptions,
     signal?: AbortSignal
   ): Promise<AIGenerationResult> {
+    const userKey = this.getApiKey();
+    if (!userKey || !userKey.trim()) {
+      throw new Error("NVIDIA API Key is missing. Please set your API key in AI Settings.");
+    }
+
     const payload = this.buildPayload(prompt, options);
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "x-nvidia-api-key": userKey,
     };
-    if (this.apiKey) {
-      headers["x-nvidia-api-key"] = this.apiKey;
-    }
 
     const response = await this.transport.request({
       url: "/api/nvidia/chat",
@@ -242,15 +259,18 @@ export class NVIDIANIMProvider implements IAIProvider {
     onChunk: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<AIGenerationResult> {
+    const userKey = this.getApiKey();
+    if (!userKey || !userKey.trim()) {
+      throw new Error("NVIDIA API Key is missing. Please set your API key in AI Settings.");
+    }
+
     const payload = { ...this.buildPayload(prompt, options), stream: true };
     let fullText = "";
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "x-nvidia-api-key": userKey,
     };
-    if (this.apiKey) {
-      headers["x-nvidia-api-key"] = this.apiKey;
-    }
 
     await this.transport.stream({
       url: "/api/nvidia/chat",

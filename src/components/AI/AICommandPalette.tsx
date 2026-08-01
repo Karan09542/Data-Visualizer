@@ -265,6 +265,12 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
     const promptToUse = overridePrompt || prompt;
     if (!promptToUse.trim()) return;
 
+    if (activeProvider?.isCloud && !isKeyConfigured) {
+      setError(`Please enter your ${activeProvider.name} API key before sending requests.`);
+      setActivePopover('apikey');
+      return;
+    }
+
     setActivePopover(null);
     setIsGenerating(true);
     setOutput('');

@@ -47,6 +47,14 @@ export class AIProviderManager {
     const provider = this.getActiveProvider();
     if (!provider) throw new Error("No active provider set. Please select an AI provider in Settings.");
 
+    if (provider.isCloud) {
+      const storeState = useAIStore.getState();
+      const apiKey = storeState.apiKeys[provider.id];
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error(`API key for ${provider.name} is missing. Please enter your API key in AI Settings.`);
+      }
+    }
+
     const finalOptions = {
       ...options,
       modelId: options.modelId || this.getActiveModelId() || '',
@@ -76,6 +84,14 @@ export class AIProviderManager {
   async stream(prompt: string, options: AIGenerateOptions, onChunk: (chunk: string) => void, signal?: AbortSignal) {
     const provider = this.getActiveProvider();
     if (!provider) throw new Error("No active provider set. Please select an AI provider in Settings.");
+
+    if (provider.isCloud) {
+      const storeState = useAIStore.getState();
+      const apiKey = storeState.apiKeys[provider.id];
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error(`API key for ${provider.name} is missing. Please enter your API key in AI Settings.`);
+      }
+    }
 
     const finalOptions = {
       ...options,
