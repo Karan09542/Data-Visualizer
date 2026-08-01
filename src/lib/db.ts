@@ -164,8 +164,18 @@ export interface StickyNote {
   isMinimized: boolean;
   isMaximized?: boolean;
   zIndex?: number;
+  isFavorite?: boolean;
+  order?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface StickyNoteMedia {
+  id: string;
+  noteId: string;
+  mimeType: string;
+  data: Blob;
+  createdAt: number;
 }
 
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
@@ -186,6 +196,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   nodeSearchImageBookmarks: EntityTable<NodeSearchImageBookmark, 'id'>;
   audio_tracks: EntityTable<AudioTrack, 'id'>;
   stickyNotes: EntityTable<StickyNote, 'id'>;
+  stickyNoteMedia: EntityTable<StickyNoteMedia, 'id'>;
 };
 
 db.version(8).stores({
@@ -225,6 +236,10 @@ db.version(12).stores({
 
 db.version(14).stores({
   stickyNotes: 'id, createdAt, updatedAt'
+});
+
+db.version(15).stores({
+  stickyNoteMedia: 'id, noteId'
 });
 
 export { db };

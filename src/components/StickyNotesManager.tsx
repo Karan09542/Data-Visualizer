@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence, useMotionValue } from 'motion/react';
-import { Plus, List, Trash2, StickyNote as StickyIcon } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { Plus, Trash2, CopyPlus, Palette, Settings, Power, List, GripHorizontal } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import StickyNote from './StickyNote';
 import StickyNotesPanel from './StickyNotesPanel';
@@ -9,40 +9,98 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { getMinNoteWidth } from '../utils/NoteUtils';
 
+const COLORS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff', '#fed7aa', '#fbcfe8'];
+
 export default function StickyNotesManager() {
-  const { stickyNotesEnabled } = useStore();
+  const { stickyNotesEnabled, setStickyNotesEnabled } = useStore();
   const notes = useLiveQuery(() => db.stickyNotes.toArray()) || [];
   const [showPanel, setShowPanel] = useState(false);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [showColors, setShowColors] = useState(false);
+  const [dockPos, setDockPos] = useState({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [manualPos, setManualPos] = useState<{ x: number, y: number } | null>(null);
+  const dragControls = useDragControls();
 
-  // Floating button position source of truth
-  const [buttonPos, setButtonPos] = useState({ x: window.innerWidth - 80, y: 80 });
+  const activeNotes = notes.filter(n => !n.isMinimized);
+  const selectedNote = notes.find(n => n.id === selectedNoteId);
 
-  // Motion values for smoother dragging and persistence
-  const x = useMotionValue(buttonPos.x);
-  const y = useMotionValue(buttonPos.y);
-
-  // Sync motion values when source of truth changes (e.g. resize)
+  // Handle clicking outside to deselect
   useEffect(() => {
-    x.set(buttonPos.x);
-    y.set(buttonPos.y);
-  }, [buttonPos, x, y]);
+    const handleGlobalPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.sticky-note-element') && !target.closest('.sticky-note-toolbar')) {
+        setSelectedNoteId(null);
+        setShowColors(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleGlobalPointerDown);
+    return () => window.removeEventListener('pointerdown', handleGlobalPointerDown);
+  }, []);
+
+  // Update dock position based on selected note
+  useEffect(() => {
+    if (isDragging) return; // Don't auto-dock while user is dragging
+    
+    if (manualPos) {
+      setDockPos(manualPos);
+      return;
+    }
+
+    const isMobile = window.innerWidth < 640;
+
+    if (isMobile) {
+      // On mobile, keep toolbar at a consistent position without auto-repositioning on select/deselect
+      setDockPos({ x: window.innerWidth - 70, y: window.innerHeight - 240 });
+      return;
+    }
+
+    if (selectedNote && !selectedNote.isMinimized) {
+      const actualWidth = Math.max(selectedNote.width, getMinNoteWidth());
+      let newX = selectedNote.x + actualWidth + 16;
+      if (newX + 60 > window.innerWidth) { // No space on right, move to left
+        newX = selectedNote.x - 64;
+      }
+      if (newX < 10) newX = 10;
+      
+      let newY = selectedNote.y;
+      if (newY + 300 > window.innerHeight) {
+         newY = window.innerHeight - 320;
+      }
+      if (newY < 10) newY = 10;
+
+      setDockPos({ x: newX, y: newY });
+    } else {
+      // Default position when no note selected
+      setDockPos({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
+    }
+  }, [selectedNoteId, selectedNote?.x, selectedNote?.y, selectedNote?.width, selectedNote?.isMinimized, isDragging, manualPos]);
 
   useEffect(() => {
     const handleResize = () => {
-      setButtonPos(prev => ({
-        x: Math.min(prev.x, window.innerWidth - 60),
-        y: Math.min(prev.y, window.innerHeight - 60)
-      }));
+      const isMobile = window.innerWidth < 640;
+      if (!manualPos) {
+        setDockPos({ 
+          x: window.innerWidth - 70, 
+          y: isMobile ? window.innerHeight - 240 : window.innerHeight / 2 - 100 
+        });
+      } else {
+        setManualPos(prev => {
+          if (!prev) return null;
+          return {
+            x: Math.max(10, Math.min(window.innerWidth - 70, prev.x)),
+            y: Math.max(10, Math.min(window.innerHeight - 300, prev.y))
+          };
+        });
+      }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [manualPos]);
 
-  // Active notes are those not minimized
-  const activeNotes = notes.filter(n => !n.isMinimized);
-
-  const handleAddNote = async () => {
-    const maxZ = Math.max(...notes.map(n => n.zIndex || 5000), 5000);
+  const handleAddCanvasNote = async () => {
+    const maxZ = Math.max(...notes.map(n => n.zIndex || 20000), 20000);
+    const maxOrder = notes.length > 0 ? Math.max(...notes.map(n => n.order || 0)) : 0;
     const newNote: IStickyNote = {
       id: uuidv4(),
       content: '',
@@ -53,9 +111,34 @@ export default function StickyNotesManager() {
       color: '#fef08a',
       fontFamily: 'Hind',
       fontSize: 15,
-      isMinimized: false,
+      isMinimized: false, // Adding from floating sticky panel shows note on canvas
       isMaximized: false,
       zIndex: maxZ + 1,
+      order: maxOrder + 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await db.stickyNotes.add(newNote);
+    setSelectedNoteId(newNote.id);
+  };
+
+  const handleAddManagerNote = async () => {
+    const maxZ = Math.max(...notes.map(n => n.zIndex || 20000), 20000);
+    const maxOrder = notes.length > 0 ? Math.max(...notes.map(n => n.order || 0)) : 0;
+    const newNote: IStickyNote = {
+      id: uuidv4(),
+      content: '',
+      x: Math.random() * Math.max(80, window.innerWidth - 420) + 50,
+      y: Math.random() * (window.innerHeight - 300) + 50,
+      width: getMinNoteWidth(),
+      height: 280,
+      color: '#fef08a',
+      fontFamily: 'Hind',
+      fontSize: 15,
+      isMinimized: true, // Created in manager list
+      isMaximized: false,
+      zIndex: maxZ + 1,
+      order: maxOrder + 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -67,11 +150,18 @@ export default function StickyNotesManager() {
   };
 
   const handleDelete = async (id: string) => {
-    await db.stickyNotes.delete(id);
+    if (confirm('Delete this sticky note?')) {
+      await db.stickyNotes.delete(id);
+      if (selectedNoteId === id) {
+        setSelectedNoteId(null);
+        setShowColors(false);
+      }
+    }
   };
 
   const handleDuplicate = async (note: IStickyNote) => {
-    const maxZ = Math.max(...notes.map(n => n.zIndex || 5000), 5000);
+    const maxZ = Math.max(...notes.map(n => n.zIndex || 20000), 20000);
+    const maxOrder = notes.length > 0 ? Math.max(...notes.map(n => n.order || 0)) : 0;
     const duplicated: IStickyNote = {
       ...note,
       id: uuidv4(),
@@ -80,96 +170,172 @@ export default function StickyNotesManager() {
       isMinimized: false,
       isMaximized: false,
       zIndex: maxZ + 1,
+      order: maxOrder + 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     await db.stickyNotes.add(duplicated);
+    setSelectedNoteId(duplicated.id);
   };
 
   const handleFocus = async (id: string) => {
+    setSelectedNoteId(id);
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
-    const maxZ = Math.max(...notes.map(n => n.zIndex || 5000), 5000);
+    const maxZ = Math.max(...notes.map(n => n.zIndex || 20000), 20000);
     if (note.zIndex === maxZ && notes.length > 1) return;
 
     await db.stickyNotes.update(id, { zIndex: maxZ + 1 });
   };
 
-  const handleClearAll = async () => {
-    if (confirm('Delete all sticky notes?')) {
-      await db.stickyNotes.clear();
+  const changeColor = async (color: string) => {
+    if (selectedNote) {
+      await handleUpdate({ ...selectedNote, color, updatedAt: Date.now() });
+      setShowColors(false);
     }
   };
 
   if (!stickyNotesEnabled) return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[4900] no-export" data-capture-exclude="true">
-      {/* Floating Action Button */}
+    <div className="fixed inset-0 pointer-events-none z-[19000] no-export" data-capture-exclude="true">
+      
+      {/* Vertical Glassmorphic Toolbar Dock */}
       <motion.div
+        layout
         drag
+        dragControls={dragControls}
+        dragListener={false}
         dragMomentum={false}
-        initial={{ opacity: 0, scale: 0.5 }}
-        style={{ x, y }}
-        animate={{ opacity: 1, scale: 1 }}
-        onDragEnd={() => {
-          setButtonPos({ x: x.get(), y: y.get() });
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1, x: dockPos.x, y: dockPos.y }}
+        transition={{ type: "spring", damping: 25, stiffness: 200, mass: 0.8 }}
+        onDragStart={() => setIsDragging(true)}
+        onDragEnd={(e, info) => {
+          setIsDragging(false);
+          const newPos = { x: dockPos.x + info.offset.x, y: dockPos.y + info.offset.y };
+          setManualPos(newPos);
+          setDockPos(newPos);
         }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setShowPanel(true);
-        }}
-        className="fixed w-14 h-14 bg-yellow-500 hover:bg-yellow-400 text-black rounded-full shadow-[0_10px_40px_rgba(234,179,8,0.3)] flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing border-4 border-white/30 group"
+        className="sticky-note-toolbar fixed flex flex-col items-center p-1.5 gap-1 bg-white dark:bg-[#1a1a1a] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] border border-black/5 dark:border-white/10 rounded-[20px] pointer-events-auto z-[22000]"
+        onPointerDown={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleAddNote();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute inset-0 w-full h-full flex items-center justify-center z-10 rounded-full"
-          title="New Note (Right click for All)"
+        {/* Grab Handle - only this initiates drag */}
+        <div
+          className="w-full flex justify-center pt-0.5 pb-1 opacity-40 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
+          onPointerDown={(e) => dragControls.start(e)}
         >
-          <Plus size={28} className="group-hover:rotate-90 transition-transform duration-300" />
+           <GripHorizontal size={14} className="text-black/30 dark:text-white/30" />
+        </div>
+
+        {/* 1. Add Note - Vibrant Yellow to look like a sticky note */}
+        <button
+          onClick={handleAddCanvasNote}
+          className="w-9 h-9 rounded-xl bg-yellow-400 hover:bg-yellow-500 shadow-[0_4px_12px_rgba(250,204,21,0.3)] flex items-center justify-center hover:scale-105 active:scale-95 transition-all text-black group border border-yellow-300"
+          title="Add Sticky Note"
+        >
+          <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" />
         </button>
 
-        {/* Panel Button */}
+        {/* 2. Enable/Disable */}
         <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setShowPanel(true);
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute -left-12 w-10 h-10 bg-slate-800 text-slate-400 rounded-full flex items-center justify-center shadow-lg hover:bg-slate-700 hover:text-white transition-all scale-0 group-hover:scale-100 origin-right border border-slate-700 pointer-events-auto z-20"
-          title="Show All Notes"
+          onClick={() => setStickyNotesEnabled(false)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-black/70 dark:text-white/70"
+          title="Disable Sticky Notes"
         >
-          <List size={18} />
+          <Power size={16} />
         </button>
 
-        {/* Clear All button */}
-        {notes.length > 0 && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleClearAll();
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="absolute -right-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors scale-0 group-hover:scale-100 pointer-events-auto z-20"
-            title="Clear All"
-          >
-            <Trash2 size={12} />
-          </button>
-        )}
+        <div className="w-6 h-px bg-black/10 dark:bg-white/10 mx-auto my-0.5" />
+
+        {/* Contextual Actions */}
+        <AnimatePresence mode="popLayout">
+          {selectedNote && !selectedNote.isMinimized && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex flex-col gap-1.5 w-full"
+            >
+              {/* 3. Duplicate */}
+              <button
+                onClick={() => handleDuplicate(selectedNote)}
+                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-black/70 dark:text-white/70"
+                title="Duplicate Note"
+              >
+                <CopyPlus size={16} />
+              </button>
+
+              {/* 4. Change Color */}
+              <div className="relative w-full">
+                <button
+                  onClick={() => setShowColors(!showColors)}
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${showColors ? 'bg-black/10 dark:bg-white/20' : 'hover:bg-black/10 dark:hover:bg-white/10'} text-black/70 dark:text-white/70`}
+                  title="Change Color"
+                >
+                  <Palette size={16} />
+                </button>
+                {/* Color Picker Popup */}
+                <AnimatePresence>
+                  {showColors && (
+                    <motion.div
+                      initial={{ opacity: 0, x: 10, scale: 0.9 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: 10, scale: 0.9 }}
+                      className="absolute top-0 right-[110%] flex flex-col gap-1.5 bg-white/95 dark:bg-[#1a1a1a]/95 p-2 rounded-2xl shadow-xl border border-black/5 dark:border-white/10 backdrop-blur-xl cursor-default"
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      {COLORS.map(c => (
+                        <button
+                          key={c}
+                          onClick={() => changeColor(c)}
+                          className={`w-6 h-6 rounded-full border shadow-sm transition-transform hover:scale-110 active:scale-95 ${selectedNote.color === c ? 'border-black/30 dark:border-white/50 scale-110' : 'border-black/5 dark:border-white/10'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 5. List / Manage Notes (Changed from Settings to List icon) */}
+        <button
+          onClick={() => setShowPanel(true)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-black/70 dark:text-white/70"
+          title="Manage All Notes"
+        >
+          <List size={16} />
+        </button>
+
+        {/* 6. Delete */}
+        <AnimatePresence mode="popLayout">
+          {selectedNote && !selectedNote.isMinimized && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <button
+                onClick={() => handleDelete(selectedNote.id)}
+                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-500/20 dark:hover:bg-red-500/30 transition-colors text-red-700 dark:text-red-400 mt-0.5"
+                title="Delete Note"
+              >
+                <Trash2 size={16} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </motion.div>
 
       {/* Render Sticky Notes */}
       <AnimatePresence>
         {activeNotes.map(note => (
-          <div key={note.id} className="pointer-events-auto">
+          <div key={note.id} className="pointer-events-auto sticky-note-element">
             <StickyNote
               note={note}
               onDelete={handleDelete}
@@ -191,7 +357,8 @@ export default function StickyNotesManager() {
               setShowPanel(false);
             }}
             onDuplicate={handleDuplicate}
-            onAdd={handleAddNote}
+            onAdd={handleAddManagerNote}
+            onUpdate={handleUpdate}
           />
         )}
       </AnimatePresence>

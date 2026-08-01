@@ -165,15 +165,16 @@ if (typeof window !== 'undefined') {
 
   window.console.error = function(...args: any[]) {
      if (args.length > 0) {
-       const firstArg = args[0];
-       if (firstArg instanceof Error && firstArg.name === 'Canceled' && firstArg.message === 'Canceled') {
-         return;
-       }
-       if (firstArg && typeof firstArg === 'object' && firstArg.name === 'Canceled' && firstArg.message === 'Canceled') {
-         return;
-       }
-       if (typeof firstArg === 'string' && (firstArg.includes('Canceled: Canceled') || firstArg.includes('<Fit />'))) {
-         return;
+       for (const arg of args) {
+         if (arg instanceof Error && arg.name === 'Canceled' && arg.message === 'Canceled') {
+           return;
+         }
+         if (arg && typeof arg === 'object' && arg.name === 'Canceled' && arg.message === 'Canceled') {
+           return;
+         }
+         if (typeof arg === 'string' && (arg.includes('Canceled: Canceled') || arg.includes('<Fit />'))) {
+           return;
+         }
        }
      }
 
