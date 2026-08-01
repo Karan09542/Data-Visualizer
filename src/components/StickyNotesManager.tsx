@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, CopyPlus, Palette, Settings, Power, List, GripHorizontal } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import StickyNote from './StickyNote';
@@ -20,7 +20,6 @@ export default function StickyNotesManager() {
   const [dockPos, setDockPos] = useState({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
   const [isDragging, setIsDragging] = useState(false);
   const [manualPos, setManualPos] = useState<{ x: number, y: number } | null>(null);
-  const dragControls = useDragControls();
 
   const activeNotes = notes.filter(n => !n.isMinimized);
   const selectedNote = notes.find(n => n.id === selectedNoteId);
@@ -196,6 +195,36 @@ export default function StickyNotesManager() {
     }
   };
 
+  const handleToolbarGrabPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+
+    const startPointerX = e.clientX;
+    const startPointerY = e.clientY;
+    const startDockX = dockPos.x;
+    const startDockY = dockPos.y;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startPointerX;
+      const deltaY = moveEvent.clientY - startPointerY;
+      const newX = Math.max(10, Math.min(window.innerWidth - 70, startDockX + deltaX));
+      const newY = Math.max(10, Math.min(window.innerHeight - 300, startDockY + deltaY));
+      const newPos = { x: newX, y: newY };
+      setManualPos(newPos);
+      setDockPos(newPos);
+    };
+
+    const onPointerUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
   if (!stickyNotesEnabled) return null;
 
   return (
@@ -203,28 +232,16 @@ export default function StickyNotesManager() {
       
       {/* Vertical Glassmorphic Toolbar Dock */}
       <motion.div
-        layout
-        drag
-        dragControls={dragControls}
-        dragListener={false}
-        dragMomentum={false}
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1, x: dockPos.x, y: dockPos.y }}
         transition={{ type: "spring", damping: 25, stiffness: 200, mass: 0.8 }}
-        onDragStart={() => setIsDragging(true)}
-        onDragEnd={(e, info) => {
-          setIsDragging(false);
-          const newPos = { x: dockPos.x + info.offset.x, y: dockPos.y + info.offset.y };
-          setManualPos(newPos);
-          setDockPos(newPos);
-        }}
         className="sticky-note-toolbar fixed flex flex-col items-center p-1.5 gap-1 bg-white dark:bg-[#1a1a1a] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] border border-black/5 dark:border-white/10 rounded-[20px] pointer-events-auto z-[22000]"
         onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Grab Handle - only this initiates drag */}
         <div
-          className="w-full flex justify-center pt-0.5 pb-1 opacity-40 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
-          onPointerDown={(e) => dragControls.start(e)}
+          className="w-full flex justify-center pt-0.5 pb-1 opacity-40 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing touch-none"
+          onPointerDown={handleToolbarGrabPointerDown}
         >
            <GripHorizontal size={14} className="text-black/30 dark:text-white/30" />
         </div>

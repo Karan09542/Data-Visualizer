@@ -23,7 +23,7 @@ export function ServiceWorkerUpdater() {
     const handleChange = () => checkIsPWA();
     mediaQuery.addEventListener('change', handleChange);
 
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+    if (import.meta.env.PROD && typeof window !== "undefined" && "serviceWorker" in navigator) {
       const workbox = new Workbox('/sw.js');
       
       workbox.addEventListener('waiting', () => {
