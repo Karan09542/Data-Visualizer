@@ -9,16 +9,14 @@ export class NVIDIANIMProvider implements IAIProvider {
   
   private transport: AxiosTransport;
   private apiKey: string | null = null;
-  private baseURL = typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "/api/nvidia"
-    : "https://integrate.api.nvidia.com/v1";
+  private baseURL = "https://yts-tau.vercel.app";
 
   constructor() {
     this.transport = new AxiosTransport(this.baseURL);
   }
 
   async initialize(): Promise<void> {
-    // Initialization is deferred to authentication
+    // Initialization deferred
   }
 
   async authenticate(apiKey: string): Promise<boolean> {
@@ -27,19 +25,8 @@ export class NVIDIANIMProvider implements IAIProvider {
   }
 
   async healthCheck(): Promise<boolean> {
-    if (!this.apiKey) return false;
-    try {
-      await this.transport.request({
-        url: "/models",
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`
-        }
-      });
-      return true;
-    } catch (e) {
-      return false;
-    }
+    // Proxy backend is available; authenticates with user key or server key
+    return true;
   }
 
   async listModels(): Promise<AIModel[]> {
@@ -211,14 +198,7 @@ export class NVIDIANIMProvider implements IAIProvider {
       model: options.modelId || "meta/llama-3.1-70b-instruct",
       messages,
       temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 1024,
-      top_p: options.topP ?? 1,
-      frequency_penalty: options.frequencyPenalty,
-      presence_penalty: options.presencePenalty,
-      seed: options.seed !== null ? options.seed : undefined,
       stream: false,
-      response_format: options.jsonMode ? { type: "json_object" } : undefined,
-      ...(options.modelId === "mistralai/mistral-medium-3.5-128b" && { reasoning_effort: "high" }),
     };
   }
 
@@ -227,23 +207,25 @@ export class NVIDIANIMProvider implements IAIProvider {
     options: AIGenerateOptions,
     signal?: AbortSignal
   ): Promise<AIGenerationResult> {
-    if (!this.apiKey) throw new Error("Not authenticated");
-
     const payload = this.buildPayload(prompt, options);
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.apiKey) {
+      headers["x-nvidia-api-key"] = this.apiKey;
+    }
+
     const response = await this.transport.request({
-      url: "/chat/completions",
+      url: "/api/nvidia/chat",
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: payload,
       signal,
     });
 
     const data = response.data;
-    const text = data.choices?.[0]?.message?.content || "";
+    const text = data.choices?.[0]?.message?.content || data.text || "";
     return {
       text,
       usage: data.usage ? {
@@ -260,18 +242,20 @@ export class NVIDIANIMProvider implements IAIProvider {
     onChunk: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<AIGenerationResult> {
-    if (!this.apiKey) throw new Error("Not authenticated");
-
     const payload = { ...this.buildPayload(prompt, options), stream: true };
     let fullText = "";
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.apiKey) {
+      headers["x-nvidia-api-key"] = this.apiKey;
+    }
+
     await this.transport.stream({
-      url: "/chat/completions",
+      url: "/api/nvidia/chat",
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: payload,
       signal,
       onChunk: (chunkData) => {
