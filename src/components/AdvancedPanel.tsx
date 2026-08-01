@@ -1,15 +1,15 @@
-import { X, Image as ImageIcon, Expand, Maximize, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, ChevronDown, ChevronUp, AlignLeft, Youtube, Mic } from 'lucide-react';
-import { useStore, CanvasTheme, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
+import { X, Image as ImageIcon, Expand, Maximize, Palette, RotateCcw, Keyboard, PenTool, HelpCircle, Layers, ChevronDown, ChevronUp, AlignLeft, Youtube, Mic, Shield } from 'lucide-react';
+import { useStore, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
 import { useVoiceStore } from '../voice/useVoiceStore';
 import { VoiceHelpModal } from '../voice/components/VoiceHelpModal';
-import { AISettingsPanel } from './AI/AISettingsPanel';
+import { ProxySettingsModal } from './ProxySettingsModal';
 import { RgbaColorPicker } from 'react-colorful';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 
-const canvasThemes: CanvasTheme[] = ['none', 'dots', 'grid', 'lines'];
+
 const nodeThemes: NodeTheme[] = ['vscode', 'github', 'glassmorphism', 'cyberpunk', 'minimal', 'gradient', 'pastel', 'terminal', 'material', 'blueprint', 'retro', 'holographic', 'notebook', 'custom', 'nature', 'circuit', 'galaxy', 'glass', 'neon', 'math', 'neural', 'river', 'tree', 'pixel', 'hacker', 'cloud', 'dna', 'lava', 'ocean', 'rhythm', 'rune', 'zen', 'abstract', 'architect', 'ludo', 'chess', 'octopus', 'nature2', 'hydrogen', 'seed', 'banyan', 'peepal'];
 const edgeStyles: EdgeStyle[] = ['curved', 'bezier', 'straight', 'step', 'animated', 'dashed', 'neon', 'double', 'pipe', 'thin', 'orgChart', 'circuit', 'glow', 'zigzag', 'pulse', 'ludo', 'chess', 'octopus', 'nature2', 'hydrogen', 'seed', 'metro', 'angled-step'];
 
@@ -22,7 +22,6 @@ export default function AdvancedPanel() {
     nodeSize, setNodeSize,
     nodeTheme, setNodeTheme,
     edgeStyle, setEdgeStyle,
-    nodeShape, setNodeShape,
     nodeColor, setNodeColor,
     nodeTextColor, setNodeTextColor,
     nodeGradientColor1, setNodeGradientColor1,
@@ -36,9 +35,10 @@ export default function AdvancedPanel() {
     canvasBackgroundImage, setCanvasBackgroundImage,
     canvasBackgroundBlur, setCanvasBackgroundBlur,
     resetAllSettings, setIsShortcutsOpen,
-    isMathHelpOpen, setIsMathHelpOpen,
+    setIsMathHelpOpen,
     stickyNotesEnabled, setStickyNotesEnabled,
-    isYoutubeSearchOpen, setIsYoutubeSearchOpen
+    setIsYoutubeSearchOpen,
+    setIsProxyModalOpen
   } = useStore();
 
   const {
@@ -54,7 +54,7 @@ export default function AdvancedPanel() {
 
   const [panelWidth, setPanelWidth] = useState(320);
   const isResizing = useRef(false);
-  
+
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
 
   useEffect(() => {
@@ -258,7 +258,7 @@ export default function AdvancedPanel() {
         style={{ width: windowWidth < 640 ? '100%' : `${panelWidth}px` }}
       >
         {/* Resize Handle */}
-        <div 
+        <div
           className="absolute top-0 bottom-0 -left-1 w-2 cursor-col-resize group z-10 hidden sm:flex justify-center"
           onMouseDown={handleMouseDown}
         >
@@ -596,7 +596,7 @@ export default function AdvancedPanel() {
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-blue-500/10 text-blue-500 rounded-md shrink-0">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                   </svg>
                 </div>
                 <div>
@@ -1030,18 +1030,27 @@ export default function AdvancedPanel() {
           </div>
         </div>
 
-        {/* Global Reset and Shortcuts */}
+        {/* Global Reset, Proxy Settings, and Shortcuts */}
         <div className="flex flex-col gap-2 p-4 border-t border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-[#0b1120] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-          <button
-            onClick={() => {
-              import('../audio/stores/audioStore').then(m => m.useAudioStore.getState().togglePlayer());
-              setIsAdvancedPanelOpen(false);
-            }}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors text-sm font-medium border border-indigo-500/10"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-            Audio Player
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                import('../audio/stores/audioStore').then(m => m.useAudioStore.getState().togglePlayer());
+                setIsAdvancedPanelOpen(false);
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition-colors text-xs font-medium border border-indigo-500/10"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              Audio Player
+            </button>
+            <button
+              onClick={() => setIsProxyModalOpen(true)}
+              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 rounded-xl transition-colors text-xs font-medium border border-purple-500/10"
+            >
+              <Shield size={14} />
+              Proxy Settings
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => setIsShortcutsOpen(true)}
@@ -1064,6 +1073,7 @@ export default function AdvancedPanel() {
         </div>
       </div>
       <VoiceHelpModal isOpen={isVoiceHelpOpen} onClose={() => setIsVoiceHelpOpen(false)} />
+      <ProxySettingsModal />
     </>
   );
 }

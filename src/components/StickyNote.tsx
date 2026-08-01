@@ -8,6 +8,8 @@ import LexicalEditor from './notes/editor/LexicalEditor';
 
 
 
+import StickyConfirmModal from './notes/StickyConfirmModal';
+
 const DEFAULT_STICKY_FONT = 'Hind';
 const DEFAULT_FONT_SIZE = 15;
 const FULLSCREEN_DEFAULT_FONT_SIZE = 18;
@@ -191,14 +193,33 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
     setShowMobileActions(false);
   };
 
-  const handleClearContent = useCallback(() => {
-    if (!confirm('Clear this sticky note text?')) return;
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
-    setContent('');
-    latestContentRef.current = '';
-    setClearKey(prev => prev + 1);
-    justSavedRef.current = true;
-    onUpdate({ ...note, content: '', updatedAt: Date.now() });
+  const handleClearContent = useCallback(() => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Clear Note Text',
+      message: 'Are you sure you want to clear all text in this sticky note?',
+      confirmText: 'Clear Text',
+      onConfirm: () => {
+        setContent('');
+        latestContentRef.current = '';
+        setClearKey(prev => prev + 1);
+        justSavedRef.current = true;
+        onUpdate({ ...note, content: '', updatedAt: Date.now() });
+      },
+    });
   }, [note, onUpdate]);
 
 
@@ -350,7 +371,13 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
             type="button"
             onPointerDown={handleActionPointerDown}
             onClick={() => {
-              onDelete(note.id);
+              setConfirmConfig({
+                isOpen: true,
+                title: 'Delete Sticky Note',
+                message: 'Are you sure you want to delete this sticky note? This action cannot be undone.',
+                confirmText: 'Delete Note',
+                onConfirm: () => onDelete(note.id),
+              });
             }}
             className="p-1.5 hover:bg-red-500/20 dark:hover:bg-red-500/30 text-red-700 dark:text-red-400 rounded-lg transition-colors"
             title="Delete Note"
@@ -540,6 +567,15 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
           {new Date(note.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
+
+      <StickyConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </motion.div>
   );
 }

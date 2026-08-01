@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, CopyPlus, Palette, Settings, Power, List, GripHorizontal } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
@@ -8,6 +8,8 @@ import { useStore } from '../store/useStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { getMinNoteWidth } from '../utils/NoteUtils';
+
+import StickyConfirmModal from './notes/StickyConfirmModal';
 
 const COLORS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff', '#fed7aa', '#fbcfe8'];
 
@@ -20,6 +22,25 @@ export default function StickyNotesManager() {
   const [dockPos, setDockPos] = useState({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
   const [isDragging, setIsDragging] = useState(false);
   const [manualPos, setManualPos] = useState<{ x: number, y: number } | null>(null);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  useLayoutEffect(() => {
+    const isMobile = window.innerWidth < 640;
+    const initialX = Math.max(10, window.innerWidth - 70);
+    const initialY = Math.max(10, isMobile ? window.innerHeight - 240 : window.innerHeight / 2 - 100);
+    setDockPos({ x: initialX, y: initialY });
+  }, []);
 
   const activeNotes = notes.filter(n => !n.isMinimized);
   const selectedNote = notes.find(n => n.id === selectedNoteId);
@@ -148,14 +169,37 @@ export default function StickyNotesManager() {
     await db.stickyNotes.put(note);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this sticky note?')) {
-      await db.stickyNotes.delete(id);
-      if (selectedNoteId === id) {
+  const performDirectDelete = async (id: string) => {
+    await db.stickyNotes.delete(id);
+    if (selectedNoteId === id) {
+      setSelectedNoteId(null);
+      setShowColors(false);
+    }
+  };
+
+  const handleDockDeleteNote = async (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Sticky Note',
+      message: 'Are you sure you want to delete this sticky note?',
+      confirmText: 'Delete Note',
+      onConfirm: () => performDirectDelete(id),
+    });
+  };
+
+  const handleDeleteAll = async () => {
+    if (notes.length === 0) return;
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete All Sticky Notes',
+      message: `Are you sure you want to delete ALL ${notes.length} sticky note(s)? This action cannot be undone.`,
+      confirmText: `Delete All (${notes.length})`,
+      onConfirm: async () => {
+        await db.stickyNotes.clear();
         setSelectedNoteId(null);
         setShowColors(false);
-      }
-    }
+      },
+    });
   };
 
   const handleDuplicate = async (note: IStickyNote) => {
@@ -232,7 +276,7 @@ export default function StickyNotesManager() {
       
       {/* Vertical Glassmorphic Toolbar Dock */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
+        initial={{ opacity: 0, scale: 0.8, x: dockPos.x, y: dockPos.y }}
         animate={{ opacity: 1, scale: 1, x: dockPos.x, y: dockPos.y }}
         transition={{ type: "spring", damping: 25, stiffness: 200, mass: 0.8 }}
         className="sticky-note-toolbar fixed flex flex-col items-center p-1.5 gap-1 bg-white dark:bg-[#1a1a1a] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] border border-black/5 dark:border-white/10 rounded-[20px] pointer-events-auto z-[22000]"
@@ -328,23 +372,39 @@ export default function StickyNotesManager() {
           <List size={16} />
         </button>
 
-        {/* 6. Delete */}
+        {/* 6. Delete Selected Note or Delete All Notes */}
         <AnimatePresence mode="popLayout">
-          {selectedNote && !selectedNote.isMinimized && (
+          {selectedNote && !selectedNote.isMinimized ? (
             <motion.div
+              key="delete-selected"
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
             >
               <button
-                onClick={() => handleDelete(selectedNote.id)}
+                onClick={() => handleDockDeleteNote(selectedNote.id)}
                 className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-500/20 dark:hover:bg-red-500/30 transition-colors text-red-700 dark:text-red-400 mt-0.5"
                 title="Delete Note"
               >
                 <Trash2 size={16} />
               </button>
             </motion.div>
-          )}
+          ) : notes.length > 0 ? (
+            <motion.div
+              key="delete-all"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <button
+                onClick={handleDeleteAll}
+                className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-red-500/20 dark:hover:bg-red-500/30 transition-colors text-red-700 dark:text-red-400 mt-0.5"
+                title={`Delete All Notes (${notes.length})`}
+              >
+                <Trash2 size={16} />
+              </button>
+            </motion.div>
+          ) : null}
         </AnimatePresence>
 
       </motion.div>
@@ -355,7 +415,7 @@ export default function StickyNotesManager() {
           <div key={note.id} className="pointer-events-auto sticky-note-element">
             <StickyNote
               note={note}
-              onDelete={handleDelete}
+              onDelete={performDirectDelete}
               onUpdate={handleUpdate}
               onDuplicate={handleDuplicate}
               onFocus={handleFocus}
@@ -379,6 +439,15 @@ export default function StickyNotesManager() {
           />
         )}
       </AnimatePresence>
+
+      <StickyConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

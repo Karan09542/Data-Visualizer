@@ -236,7 +236,7 @@ export default function CursorToolbarPlugin() {
           top: position.top,
           left: position.left,
           transform: 'translateX(-50%)',
-          zIndex: 30000,
+          zIndex: 100000,
         }}
         className="flex items-center gap-1 p-1 bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-xl rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.18)] border border-black/10 dark:border-white/15 transition-opacity duration-300"
         onPointerDown={(e) => {

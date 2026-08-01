@@ -150,11 +150,11 @@ export default function SlashCommandPlugin() {
 
         return createPortal(
           <div
-            className="fixed z-[10000] w-64 max-h-80 overflow-y-auto bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-xl shadow-2xl p-1"
+            className="fixed z-[100000] w-64 max-h-80 overflow-y-auto bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-xl shadow-2xl p-1"
             style={{
               top: flip ? undefined : rect.bottom + 8,
               bottom: flip ? window.innerHeight - rect.top + 8 : undefined,
-              left: Math.min(rect.left, window.innerWidth - 260),
+              left: Math.max(12, Math.min(rect.left, window.innerWidth - 268)),
             }}
           >
             <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-black/40 dark:text-white/40">

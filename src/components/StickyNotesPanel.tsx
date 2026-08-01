@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useLayoutEffect, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Search, Mic, Star, Trash2, 
   ExternalLink, CopyPlus, Plus,
-  CheckSquare, Square, ChevronDown, Maximize2
+  CheckSquare, Square, ChevronDown, Maximize2, Check, Globe
 } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import StickyNote from './StickyNote';
@@ -13,6 +13,8 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { extractTextFromLexical } from '../utils/LexicalUtils';
+
+import StickyConfirmModal from './notes/StickyConfirmModal';
 
 interface Props {
   onClose: () => void;
@@ -24,13 +26,29 @@ interface Props {
 
 const CHECKLIST_REGEX = /^(\s*[-*]\s+\[)([ xX])(\]\s*)(.*)$/m;
 
+const VOICE_LANGUAGES = [
+  { code: 'hi-IN', label: 'Hindi (हिन्दी)', short: 'HI', flag: '🇮🇳' },
+  { code: 'en-US', label: 'English (US)', short: 'EN', flag: '🇺🇸' },
+  { code: 'en-IN', label: 'English (India)', short: 'EN-IN', flag: '🇮🇳' },
+  { code: 'es-ES', label: 'Spanish (Español)', short: 'ES', flag: '🇪🇸' },
+  { code: 'fr-FR', label: 'French (Français)', short: 'FR', flag: '🇫🇷' },
+  { code: 'de-DE', label: 'German (Deutsch)', short: 'DE', flag: '🇩🇪' },
+  { code: 'ja-JP', label: 'Japanese (日本語)', short: 'JA', flag: '🇯🇵' },
+  { code: 'zh-CN', label: 'Chinese (中文)', short: 'ZH', flag: '🇨🇳' },
+  { code: 'mr-IN', label: 'Marathi (मराठी)', short: 'MR', flag: '🇮🇳' },
+  { code: 'ta-IN', label: 'Tamil (தமிழ்)', short: 'TA', flag: '🇮🇳' },
+  { code: 'te-IN', label: 'Telugu (తెలుగు)', short: 'TE', flag: '🇮🇳' },
+  { code: 'bn-IN', label: 'Bengali (বাংলা)', short: 'BN', flag: '🇮🇳' },
+  { code: 'gu-IN', label: 'Gujarati (ગુજરાતી)', short: 'GU', flag: '🇮🇳' },
+];
+
 // Sortable Note Item Component
 function SortableNoteItem({ note, handleRestore, handleOpenFullScreen, toggleFavorite, formatDate, handleDuplicate, handleDelete }: any) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: note.id });
 
   const style = {
     transform: CSS.Translate.toString(transform),
-    transition,
+    transition: isDragging ? transition : undefined,
     zIndex: isDragging ? 50 : 1,
     opacity: isDragging ? 0.9 : 1,
   };
@@ -169,6 +187,75 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
   const [sortBy, setSortBy] = useState<'manual' | 'updated' | 'created'>('manual');
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const [fullScreenNoteId, setFullScreenNoteId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceLang, setVoiceLang] = useState('hi-IN');
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const activeLangObj = useMemo(() => {
+    return VOICE_LANGUAGES.find(l => l.code === voiceLang) || VOICE_LANGUAGES[0];
+  }, [voiceLang]);
+
+  const toggleVoiceSearch = useCallback(() => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('Speech Recognition is not supported in this browser. Please try Chrome or Edge.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = voiceLang;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results)
+          .map((res: any) => res[0].transcript)
+          .join('')
+          .replace(/[\p{P}\s]+$/gu, '')
+          .trim();
+        setSearch(transcript);
+      };
+
+      recognition.onerror = (err: any) => {
+        console.error('Voice search error:', err);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setSearch(prev => prev.replace(/[\p{P}\s]+$/gu, '').trim());
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (e) {
+      console.error('Error starting speech recognition:', e);
+      setIsListening(false);
+    }
+  }, [isListening, voiceLang]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
   
   const allNotes = useLiveQuery(() => db.stickyNotes.toArray()) || [];
   const fullScreenNote = useMemo(() => allNotes.find(n => n.id === fullScreenNoteId), [allNotes, fullScreenNoteId]);
@@ -223,12 +310,31 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
     }
   };
 
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Delete this note?')) {
-      await db.stickyNotes.delete(id);
-      if (fullScreenNoteId === id) setFullScreenNoteId(null);
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Sticky Note',
+      message: 'Are you sure you want to delete this note?',
+      confirmText: 'Delete Note',
+      onConfirm: async () => {
+        await db.stickyNotes.delete(id);
+        if (fullScreenNoteId === id) setFullScreenNoteId(null);
+      },
+    });
   };
 
   const handleOpenFullScreen = (note: IStickyNote, e?: React.MouseEvent) => {
@@ -277,17 +383,48 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
     return new Date(timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   };
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
+
+  useLayoutEffect(() => {
+    if (panelRef.current) {
+      panelRef.current.style.transformOrigin = 'center center';
+    }
+    setIsLayoutReady(true);
+  }, []);
+
   return createPortal(
     <div className="fixed inset-0 z-[25000] flex items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4 p-0">
       <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 20, scale: 0.95 }}
+        ref={panelRef}
+        initial={{ opacity: 0, y: 15, scale: 0.96 }}
+        animate={{ opacity: isLayoutReady ? 1 : 0, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 15, scale: 0.96 }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
         className="w-full h-full sm:h-[85vh] sm:max-w-3xl bg-white dark:bg-[#1a1a1a] shadow-2xl sm:rounded-[2rem] flex flex-col overflow-hidden relative"
       >
-        {/* Floating Add and Close Buttons for Desktop/Mobile */}
+        {/* Floating Add, Delete All, and Close Buttons for Desktop/Mobile */}
         <div className="absolute top-4 right-4 sm:top-5 sm:right-5 flex items-center gap-2 z-20">
+          {allNotes.length > 0 && (
+            <button
+              onClick={() => {
+                setConfirmConfig({
+                  isOpen: true,
+                  title: 'Delete All Sticky Notes',
+                  message: `Are you sure you want to delete ALL ${allNotes.length} sticky note(s)? This action cannot be undone.`,
+                  confirmText: `Delete All (${allNotes.length})`,
+                  onConfirm: async () => {
+                    await db.stickyNotes.clear();
+                    if (fullScreenNoteId) setFullScreenNoteId(null);
+                  },
+                });
+              }}
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 shadow-sm flex items-center justify-center hover:bg-red-500/20 dark:hover:bg-red-500/30 transition-colors"
+              title={`Delete All Notes (${allNotes.length})`}
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
           <button
             onClick={onAdd}
             className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black dark:bg-white text-white dark:text-black shadow-md flex items-center justify-center hover:bg-[#2a2a4e] dark:hover:bg-slate-200 transition-colors"
@@ -317,15 +454,86 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
               placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-10 py-2 sm:py-2.5 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-xs sm:text-sm font-semibold text-black dark:text-white focus:outline-none focus:border-black/30 dark:focus:border-white/30 transition-all placeholder:text-black/40 dark:placeholder:text-white/40"
+              className="w-full pl-10 pr-28 py-2 sm:py-2.5 bg-slate-50 dark:bg-black border border-slate-200 dark:border-white/10 rounded-xl text-xs sm:text-sm font-semibold text-black dark:text-white focus:outline-none focus:border-black/30 dark:focus:border-white/30 transition-all placeholder:text-black/40 dark:placeholder:text-white/40"
             />
-            <button 
-              onClick={() => alert('Voice search is coming soon!')}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
-              title="Voice Search"
-            >
-              <Mic size={16} />
-            </button>
+            
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20">
+              {/* Language Selector Dropdown */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsLangDropdownOpen(prev => !prev)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-[11px] font-bold text-black/80 dark:text-white/80 transition-colors cursor-pointer"
+                  title="Voice Recognition Language"
+                >
+                  <span className="text-xs">{activeLangObj.flag}</span>
+                  <span>{activeLangObj.short}</span>
+                  <ChevronDown size={12} className={`opacity-60 transition-transform ${isLangDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                <AnimatePresence>
+                  {isLangDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsLangDropdownOpen(false)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                        className="absolute right-0 top-full mt-1.5 z-50 w-48 max-h-60 overflow-y-auto bg-white/98 dark:bg-[#1c1c1c]/98 border border-black/10 dark:border-white/10 shadow-2xl rounded-xl p-1 backdrop-blur-xl custom-scrollbar"
+                      >
+                        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-black/40 dark:text-white/40">
+                          Voice Language
+                        </div>
+                        {VOICE_LANGUAGES.map((lang) => {
+                          const isSelected = voiceLang === lang.code;
+                          return (
+                            <button
+                              type="button"
+                              key={lang.code}
+                              onClick={() => {
+                                setVoiceLang(lang.code);
+                                setIsLangDropdownOpen(false);
+                                if (isListening && recognitionRef.current) {
+                                  recognitionRef.current.lang = lang.code;
+                                }
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors text-left ${
+                                isSelected 
+                                  ? 'bg-black/10 dark:bg-white/20 text-black dark:text-white font-bold' 
+                                  : 'text-black/80 dark:text-white/80 hover:bg-black/5 dark:hover:bg-white/10'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <span>{lang.flag}</span>
+                                <span>{lang.label}</span>
+                              </span>
+                              {isSelected && <Check size={13} className="opacity-70" />}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Mic Toggle Button */}
+              <button 
+                type="button"
+                onClick={toggleVoiceSearch}
+                className={`relative p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                  isListening 
+                    ? 'text-red-500 bg-red-500/15 dark:bg-red-500/25 ring-2 ring-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.35)] animate-pulse' 
+                    : 'text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'
+                }`}
+                title={isListening ? `Listening in ${activeLangObj.label}... Click to stop` : `Voice Search (${activeLangObj.label})`}
+              >
+                <Mic size={16} />
+                {isListening && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-black animate-pulse" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Filters & Sort */}
@@ -456,10 +664,8 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
               <StickyNote
                 note={{ ...fullScreenNote, isMaximized: true, isMinimized: false }}
                 onDelete={async (id) => {
-                  if (confirm('Delete this sticky note?')) {
-                    await db.stickyNotes.delete(id);
-                    setFullScreenNoteId(null);
-                  }
+                  await db.stickyNotes.delete(id);
+                  setFullScreenNoteId(null);
                 }}
                 onUpdate={async (updatedNote) => {
                   if (!updatedNote.isMaximized || updatedNote.isMinimized) {
@@ -477,6 +683,15 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
           )}
         </AnimatePresence>
       </motion.div>
+
+      <StickyConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>,
     document.body
   );
