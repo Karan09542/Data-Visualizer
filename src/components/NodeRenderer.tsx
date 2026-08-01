@@ -1183,10 +1183,6 @@ function NodeRenderer({
         shapeClasses = "px-5 py-4 min-w-[150px] overflow-hidden";
         shapeStyle.borderRadius = "24px";
         break;
-      case "octopus":
-        shapeClasses = "px-5 py-3 min-w-[150px] border-b-4 border-b-[#38bdf8]/60 overflow-hidden";
-        shapeStyle.borderRadius = "20px 20px 28px 28px";
-        break;
       case "ludo": {
         const ludoColors = [
           "border-[#ff4d4d]",
