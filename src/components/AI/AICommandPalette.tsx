@@ -11,9 +11,9 @@ import { getProviderIcon, getModelIcon } from './AIModelSelector';
 import { AIParameters } from './AISettingsPanel';
 import { applyPatchSmart } from '../../utils/patchUtils';
 import { AIModel } from '../../ai/providers/IAIProvider';
+import { CommandPalettePromptV1 } from '../../ai/prompts/CommandPalettePrompt.v1';
 import {
   Sparkles,
-  Bot,
   SlidersHorizontal,
   X,
   Search,
@@ -33,12 +33,9 @@ import {
   Calendar,
   Globe,
   FileCode,
-  CheckCheck,
-  Sparkle,
   Zap,
   Eye,
   EyeOff,
-  Terminal,
   GitMerge,
   RefreshCw,
 } from 'lucide-react';
@@ -284,9 +281,7 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
     abortControllerRef.current = new AbortController();
 
     try {
-      const fullPrompt = contextData
-        ? `Context Document:\n${JSON.stringify(contextData, null, 2)}\n\nUser Request: ${promptToUse}\n\nIMPORTANT: If modifying the document, respond with a valid RFC 6902 JSON Patch array enclosed in a \`\`\`json code block. Your JSON Patch paths MUST accurately reflect the root structure of the Context Document. If the root is an array, paths MUST start with an index (e.g., "/0/property"). If the root is an object, paths start with the property (e.g., "/property"). Example format: [{"op": "replace", "path": "/your/valid/path", "value": "new value"}]`
-        : promptToUse;
+      const fullPrompt = CommandPalettePromptV1(contextData, promptToUse);
 
       const options = {
         modelId: activeModelId || aiProviderManager.getActiveModelId() || '',
@@ -374,7 +369,7 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
 
           {/* Bottom Bar inside prompt box */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-neutral-200 dark:border-neutral-800 mt-1">
-            
+
             {/* Top/Left Group: Model Selector & Settings */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {/* Provider & Model Selector Badge */}

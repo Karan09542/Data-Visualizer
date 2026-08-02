@@ -1,7 +1,5 @@
 import { IAIProvider, AIGenerateOptions } from "../providers/IAIProvider";
 import { providerRegistry } from "./ProviderRegistry";
-import { modelRegistry } from "./ModelRegistry";
-import { capabilityResolver } from "./CapabilityResolver";
 import { aiEventBus } from "../events/AIEventBus";
 import { aiStatistics } from "../diagnostics/AIStatistics";
 import { useAIStore } from "../../store/useAIStore";
@@ -38,7 +36,7 @@ export class AIProviderManager {
     }
     return provider || null;
   }
-  
+
   getActiveModelId(): string | null {
     return this.activeModelId || useAIStore.getState().activeModelId;
   }
@@ -64,10 +62,10 @@ export class AIProviderManager {
     try {
       aiEventBus.emit("generationStarted", { providerId: provider.id, modelId: finalOptions.modelId, prompt });
       const result = await provider.generate(prompt, finalOptions, signal);
-      
+
       const duration = performance.now() - startTime;
       aiStatistics.recordSuccess(result.usage?.totalTokens || 0, duration);
-      
+
       aiEventBus.emit("generationCompleted", { result: result.text, usage: result.usage });
       return result;
     } catch (e: any) {
@@ -100,10 +98,10 @@ export class AIProviderManager {
 
     const startTime = performance.now();
     let firstTokenTime: number | null = null;
-    
+
     try {
       aiEventBus.emit("generationStarted", { providerId: provider.id, modelId: finalOptions.modelId, prompt });
-      
+
       const wrappedOnChunk = (chunk: string) => {
         if (!firstTokenTime) firstTokenTime = performance.now();
         aiEventBus.emit("tokenReceived", { chunk });
@@ -111,7 +109,7 @@ export class AIProviderManager {
       };
 
       const result = await provider.stream(prompt, finalOptions, wrappedOnChunk, signal);
-      
+
       const endTime = performance.now();
       aiStatistics.recordSuccess(
         result.usage?.totalTokens || 0,

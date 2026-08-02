@@ -10,7 +10,7 @@ interface NodeHelpModalProps {
 }
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
-  const { code, setCode, appTheme } = useStore();
+  const { appTheme } = useStore();
   const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image' | 'search' | 'transfer'>('api');
 
   const handleInsertExample = async () => {
@@ -32,11 +32,11 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
           title: "Project Tasks",
           tasks: [
             { id: "dt1", text: "Design Database Schema", completed: true, status: "Completed", priority: "High" },
-            { 
-              id: "dt2", 
-              text: "Setup Authentication Flow", 
-              completed: false, 
-              status: "Todo", 
+            {
+              id: "dt2",
+              text: "Setup Authentication Flow",
+              completed: false,
+              status: "Todo",
               priority: "High",
               tasks: [
                 { id: "dt2-1", text: "Integrate OAuth Callback", completed: true, status: "Completed", priority: "Medium" },
@@ -65,11 +65,11 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
             title: "Project Tasks",
             tasks: [
               { id: "dt1", text: "Design Database Schema", completed: true, status: "Completed", priority: "High" },
-              { 
-                id: "dt2", 
-                text: "Setup Authentication Flow", 
-                completed: false, 
-                status: "Todo", 
+              {
+                id: "dt2",
+                text: "Setup Authentication Flow",
+                completed: false,
+                status: "Todo",
                 priority: "High",
                 tasks: [
                   { id: "dt2-1", text: "Integrate OAuth Callback", completed: true, status: "Completed", priority: "Medium" },
@@ -134,14 +134,12 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative w-full h-full sm:h-auto sm:max-w-2xl border sm:rounded-2xl shadow-2xl overflow-hidden font-sans flex flex-col ${
-              appTheme === 'dark' ? 'bg-[#0f172a] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
-            }`}
+            className={`relative w-full h-full sm:h-auto sm:max-w-2xl border sm:rounded-2xl shadow-2xl overflow-hidden font-sans flex flex-col ${appTheme === 'dark' ? 'bg-[#0f172a] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
+              }`}
           >
             {/* Header */}
-            <div className={`flex flex-col border-b ${
-              appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'
-            }`}>
+            <div className={`flex flex-col border-b ${appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'
+              }`}>
               <div className="flex items-center justify-between p-4 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-indigo-500/10 rounded-lg">
@@ -154,16 +152,15 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                 </div>
                 <button
                   onClick={onClose}
-                  className={`p-2 rounded-full transition-colors ${
-                    appTheme === 'dark' 
-                      ? 'hover:bg-slate-800 text-slate-400 hover:text-slate-200' 
+                  className={`p-2 rounded-full transition-colors ${appTheme === 'dark'
+                      ? 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
                       : 'hover:bg-slate-100 text-slate-400 hover:text-slate-600'
-                  }`}
+                    }`}
                 >
                   <X size={20} />
                 </button>
               </div>
-              
+
               {/* Tabs */}
               <div className="px-4 border-b dark:border-slate-800/50">
                 <div className="flex gap-2 overflow-x-auto scrollbar-none py-2 shrink-0 min-w-0 max-w-full">
@@ -185,17 +182,16 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                         key={tab.id}
                         type="button"
                         onClick={() => setActiveTab(tab.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer flex items-center gap-1.5 border shrink-0 ${
-                          isActive
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer flex items-center gap-1.5 border shrink-0 ${isActive
                             ? tab.color === 'indigo' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-bold shadow-xs'
                               : tab.color === 'amber' ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold shadow-xs'
-                              : tab.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold shadow-xs'
-                              : tab.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
-                              : tab.color === 'rose' ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-450 font-bold shadow-xs'
-                              : tab.color === 'cyan' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 font-bold shadow-xs'
-                              : 'bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400 font-bold shadow-xs'
+                                : tab.color === 'blue' ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold shadow-xs'
+                                  : tab.color === 'emerald' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
+                                    : tab.color === 'rose' ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-450 font-bold shadow-xs'
+                                      : tab.color === 'cyan' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 font-bold shadow-xs'
+                                        : 'bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400 font-bold shadow-xs'
                             : 'bg-slate-50/50 dark:bg-slate-900/10 border-slate-100 dark:border-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
-                        }`}
+                          }`}
                       >
                         <Icon size={14} className={isActive ? 'opacity-100' : 'opacity-70'} />
                         <span>{tab.label}</span>
@@ -210,9 +206,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
             <div className="p-6 flex-1 sm:max-h-[60vh] overflow-y-auto scrollbar-none space-y-6 text-sm">
               {activeTab === 'api' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-indigo-950/20 border-indigo-900/40 text-indigo-200' : 'bg-indigo-50/50 border-indigo-100 text-indigo-700'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-indigo-950/20 border-indigo-900/40 text-indigo-200' : 'bg-indigo-50/50 border-indigo-100 text-indigo-700'
+                    }`}>
                     <Globe className="shrink-0 mt-0.5" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are API Nodes?</span>
@@ -256,10 +251,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-blue-500" /> Defining an API Node in JSON
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-indigo-300' : 'bg-slate-50 border-slate-200 text-indigo-600'
-                    }`}>
-{`{
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-indigo-300' : 'bg-slate-50 border-slate-200 text-indigo-600'
+                      }`}>
+                      {`{
   "project_name": "API Visualizer Showcase",
   "github_profile_api_node": "https://api.github.com/users/octocat"
 }`}
@@ -270,9 +264,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'js' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-amber-950/20 border-amber-900/40 text-amber-200' : 'bg-amber-50/50 border-amber-100 text-amber-800'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-amber-950/20 border-amber-900/40 text-amber-200' : 'bg-amber-50/50 border-amber-100 text-amber-800'
+                    }`}>
                     <FileJson className="shrink-0 mt-0.5" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are JS Nodes?</span>
@@ -306,10 +299,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-amber-500" /> Defining a JS Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'
-                    }`}>
-{`{
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'
+                      }`}>
+                      {`{
   "project_name": "JS execution",
   "math_calc_js_node": "const result = 50 * 20;\\n// Result: result\\n// namaste"
 }`}
@@ -320,9 +312,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'ts' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-blue-950/20 border-blue-900/40 text-blue-200' : 'bg-blue-50/50 border-blue-100 text-blue-800'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-blue-950/20 border-blue-900/40 text-blue-200' : 'bg-blue-50/50 border-blue-100 text-blue-800'
+                    }`}>
                     <Code className="shrink-0 mt-0.5" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are TS Nodes?</span>
@@ -356,10 +347,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-blue-500" /> Defining a TS Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
-                    }`}>
-{`{
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-blue-300' : 'bg-blue-50 border-blue-200 text-blue-700'
+                      }`}>
+                      {`{
   "project_name": "TS execution",
   "greet_ts_node": "const msg: string = 'Typescript Rules';\\n// msg\\n// namaste"
 }`}
@@ -370,9 +360,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'py' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-800'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-200' : 'bg-emerald-50/50 border-emerald-100 text-emerald-800'
+                    }`}>
                     <Terminal className="shrink-0 mt-0.5 text-emerald-500" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are Python Nodes?</span>
@@ -406,10 +395,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-emerald-500" /> Defining a Python Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-emerald-300' : 'bg-[#f0fdf4] border-emerald-100 text-emerald-700'
-                    }`}>
-{`{
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-emerald-300' : 'bg-[#f0fdf4] border-emerald-100 text-emerald-700'
+                      }`}>
+                      {`{
   "project_name": "Python execution",
   "greet_py_node": "text = 'Python Rules'\\nprint(text)\\nresult = {'message': text}\\nresult"
 }`}
@@ -420,9 +408,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'math' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-rose-950/20 border-rose-900/40 text-rose-200' : 'bg-rose-50/50 border-rose-100 text-rose-850'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-rose-950/20 border-rose-900/40 text-rose-200' : 'bg-rose-50/50 border-rose-100 text-rose-850'
+                    }`}>
                     <Calculator className="shrink-0 mt-0.5 text-rose-500" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are Math Nodes?</span>
@@ -476,10 +463,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-rose-555" /> Defining a Math Node in JSON
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-700'
-                    }`}>
-{`{
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-700'
+                      }`}>
+                      {`{
   "project_name": "Calculus and Algebra Nodes",
   "sine_oscillations_math_node": "f(x) = a * sin(b * x + c)",
   "archimedean_spiral.math": "r = theta * k"
@@ -491,9 +477,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'todo' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-purple-950/20 border-purple-900/40 text-purple-200' : 'bg-purple-50/50 border-purple-100 text-purple-850'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-purple-950/20 border-purple-900/40 text-purple-200' : 'bg-purple-50/50 border-purple-100 text-purple-850'
+                    }`}>
                     <ListTodo className="shrink-0 mt-0.5 text-purple-500" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are Todo Nodes?</span>
@@ -547,10 +532,9 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
                       <Code size={16} className="text-purple-500" /> Defining a Todo Node
                     </span>
-                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                      appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-purple-300' : 'bg-purple-50/30 border-purple-100 text-purple-700'
-                    }`}>
-{`{
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-purple-300' : 'bg-purple-50/30 border-purple-100 text-purple-700'
+                      }`}>
+                      {`{
   "title": "Project Deliverables",
   "tasks": [
     {
@@ -568,9 +552,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'search' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-blue-950/20 border-blue-900/40 text-blue-200' : 'bg-blue-50/50 border-blue-100 text-blue-850'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-blue-950/20 border-blue-900/40 text-blue-200' : 'bg-blue-50/50 border-blue-100 text-blue-850'
+                    }`}>
                     <Search className="shrink-0 mt-0.5 text-blue-500" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are Search Nodes?</span>
@@ -604,9 +587,8 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
 
               {activeTab === 'image' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-cyan-950/20 border-cyan-900/40 text-cyan-200' : 'bg-cyan-50/50 border-cyan-100 text-cyan-850'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-cyan-950/20 border-cyan-900/40 text-cyan-200' : 'bg-cyan-50/50 border-cyan-100 text-cyan-850'
+                    }`}>
                     <ImageIcon className="shrink-0 mt-0.5 text-cyan-500" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are Image Nodes?</span>
@@ -632,7 +614,7 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                         Organize your creative workflow with multiple artboards and deep layer management supporting reordering, visibility toggling, and object locking.
-                        <br/><br/>
+                        <br /><br />
                         <span className="font-semibold text-slate-600 dark:text-slate-300">Shortcuts: </span>
                         Use <code className="font-mono text-[10px] bg-slate-800/10 dark:bg-slate-800/50 px-1 rounded border border-slate-300 dark:border-slate-700/50">Ctrl+[</code> / <code className="font-mono text-[10px] bg-slate-800/10 dark:bg-slate-800/50 px-1 rounded border border-slate-300 dark:border-slate-700/50">Ctrl+]</code> to Send Backward/Bring Forward. Add <code className="font-mono text-[10px] bg-slate-800/10 dark:bg-slate-800/50 px-1 rounded border border-slate-300 dark:border-slate-700/50">Shift</code> to Send to Back/Bring to Front.
                       </p>
@@ -640,28 +622,26 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                   </div>
 
                   <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-[#0d1117] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
-                       <Code size={16} className="text-cyan-500" /> Defining an Image Node
-                     </span>
-                     <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-cyan-300' : 'bg-cyan-50/30 border-cyan-100 text-cyan-700'
-                     }`}>
-{`{
+                    <span className="font-bold flex items-center gap-1.5 mb-2.5">
+                      <Code size={16} className="text-cyan-500" /> Defining an Image Node
+                    </span>
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-cyan-300' : 'bg-cyan-50/30 border-cyan-100 text-cyan-700'
+                      }`}>
+                      {`{
   "src": "https://example.com/image.png",
   "alt": "An example image",
   "filters": ["grayscale"],
   "annotations": []
 }`}
-                     </pre>
+                    </pre>
                   </div>
                 </div>
               )}
 
               {activeTab === 'transfer' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className={`p-4 rounded-xl border flex gap-3 ${
-                    appTheme === 'dark' ? 'bg-indigo-950/20 border-indigo-900/40 text-indigo-200' : 'bg-indigo-50/50 border-indigo-100 text-indigo-800'
-                  }`}>
+                  <div className={`p-4 rounded-xl border flex gap-3 ${appTheme === 'dark' ? 'bg-indigo-950/20 border-indigo-900/40 text-indigo-200' : 'bg-indigo-50/50 border-indigo-100 text-indigo-800'
+                    }`}>
                     <Share2 className="shrink-0 mt-0.5 text-indigo-500" size={18} />
                     <div>
                       <span className="font-semibold block mb-0.5">What are Transfer Nodes?</span>
@@ -692,27 +672,25 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
                   </div>
 
                   <div className={`p-4 rounded-xl border ${appTheme === 'dark' ? 'bg-[#0d1117] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                     <span className="font-bold flex items-center gap-1.5 mb-2.5">
-                       <Code size={16} className="text-indigo-500" /> Defining a Transfer Node
-                     </span>
-                     <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${
-                       appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-indigo-300' : 'bg-indigo-50/30 border-indigo-100 text-indigo-700'
-                     }`}>
-{`{
+                    <span className="font-bold flex items-center gap-1.5 mb-2.5">
+                      <Code size={16} className="text-indigo-500" /> Defining a Transfer Node
+                    </span>
+                    <pre className={`p-4 rounded-xl text-xs font-mono overflow-x-auto scrollbar-none border ${appTheme === 'dark' ? 'bg-[#161b22] border-slate-800 text-indigo-300' : 'bg-indigo-50/30 border-indigo-100 text-indigo-700'
+                      }`}>
+                      {`{
   "project_resources": {
     "specs_transfer_node": "",
     "backup_database.transfer": ""
   }
 }`}
-                     </pre>
+                    </pre>
                   </div>
                 </div>
               )}
 
               {/* Interactive Demo callout */}
-              <div className={`p-4 mt-6 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                appTheme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-4 mt-6 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${appTheme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div>
                   <h4 className="font-semibold text-xs mb-1 uppercase tracking-wider text-slate-500 dark:text-slate-400">Try it out now!</h4>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -729,16 +707,14 @@ const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             {/* Footer */}
-            <div className={`px-6 py-4 bg-slate-50/50 dark:bg-slate-900/40 border-t flex justify-end gap-3 ${
-              appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'
-            }`}>
+            <div className={`px-6 py-4 bg-slate-50/50 dark:bg-slate-900/40 border-t flex justify-end gap-3 ${appTheme === 'dark' ? 'border-slate-800' : 'border-slate-100'
+              }`}>
               <button
                 onClick={onClose}
-                className={`px-4 py-2 border rounded-lg text-xs font-semibold transition-colors ${
-                  appTheme === 'dark' 
-                    ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-slate-100' 
+                className={`px-4 py-2 border rounded-lg text-xs font-semibold transition-colors ${appTheme === 'dark'
+                    ? 'border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
                     : 'border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 Got it
               </button>
