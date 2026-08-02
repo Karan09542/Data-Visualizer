@@ -7,11 +7,11 @@ const toTex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string
   const tex = node.toTex({
     handler: (n: any) => {
       if (n.isSymbolNode) {
-        const display = n.name === "theta" ? "\\theta" : n.name;
         if (payload.coloredVars && payload.coloredVars[n.name]) {
-          return `\\textcolor{${payload.coloredVars[n.name]}}{${display}}`;
+          const defaultTex = n.toTex({ handler: undefined });
+          return `\\textcolor{${payload.coloredVars[n.name]}}{${defaultTex}}`;
         }
-        return display;
+        return undefined;
       }
       return undefined;
     },
@@ -26,11 +26,11 @@ const expressionToLatex: MathWorkerHandler<{ expression: string; coloredVars?: R
     return n.toTex({
       handler: (node: any) => {
         if (node.isSymbolNode) {
-          const display = node.name === "theta" ? "\\theta" : node.name;
           if (payload.coloredVars && payload.coloredVars[node.name]) {
-            return `\\textcolor{${payload.coloredVars[node.name]}}{${display}}`;
+            const defaultTex = node.toTex({ handler: undefined });
+            return `\\textcolor{${payload.coloredVars[node.name]}}{${defaultTex}}`;
           }
-          return display;
+          return undefined;
         }
         return undefined;
       },
