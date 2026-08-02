@@ -5,6 +5,8 @@ export const LAYOUT_MODES = [
   "force",
   "compact",
   "mindmap",
+  "grid",
+  "molecule",
 ] as const;
 
 export const CODE_FORMATS = ["json", "yaml"] as const;
