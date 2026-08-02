@@ -4,13 +4,15 @@ import { X, Camera, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopC
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { cn } from '@/lib/utils';
+import { DocumentWorkspace } from './camera/DocumentWorkspace';
 
 interface CameraCaptureModalProps {
   onClose: () => void;
   onCapture: (file: File) => void;
+  initialImageSrc?: string | null;
 }
 
-export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalProps) {
+export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null }: CameraCaptureModalProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -22,7 +24,7 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<BlobPart[]>([]);
 
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(initialImageSrc);
   const [capturedVideo, setCapturedVideo] = useState<Blob | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -146,6 +148,10 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
   };
 
   const retake = () => {
+    if (initialImageSrc) {
+      onClose();
+      return;
+    }
     setCapturedImage(null);
     setCapturedVideo(null);
     setCrop({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
@@ -191,41 +197,25 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
   };
 
   const handleSave = async () => {
+    // Legacy video save, Image saving is now handled by DocumentWorkspace
     setIsProcessing(true);
     try {
       if (capturedVideo) {
         const file = new File([capturedVideo], `capture_${Date.now()}.webm`, { type: 'video/webm' });
         onCapture(file);
-      } else if (capturedImage) {
-        const image = imgRef.current;
-        if (!image) throw new Error("Image not loaded");
-        const scaleX = image.naturalWidth / image.width;
-        const scaleY = image.naturalHeight / image.height;
-
-        const pixelCrop = (completedCrop && completedCrop.width > 0 && completedCrop.height > 0) ? {
-          x: completedCrop.x * scaleX,
-          y: completedCrop.y * scaleY,
-          width: completedCrop.width * scaleX,
-          height: completedCrop.height * scaleY,
-        } : {
-          x: 0,
-          y: 0,
-          width: image.naturalWidth,
-          height: image.naturalHeight
-        };
-
-        const finalBlob = await getCroppedImageInternal(capturedImage, pixelCrop, rotation);
-        if (finalBlob) {
-          const file = new File([finalBlob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-          onCapture(file);
-        }
+        onClose();
       }
-      onClose();
     } catch (err) {
       console.error(err);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleWorkspaceSave = (blob: Blob) => {
+    const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+    onCapture(file);
+    onClose();
   };
 
   const handlePresetClick = useCallback((presetValue: number | undefined) => {
@@ -402,37 +392,39 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
 
   return createPortal(
     <div className="fixed inset-0 z-[999999] bg-black flex flex-col items-center">
-      <div className="w-full h-14 flex items-center justify-between px-4 z-10 bg-gradient-to-b from-black/50 to-transparent absolute top-0 left-0">
-        <button onClick={onClose} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
-          <X size={20} />
-        </button>
-
-        {!capturedImage && !capturedVideo && !isRecording && (
-          <div className="flex bg-black/40 backdrop-blur rounded-full p-1 border border-white/10">
-            <button onClick={() => setMode('photo')} className={cn("px-4 py-1 text-xs font-medium rounded-full transition-colors", mode === 'photo' ? "bg-white text-black" : "text-white")}>Photo</button>
-            <button onClick={() => setMode('video')} className={cn("px-4 py-1 text-xs font-medium rounded-full transition-colors", mode === 'video' ? "bg-white text-black" : "text-white")}>Video</button>
-          </div>
-        )}
-        {isRecording && <div className="text-red-500 animate-pulse font-bold">Recording...</div>}
-        {(capturedImage || capturedVideo) && (
-          <div className="text-white font-medium text-sm drop-shadow-md">
-            {capturedImage ? 'Edit Photo' : 'Preview Video'}
-          </div>
-        )}
-
-        {capturedImage || capturedVideo ? (
-          <button onClick={handleSave} disabled={isProcessing} className="p-2 text-blue-400 font-bold hover:text-blue-300 rounded-full flex items-center gap-1 bg-black/20 backdrop-blur disabled:opacity-50">
-            <Check size={18} />
-            <span className="text-xs">{isProcessing ? 'Saving...' : 'Save'}</span>
+      {!capturedImage && (
+        <div className="w-full h-14 flex items-center justify-between px-4 z-10 bg-gradient-to-b from-black/50 to-transparent absolute top-0 left-0">
+          <button onClick={onClose} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
+            <X size={20} />
           </button>
-        ) : (
-          hasMultipleCameras ? (
-            <button onClick={switchCamera} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
-              <RefreshCcw size={20} />
+
+          {!capturedVideo && !isRecording && (
+            <div className="flex bg-black/40 backdrop-blur rounded-full p-1 border border-white/10">
+              <button onClick={() => setMode('photo')} className={cn("px-4 py-1 text-xs font-medium rounded-full transition-colors", mode === 'photo' ? "bg-white text-black" : "text-white")}>Photo</button>
+              <button onClick={() => setMode('video')} className={cn("px-4 py-1 text-xs font-medium rounded-full transition-colors", mode === 'video' ? "bg-white text-black" : "text-white")}>Video</button>
+            </div>
+          )}
+          {isRecording && <div className="text-red-500 animate-pulse font-bold">Recording...</div>}
+          {capturedVideo && (
+            <div className="text-white font-medium text-sm drop-shadow-md">
+              Preview Video
+            </div>
+          )}
+
+          {capturedVideo ? (
+            <button onClick={handleSave} disabled={isProcessing} className="p-2 text-blue-400 font-bold hover:text-blue-300 rounded-full flex items-center gap-1 bg-black/20 backdrop-blur disabled:opacity-50">
+              <Check size={18} />
+              <span className="text-xs">{isProcessing ? 'Saving...' : 'Save'}</span>
             </button>
-          ) : <div className="w-10"></div>
-        )}
-      </div>
+          ) : (
+            hasMultipleCameras ? (
+              <button onClick={switchCamera} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
+                <RefreshCcw size={20} />
+              </button>
+            ) : <div className="w-10"></div>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 w-full relative flex items-center justify-center overflow-hidden">
         {!capturedImage && !capturedVideo ? (
@@ -481,33 +473,23 @@ export function CameraCaptureModal({ onClose, onCapture }: CameraCaptureModalPro
         ) : (
           <div className="w-full h-full relative flex items-center justify-center bg-black">
             {capturedImage && (
-              <ReactCrop
-                crop={crop}
-                onChange={(_, percentCrop) => setCrop(percentCrop)}
-                onComplete={(c) => setCompletedCrop(c)}
-                aspect={aspect}
-                className="max-h-full"
-              >
-                <img
-                  ref={imgRef}
-                  src={capturedImage}
-                  onLoad={handleImageLoad}
-                  style={{ transform: `rotate(${rotation}deg)`, maxHeight: '80vh', objectFit: 'contain' }}
-                  alt="Captured"
-                />
-              </ReactCrop>
+              <DocumentWorkspace
+                imageSrc={capturedImage}
+                onSave={handleWorkspaceSave}
+                onCancel={retake}
+              />
             )}
             {capturedVideo && (
-              <video src={URL.createObjectURL(capturedVideo)} controls className="max-w-full max-h-full" autoPlay loop playsInline />
+              <>
+                <video src={URL.createObjectURL(capturedVideo)} controls className="max-w-full max-h-full" autoPlay loop playsInline />
+                <button onClick={retake} className="absolute left-4 bottom-24 p-3 bg-white/10 hover:bg-white/20 hover:text-white text-white/70 rounded-full backdrop-blur z-20 flex items-center gap-2 shadow-xl">
+                  <ArrowLeft size={16} /> <span className="text-xs font-semibold pr-1">Retake</span>
+                </button>
+              </>
             )}
-            <button onClick={retake} className="absolute left-4 bottom-24 p-3 bg-white/10 hover:bg-white/20 hover:text-white text-white/70 rounded-full backdrop-blur z-20 flex items-center gap-2 shadow-xl">
-              <ArrowLeft size={16} /> <span className="text-xs font-semibold pr-1">Retake</span>
-            </button>
           </div>
         )}
       </div>
-
-      {capturedImage && renderCropPresets()}
 
     </div>,
     document.body

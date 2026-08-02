@@ -108,3 +108,5 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
+
+// Trigger Vite restart

@@ -80,7 +80,31 @@ self.addEventListener('fetch', (event) => {
 
 // --- Workbox Routing ---
 
-// API Requests
+// Serve OPFS Tessdata
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/opfs-tessdata/'),
+  async ({ url }) => {
+    try {
+      const filename = url.pathname.split('/').pop();
+      if (!filename) throw new Error('No filename');
+      
+      const opfsRoot = await navigator.storage.getDirectory();
+      const fileHandle = await opfsRoot.getFileHandle(filename);
+      const file = await fileHandle.getFile();
+      
+      return new Response(file, {
+        headers: {
+          'Content-Type': 'application/x-gzip',
+          'Cache-Control': 'public, max-age=31536000'
+        }
+      });
+    } catch (e) {
+      console.warn('[SW] File not found in OPFS:', url.pathname);
+      return new Response('Not found in OPFS', { status: 404 });
+    }
+  }
+);
+
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/') && url.pathname !== '/api/stdin-get',
   new NetworkFirst({
