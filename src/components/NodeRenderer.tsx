@@ -572,6 +572,10 @@ function NodeRenderer({
         return "bg-gradient-to-tr from-fuchsia-500/30 via-cyan-500/30 to-violet-500/30 border-cyan-400/50 text-cyan-100 backdrop-blur-xl shadow-[0_0_15px_rgba(34,211,238,0.5)]";
       case "notebook":
         return "bg-[#fff9e6] border-[#e0d6b8] text-[#4a4a4a] border-l-4 border-l-red-400 shadow-md font-serif";
+      case "chalk":
+        return appTheme === "dark"
+          ? "chalk-node bg-[#182220] border-2 border-dashed border-slate-300/80 text-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.5)] ring-1 ring-white/10"
+          : "chalk-node bg-[#1e2a27] border-2 border-dashed border-white/90 text-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.25)] ring-2 ring-slate-800/80";
       case "custom":
         if (useNodeGradient) {
           return "border-white/20 shadow-xl backdrop-blur-sm ring-1 ring-white/10";
@@ -880,6 +884,7 @@ function NodeRenderer({
       "abstract",
       "chess",
       "octopus",
+      "chalk",
     ].includes(nodeTheme) ||
     (nodeTheme === "cloud" && appTheme === "dark") ||
     (nodeTheme === "pastel" && appTheme === "dark") ||
@@ -1174,6 +1179,9 @@ function NodeRenderer({
         shapeClasses = "px-5 py-3 min-w-[140px]";
         shapeStyle.clipPath =
           "polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px)";
+        break;
+      case "chalk":
+        shapeClasses = "px-5 py-3 min-w-[140px] chalk-node rounded-lg";
         break;
       case "zen":
         shapeClasses = "px-8 py-2 min-w-[140px] border-b";

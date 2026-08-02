@@ -20,6 +20,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   const isHovered = isHoveredState[0];
   const setIsHovered = isHoveredState[1];
   const edgeWidth = useStore(state => state.edgeWidth ?? 1.0);
+  const appTheme = useStore(state => state.appTheme);
   const jsNodeErrors = useStore(state => state.jsNodeErrors);
   const jsNodeResponses = useStore(state => state.jsNodeResponses);
 
@@ -161,6 +162,12 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     strokeWidth = 3.2;
     inlines.strokeLinecap = 'round';
     inlines.filter = "drop-shadow(0 2px 5px rgba(0,0,0,0.25))";
+  } else if (style === 'chalk' || nodeTheme === 'chalk') {
+    stroke = appTheme === 'dark' ? "#cbd5e1" : "#334155";
+    strokeWidth = 2;
+    strokeDasharray = "5,4";
+    inlines.strokeLinecap = 'round';
+    inlines.filter = "none";
   }
 
   if (style === 'ludo' || nodeTheme === 'ludo') {

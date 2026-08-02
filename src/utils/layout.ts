@@ -264,27 +264,40 @@ export const getEdgePath = (source: {x: number, y: number}, target: {x: number, 
         }
     }
 
-    // 8. ELECTRIC PULSE ZIGZAG (Triangular shockwave geometry)
+    // 8. ELECTRIC PULSE ZIGZAG (Smooth sinusoidal wave geometry)
     if (edgeStyle === 'zigzag' || edgeStyle === 'pulse') {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const dist = Math.hypot(dx, dy) || 1;
-        const steps = Math.max(6, Math.floor(dist / 22));
-        let path = `M ${x1},${y1}`;
         const nx = -dy / dist;
         const ny = dx / dist;
 
-        for (let i = 1; i < steps; i++) {
-            const t = i / steps;
-            let px = x1 + dx * t;
-            let py = y1 + dy * t;
-            const amp = 16;
-            const disp = (i % 2 === 0 ? 1 : -1) * amp;
-            px += nx * disp;
-            py += ny * disp;
-            path += ` L ${px},${py}`;
+        // Use fewer, wider waves for a smoother look
+        const waveCount = Math.max(3, Math.floor(dist / 50));
+        const amp = edgeStyle === 'pulse' ? 12 : 14;
+        let path = `M ${x1},${y1}`;
+
+        for (let i = 0; i < waveCount; i++) {
+            const t0 = i / waveCount;
+            const t1 = (i + 0.5) / waveCount;
+            const t2 = (i + 1) / waveCount;
+
+            // Midpoint of this half-wave (the peak/valley)
+            const peakX = x1 + dx * t1;
+            const peakY = y1 + dy * t1;
+            const side = (i % 2 === 0 ? 1 : -1) * amp;
+
+            // Control point at the peak, displaced perpendicular
+            const cpX = peakX + nx * side;
+            const cpY = peakY + ny * side;
+
+            // End point of this wave segment
+            const endX = x1 + dx * t2;
+            const endY = y1 + dy * t2;
+
+            // Quadratic bezier for smooth rounded peaks
+            path += ` Q ${cpX},${cpY} ${endX},${endY}`;
         }
-        path += ` L ${x2},${y2}`;
         return path;
     }
 

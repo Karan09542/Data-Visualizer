@@ -24,7 +24,7 @@ const SmartFetchErrorUI = lazyWithRetry(() => import("./SmartFetchErrorUI"), "Sm
 const GuiEditorPanel = lazyWithRetry(() => import("./GuiEditorPanel"), "GuiEditorPanel");
 const FileExplorerPanel = lazyWithRetry(() => import("./FileExplorerPanel"), "FileExplorerPanel");
 import { Sparkles } from "lucide-react";
-import { applyPatch } from "fast-json-patch";
+import { applyPatchSmart, mergeJSON } from "../utils/patchUtils";
 
 export default function EditorPanel() {
   const {
@@ -142,16 +142,38 @@ export default function EditorPanel() {
     return () => window.removeEventListener("format-editor", handleFormat);
   }, [activeTab]);
 
-  const handleApplyAIPatch = (patch: any) => {
-    if (parsedData === null || typeof parsedData !== 'object') {
-       alert("No valid JSON to patch.");
-       return;
-    }
+  const handleApplyAIPatch = async (patch: any, mode: 'merge' | 'replace' = 'merge') => {
     try {
-      const result = applyPatch(JSON.parse(JSON.stringify(parsedData)), patch);
-      setCode(JSON.stringify(result.newDocument, null, 2));
+      const currentParsedData = useStore.getState().parsedData;
+      const baseDoc = (currentParsedData !== null && typeof currentParsedData === 'object')
+        ? currentParsedData
+        : {};
+
+      const res = applyPatchSmart(baseDoc, patch);
+      let finalDoc: any;
+
+      if (mode === 'replace') {
+        finalDoc = res.newDocument;
+      } else {
+        finalDoc = mergeJSON(baseDoc, res.newDocument);
+      }
+
+      const codeFormat = useStore.getState().codeFormat;
+      let newCode = "";
+      if (codeFormat === 'yaml') {
+        try {
+          const yaml = (await import('js-yaml')).default;
+          newCode = yaml.dump(finalDoc);
+        } catch {
+          newCode = JSON.stringify(finalDoc, null, 2);
+        }
+      } else {
+        newCode = JSON.stringify(finalDoc, null, 2);
+      }
+
+      setCode(newCode);
     } catch (e: any) {
-      alert("Failed to apply patch: " + e.message);
+      alert("Failed to apply patch: " + (e.message || String(e)));
     }
   };
 

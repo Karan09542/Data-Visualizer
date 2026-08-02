@@ -536,6 +536,16 @@ input[type="number"] {
   animation: bounceSubtle 2s ease-in-out infinite;
 }
 
+/* Chalk Node Theme Styles */
+.chalk-node {
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 0),
+    radial-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 0);
+  background-size: 8px 8px, 16px 16px;
+  background-position: 0 0, 4px 4px;
+  font-family: 'Chalkboard SE', 'Chalkboard', 'Comic Sans MS', cursive, ui-monospace, monospace;
+}
+
 /* Abstract Node Theme Styles */
 .abstract-node {
   background: 

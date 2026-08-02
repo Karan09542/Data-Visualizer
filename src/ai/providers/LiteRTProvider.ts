@@ -5,6 +5,7 @@ export class LiteRTProvider implements IAIProvider {
   name = "LiteRT";
   description = "Local on-device AI provider using WebGPU/WASM.";
   isCloud = false;
+  isLocal = true;
 
   async initialize(): Promise<void> {
     // Initialize WebGL/WebGPU context if needed

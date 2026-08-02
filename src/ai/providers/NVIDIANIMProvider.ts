@@ -7,7 +7,7 @@ export class NVIDIANIMProvider implements IAIProvider {
   name = "NVIDIA NIM";
   description = "Cloud AI provider powered by NVIDIA NIM APIs.";
   isCloud = true;
-  
+
   private transport: AxiosTransport;
   private apiKey: string | null = null;
   private baseURL = "https://yts-tau.vercel.app";
@@ -42,6 +42,108 @@ export class NVIDIANIMProvider implements IAIProvider {
 
   async listModels(): Promise<AIModel[]> {
     return [
+      {
+        id: "z-ai/glm-5.2",
+        provider: "nvidia",
+        displayName: "GLM 5.2",
+        description: "Z-AI flagship model with thinking/reasoning capability.",
+        contextLength: 128000,
+        maxOutputTokens: 16384,
+        capabilities: {
+          streaming: true,
+          vision: false,
+          reasoning: true,
+          jsonMode: true,
+          functionCalling: true,
+          imageGeneration: false,
+          embeddings: false,
+        }
+      },
+      {
+        id: "stepfun-ai/step-3.7-flash",
+        provider: "nvidia",
+        displayName: "Step 3.7 Flash",
+        description: "Fast, highly efficient StepFun AI model.",
+        contextLength: 128000,
+        maxOutputTokens: 16384,
+        capabilities: {
+          streaming: true,
+          vision: false,
+          reasoning: false,
+          jsonMode: true,
+          functionCalling: true,
+          imageGeneration: false,
+          embeddings: false,
+        }
+      },
+      {
+        id: "deepseek-ai/deepseek-v4-flash",
+        provider: "nvidia",
+        displayName: "DeepSeek V4 Flash",
+        description: "High-performance DeepSeek model with thinking and high reasoning effort.",
+        contextLength: 128000,
+        maxOutputTokens: 16384,
+        capabilities: {
+          streaming: true,
+          vision: false,
+          reasoning: true,
+          jsonMode: true,
+          functionCalling: true,
+          imageGeneration: false,
+          embeddings: false,
+        }
+      },
+      {
+        id: "deepseek-ai/deepseek-v4-pro",
+        provider: "nvidia",
+        displayName: "DeepSeek V4 Pro",
+        description: "DeepSeek flagship professional model.",
+        contextLength: 128000,
+        maxOutputTokens: 16384,
+        capabilities: {
+          streaming: true,
+          vision: false,
+          reasoning: true,
+          jsonMode: true,
+          functionCalling: true,
+          imageGeneration: false,
+          embeddings: false,
+        }
+      },
+      {
+        id: "google/gemma-4-31b-it",
+        provider: "nvidia",
+        displayName: "Gemma 4 31B IT",
+        description: "Google's Gemma 4 instruction-tuned model with thinking support.",
+        contextLength: 128000,
+        maxOutputTokens: 16384,
+        capabilities: {
+          streaming: true,
+          vision: false,
+          reasoning: true,
+          jsonMode: true,
+          functionCalling: true,
+          imageGeneration: false,
+          embeddings: false,
+        }
+      },
+      {
+        id: "nvidia/nemotron-3-nano-30b-a3b",
+        provider: "nvidia",
+        displayName: "Nemotron 3 Nano 30B A3B",
+        description: "NVIDIA Nemotron 3 30B model with dedicated reasoning budget.",
+        contextLength: 128000,
+        maxOutputTokens: 16384,
+        capabilities: {
+          streaming: true,
+          vision: false,
+          reasoning: true,
+          jsonMode: true,
+          functionCalling: true,
+          imageGeneration: false,
+          embeddings: false,
+        }
+      },
       {
         id: "openai/gpt-oss-120b",
         provider: "nvidia",
@@ -128,23 +230,6 @@ export class NVIDIANIMProvider implements IAIProvider {
         }
       },
       {
-        id: "nvidia/nemotron-4-340b-instruct",
-        provider: "nvidia",
-        displayName: "Nemotron 4 340B Instruct",
-        description: "NVIDIA's flagship 340B parameter model for complex data processing.",
-        contextLength: 4096,
-        maxOutputTokens: 4096,
-        capabilities: {
-          streaming: true,
-          vision: false,
-          reasoning: true,
-          jsonMode: true,
-          functionCalling: true,
-          imageGeneration: false,
-          embeddings: false,
-        }
-      },
-      {
         id: "nvidia/nemotron-nano-12b-v2-vl",
         provider: "nvidia",
         displayName: "Nemotron Nano 12B VL",
@@ -206,14 +291,67 @@ export class NVIDIANIMProvider implements IAIProvider {
     messages.push({ role: "user", content: prompt });
 
     const userKey = this.getApiKey();
+    const modelId = options.modelId || "meta/llama-3.1-70b-instruct";
 
-    return {
-      model: options.modelId || "meta/llama-3.1-70b-instruct",
+    const payload: any = {
+      model: modelId,
       messages,
       temperature: options.temperature ?? 0.7,
       stream: false,
       ...(userKey ? { apiKey: userKey } : {}),
     };
+
+    if (options.maxTokens) payload.max_tokens = options.maxTokens;
+    if (options.topP !== undefined) payload.top_p = options.topP;
+
+    // Model specific custom kwargs & settings provided by user
+    switch (modelId) {
+      case "z-ai/glm-5.2":
+        payload.temperature = options.temperature ?? 1;
+        payload.top_p = options.topP ?? 1;
+        payload.max_tokens = options.maxTokens ?? 16384;
+        payload.seed = 42;
+        payload.chat_template_kwargs = { enable_thinking: true, clear_thinking: false };
+        break;
+
+      case "stepfun-ai/step-3.7-flash":
+        payload.temperature = options.temperature ?? 1;
+        payload.top_p = options.topP ?? 0.95;
+        payload.max_tokens = options.maxTokens ?? 16384;
+        payload.seed = 42;
+        break;
+
+      case "deepseek-ai/deepseek-v4-flash":
+        payload.temperature = options.temperature ?? 1;
+        payload.top_p = options.topP ?? 0.95;
+        payload.max_tokens = options.maxTokens ?? 16384;
+        payload.chat_template_kwargs = { thinking: true, reasoning_effort: "high" };
+        break;
+
+      case "deepseek-ai/deepseek-v4-pro":
+        payload.temperature = options.temperature ?? 1;
+        payload.top_p = options.topP ?? 0.95;
+        payload.max_tokens = options.maxTokens ?? 16384;
+        payload.chat_template_kwargs = { thinking: false };
+        break;
+
+      case "google/gemma-4-31b-it":
+        payload.temperature = options.temperature ?? 1;
+        payload.top_p = options.topP ?? 0.95;
+        payload.max_tokens = options.maxTokens ?? 16384;
+        payload.chat_template_kwargs = { enable_thinking: true };
+        break;
+
+      case "nvidia/nemotron-3-nano-30b-a3b":
+        payload.temperature = options.temperature ?? 1;
+        payload.top_p = options.topP ?? 1;
+        payload.max_tokens = options.maxTokens ?? 16384;
+        payload.reasoning_budget = 16384;
+        payload.chat_template_kwargs = { enable_thinking: true };
+        break;
+    }
+
+    return payload;
   }
 
   async generate(
@@ -242,7 +380,11 @@ export class NVIDIANIMProvider implements IAIProvider {
     });
 
     const data = response.data;
-    const text = data.choices?.[0]?.message?.content || data.text || "";
+    const msg = data.choices?.[0]?.message;
+    const reasoning = msg?.reasoning || msg?.reasoning_content || "";
+    const content = msg?.content || data.text || "";
+    const text = reasoning ? `<think>\n${reasoning}\n</think>\n\n${content}` : content;
+
     return {
       text,
       usage: data.usage ? {
@@ -266,6 +408,7 @@ export class NVIDIANIMProvider implements IAIProvider {
 
     const payload = { ...this.buildPayload(prompt, options), stream: true };
     let fullText = "";
+    let sseBuffer = "";
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -279,14 +422,23 @@ export class NVIDIANIMProvider implements IAIProvider {
       body: payload,
       signal,
       onChunk: (chunkData) => {
-        // SSE lines look like "data: {...}"
-        const lines = chunkData.split(/\r?\n/);
+        sseBuffer += chunkData;
+        const lines = sseBuffer.split(/\r?\n/);
+        sseBuffer = lines.pop() || "";
+
         for (const line of lines) {
           const trimmed = line.trim();
           if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
             try {
               const parsed = JSON.parse(trimmed.slice(6));
-              const content = parsed.choices?.[0]?.delta?.content;
+              const delta = parsed.choices?.[0]?.delta;
+              const reasoning = delta?.reasoning_content || delta?.reasoning;
+              const content = delta?.content;
+
+              if (reasoning) {
+                fullText += reasoning;
+                onChunk(reasoning);
+              }
               if (content) {
                 fullText += content;
                 onChunk(content);
@@ -298,6 +450,24 @@ export class NVIDIANIMProvider implements IAIProvider {
         }
       }
     });
+
+    if (sseBuffer.trim().startsWith("data: ") && sseBuffer.trim() !== "data: [DONE]") {
+      try {
+        const parsed = JSON.parse(sseBuffer.trim().slice(6));
+        const delta = parsed.choices?.[0]?.delta;
+        const reasoning = delta?.reasoning_content || delta?.reasoning;
+        const content = delta?.content;
+
+        if (reasoning) {
+          fullText += reasoning;
+          onChunk(reasoning);
+        }
+        if (content) {
+          fullText += content;
+          onChunk(content);
+        }
+      } catch { }
+    }
 
     return { text: fullText };
   }

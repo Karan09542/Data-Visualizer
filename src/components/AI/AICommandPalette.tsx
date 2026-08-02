@@ -9,7 +9,7 @@ import { aiEventBus } from '../../ai/events/AIEventBus';
 import { responseParser } from '../../ai/parsers/ResponseParser';
 import { getProviderIcon, getModelIcon } from './AIModelSelector';
 import { AIParameters } from './AISettingsPanel';
-import { applyPatch } from 'fast-json-patch';
+import { applyPatchSmart } from '../../utils/patchUtils';
 import { AIModel } from '../../ai/providers/IAIProvider';
 import {
   Sparkles,
@@ -39,12 +39,14 @@ import {
   Eye,
   EyeOff,
   Terminal,
+  GitMerge,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AICommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onApplyContext?: (patch: any) => void;
+  onApplyContext?: (patch: any, mode: 'merge' | 'replace') => void;
   contextData?: any; // The selected JSON/Document context
 }
 
@@ -189,7 +191,7 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
 
   const isKeyConfigured = useMemo(() => {
     if (!activeProvider) return false;
-    if (activeProvider.isLocal) return true;
+    if (!activeProvider.isCloud) return true;
     return !!apiKeys[activeProviderId];
   }, [activeProvider, activeProviderId, apiKeys]);
 
@@ -208,8 +210,7 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
   const patchedResult = useMemo(() => {
     if (!parsedPatch || !contextData || typeof contextData !== 'object') return null;
     try {
-      const cloned = JSON.parse(JSON.stringify(contextData));
-      const res = applyPatch(cloned, parsedPatch);
+      const res = applyPatchSmart(contextData, parsedPatch);
       return res.newDocument;
     } catch {
       return null;
@@ -250,13 +251,15 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
     };
   }, []);
 
-  // Parse patch on stream completion
+  // Parse patch on stream update or completion
   useEffect(() => {
-    if (!isGenerating && output) {
+    if (output) {
       const parsed = responseParser.parse(output);
       if (parsed.jsonPatch) {
         setParsedPatch(parsed.jsonPatch);
-        setActiveTab('diff');
+        if (!isGenerating && activeTab !== 'diff') {
+          setActiveTab('diff');
+        }
       }
     }
   }, [isGenerating, output]);
@@ -515,7 +518,7 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
                 <div className="grid grid-cols-2 gap-1.5">
                   {providers.map((p) => {
                     const isSelected = p.id === activeProviderId;
-                    const hasKey = !!apiKeys[p.id] || p.isLocal;
+                    const hasKey = !!apiKeys[p.id] || !!p.isLocal || !p.isCloud;
 
                     return (
                       <button
@@ -789,17 +792,33 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
                 )}
 
                 {parsedPatch && onApplyContext && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onApplyContext(parsedPatch);
-                      onClose();
-                    }}
-                    className="whitespace-nowrap px-3 py-1 bg-green-500 hover:bg-green-600 text-black font-bold text-xs rounded-none transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
-                  >
-                    <CheckCheck size={13} />
-                    <span>Apply Patch</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onApplyContext(parsedPatch, 'merge');
+                        onClose();
+                      }}
+                      className="whitespace-nowrap px-3 py-1 bg-green-500 hover:bg-green-600 text-black font-bold text-xs rounded-none transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                      title="Deeply merge AI data into existing document preserving un-targeted fields"
+                    >
+                      <GitMerge size={13} />
+                      <span>Merge</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onApplyContext(parsedPatch, 'replace');
+                        onClose();
+                      }}
+                      className="whitespace-nowrap px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs rounded-none transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                      title="Replace current document structure completely with AI response"
+                    >
+                      <RefreshCw size={13} />
+                      <span>Replace</span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>

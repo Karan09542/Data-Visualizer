@@ -52,6 +52,7 @@ export const NODE_THEMES = [
   "seed",
   "banyan",
   "peepal",
+  "chalk",
 ] as const;
 
 export const EDGE_STYLES = [

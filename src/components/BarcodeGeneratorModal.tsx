@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Download, Copy, Check, Barcode, QrCode, Image as ImageIcon, Upload, Trash2, Maximize2, Minimize2, AlertTriangle, HelpCircle } from 'lucide-react';
+import { X, Download, Copy, Check, Barcode, QrCode, Image as ImageIcon, Upload, Trash2, Maximize2, Minimize2, AlertTriangle, HelpCircle, Sparkles } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import { QRCodeSVG } from 'qrcode.react';
 import CustomSelect from './CustomSelect';
@@ -139,13 +139,16 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
     if (!svgRef.current) return;
     setBarcodeError(null);
 
-    if (!value) {
-      setBarcodeError('Please enter a value to generate barcode.');
+    const trimmedValue = value.trim();
+
+    // If input is empty or whitespace-only, do not show format error
+    if (!trimmedValue) {
+      svgRef.current.innerHTML = '';
       return;
     }
 
     const spec = FORMAT_SPECS[barcodeFormat];
-    if (spec && !spec.validate(value)) {
+    if (spec && !spec.validate(trimmedValue)) {
       setBarcodeError(`Invalid format for ${spec.name}. ${spec.hint}`);
       return;
     }
@@ -153,7 +156,7 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
     try {
       // Clear previous SVG content to avoid artifacts
       svgRef.current.innerHTML = '';
-      JsBarcode(svgRef.current, value, {
+      JsBarcode(svgRef.current, trimmedValue, {
         format: barcodeFormat,
         lineColor: fgColor,
         background: bgColor === 'transparent' ? undefined : bgColor,
@@ -182,7 +185,8 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
   const handleFormatChange = (newFormat: string) => {
     setBarcodeFormat(newFormat);
     const spec = FORMAT_SPECS[newFormat];
-    if (spec && !spec.validate(value)) {
+    const trimmedValue = value.trim();
+    if (trimmedValue && spec && !spec.validate(trimmedValue)) {
       setValue(spec.example);
     }
   };
@@ -348,13 +352,24 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                           </span>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        value={value}
-                        onChange={(e) => setValue(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500/50 text-slate-900 dark:text-white font-mono text-xs shadow-inner"
-                        placeholder="Enter text or numbers..."
-                      />
+                      <div className="relative">
+                        <textarea
+                          rows={3}
+                          value={value}
+                          onChange={(e) => setValue(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/60 text-slate-900 dark:text-white font-mono text-xs shadow-inner resize-y min-h-[70px] max-h-[160px] custom-scrollbar transition-all"
+                          placeholder="Enter text or numbers to encode..."
+                        />
+                        {value && (
+                          <button
+                            onClick={() => setValue('')}
+                            className="absolute top-2 right-2 p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors"
+                            title="Clear Input"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {mode === 'barcode' ? (
@@ -566,51 +581,74 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
                     className="relative z-10 p-4 rounded-xl shadow-lg transition-all flex flex-col items-center justify-center"
                     style={{ backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor }}
                   >
-                    {/* QR Code Container (Always mounted, hidden when mode !== qrcode) */}
-                    <div className={mode === 'qrcode' ? 'block' : 'hidden'}>
-                      <QRCodeSVG
-                        value={value || '123456789012'}
-                        size={isFullscreenPreview ? Math.max(qrSize, 240) : qrSize}
-                        level={logoUrl ? 'H' : qrDensity}
-                        includeMargin={qrMargin}
-                        fgColor={fgColor}
-                        bgColor={bgColor}
-                        imageSettings={
-                          logoUrl
-                            ? {
-                                src: logoUrl,
-                                x: undefined,
-                                y: undefined,
-                                height: logoSize,
-                                width: logoSize,
-                                excavate: true,
-                              }
-                            : undefined
-                        }
-                        className="max-w-full h-auto"
-                      />
-                    </div>
-
-                    {/* Barcode Container (Always mounted, hidden when mode !== barcode) */}
-                    <div className={mode === 'barcode' ? 'block' : 'hidden'}>
-                      {barcodeError ? (
-                        <div className="flex flex-col items-center justify-center p-4 text-center text-amber-600 dark:text-amber-400 max-w-xs bg-white/90 dark:bg-slate-900/90 rounded-xl border border-amber-500/20">
-                          <AlertTriangle size={24} className="mb-2 text-amber-500" />
-                          <span className="text-xs font-bold mb-1">Barcode Format Error</span>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">{barcodeError}</span>
-                          {currentSpec && (
-                            <button
-                              onClick={() => setValue(currentSpec.example)}
-                              className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-all active:scale-95"
-                            >
-                              Use Valid Sample Data ({currentSpec.example})
-                            </button>
-                          )}
+                    {!value.trim() ? (
+                      /* Friendly Empty State UI */
+                      <div className="flex flex-col items-center justify-center p-6 text-center max-w-xs bg-white/90 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-md backdrop-blur-sm">
+                        <div className="w-12 h-12 rounded-full bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center mb-3 text-blue-600 dark:text-blue-400">
+                          {mode === 'barcode' ? <Barcode size={26} /> : <QrCode size={26} />}
                         </div>
-                      ) : (
-                        <svg ref={svgRef} className="max-w-full h-auto" />
-                      )}
-                    </div>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                          Ready to Generate {mode === 'barcode' ? 'Barcode' : 'QR Code'}
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+                          Type or paste your text or numbers into the box on the left to preview live.
+                        </span>
+                        <button
+                          onClick={() => setValue(mode === 'barcode' && currentSpec ? currentSpec.example : '123456789012')}
+                          className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/25 transition-all active:scale-95 flex items-center gap-1.5"
+                        >
+                          <Sparkles size={13} />
+                          Insert Sample Data
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {/* QR Code Container */}
+                        <div className={mode === 'qrcode' ? 'block' : 'hidden'}>
+                          <QRCodeSVG
+                            value={value.trim()}
+                            size={isFullscreenPreview ? Math.max(qrSize, 240) : qrSize}
+                            level={logoUrl ? 'H' : qrDensity}
+                            includeMargin={qrMargin}
+                            fgColor={fgColor}
+                            bgColor={bgColor}
+                            imageSettings={
+                              logoUrl
+                                ? {
+                                    src: logoUrl,
+                                    x: undefined,
+                                    y: undefined,
+                                    height: logoSize,
+                                    width: logoSize,
+                                    excavate: true,
+                                  }
+                                : undefined
+                            }
+                            className="max-w-full h-auto"
+                          />
+                        </div>
+
+                        {/* Barcode Container */}
+                        <div className={mode === 'barcode' ? 'block' : 'hidden'}>
+                          {barcodeError && (
+                            <div className="flex flex-col items-center justify-center p-4 text-center text-amber-600 dark:text-amber-400 max-w-xs bg-white/90 dark:bg-slate-900/90 rounded-xl border border-amber-500/20 shadow-md">
+                              <AlertTriangle size={24} className="mb-2 text-amber-500" />
+                              <span className="text-xs font-bold mb-1">Invalid Format</span>
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">{barcodeError}</span>
+                              {currentSpec && (
+                                <button
+                                  onClick={() => setValue(currentSpec.example)}
+                                  className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold transition-all active:scale-95"
+                                >
+                                  Use Valid Sample ({currentSpec.example})
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          <svg ref={svgRef} className={`max-w-full h-auto ${barcodeError ? 'hidden' : 'block'}`} />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Format tag badge */}
@@ -624,28 +662,38 @@ export default function BarcodeGeneratorModal({ isOpen, onClose }: BarcodeGenera
 
             {/* Footer Action Bar */}
             <div className="p-4 sm:px-6 border-t border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur flex items-center justify-between gap-3 shrink-0">
-              <button
-                onClick={handleCopySvg}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl font-bold transition-all text-xs active:scale-95 shadow-sm"
-              >
-                {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                {copied ? 'SVG Copied!' : 'Copy SVG'}
-              </button>
+              {(() => {
+                const isExportDisabled = !value.trim() || (mode === 'barcode' && !!barcodeError);
+                return (
+                  <>
+                    <button
+                      onClick={handleCopySvg}
+                      disabled={isExportDisabled}
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl font-bold transition-all text-xs active:scale-95 shadow-sm"
+                    >
+                      {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                      {copied ? 'SVG Copied!' : 'Copy SVG'}
+                    </button>
 
-              <div className="flex items-center gap-2 flex-1 sm:flex-initial">
-                <button
-                  onClick={handleDownloadSvg}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all text-xs active:scale-95 shadow-lg shadow-blue-600/25"
-                >
-                  <Download size={15} /> SVG
-                </button>
-                <button
-                  onClick={handleDownloadPng}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all text-xs active:scale-95 shadow-lg shadow-emerald-600/25"
-                >
-                  <ImageIcon size={15} /> PNG
-                </button>
-              </div>
+                    <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                      <button
+                        onClick={handleDownloadSvg}
+                        disabled={isExportDisabled}
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:pointer-events-none text-white rounded-xl font-bold transition-all text-xs active:scale-95 shadow-lg shadow-blue-600/25"
+                      >
+                        <Download size={15} /> SVG
+                      </button>
+                      <button
+                        onClick={handleDownloadPng}
+                        disabled={isExportDisabled}
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:pointer-events-none text-white rounded-xl font-bold transition-all text-xs active:scale-95 shadow-lg shadow-emerald-600/25"
+                      >
+                        <ImageIcon size={15} /> PNG
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
           </motion.div>

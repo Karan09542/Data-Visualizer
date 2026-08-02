@@ -299,6 +299,7 @@ const CustomSchemaEdge = ({
   const edgeStyle = useStore((s) => s.edgeStyle);
   const layoutMode = useStore((s) => s.layoutMode);
   const appTheme = useStore((s) => s.appTheme);
+  const nodeTheme = useStore((s) => s.nodeTheme);
   const edgeWidth = useStore((s) => s.edgeWidth ?? 1.0);
   
   const styleKey = type || edgeStyle;
@@ -379,6 +380,11 @@ const CustomSchemaEdge = ({
     stroke = '#6366f1';
     strokeWidth = 5.5;
     filter = "drop-shadow(0 0 6px rgba(99,102,241,0.6))";
+  } else if (styleKey === 'chalk' || nodeTheme === 'chalk') {
+    stroke = appTheme === 'dark' ? "#cbd5e1" : "#334155";
+    strokeWidth = 2;
+    strokeDasharray = "5,4";
+    filter = "none";
   }
 
   strokeWidth = strokeWidth * edgeWidth;
@@ -784,6 +790,7 @@ const edgeTypes = {
   seed: CustomSchemaEdge,
   metro: CustomSchemaEdge,
   'angled-step': CustomSchemaEdge,
+  chalk: CustomSchemaEdge,
 };
 
 function SchemaVisualizerInner() {

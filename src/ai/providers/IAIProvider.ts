@@ -51,7 +51,8 @@ export interface IAIProvider {
   name: string;
   description: string;
   isCloud: boolean;
-  
+  isLocal?: boolean;
+
   initialize(): Promise<void>;
   authenticate(apiKey: string): Promise<boolean>;
   healthCheck(): Promise<boolean>;
