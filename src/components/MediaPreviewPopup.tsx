@@ -15,6 +15,8 @@ import {
   Video,
   X,
   RotateCw,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -74,6 +76,7 @@ const MediaPreviewPopup: React.FC = () => {
   const [isCopyingImage, setIsCopyingImage] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [rotation, setRotation] = React.useState(0);
+  const [isUIHidden, setIsUIHidden] = React.useState(false);
 
   React.useEffect(() => {
     if (!activePreviewMedia?.url) {
@@ -170,7 +173,7 @@ const MediaPreviewPopup: React.FC = () => {
       case 'image': return <ImageIcon size={20} />;
       case 'video': return <Video size={20} />;
       case 'audio': return <Music size={20} />;
-      case 'pdf': return <FileText size={20} />;
+      case 'pdf': return <span className="font-black text-[12px] tracking-widest mt-[1px] ml-[1px]">PDF</span>;
       case 'smart': return <Globe size={20} />;
       case '3d-model': return <Box size={20} />;
       default: return <Maximize2 size={20} />;
@@ -265,7 +268,7 @@ const MediaPreviewPopup: React.FC = () => {
 
     if (type === 'pdf') {
       return (
-        <div className="h-full w-full overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900 shadow-2xl">
+        <div className="h-full w-full overflow-hidden">
           {resolvedAssetUrl === null && originalUrl.startsWith('img_') ? (
             <div className="flex w-full h-full justify-center items-center text-slate-500">Loading asset...</div>
           ) : (
@@ -327,85 +330,132 @@ const MediaPreviewPopup: React.FC = () => {
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
-          <div className="z-50 flex min-h-[68px] items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/95 px-4 py-3 sm:px-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-indigo-300">
-                {getIcon()}
-              </div>
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h3 className="truncate text-sm font-semibold text-white sm:text-base">{fileName}</h3>
-                  <span className="hidden shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline-flex">
-                    {getReadableType(activePreviewMedia.type)}
-                  </span>
-                </div>
-                <p className="mt-1 truncate text-xs text-slate-500">{sourceLabel}</p>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-3">
-              <div className="flex items-center gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 p-1 shadow-sm">
-                {activePreviewMedia.type === 'image' && (
-                  <>
-                    <button
-                      onClick={() => setRotation((prev) => (prev + 90) % 360)}
-                      disabled={isResolvingAsset}
-                      className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Rotate image"
-                    >
-                      <RotateCw size={15} />
-                      <span className="hidden sm:inline">Rotate</span>
-                    </button>
-                    <button
-                      onClick={copyImage}
-                      disabled={isCopyingImage || isResolvingAsset}
-                      className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Copy image"
-                    >
-                      {isCopyingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
-                      <span className="hidden sm:inline">Copy image</span>
-                    </button>
-                    <button
-                      onClick={downloadCurrentImage}
-                      disabled={isDownloading || isResolvingAsset}
-                      className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Download image"
-                    >
-                      {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                      <span className="hidden sm:inline">Download</span>
-                    </button>
-                    <div className="mx-1 h-4 w-[1px] bg-slate-700" />
-                  </>
-                )}
-                <button
-                  onClick={copySource}
-                  className="inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100"
-                  title="Copy source"
+          {/* FLOATING CONTROLS WHEN UI IS HIDDEN */}
+          <AnimatePresence>
+            {isUIHidden && (
+              <>
+                <motion.button
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  onClick={() => setIsUIHidden(false)}
+                  className="absolute top-4 left-1/2 -translate-x-1/2 z-[20050] flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-300 shadow-2xl backdrop-blur-md transition-colors hover:bg-slate-800 hover:text-white"
                 >
-                  <ExternalLink size={15} />
-                  <span className="hidden sm:inline">Copy source</span>
-                </button>
-              </div>
+                  <ChevronDown size={16} />
+                  Show Header
+                </motion.button>
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  onClick={() => setActivePreviewMedia(null)}
+                  className="absolute top-4 right-4 z-[20050] flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/90 text-slate-400 shadow-2xl backdrop-blur-md transition-all hover:bg-rose-500/10 hover:text-rose-400"
+                >
+                  <X size={20} />
+                </motion.button>
+              </>
+            )}
+          </AnimatePresence>
 
-              <button
-                onClick={() => setActivePreviewMedia(null)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/60 text-slate-400 transition-all hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400"
-                title="Close preview"
+          <AnimatePresence initial={false}>
+            {!isUIHidden && (
+              <motion.div
+                key="header"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="z-50 shrink-0 border-b border-slate-800 bg-slate-950/95 overflow-hidden"
               >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
+                <div className="flex min-h-[48px] sm:min-h-[56px] items-center justify-between gap-2.5 px-3 py-1.5 sm:px-5 sm:py-2">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border ${activePreviewMedia.type === 'pdf' ? 'border-rose-500/40 bg-rose-500/15 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]' : 'border-slate-700 bg-slate-900 text-indigo-300'}`}>
+                      {getIcon()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h3 className="truncate text-xs font-semibold text-white sm:text-sm">{fileName}</h3>
+                        <span className="hidden shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline-flex">
+                          {getReadableType(activePreviewMedia.type)}
+                        </span>
+                      </div>
+                      <p className="hidden sm:block truncate text-[11px] text-slate-400">{sourceLabel}</p>
+                    </div>
+                  </div>
 
-          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.42),transparent_46%)] px-3 py-4 sm:px-6 sm:py-6">
+                  <div className="flex shrink-0 items-center gap-2">
+                    {activePreviewMedia.type === 'image' && (
+                      <div className="flex items-center gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 p-1 shadow-sm">
+                        <button
+                          onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                          disabled={isResolvingAsset}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Rotate image"
+                        >
+                          <RotateCw size={14} />
+                          <span className="hidden sm:inline">Rotate</span>
+                        </button>
+                        <button
+                          onClick={copyImage}
+                          disabled={isCopyingImage || isResolvingAsset}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Copy image"
+                        >
+                          {isCopyingImage ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+                          <span className="hidden sm:inline">Copy image</span>
+                        </button>
+                        <button
+                          onClick={downloadCurrentImage}
+                          disabled={isDownloading || isResolvingAsset}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Download image"
+                        >
+                          {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                          <span className="hidden sm:inline">Download</span>
+                        </button>
+                      </div>
+                    )}
+                    
+                    {activePreviewMedia.type !== 'pdf' && activePreviewMedia.type !== 'image' && (
+                      <button
+                        onClick={copySource}
+                        className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-700/80 bg-slate-900/60 px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100"
+                        title="Copy source"
+                      >
+                        <ExternalLink size={14} />
+                        <span className="hidden sm:inline">Copy source</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setIsUIHidden(true)}
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/60 text-slate-400 transition-all hover:bg-slate-800 hover:text-slate-100"
+                      title="Hide Header"
+                    >
+                      <ChevronUp size={16} />
+                    </button>
+
+                    <button
+                      onClick={() => setActivePreviewMedia(null)}
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/60 text-slate-400 transition-all hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400"
+                      title="Close preview"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <motion.div className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'p-0 sm:p-0 bg-slate-950' : 'bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.42),transparent_46%)] px-3 py-4 sm:px-6 sm:py-6'}`}>
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              className={`flex h-full w-full items-center justify-center ${isDocumentPreview ? 'max-w-[min(1480px,100%)]' : 'max-w-[min(1280px,100%)]'}`}
+              className={`flex h-full w-full items-center justify-center transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'max-w-full' : isDocumentPreview ? 'max-w-[min(1480px,100%)]' : 'max-w-[min(1280px,100%)]'}`}
             >
               <div
-                className={`h-full w-full overflow-hidden ${isAudioPreview ? 'bg-transparent' : 'rounded-xl border border-slate-800 bg-slate-950/80 shadow-2xl shadow-black/30'}`}
+                className={`h-full w-full overflow-hidden transition-all duration-300 ${isAudioPreview ? 'bg-transparent' : isUIHidden || activePreviewMedia.type === 'pdf' ? 'bg-slate-950 border-0 rounded-none shadow-none' : 'rounded-xl border border-slate-800 bg-slate-950/80 shadow-2xl shadow-black/30'}`}
               >
                 {isResolvingAsset ? (
                   <div className="flex h-full w-full items-center justify-center gap-3 text-sm text-slate-400">
@@ -417,26 +467,7 @@ const MediaPreviewPopup: React.FC = () => {
                 )}
               </div>
             </motion.div>
-          </div>
-
-          <div className="z-50 flex min-h-[44px] items-center justify-between gap-4 border-t border-slate-800 bg-slate-950/95 px-4 py-2 text-xs text-slate-500 sm:px-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1 text-slate-400">
-                <Check size={13} className="text-emerald-400" />
-                Ready
-              </span>
-              <span className="hidden truncate sm:inline">{sourceLabel}</span>
-            </div>
-            {metadataItems.length > 0 && (
-              <div className="hidden shrink-0 items-center gap-2 sm:flex">
-                {metadataItems.map((item) => (
-                  <span key={item} className="rounded-md border border-slate-800 bg-slate-900 px-2.5 py-1">
-                    {item}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>,

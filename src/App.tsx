@@ -41,56 +41,6 @@ const MiniPlayer = lazyWithRetry(() => import("./audio/components/MiniPlayer"), 
 import { FloatingMic } from "./voice/components/FloatingMic";
 import { useVoice } from "./voice/useVoice";
 
-function getValueByPath(parsedData: any, path: string): string {
-  if (!parsedData || !path) return "";
-  const parts = path
-    .replace(/root\.?/, "")
-    .split(/\.|(?=\[)/)
-    .filter(Boolean);
-
-  let current = parsedData;
-  for (let i = 0; i < parts.length; i++) {
-    if (current === undefined || current === null) return "";
-    let part = parts[i];
-    if (part.startsWith("[")) {
-      part = part.slice(1, -1);
-    }
-    current = current[part];
-  }
-  return typeof current === "string" ? current : "";
-}
-
-function getJsNodeInputData(parsedData: any, path: string): any {
-  if (!parsedData || !path) return null;
-  const parts = path.split(".");
-  if (parts.length > 1) {
-    const parentParts = [...parts];
-    parentParts.pop(); // remove last key
-
-    let current = parsedData;
-    const startIdx = parentParts[0] === "root" ? 1 : 0;
-
-    for (let i = startIdx; i < parentParts.length; i++) {
-      if (current === undefined || current === null) return null;
-      let part = parentParts[i];
-      if (part.startsWith("[")) {
-        part = part.slice(1, -1);
-      }
-      current = current[part];
-    }
-
-    if (typeof current === "object" && current !== null) {
-      const cloned = Array.isArray(current) ? [...current] : { ...current };
-      const lastKey = parts[parts.length - 1];
-      if (lastKey && !Array.isArray(cloned)) {
-        delete (cloned as any)[lastKey];
-      }
-      return cloned;
-    }
-    return current;
-  }
-  return parsedData;
-}
 
 class GlobalErrorBoundary extends React.Component<any, any> {
   constructor(props: any) {
@@ -140,11 +90,6 @@ function App() {
 
   // JS Node Workspace States
   const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
-  const jsNodeCodeOverrides = useStore((state) => state.jsNodeCodeOverrides);
-  const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
-  const jsNodeLoading = useStore((state) => state.jsNodeLoading);
-  const jsNodeErrors = useStore((state) => state.jsNodeErrors);
-  const jsNodeResponses = useStore((state) => state.jsNodeResponses);
   const parsedData = useStore((state) => state.parsedData);
 
   const [searchParams] = useSearchParams();
@@ -216,16 +161,6 @@ function App() {
     }
   }, [focusNodeType, focusNodePath, setExpandedJsNodeId]);
 
-  const debounceMap = useRef<Record<string, NodeJS.Timeout>>({});
-  const handleUpdateGlobalCode = useCallback((path: string, newCode: string) => {
-    if (debounceMap.current[path]) {
-      clearTimeout(debounceMap.current[path]);
-    }
-    debounceMap.current[path] = setTimeout(() => {
-      useStore.getState().updateNodeValue(path, newCode);
-    }, 1000);
-  }, []);
-
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragSplitting, setIsDragSplitting] = useState(false);
@@ -296,7 +231,6 @@ function App() {
   }, [setCode]);
 
   const [isDragOver, setIsDragOver] = useState(false);
-  const dragCounter = useRef(0);
 
   const startDragging = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {

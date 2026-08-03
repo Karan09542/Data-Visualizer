@@ -363,13 +363,13 @@ export function ImportModal() {
   const isMediaCtx = pendingImport.fileContext === "media";
 
   return (
-    <div className="fixed inset-0 z-[500] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[500] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-0 sm:p-4">
       <div
-        className="w-full max-w-3xl bg-white dark:bg-[#0d1117] rounded-xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh] border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200"
+        className="w-full h-full sm:h-auto max-w-none sm:max-w-3xl bg-white dark:bg-[#0d1117] rounded-none sm:rounded-xl shadow-2xl flex flex-col overflow-hidden max-h-full sm:max-h-[90vh] border-0 sm:border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1117]">
-          <h2 className="text-xl font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
+        <div className="flex justify-between items-center p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1117] flex-shrink-0">
+          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
             {isMediaCtx ? (
               <Sparkles className="text-pink-500" size={24} />
             ) : (
@@ -385,7 +385,7 @@ export function ImportModal() {
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-8 bg-slate-50/50 dark:bg-[#0d1117]/50">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6 sm:gap-8 bg-slate-50/50 dark:bg-[#0d1117]/50">
           {/* File Context Card */}
           <div className="flex items-start gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <div
@@ -741,7 +741,7 @@ export function ImportModal() {
           )}
         </div>
 
-        <div className="p-4 px-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1117] flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+        <div className="p-4 px-4 sm:px-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1117] flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 flex-shrink-0">
           <button
             id="cancel-import-btn"
             onClick={() => setPendingImport(null)}
@@ -754,7 +754,7 @@ export function ImportModal() {
             onClick={applyImport}
             className="px-5 py-2 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md shadow-indigo-500/20 active:scale-[0.98] flex items-center gap-2"
           >
-            Import Data <ArrowRight size={16} />
+            {isMediaCtx ? "Import Media" : "Import Data"} <ArrowRight size={16} />
           </button>
         </div>
       </div>
