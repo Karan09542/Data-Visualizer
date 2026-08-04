@@ -25,10 +25,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const renderTaskRef = useRef<any>(null);
+  const touchStartRef = useRef<{ x: number, y: number, time: number } | null>(null);
   const [showControls, setShowControls] = useState(true);
   
   const [baseViewportWidth, setBaseViewportWidth] = useState<number>(0);
   const [baseViewportHeight, setBaseViewportHeight] = useState<number>(0);
+  const [currentViewport, setCurrentViewport] = useState<any>(null);
 
   // Pinch to zoom state
   const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
@@ -141,7 +143,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
 
   const handleTouchStart = (e: React.TouchEvent) => {
     handlePointerMoveControls();
-    if (e.touches.length === 2) {
+    if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now()
+      };
+    } else if (e.touches.length === 2) {
+      touchStartRef.current = null;
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
@@ -167,6 +176,38 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
     if (e.touches.length < 2) {
       setInitialPinchDistance(null);
       setInitialScale(null);
+    }
+    
+    if (e.changedTouches.length === 1 && touchStartRef.current) {
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const dx = touchEndX - touchStartRef.current.x;
+      const dy = touchEndY - touchStartRef.current.y;
+      const timeDiff = Date.now() - touchStartRef.current.time;
+      
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50 && timeDiff < 500) {
+        const container = containerRef.current;
+        let canSwipe = true;
+        
+        if (container && container.scrollWidth > container.clientWidth) {
+          if (dx > 0 && container.scrollLeft > 10) {
+            canSwipe = false;
+          } else if (dx < 0 && container.scrollLeft < container.scrollWidth - container.clientWidth - 10) {
+            canSwipe = false;
+          }
+        }
+        
+        if (canSwipe) {
+          if (dx > 0 && currentPage > 1) {
+            setCurrentPage(currentPage - 1);
+            setPageInput(String(currentPage - 1));
+          } else if (dx < 0 && currentPage < totalPages) {
+            setCurrentPage(currentPage + 1);
+            setPageInput(String(currentPage + 1));
+          }
+        }
+      }
+      touchStartRef.current = null;
     }
   };
 
@@ -309,6 +350,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       const baseViewport = page.getViewport({ scale: 1.0 });
       setBaseViewportWidth(baseViewport.width);
       setBaseViewportHeight(baseViewport.height);
+      setCurrentViewport(baseViewport);
       
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -415,6 +457,56 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       payload: { query: searchQuery, data: pdfBufferRef.current, password: pdfPasswordRef.current }
     });
   };
+
+  const renderedHighlights = React.useMemo(() => {
+    if (!currentViewport || !searchQuery.trim()) return null;
+    
+    const highlights = searchResults.filter(r => r.pageNumber === currentPage);
+    if (highlights.length === 0) return null;
+
+    // Flatten all rects and limit to 500 to prevent performance issues (DOM overload)
+    const allRects = highlights.flatMap(h => h.rects || []).slice(0, 500);
+
+    return allRects.map((rect: any, index: number) => {
+      try {
+        const charWidth = rect.width / Math.max(1, rect.totalLen);
+        const startX = rect.transform[4] + rect.overlapStart * charWidth;
+        const startY = rect.transform[5];
+        
+        // Use standard viewport method to convert coordinates safely
+        const pt = currentViewport.convertToViewportPoint(startX, startY);
+        
+        // Try to derive font size from matrix or height
+        const fontSizePdf = Math.abs(rect.transform[3]) || rect.height || 12;
+        const topPt = currentViewport.convertToViewportPoint(startX, startY + fontSizePdf);
+        
+        const highlightWidth = (rect.overlapEnd - rect.overlapStart) * charWidth;
+        // Vector conversion for width to handle scale accurately
+        const endPt = currentViewport.convertToViewportPoint(startX + highlightWidth, startY);
+        const cssWidth = Math.abs(endPt[0] - pt[0]);
+        const cssHeight = Math.abs(pt[1] - topPt[1]);
+
+        return (
+          <div
+            key={index}
+            style={{
+              position: 'absolute',
+              left: pt[0],
+              top: Math.min(pt[1], topPt[1]),
+              width: Math.max(cssWidth, 2), // Minimum width
+              height: Math.max(cssHeight, 5), // Minimum height
+              backgroundColor: 'rgba(250, 204, 21, 0.4)',
+              borderBottom: '2px solid rgba(234, 179, 8, 0.8)',
+              pointerEvents: 'none',
+              zIndex: 10,
+            }}
+          />
+        );
+      } catch (e) {
+        return null;
+      }
+    });
+  }, [currentViewport, searchResults, currentPage, searchQuery]);
 
   if (passwordRequired) {
     return (
@@ -607,8 +699,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                     type="text"
                     value={searchQuery}
                     onChange={(e) => {
-                      setSearchQuery(e.target.value);
+                      const val = e.target.value;
+                      setSearchQuery(val);
                       setHasSearched(false);
+                      if (val.trim() === '') {
+                        setSearchResults([]);
+                      }
                     }}
                     placeholder="Search in PDF..."
                     className="flex-1 bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -660,7 +756,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
              height: baseViewportHeight ? `${baseViewportHeight * scale}px` : 'auto',
           }}
         >
-          <canvas ref={canvasRef} className="w-full h-full block max-w-none" />
+          <canvas ref={canvasRef} className="w-full h-full block max-w-none relative z-0" />
+          
+          {baseViewportWidth > 0 && (
+            <div 
+              className="absolute top-0 left-0 origin-top-left pointer-events-none z-10"
+              style={{ 
+                width: `${baseViewportWidth}px`, 
+                height: `${baseViewportHeight}px`, 
+                transform: `scale(${scale})` 
+              }}
+            >
+              {renderedHighlights}
+            </div>
+          )}
         </div>
       </div>
 

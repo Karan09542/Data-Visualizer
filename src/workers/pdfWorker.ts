@@ -135,7 +135,8 @@ self.onmessage = async (e: MessageEvent) => {
         return;
       }
 
-      const lowerQuery = query.toLowerCase();
+      const normalizedQuery = query.normalize("NFC");
+      const lowerQuery = normalizedQuery.toLocaleLowerCase();
       const numPages = pdfDoc.numPages;
       let matchCount = 0;
 
@@ -143,25 +144,54 @@ self.onmessage = async (e: MessageEvent) => {
         const page = await pdfDoc.getPage(i);
         const textContent = await page.getTextContent();
 
-        const textItems = textContent.items.map((item: any) => item.str);
-        const pageText = textItems.join(" ").replace(/\s+/g, " ");
-        const lowerPageText = pageText.toLowerCase();
+        let charIndex = 0;
+        const itemMappings: any[] = [];
+        const normalizedTextItems = textContent.items.map((item: any) => {
+          const str = (item.str || "").normalize("NFC");
+          const start = charIndex;
+          const end = charIndex + str.length;
+          charIndex = end + 1; // +1 for the space we add in join
+          itemMappings.push({ item, start, end, normalizedStr: str });
+          return str;
+        });
+        
+        const normalizedPageText = normalizedTextItems.join(" ");
+        const lowerPageText = normalizedPageText.toLocaleLowerCase();
 
         let startIndex = 0;
         while ((startIndex = lowerPageText.indexOf(lowerQuery, startIndex)) > -1) {
           matchCount++;
+          const matchEndIndex = startIndex + normalizedQuery.length;
+          
           const start = Math.max(0, startIndex - 30);
-          const end = Math.min(pageText.length, startIndex + query.length + 30);
-          let snippet = pageText.substring(start, end);
+          const end = Math.min(normalizedPageText.length, matchEndIndex + 30);
+          let snippet = normalizedPageText.substring(start, end);
           if (start > 0) snippet = "..." + snippet;
-          if (end < pageText.length) snippet = snippet + "...";
+          if (end < normalizedPageText.length) snippet = snippet + "...";
+
+          const rects: any[] = [];
+          for (const map of itemMappings) {
+            // Check for overlap and ignore purely whitespace items
+            if (map.start < matchEndIndex && map.end > startIndex && map.normalizedStr.trim().length > 0) {
+               const overlapStart = Math.max(0, startIndex - map.start);
+               const overlapEnd = Math.min(map.normalizedStr.length, matchEndIndex - map.start);
+               rects.push({
+                 transform: map.item.transform,
+                 width: map.item.width,
+                 height: map.item.height,
+                 overlapStart,
+                 overlapEnd,
+                 totalLen: Math.max(1, map.normalizedStr.length)
+               });
+            }
+          }
 
           self.postMessage({
             action: "SEARCH_RESULT_FOUND",
-            payload: { pageNumber: i, snippet, matchId: matchCount },
+            payload: { pageNumber: i, snippet, matchId: matchCount, rects },
           });
 
-          startIndex += query.length;
+          startIndex += normalizedQuery.length;
         }
       }
       self.postMessage({ action: "SEARCH_COMPLETE", msgId, payload: { matchCount } });
