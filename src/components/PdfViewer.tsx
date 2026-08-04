@@ -7,9 +7,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLi
 
 interface PdfViewerProps {
   url: string;
+  alignment?: 'top' | 'center';
 }
 
-export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
+export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(0);
@@ -28,6 +29,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
   
   const [baseViewportWidth, setBaseViewportWidth] = useState<number>(0);
   const [baseViewportHeight, setBaseViewportHeight] = useState<number>(0);
+
+  // Pinch to zoom state
+  const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
+  const [initialScale, setInitialScale] = useState<number | null>(null);
 
   // New features state
   const [showSidebar, setShowSidebar] = useState(false);
@@ -62,6 +67,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
       prevScaleRef.current = scale;
     }
   }, [scale]);
+
+  // Handle trackpad pinch to zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault(); // Prevent browser zoom
+        const zoomSensitivity = 0.01;
+        const delta = -e.deltaY * zoomSensitivity;
+        setScale((prev) => Math.min(Math.max(prev * (1 + delta), 0.4), 3.0));
+      }
+    };
+
+    // Must be non-passive to preventDefault on wheel events
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
 
   useEffect(() => {
     // Setup worker (lightweight – no PDF loaded yet)
@@ -113,6 +137,37 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
 
   const handlePointerMoveControls = () => {
     setShowControls(true);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    handlePointerMoveControls();
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      setInitialPinchDistance(dist);
+      setInitialScale(scale);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialPinchDistance !== null && initialScale !== null) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const ratio = dist / initialPinchDistance;
+      const newScale = Math.min(Math.max(initialScale * ratio, 0.4), 3.0);
+      setScale(newScale);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      setInitialPinchDistance(null);
+      setInitialScale(null);
+    }
   };
 
   // Load PDF.js document using local bundled package with CORS proxy backup attempts
@@ -592,11 +647,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
       {/* Main Canvas Area */}
       <div 
         ref={containerRef}
-        className="flex-1 w-full h-full overflow-auto custom-scrollbar pt-2 pb-16 px-0 sm:pt-4 sm:pb-20 sm:px-4 touch-pan-x touch-pan-y relative z-0" 
+        className={`flex-1 w-full h-full overflow-auto custom-scrollbar touch-pan-x touch-pan-y relative z-0 flex flex-col ${alignment === 'top' ? 'items-center pt-2 sm:pt-4' : ''} px-0 sm:px-4 pb-16 sm:pb-20`}
         style={{ overscrollBehavior: 'contain' }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <div 
-          className="shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative mx-auto"
+          className={`shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative ${alignment === 'center' ? 'm-auto' : 'mx-auto'}`}
           style={{
              width: baseViewportWidth ? `${baseViewportWidth * scale}px` : 'auto',
              height: baseViewportHeight ? `${baseViewportHeight * scale}px` : 'auto',

@@ -345,14 +345,14 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
   if (!isOpen || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 pointer-events-none transition-all">
+    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-6 pointer-events-none transition-all">
       {/* Outer Wrapper */}
-      <div className="w-full max-w-2xl flex flex-col gap-3 pointer-events-auto">
+      <div className={`w-full h-full sm:h-auto max-w-2xl flex flex-col-reverse sm:flex-col gap-0 sm:gap-3 pointer-events-auto ${isDark ? 'max-sm:bg-[#0a0a0a]' : 'max-sm:bg-white'}`}>
         {/* SLEEK PROMPT BOX */}
         <div
-          className={`relative z-50 rounded-none border p-4 shadow-2xl transition-all duration-300 ${isDark
-            ? 'bg-[#0a0a0a] border-neutral-800 text-white'
-            : 'bg-white border-neutral-300 text-black shadow-xl'
+          className={`relative z-50 rounded-none sm:border p-4 transition-all duration-300 shrink-0 ${isDark
+            ? 'bg-[#0a0a0a] sm:border-neutral-800 text-white max-sm:border-t max-sm:border-neutral-800'
+            : 'bg-white sm:border-neutral-300 text-black max-sm:shadow-[0_-5px_15px_rgba(0,0,0,0.05)] sm:shadow-xl max-sm:border-t max-sm:border-neutral-200'
             }`}
         >
           {/* Top Row: Auto-expanding Textarea */}
@@ -741,19 +741,20 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
         {/* OUTPUT / RESPONSE DISPLAY CARD */}
         {(output || isGenerating || error || parsedPatch) && (
           <div
-            className={`rounded-none border p-4 shadow-xl flex flex-col max-h-[55vh] overflow-hidden transition-all animate-fadeIn ${isDark ? 'bg-[#0a0a0a] border-neutral-800 text-white' : 'bg-white border-neutral-300 text-black shadow-lg'
+            className={`flex-1 sm:flex-none rounded-none sm:border p-4 flex flex-col max-h-none sm:max-h-[55vh] overflow-hidden transition-all animate-fadeIn ${isDark ? 'bg-[#0a0a0a] sm:border-neutral-800 text-white' : 'bg-transparent sm:bg-white sm:border-neutral-300 text-black sm:shadow-lg'
               }`}
           >
             {/* Header / Tabs */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 border-b border-neutral-200 dark:border-neutral-800 pb-2.5 mb-3 text-xs font-semibold uppercase tracking-wider">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col-reverse md:flex-row md:items-center justify-between gap-3 md:gap-0 border-b border-neutral-200 dark:border-neutral-800 mb-3 text-xs font-semibold uppercase tracking-wider">
+              <div className="flex flex-wrap items-center gap-4 px-1">
                 <button
                   type="button"
                   onClick={() => setActiveTab('response')}
-                  className={`whitespace-nowrap px-3 py-1 rounded-none transition-all font-bold cursor-pointer ${activeTab === 'response'
-                    ? (isDark ? 'bg-white text-black border border-white' : 'bg-black text-white border border-black')
-                    : 'text-neutral-500 hover:text-black dark:hover:text-white border border-transparent'
-                    }`}
+                  className={`whitespace-nowrap py-2.5 transition-all border-b-2 -mb-[1px] ${
+                    activeTab === 'response'
+                      ? 'border-black dark:border-white text-black dark:text-white'
+                      : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                  }`}
                 >
                   Response Output
                 </button>
@@ -762,10 +763,11 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
                   <button
                     type="button"
                     onClick={() => setActiveTab('diff')}
-                    className={`whitespace-nowrap flex items-center gap-1 px-3 py-1 rounded-none transition-all font-bold cursor-pointer ${activeTab === 'diff'
-                      ? 'bg-green-500 text-black border border-green-500'
-                      : 'text-neutral-500 hover:text-black dark:hover:text-white border border-transparent'
-                      }`}
+                    className={`whitespace-nowrap py-2.5 transition-all border-b-2 -mb-[1px] flex items-center gap-1.5 ${
+                      activeTab === 'diff'
+                        ? 'border-green-500 text-green-600 dark:text-green-400'
+                        : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                    }`}
                   >
                     <FileCode size={13} />
                     <span>Diff Preview ({parsedPatch.length} ops)</span>
@@ -774,12 +776,12 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 pb-2 md:pb-0 px-1 md:px-0">
                 {output && (
                   <button
                     type="button"
                     onClick={handleCopyOutput}
-                    className="whitespace-nowrap flex items-center gap-1 text-neutral-500 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-none hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                   >
                     {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
                     <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -787,14 +789,14 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
                 )}
 
                 {parsedPatch && onApplyContext && (
-                  <>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         onApplyContext(parsedPatch, 'merge');
                         onClose();
                       }}
-                      className="whitespace-nowrap px-3 py-1 bg-green-500 hover:bg-green-600 text-black font-bold text-xs rounded-none transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                      className="whitespace-nowrap px-3 py-1.5 bg-green-500 hover:bg-green-600 text-black font-bold rounded-none transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
                       title="Deeply merge AI data into existing document preserving un-targeted fields"
                     >
                       <GitMerge size={13} />
@@ -807,13 +809,13 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
                         onApplyContext(parsedPatch, 'replace');
                         onClose();
                       }}
-                      className="whitespace-nowrap px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs rounded-none transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                      className="whitespace-nowrap px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-none transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
                       title="Replace current document structure completely with AI response"
                     >
                       <RefreshCw size={13} />
                       <span>Replace</span>
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
             </div>

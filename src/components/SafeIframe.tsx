@@ -24,6 +24,8 @@ export default function SafeIframe({ src, renderData, onLoad, onError, ...props 
       src={url}
       onLoad={onIframeLoad}
       onError={onIframeError}
+      allowFullScreen
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
       {...props}
     />
   );

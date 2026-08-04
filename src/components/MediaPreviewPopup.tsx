@@ -27,6 +27,7 @@ import { PdfViewer } from './PdfViewer';
 import { SafeModelViewer } from './SafeModelViewer';
 import { resolveAssetUrl } from '../utils/assetManager';
 import { downloadImage } from '../utils/downloadUtils';
+import { MediaStore } from './notes/storage/MediaStore';
 
 const getFileName = (url: string) => {
   const cleanUrl = url.split('?')[0].split('#')[0];
@@ -77,6 +78,7 @@ const MediaPreviewPopup: React.FC = () => {
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [rotation, setRotation] = React.useState(0);
   const [isUIHidden, setIsUIHidden] = React.useState(false);
+  const [pdfAlignment, setPdfAlignment] = React.useState<'top' | 'center'>('top');
 
   React.useEffect(() => {
     if (!activePreviewMedia?.url) {
@@ -89,11 +91,18 @@ const MediaPreviewPopup: React.FC = () => {
 
     let cancelled = false;
     const { url } = activePreviewMedia;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-    if (url.startsWith('img_') || url.startsWith('thumb_')) {
+    if (cleanUrl.startsWith('img_') || cleanUrl.startsWith('thumb_')) {
       setResolvedAssetUrl(null);
       resolveAssetUrl(url).then((resolved) => {
         if (!cancelled) setResolvedAssetUrl(resolved);
+      });
+    } else if (uuidRegex.test(cleanUrl)) {
+      setResolvedAssetUrl(null);
+      MediaStore.getMediaUrl(cleanUrl).then((resolved) => {
+        if (!cancelled && resolved) setResolvedAssetUrl(resolved);
       });
     } else {
       setResolvedAssetUrl(null);
@@ -272,7 +281,7 @@ const MediaPreviewPopup: React.FC = () => {
           {resolvedAssetUrl === null && originalUrl.startsWith('img_') ? (
             <div className="flex w-full h-full justify-center items-center text-slate-500">Loading asset...</div>
           ) : (
-            <PdfViewer url={resolvedUrl} />
+            <PdfViewer url={resolvedUrl} alignment={pdfAlignment} />
           )}
         </div>
       );
@@ -299,7 +308,7 @@ const MediaPreviewPopup: React.FC = () => {
     if (type === 'smart') {
       return (
         <div className="h-full w-full flex items-center justify-center overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/60 shadow-2xl">
-          <div className="w-full h-full p-2 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&>div>iframe]:w-full [&>div>iframe]:h-full [&>div>iframe]:rounded-lg [&>div>img]:max-w-full [&>div>img]:max-h-full [&>div>img]:object-contain [&>div>img]:rounded-lg [&>div>video]:max-w-full [&>div>video]:max-h-full [&>div>video]:rounded-lg">
+          <div className="w-full h-full flex items-center justify-center [&>div]:w-full [&>div]:h-full [&>div>iframe]:w-full [&>div>iframe]:h-full [&>div>iframe]:rounded-xl [&>div>img]:max-w-full [&>div>img]:max-h-full [&>div>img]:object-contain [&>div>img]:rounded-xl [&>div>video]:max-w-full [&>div>video]:max-h-full [&>div>video]:rounded-xl">
             <SmartMediaRenderer
               url={originalUrl}
               onResolvedType={(detected, actualUrl) => {
@@ -336,7 +345,8 @@ const MediaPreviewPopup: React.FC = () => {
               <>
                 <motion.button
                   initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  animate={{ opacity: 0.3, y: 0 }}
+                  whileHover={{ opacity: 1 }}
                   exit={{ opacity: 0, y: -20 }}
                   onClick={() => setIsUIHidden(false)}
                   className="absolute top-4 left-1/2 -translate-x-1/2 z-[20050] flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-300 shadow-2xl backdrop-blur-md transition-colors hover:bg-slate-800 hover:text-white"
@@ -346,10 +356,11 @@ const MediaPreviewPopup: React.FC = () => {
                 </motion.button>
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  animate={{ opacity: 0.3, scale: 1 }}
+                  whileHover={{ opacity: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   onClick={() => setActivePreviewMedia(null)}
-                  className="absolute top-4 right-4 z-[20050] flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/90 text-slate-400 shadow-2xl backdrop-blur-md transition-all hover:bg-rose-500/10 hover:text-rose-400"
+                  className="absolute top-4 right-4 z-[20050] flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/90 text-slate-400 shadow-2xl backdrop-blur-md transition-all hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/50"
                 >
                   <X size={20} />
                 </motion.button>
@@ -423,6 +434,16 @@ const MediaPreviewPopup: React.FC = () => {
                       >
                         <ExternalLink size={14} />
                         <span className="hidden sm:inline">Copy source</span>
+                      </button>
+                    )}
+
+                    {activePreviewMedia.type === 'pdf' && (
+                      <button
+                        onClick={() => setPdfAlignment(prev => prev === 'top' ? 'center' : 'top')}
+                        className={`inline-flex h-8 items-center justify-center rounded-md border border-slate-700/80 px-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${pdfAlignment === 'center' ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+                        title="Toggle PDF Alignment"
+                      >
+                        {pdfAlignment === 'top' ? 'Align: Top' : 'Align: Ctr'}
                       </button>
                     )}
 

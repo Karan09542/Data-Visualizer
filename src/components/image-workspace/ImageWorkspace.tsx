@@ -30,7 +30,7 @@ import { useCollageConfigState, CollageConfigProvider } from "./hooks/useCollage
 import { ColorPickerTrigger } from "./components/shared/ColorPickers";
 import { TabBtn } from "./components/shared/TabBtn";
 import { ToolBtn } from "./components/shared/ToolBtn";
-import { ContextMenuItem } from "./components/shared/ContextMenuItem";
+import { ContextMenuItem, ContextSubMenu } from "./components/shared/ContextMenuItem";
 import { dataURLtoFile } from "./utils/file";
 import { formatFileSize } from "../../lib/formatFileSize";
 import { loadFromDexie, saveToDexie } from "../../utils/fabricDexieSync";
@@ -4712,6 +4712,55 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
    };
 
+   const downloadActiveObjectAsFormat = async (format: 'png' | 'jpeg' | 'webp' | 'jxl' | 'svg' = 'png') => {
+      const activeObj = fabricRef.current?.getActiveObject();
+      if (!activeObj) return;
+
+      try {
+         let url = '';
+         if (format === 'svg') {
+            const clone = await activeObj.clone([]);
+            const bounds = clone.getBoundingRect();
+
+            const elElement = document.createElement('canvas');
+            const tempCanvas = new fabric.StaticCanvas(elElement, {
+               width: bounds.width,
+               height: bounds.height
+            });
+
+            clone.set({
+               left: (clone.left || 0) - bounds.left,
+               top: (clone.top || 0) - bounds.top
+            });
+            clone.setCoords();
+            tempCanvas.add(clone);
+
+            const svg = tempCanvas.toSVG();
+            tempCanvas.dispose();
+            
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            url = URL.createObjectURL(blob);
+         } else {
+            url = activeObj.toDataURL({ format });
+         }
+
+         const a = document.createElement('a');
+         a.href = url;
+         a.download = `exported-object.${format}`;
+         a.click();
+         
+         if (format === 'svg') {
+            URL.revokeObjectURL(url);
+         }
+         
+         setNotification({ message: `Downloaded as ${format.toUpperCase()}`, type: 'success' });
+      } catch (e) {
+         console.error('Failed to download', e);
+         setNotification({ message: 'Failed to download', type: 'error' });
+      }
+   };
+
+
    const duplicateActiveObject = () => {
       const activeObj = fabricRef.current?.getActiveObject();
       if (activeObj) {
@@ -6499,6 +6548,15 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
                                                    <div className="h-px bg-[#252525] my-1" />
+                                                   <ContextSubMenu icon={Download} label="Download">
+                                                      <ContextMenuItem label="PNG" onClick={() => { downloadActiveObjectAsFormat('png'); closeContextMenu(); }} />
+                                                      <ContextMenuItem label="JPEG" onClick={() => { downloadActiveObjectAsFormat('jpeg'); closeContextMenu(); }} />
+                                                      <ContextMenuItem label="WEBP" onClick={() => { downloadActiveObjectAsFormat('webp'); closeContextMenu(); }} />
+                                                      <ContextMenuItem label="JXL" onClick={() => { downloadActiveObjectAsFormat('jxl'); closeContextMenu(); }} />
+                                                      {activeContextMenu.obj?.type !== 'image' && (
+                                                         <ContextMenuItem label="SVG" onClick={() => { downloadActiveObjectAsFormat('svg'); closeContextMenu(); }} />
+                                                      )}
+                                                   </ContextSubMenu>
                                                    <ContextMenuItem icon={Copy} label="Copy to Clipboard (PNG)" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
                                                    {activeContextMenu.obj?.type !== 'image' && (
                                                       <ContextMenuItem icon={Copy} label="Copy to Clipboard (SVG)" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
