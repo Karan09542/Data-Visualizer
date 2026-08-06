@@ -7,7 +7,6 @@ import { ExpirationPlugin } from 'workbox-expiration';
 
 declare let self: ServiceWorkerGlobalScope;
 
-self.skipWaiting();
 clientsClaim();
 
 // Cleanup outdated caches automatically

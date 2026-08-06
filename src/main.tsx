@@ -210,16 +210,6 @@ if (typeof window !== 'undefined') {
      return originalLog.apply(this, cleanArgs);
   };
 
-  // Register Stdin/I/O Service Worker (Production only)
-  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').then((reg) => {
-        // console.log('App I/O ServiceWorker registered successfully:', reg.scope);
-      }).catch((err) => {
-        console.warn('App I/O ServiceWorker registration failed:', err);
-      });
-    });
-  }
 
   // Suppress ResizeObserver loop limit errors and cross-origin Script errors
   const resizeObserverError = 'ResizeObserver loop completed with undelivered notifications.';
