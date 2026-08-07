@@ -37,6 +37,7 @@ import {
   FileType,
   Barcode,
   Sparkles,
+  Wrench,
 } from "lucide-react";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
@@ -44,6 +45,7 @@ import { useAnnotationStore } from "../store/useAnnotationStore";
 import { db } from "../lib/db";
 import NodeHelpModal from "./NodeHelpModal";
 import BarcodeGeneratorModal from "./BarcodeGeneratorModal";
+import { QuickUtilsModal } from "./utilities/QuickUtilsModal";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
@@ -137,6 +139,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
   const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
   const [isBarcodeGeneratorOpen, setIsBarcodeGeneratorOpen] = useState(false);
+  const [isQuickUtilsOpen, setIsQuickUtilsOpen] = useState(false);
 
   const exportHDImageRef = useRef<((type?: string) => Promise<void>) | null>(null);
   
@@ -1013,6 +1016,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </span>
               </button>
               <button
+                onClick={() => setIsQuickUtilsOpen(true)}
+                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                title="Quick Utilities"
+              >
+                <Wrench size={16} />
+              </button>
+              <button
                 onClick={() => setIsBarcodeGeneratorOpen(true)}
                 className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
                 title="Barcode Generator"
@@ -1333,6 +1343,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
+                      setIsQuickUtilsOpen(true);
+                    }}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                  >
+                    <Wrench size={16} className="text-gray-500" />
+                    <span>Utilities</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
                       setIsBarcodeGeneratorOpen(true);
                     }}
                     className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
@@ -1611,6 +1632,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       <BarcodeGeneratorModal
         isOpen={isBarcodeGeneratorOpen}
         onClose={() => setIsBarcodeGeneratorOpen(false)}
+      />
+      <QuickUtilsModal
+        isOpen={isQuickUtilsOpen}
+        onClose={() => setIsQuickUtilsOpen(false)}
       />
     </>
   );
