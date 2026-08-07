@@ -573,7 +573,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   return (
     <>
       <div
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2"
+        className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2"
         style={{ opacity: store.toolbarOpacity, visibility: store.toolbarOpacity < 0.05 ? 'hidden' : 'visible' }}
       >
         <div className="flex items-center gap-1.5 bg-white/90 dark:bg-[#0d131f]/90 backdrop-blur border border-slate-200 dark:border-slate-800 shadow-2xl rounded-full p-2 origin-bottom transition-all">
