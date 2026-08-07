@@ -1,8 +1,9 @@
 import type { EditorConfig, LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from 'lexical';
 import { DecoratorNode, $getNodeByKey } from 'lexical';
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { X } from 'lucide-react';
+import { X, Play, Pause, Volume1, Volume2, VolumeX, Repeat } from 'lucide-react';
 import { MediaStore } from '../../storage/MediaStore';
 
 export type SerializedAudioNode = Spread<{
@@ -14,15 +15,51 @@ const AudioComponent = React.lazy(() => Promise.resolve({
     const [src, setSrc] = useState<string | null>(null);
     const [isVideo, setIsVideo] = useState(false);
     const [editor] = useLexicalComposerContext();
+    
+    // Custom Player State
+    const [howl, setHowl] = useState<any>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [speed, setSpeed] = useState(1);
+    const [volume, setVolume] = useState(1);
+    const [isLooping, setIsLooping] = useState(false);
+    const requestRef = useRef<number | null>(null);
+    
+    const [isVolOpen, setIsVolOpen] = useState(false);
+    const volBtnRef = useRef<HTMLDivElement>(null);
+    const [volPos, setVolPos] = useState({ top: 0, left: 0 });
+
+    useLayoutEffect(() => {
+      if (isVolOpen && volBtnRef.current) {
+        const rect = volBtnRef.current.getBoundingClientRect();
+        setVolPos({
+          top: rect.top,
+          left: rect.left + rect.width / 2,
+        });
+      }
+    }, [isVolOpen, volume]);
+
+    useEffect(() => {
+      const handleClickOutside = () => setIsVolOpen(false);
+      if (isVolOpen) {
+        document.addEventListener('click', handleClickOutside);
+      }
+      return () => document.removeEventListener('click', handleClickOutside);
+    }, [isVolOpen]);
+
+    const toggleVolOpen = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsVolOpen(prev => !prev);
+    };
 
     const handleDelete = (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (howl) howl.unload();
       editor.update(() => {
         const node = $getNodeByKey(nodeKey);
-        if (node) {
-          node.remove();
-        }
+        if (node) node.remove();
       });
     };
 
@@ -35,6 +72,20 @@ const AudioComponent = React.lazy(() => Promise.resolve({
           fetch(url).then(r => r.blob()).then(blob => {
             if (blob.type.startsWith('video/')) {
               setIsVideo(true);
+            } else {
+              // Duration hack for recorded WebM blobs that have Infinity duration
+              const tempAudio = new Audio(url);
+              tempAudio.addEventListener('loadedmetadata', () => {
+                if (tempAudio.duration === Infinity || isNaN(tempAudio.duration)) {
+                  tempAudio.currentTime = 1e99;
+                  tempAudio.addEventListener('durationchange', () => {
+                    tempAudio.currentTime = 0;
+                    if (isFinite(tempAudio.duration)) setDuration(tempAudio.duration);
+                  }, { once: true });
+                } else if (isFinite(tempAudio.duration)) {
+                  setDuration(tempAudio.duration);
+                }
+              });
             }
           }).catch(() => {});
         }
@@ -44,18 +95,187 @@ const AudioComponent = React.lazy(() => Promise.resolve({
       };
     }, [mediaId]);
 
+    // Initialize Howler
+    useEffect(() => {
+      if (src && !isVideo) {
+        import('howler').then(({ Howl }) => {
+          const sound = new Howl({
+            src: [src],
+            html5: true,
+            format: ['webm', 'mp3', 'ogg', 'wav', 'm4a', 'mp4'],
+            onload: () => {
+              const d = sound.duration();
+              if (d && isFinite(d) && d > 0) setDuration(d);
+            },
+            onplay: () => setIsPlaying(true),
+            onpause: () => setIsPlaying(false),
+            onend: () => {
+              if (!sound.loop()) {
+                setIsPlaying(false);
+                setProgress(0);
+              }
+            },
+            onseek: () => setProgress(sound.seek() as number)
+          });
+          setHowl(sound);
+        });
+      }
+      return () => {
+        if (howl) howl.unload();
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [src, isVideo]);
+
+    const updateProgress = () => {
+      if (howl && howl.playing()) {
+        setProgress(howl.seek() as number);
+        requestRef.current = requestAnimationFrame(updateProgress);
+      }
+    };
+
+    useEffect(() => {
+      if (isPlaying) {
+        requestRef.current = requestAnimationFrame(updateProgress);
+      } else if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+      return () => {
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      };
+    }, [isPlaying, howl]);
+
+    const togglePlay = () => {
+      if (!howl) return;
+      if (isPlaying) {
+        howl.pause();
+      } else {
+        howl.play();
+      }
+    };
+
+    const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseFloat(e.target.value);
+      setProgress(val);
+      if (howl) howl.seek(val);
+    };
+
+    const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseFloat(e.target.value);
+      setVolume(val);
+      if (howl) howl.volume(val);
+    };
+
+    const cycleSpeed = () => {
+      const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : speed === 2 ? 0.5 : 1;
+      setSpeed(next);
+      if (howl) howl.rate(next);
+    };
+
+    const formatTime = (seconds: number) => {
+      if (typeof seconds !== 'number' || !isFinite(seconds) || isNaN(seconds)) return "0:00";
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    };
+
+    const toggleLoop = () => {
+      const next = !isLooping;
+      setIsLooping(next);
+      if (howl) howl.loop(next);
+    };
+
     if (!src) return <div className="animate-pulse bg-black/10 rounded-lg h-12 w-full flex items-center justify-center text-xs opacity-50">Loading audio...</div>;
 
     return (
-      <div className="relative group my-2 p-2 rounded-xl bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/10 inline-flex items-center gap-2 pr-10" contentEditable={false}>
+      <div className="relative group my-2 flex max-w-full" contentEditable={false}>
         {isVideo ? (
-          <video src={src} controls className="max-w-full rounded-lg max-h-[400px] object-contain bg-black/5 dark:bg-black/20" />
+          <div className="p-2 rounded-xl bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/10 pr-10 max-w-full">
+            <video src={src} controls className="max-w-full rounded-lg max-h-[400px] object-contain bg-black/5 dark:bg-black/20" />
+          </div>
         ) : (
-          <audio src={src} controls className="w-[260px] min-w-[200px]" />
+          <div className="flex items-center gap-1.5 sm:gap-3 px-2 py-1.5 bg-black/5 dark:bg-white/10 rounded-full border border-black/10 dark:border-white/10 shadow-sm pr-10 w-full max-w-md overflow-hidden">
+            <button 
+              onClick={togglePlay} 
+              className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-transform active:scale-95 shadow-md shadow-blue-500/20 shrink-0"
+            >
+              {isPlaying ? <Pause size={14} className="fill-current" /> : <Play size={14} className="fill-current ml-0.5" />}
+            </button>
+            
+            <span className="text-xs font-mono text-black/60 dark:text-white/70 min-w-[32px] text-right shrink-0">
+              {formatTime(progress)}
+            </span>
+            
+            <input 
+              type="range" 
+              min={0} 
+              max={isFinite(duration) && duration > 0 ? duration : 100} 
+              step="0.1"
+              value={progress} 
+              onChange={handleSeek}
+              className="flex-1 w-16 min-w-[40px] h-1.5 bg-black/10 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full cursor-pointer transition-all"
+            />
+            
+            <span className="text-xs font-mono text-black/60 dark:text-white/70 min-w-[32px] shrink-0">
+              {formatTime(duration)}
+            </span>
+            
+            <div className="w-px h-5 bg-black/10 dark:bg-white/10 mx-0.5 shrink-0 hidden sm:block" />
+            
+            <button 
+              onClick={cycleSpeed} 
+              className="text-[10px] font-bold w-7 h-7 rounded-full hover:bg-black/10 dark:hover:bg-white/20 flex items-center justify-center transition-colors text-black/70 dark:text-white/80 shrink-0"
+              title="Playback Speed"
+            >
+              {speed}x
+            </button>
+            
+            <button 
+              onClick={toggleLoop} 
+              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full hover:bg-black/10 dark:hover:bg-white/20 flex items-center justify-center transition-colors shrink-0 ${isLooping ? 'text-blue-500' : 'text-black/70 dark:text-white/80'}`}
+              title="Toggle Repeat"
+            >
+              <Repeat size={14} />
+            </button>
+            
+            <div 
+              className="relative flex items-center justify-center shrink-0"
+              ref={volBtnRef}
+            >
+              <div 
+                className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center text-black/70 dark:text-white/80 cursor-pointer hover:bg-black/10 dark:hover:bg-white/20 rounded-full transition-colors" 
+                onClick={toggleVolOpen}
+              >
+                {volume === 0 ? <VolumeX size={14} /> : volume < 0.5 ? <Volume1 size={14} /> : <Volume2 size={14} />}
+              </div>
+            </div>
+            
+            {isVolOpen && createPortal(
+              <div 
+                className="fixed w-8 h-24 bg-white/90 dark:bg-[#1a1a1a]/95 backdrop-blur-xl border border-black/10 dark:border-white/10 rounded-full flex items-center justify-center shadow-lg z-[999999] animate-in fade-in zoom-in-95 duration-100"
+                style={{
+                  top: volPos.top - 8,
+                  left: volPos.left,
+                  transform: 'translate(-50%, -100%)'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input 
+                  type="range" 
+                  min={0} 
+                  max={1} 
+                  step="0.05"
+                  value={volume} 
+                  onChange={handleVolume}
+                  className="w-16 h-1.5 bg-black/10 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full cursor-pointer -rotate-90"
+                />
+              </div>,
+              document.body
+            )}
+          </div>
         )}
         <button 
           onClick={handleDelete}
-          className="absolute right-2 p-1.5 bg-black/10 dark:bg-white/10 hover:bg-red-500/90 text-black/60 dark:text-white/60 hover:text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200"
+          className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-black/10 dark:bg-white/10 hover:bg-red-500/90 text-black/60 dark:text-white/60 hover:text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200"
           title="Delete Audio"
         >
           <X size={14} />

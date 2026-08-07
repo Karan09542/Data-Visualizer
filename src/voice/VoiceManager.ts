@@ -29,11 +29,16 @@ class Manager {
       console.error("Annyang error:", err, msg);
       useVoiceStore.getState().setState("error");
       useVoiceStore.getState().setErrorMessage(msg);
+
+      if (err && err.error === 'network') {
+        if (annyang) annyang.abort();
+      }
     });
 
     annyang.addCallback('errorNetwork', (err: any) => {
       useVoiceStore.getState().setState("error");
       useVoiceStore.getState().setErrorMessage("Network error occurred.");
+      if (annyang) annyang.abort();
     });
 
     annyang.addCallback('errorPermissionBlocked', () => {
@@ -88,6 +93,12 @@ class Manager {
   }
 
   start() {
+    if (!navigator.onLine) {
+      useVoiceStore.getState().setState("error");
+      useVoiceStore.getState().setErrorMessage("Network error: You are offline.");
+      return;
+    }
+
     if (annyang) {
       if (!this.isInitialized) {
         this.init();

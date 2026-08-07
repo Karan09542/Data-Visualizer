@@ -12,7 +12,19 @@ import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { CodeNode as LexicalCodeNode, CodeHighlightNode } from '@lexical/code';
 import { LinkNode } from '@lexical/link';
+import { TableNode, TableCellNode, TableRowNode } from '@lexical/table';
 import { DOMConversionMap, NodeKey } from 'lexical';
+import { HorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode';
+import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
+import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
+import CodeActionMenuPlugin from './plugins/CodeActionMenuPlugin';
+import CodeGutterPlugin from './plugins/CodeGutterPlugin';
+import TableActionMenuPlugin from './plugins/TableActionMenuPlugin';
+import TableHoverActionsPlugin from './plugins/TableHoverActionsPlugin';
+import TableCellResizerPlugin from './plugins/TableCellResizerPlugin';
+import TableDragDropPlugin from './plugins/TableDragDropPlugin';
+import TodoTablePlugin from './plugins/TodoTablePlugin';
+import MediaModalsPlugin from './plugins/MediaModalsPlugin';
 
 import { ImageNode } from './nodes/ImageNode';
 import { AudioNode } from './nodes/AudioNode';
@@ -22,6 +34,7 @@ import AudioPlugin from './plugins/AudioPlugin';
 import CodeHighlightPlugin from './plugins/CodeHighlightPlugin';
 import CursorToolbarPlugin from './plugins/CursorToolbarPlugin';
 import SlashCommandPlugin from './plugins/SlashCommandPlugin';
+import BlockHandlePlugin from './plugins/BlockHandlePlugin';
 import { $getRoot, $createParagraphNode, $createTextNode } from 'lexical';
 
 // Custom CodeNode subclass that overrides importDOM to return null.
@@ -61,7 +74,7 @@ const theme = {
     italic: 'italic',
     underline: 'underline',
     strikethrough: 'line-through',
-    code: 'bg-black/5 dark:bg-white/10 rounded-md px-1.5 py-0.5 font-mono text-[0.85em] text-black/80 dark:text-white/80',
+    code: 'bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10 rounded-md px-1.5 py-0.5 font-mono text-[0.9em] text-[#eb5757] dark:text-[#ff7b72]',
   },
   code: 'editor-code',
   codeHighlight: {
@@ -109,6 +122,10 @@ const theme = {
     listitemUnchecked: 'lexical-checklist-unchecked',
   },
   quote: 'border-l-4 border-black/20 dark:border-white/20 pl-4 italic my-4 text-black/70 dark:text-white/70 bg-black/5 dark:bg-white/5 py-2 pr-4 rounded-r-lg',
+  hr: 'my-6 border-black/10 dark:border-white/10',
+  table: 'editor-table',
+  tableCell: 'editor-tableCell',
+  tableCellHeader: 'editor-tableCellHeader',
 } as any;
 
 export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style }: LexicalEditorProps) {
@@ -132,10 +149,18 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
         ListItemNode,
         QuoteNode,
         CodeNode,
+        {
+          replace: LexicalCodeNode,
+          with: (node: any) => new CodeNode(node.getLanguage(), node.__key),
+        },
         CodeHighlightNode,
         LinkNode,
         ImageNode,
         AudioNode,
+        HorizontalRuleNode,
+        TableNode,
+        TableCellNode,
+        TableRowNode,
       ],
       onError: (error: Error) => {
         console.error('Lexical Error:', error);
@@ -188,12 +213,24 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           <AutoSavePlugin onSave={onSave} onChange={onChange} debounceMs={500} />
           <ImagePlugin />
           <AudioPlugin />
+          <MediaModalsPlugin />
+          <HorizontalRulePlugin />
+          <TablePlugin />
+          <TableActionMenuPlugin />
+          <TableHoverActionsPlugin />
+          <TableCellResizerPlugin />
+          <TableDragDropPlugin />
+          <TodoTablePlugin />
+          <CodeActionMenuPlugin />
+          <CodeGutterPlugin />
           
           {isEditing && (
             <>
               <CodeHighlightPlugin />
               <CursorToolbarPlugin />
               <SlashCommandPlugin />
+              <BlockHandlePlugin />
+              <HorizontalRulePlugin />
             </>
           )}
         </div>

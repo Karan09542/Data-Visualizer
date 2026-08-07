@@ -60,10 +60,10 @@
   <script>
     // Browser shim for Node.js requires externalized by Vite
     window.require = window.require || function(mod) {
-      console.warn("[Global Shim] require(" + mod + ") called in browser runtime.");
       if (mod === '@emotion/is-prop-valid') {
-        return { default: function() { return true; }, __esModule: true };
+        throw new Error("Module not found: @emotion/is-prop-valid");
       }
+      console.warn("[Global Shim] require(" + mod + ") called in browser runtime.");
       return { default: function() {} };
     };
 

@@ -20,7 +20,7 @@ export const useVoiceStore = create<VoiceStoreState>()(
       state: "idle",
       lastCommand: null,
       errorMessage: null,
-      isVoiceEnabled: true,
+      isVoiceEnabled: false,
       setState: (state) => set({ state }),
       setLastCommand: (command) => set({ lastCommand: command }),
       setErrorMessage: (error) => set({ errorMessage: error }),

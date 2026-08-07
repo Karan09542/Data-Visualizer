@@ -712,7 +712,9 @@ input[type="number"] {
   font-size: 13px;
   line-height: 1.6;
   padding: 16px;
-  border-radius: 10px;
+  padding-top: 40px; /* Space for language and copy button */
+  padding-left: 48px; /* Space for line numbers */
+  border-radius: 8px;
   margin: 16px 0;
   overflow-x: auto;
   position: relative;
@@ -720,7 +722,21 @@ input[type="number"] {
   white-space: pre;
   tab-size: 2;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  /* Flat design, no shadow */
+}
+
+.editor-code::before {
+  content: attr(data-gutter);
+  position: absolute;
+  top: 40px; /* matches padding-top */
+  left: 0;
+  min-width: 32px;
+  padding-right: 12px;
+  text-align: right;
+  color: #858585;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  white-space: pre-wrap;
 }
 
 /* Ensure children inside code block do not inherit inline code pill styles */
@@ -747,4 +763,57 @@ input[type="number"] {
   background-size: 70%;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+@layer components {
+  /* Lexical Table Styles */
+  .editor-table {
+    border-collapse: collapse;
+    border-spacing: 0;
+    width: 100%;
+    margin-top: 1rem;
+    margin-bottom: 1.5rem;
+    background: transparent;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+    table-layout: fixed;
+  }
+  
+  .dark .editor-table {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .editor-tableCell {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 10px 14px;
+    vertical-align: top;
+    text-align: left;
+    min-width: 75px;
+    outline: none;
+    transition: background-color 0.1s ease;
+  }
+
+  .dark .editor-tableCell {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .editor-tableCellHeader {
+    background-color: rgba(0, 0, 0, 0.03);
+    font-weight: 600;
+  }
+
+  .dark .editor-tableCellHeader {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .editor-tableCell:focus-within,
+  .editor-tableCell[data-selected="true"] {
+    background-color: rgba(59, 130, 246, 0.05); /* Soft blue for active cell */
+  }
+
+  .dark .editor-tableCell:focus-within,
+  .dark .editor-tableCell[data-selected="true"] {
+    background-color: rgba(59, 130, 246, 0.15);
+  }
 }

@@ -10,18 +10,7 @@ import { Type, List, ListOrdered, CheckSquare, Quote, Code, Heading1, Heading2, 
 import { createPortal } from 'react-dom';
 import { $createParagraphNode } from 'lexical';
 
-class CommandOption extends MenuOption {
-  title: string;
-  menuIcon: React.ReactNode;
-  onSelect: (editor: LexicalEditor) => void;
-
-  constructor(title: string, menuIcon: React.ReactNode, options: { onSelect: (editor: LexicalEditor) => void }) {
-    super(title);
-    this.title = title;
-    this.menuIcon = menuIcon;
-    this.onSelect = options.onSelect;
-  }
-}
+import { CommandOption, getBaseOptions } from './BlockMenuOptions';
 
 export default function SlashCommandPlugin() {
   const [editor] = useLexicalComposerContext();
@@ -32,83 +21,7 @@ export default function SlashCommandPlugin() {
   });
 
   const options = useMemo(() => {
-    const baseOptions = [
-      new CommandOption('Text', <Type size={16} />, {
-        onSelect: (editor) => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createParagraphNode());
-            }
-          });
-        },
-      }),
-      new CommandOption('Heading 1', <Heading1 size={16} />, {
-        onSelect: (editor) => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode('h1'));
-            }
-          });
-        },
-      }),
-      new CommandOption('Heading 2', <Heading2 size={16} />, {
-        onSelect: (editor) => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode('h2'));
-            }
-          });
-        },
-      }),
-      new CommandOption('Heading 3', <Heading3 size={16} />, {
-        onSelect: (editor) => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createHeadingNode('h3'));
-            }
-          });
-        },
-      }),
-      new CommandOption('Bulleted List', <List size={16} />, {
-        onSelect: (editor) => {
-          editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined as any);
-        },
-      }),
-      new CommandOption('Numbered List', <ListOrdered size={16} />, {
-        onSelect: (editor) => {
-          editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined as any);
-        },
-      }),
-      new CommandOption('Checklist', <CheckSquare size={16} />, {
-        onSelect: (editor) => {
-          editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined as any);
-        },
-      }),
-      new CommandOption('Quote', <Quote size={16} />, {
-        onSelect: (editor) => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createQuoteNode());
-            }
-          });
-        },
-      }),
-      new CommandOption('Code Block', <Code size={16} />, {
-        onSelect: (editor) => {
-          editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-              $setBlocksType(selection, () => $createCodeNode('typescript'));
-            }
-          });
-        },
-      }),
-    ];
+    const baseOptions = getBaseOptions();
 
     if (!queryString) return baseOptions;
     
