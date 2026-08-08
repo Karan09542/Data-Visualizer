@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
 import { FolderArchive, Download, AlertCircle, Shield, FolderOpen, FileText, Eye, EyeOff } from "lucide-react";
-import { ZipWriter, BlobWriter, BlobReader } from "@zip.js/zip.js";
 
 interface SelectedFile {
   file: File;
@@ -9,8 +8,6 @@ interface SelectedFile {
 
 export const FolderToZipConverter = () => {
   const [files, setFiles] = useState<SelectedFile[]>([]);
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [zipName, setZipName] = useState("archive");
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState("");
@@ -25,7 +22,7 @@ export const FolderToZipConverter = () => {
         path: file.webkitRelativePath || file.name,
       }));
       setFiles(selectedFiles);
-      
+
       // Auto-set zip name based on the root folder name if available
       if (selectedFiles[0] && selectedFiles[0].path.includes("/")) {
         const rootFolder = selectedFiles[0].path.split("/")[0];
@@ -41,31 +38,49 @@ export const FolderToZipConverter = () => {
     setProgress(0);
 
     try {
-      const zipWriter = new ZipWriter(new BlobWriter("application/zip"), {
-        password: password || undefined,
+      const worker = new Worker(new URL("../../workers/zipWorker.ts", import.meta.url), {
+        type: "module",
       });
 
-      for (let i = 0; i < files.length; i++) {
-        const { file, path } = files[i];
-        await zipWriter.add(path, new BlobReader(file));
-        setProgress(Math.round(((i + 1) / files.length) * 100));
-      }
+      worker.onmessage = (e) => {
+        const { progress, zipFile, error } = e.data;
 
-      const blob = await zipWriter.close();
-      
-      // Trigger download
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${zipName || "archive"}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+        if (progress !== undefined) {
+          setProgress(Math.round(progress));
+        }
+
+        if (error) {
+          console.error(error);
+          setError("Failed to create ZIP file. Please try again.");
+          setIsCompressing(false);
+          setProgress(0);
+          worker.terminate();
+        }
+
+        if (zipFile) {
+          const url = URL.createObjectURL(zipFile);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${zipName || "archive"}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          setIsCompressing(false);
+          setProgress(0);
+          worker.terminate();
+        }
+      };
+
+      worker.postMessage({
+        id: "folder-zip",
+        files: files.map(f => ({ file: f.file, path: f.path })),
+        folderName: zipName || "archive"
+      });
     } catch (err) {
       console.error(err);
       setError("Failed to create ZIP file. Please try again.");
-    } finally {
       setIsCompressing(false);
       setProgress(0);
     }
@@ -148,32 +163,6 @@ export const FolderToZipConverter = () => {
                 placeholder="archive"
                 className="w-full bg-slate-50 dark:bg-[#0d1117] text-slate-800 dark:text-slate-100 text-sm px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
               />
-            </div>
-
-            <div>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                <Shield size={12} />
-                Password Protection (Optional)
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Leave blank for no password"
-                  className="w-full bg-slate-50 dark:bg-[#0d1117] text-slate-800 dark:text-slate-100 text-sm px-3 py-2 pr-10 rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/50 [&::-ms-reveal]:hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5 leading-snug">
-                Warning: If you set a password, you will not be able to open the ZIP without it. There is no password recovery.
-              </p>
             </div>
           </div>
 

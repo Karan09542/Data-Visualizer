@@ -1,6 +1,157 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Download, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { PDFDocument } from 'pdf-lib';
+
+
+interface SortableThumbnailProps {
+  pageNum: number;
+  url: string;
+  currentPage: number;
+  selectionMode: boolean;
+  isSelected: boolean;
+  onSelect: (pageNum: number) => void;
+  onGoToPage: (pageNum: number) => void;
+  onLongPress: (pageNum: number) => void;
+}
+
+const SortableThumbnail: React.FC<SortableThumbnailProps> = ({ pageNum, url, currentPage, selectionMode, isSelected, onSelect, onGoToPage, onLongPress }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pageNum.toString() });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = React.useRef(false);
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  React.useEffect(() => {
+    if (isDragging) {
+      cancelLongPress();
+    }
+  }, [isDragging]);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    longPressFiredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      onLongPress(pageNum);
+      longPressTimerRef.current = null;
+    }, 500);
+    // Also delegate to dnd-kit
+    if (listeners?.onPointerDown) {
+      listeners.onPointerDown(e as any);
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    cancelLongPress();
+    // Don't fire click if long-press just fired or if we were dragging
+    if (longPressFiredRef.current || isDragging) {
+      longPressFiredRef.current = false;
+      return;
+    }
+    // Clicking anywhere on the preview renders that page
+    onGoToPage(pageNum);
+  };
+
+  // Build props for the container: take all dnd-kit listeners/attributes EXCEPT onPointerDown (we handle it ourselves)
+  const { onPointerDown: _dndPointerDown, ...restListeners } = listeners || {};
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`relative flex flex-col gap-1.5 cursor-pointer group transition-all duration-200 ${selectionMode ? '' : (currentPage === pageNum ? 'opacity-100 scale-[1.01]' : 'opacity-85 hover:opacity-100 hover:scale-[1.01]')
+        }`}
+      onPointerDown={handlePointerDown}
+      onPointerUp={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onClick={handleClick}
+      {...attributes}
+      {...restListeners}
+    >
+      <div
+        className={`rounded-xl overflow-hidden aspect-[1/1.4] bg-slate-950 relative border transition-all duration-200 shadow-md ${isSelected
+            ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/15'
+            : (currentPage === pageNum && !selectionMode
+              ? 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/15'
+              : 'border-slate-800/80 group-hover:border-slate-600/80 group-hover:shadow-indigo-500/10')
+          }`}
+      >
+        <img
+          src={url}
+          alt={`Page ${pageNum}`}
+          className="w-full h-full object-contain bg-white pointer-events-none select-none group-hover:scale-[1.015] transition-transform duration-200"
+          loading="lazy"
+          draggable={false}
+        />
+
+        {/* Soft top gradient for button contrast */}
+        <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-slate-950/40 to-transparent pointer-events-none" />
+
+        {/* Professional Checkbox Button */}
+        <button
+          className={`absolute top-1.5 right-1.5 z-10 transition-all duration-200 ${selectionMode
+              ? 'opacity-100 scale-100'
+              : 'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100'
+            }`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!selectionMode) {
+              onLongPress(pageNum);
+            } else {
+              onSelect(pageNum);
+            }
+          }}
+          title={isSelected ? 'Deselect Page' : 'Select Page'}
+        >
+          {isSelected ? (
+            <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/40 scale-100 transition-transform">
+              <Check size={12} strokeWidth={3} />
+            </div>
+          ) : (
+            <div className="w-5 h-5 rounded-full border-2 border-slate-400/70 bg-slate-900/60 backdrop-blur-sm shadow-sm hover:border-indigo-400 hover:bg-slate-800 transition-all" />
+          )}
+        </button>
+
+        {/* Active Page Pill */}
+        {currentPage === pageNum && !selectionMode && (
+          <div className="absolute bottom-1.5 left-1.5 z-10 px-2 py-0.5 rounded-md bg-blue-600/90 text-white text-[9px] font-bold tracking-wider backdrop-blur-md shadow-sm">
+            ACTIVE
+          </div>
+        )}
+      </div>
+
+      <span
+        className={`text-[11px] text-center font-medium tracking-tight select-none transition-colors ${isSelected
+            ? 'text-indigo-300 font-semibold'
+            : (currentPage === pageNum && !selectionMode
+              ? 'text-blue-400 font-semibold'
+              : 'text-slate-400 group-hover:text-slate-200')
+          }`}
+      >
+        Page {pageNum}
+      </span>
+    </div>
+  );
+};
 
 // Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -9,6 +160,148 @@ interface PdfViewerProps {
   url: string;
   alignment?: 'top' | 'center';
 }
+
+interface PdfPageCanvasProps {
+  pdfDoc: any;
+  pageNum: number;
+  scale: number;
+  onVisible?: (pageNum: number) => void;
+}
+
+const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, onVisible }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const renderTaskRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!pdfDoc) return;
+    let active = true;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && onVisible) {
+            onVisible(pageNum);
+          }
+        });
+      },
+      { threshold: 0.25 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    pdfDoc.getPage(pageNum).then((page: any) => {
+      if (!active) return;
+      const baseViewport = page.getViewport({ scale: 1.0 });
+      setViewportSize({ width: baseViewport.width, height: baseViewport.height });
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
+
+      const context = canvas.getContext('2d');
+      if (!context) return;
+
+      // Dynamic crisp render resolution based on current zoom scale
+      const renderScale = Math.max(scale * 2.0, 2.0);
+      const viewport = page.getViewport({ scale: renderScale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      const renderTask = page.render({ canvasContext: context, viewport });
+      renderTaskRef.current = renderTask;
+
+      renderTask.promise
+        .catch((err: any) => {
+          if (err?.name !== 'RenderingCancelledException') {
+            console.error(`Page ${pageNum} render error:`, err);
+          }
+        });
+    });
+
+    return () => {
+      active = false;
+      observer.disconnect();
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
+    };
+  }, [pdfDoc, pageNum, scale]);
+
+  return (
+    <div
+      id={`pdf-page-${pageNum}`}
+      ref={containerRef}
+      className="shadow-md border border-slate-700/30 bg-white overflow-hidden relative flex-shrink-0 mx-auto transition-all rounded-sm"
+      style={{
+        width: viewportSize.width ? `${viewportSize.width * scale}px` : 'auto',
+        height: viewportSize.height ? `${viewportSize.height * scale}px` : 'auto',
+      }}
+    >
+      <canvas ref={canvasRef} className="w-full h-full block relative z-0" />
+      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold select-none z-10 opacity-70">
+        Page {pageNum}
+      </div>
+    </div>
+  );
+};
+
+interface PdfPlaceholderCanvasProps {
+  pageNum: number;
+  width: number;
+  height: number;
+  onVisible?: (pageNum: number) => void;
+}
+
+const PdfPlaceholderCanvas: React.FC<PdfPlaceholderCanvasProps> = ({ pageNum, width, height, onVisible }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && onVisible && active) {
+            onVisible(pageNum);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [pageNum, onVisible]);
+
+  return (
+    <div
+      id={`pdf-page-${pageNum}`}
+      ref={containerRef}
+      className="shadow-sm border border-slate-800/40 bg-slate-950/40 rounded-sm flex items-center justify-center flex-shrink-0 mx-auto transition-all relative select-none"
+      style={{
+        width: width ? `${width}px` : '100%',
+        height: height ? `${height}px` : '600px',
+      }}
+    >
+      <div className="flex flex-col items-center gap-1.5 text-slate-500">
+        <Loader2 size={18} className="animate-spin text-indigo-500/70 mb-0.5" />
+        <span className="text-xs font-mono font-medium tracking-wide">Page {pageNum}</span>
+      </div>
+    </div>
+  );
+};
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -27,7 +320,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const renderTaskRef = useRef<any>(null);
   const touchStartRef = useRef<{ x: number, y: number, time: number } | null>(null);
   const [showControls, setShowControls] = useState(true);
-  
+
   const [baseViewportWidth, setBaseViewportWidth] = useState<number>(0);
   const [baseViewportHeight, setBaseViewportHeight] = useState<number>(0);
   const [currentViewport, setCurrentViewport] = useState<any>(null);
@@ -47,10 +340,37 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [downloadingType, setDownloadingType] = useState<'pdf' | 'zip-images' | 'zip-pdfs' | null>(null);
+
+  // View Mode State: 'single' (one page) or 'vertical' (all pages stacked)
+  const [viewMode, setViewMode] = useState<'single' | 'vertical'>('single');
+  const isProgrammaticScrollRef = useRef<boolean>(false);
+  const scrollTimeoutRef = useRef<any>(null);
+
+  // Selection and Ordering State
+  const [orderedPages, setOrderedPages] = useState<number[]>([]);
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [selectionMode, setSelectionMode] = useState<boolean>(false);
+  const [zipMenuOpen, setZipMenuOpen] = useState<boolean>(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
+  const zipMenuRef = useRef<HTMLDivElement | null>(null);
+
   const workerRef = useRef<Worker | null>(null);
   const pdfBufferRef = useRef<ArrayBuffer | null>(null);
   const pdfPasswordRef = useRef<string | undefined>(undefined);
   const prevScaleRef = useRef<number>(scale);
+
+  // Close zip menu on outside click
+  useEffect(() => {
+    if (!zipMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (zipMenuRef.current && !zipMenuRef.current.contains(e.target as Node)) {
+        setZipMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [zipMenuOpen]);
 
   // Preserve center focus when scale changes (Zoom in/out towards center)
   useLayoutEffect(() => {
@@ -177,18 +497,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       setInitialPinchDistance(null);
       setInitialScale(null);
     }
-    
+
     if (e.changedTouches.length === 1 && touchStartRef.current) {
       const touchEndX = e.changedTouches[0].clientX;
       const touchEndY = e.changedTouches[0].clientY;
       const dx = touchEndX - touchStartRef.current.x;
       const dy = touchEndY - touchStartRef.current.y;
       const timeDiff = Date.now() - touchStartRef.current.time;
-      
+
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50 && timeDiff < 500) {
         const container = containerRef.current;
         let canSwipe = true;
-        
+
         if (container && container.scrollWidth > container.clientWidth) {
           if (dx > 0 && container.scrollLeft > 10) {
             canSwipe = false;
@@ -196,7 +516,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
             canSwipe = false;
           }
         }
-        
+
         if (canSwipe) {
           if (dx > 0 && currentPage > 1) {
             setCurrentPage(currentPage - 1);
@@ -268,20 +588,23 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
             useSystemFonts: true,
             password: currentPassword
           });
-          
+
           const pdf = await loadingTask.promise;
           if (!active) return;
           setPdfDoc(pdf);
           setTotalPages(pdf.numPages);
+          setOrderedPages(Array.from({ length: pdf.numPages }, (_, i) => i + 1));
           setCurrentPage(1);
           setPageInput("1");
           setLoading(false);
           setPasswordRequired(false);
-          
-          // Auto-fit initial scale based on container width
+
+          // Auto-fit initial scale based on container width & set base viewport
           pdf.getPage(1).then((page: any) => {
             if (!active) return;
             const baseViewport = page.getViewport({ scale: 1.0 });
+            setBaseViewportWidth(baseViewport.width);
+            setBaseViewportHeight(baseViewport.height);
             if (containerRef.current) {
               const containerWidth = containerRef.current.clientWidth;
               const isMobile = containerWidth < 640;
@@ -290,7 +613,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
               setScale(Math.min(Math.max(newScale, 0.4), 2.5));
             }
           });
-          
+
           return;
         } catch (err: any) {
           if (err.name === "PasswordException") {
@@ -322,9 +645,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
     };
   }, [url, reloadKey]);
 
-  // Render current page
+  // Render current page (Single Page Mode)
   useEffect(() => {
-    if (!pdfDoc) return;
+    if (!pdfDoc || viewMode !== 'single') return;
 
     let active = true;
     setRendering(true);
@@ -346,12 +669,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       // Render at a high fixed scale for crispness
       const renderScale = 2.5;
       const viewport = page.getViewport({ scale: renderScale });
-      
+
       const baseViewport = page.getViewport({ scale: 1.0 });
       setBaseViewportWidth(baseViewport.width);
       setBaseViewportHeight(baseViewport.height);
       setCurrentViewport(baseViewport);
-      
+
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
@@ -385,12 +708,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         renderTaskRef.current.cancel();
       }
     };
-  }, [pdfDoc, currentPage]);
+  }, [pdfDoc, currentPage, viewMode]);
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
       setPageInput(String(page));
+      if (viewMode === 'vertical') {
+        isProgrammaticScrollRef.current = true;
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+
+        const el = document.getElementById(`pdf-page-${page}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        scrollTimeoutRef.current = setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 750);
+      }
     }
   };
 
@@ -460,7 +796,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
 
   const renderedHighlights = React.useMemo(() => {
     if (!currentViewport || !searchQuery.trim()) return null;
-    
+
     const highlights = searchResults.filter(r => r.pageNumber === currentPage);
     if (highlights.length === 0) return null;
 
@@ -472,14 +808,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         const charWidth = rect.width / Math.max(1, rect.totalLen);
         const startX = rect.transform[4] + rect.overlapStart * charWidth;
         const startY = rect.transform[5];
-        
+
         // Use standard viewport method to convert coordinates safely
         const pt = currentViewport.convertToViewportPoint(startX, startY);
-        
+
         // Try to derive font size from matrix or height
         const fontSizePdf = Math.abs(rect.transform[3]) || rect.height || 12;
         const topPt = currentViewport.convertToViewportPoint(startX, startY + fontSizePdf);
-        
+
         const highlightWidth = (rect.overlapEnd - rect.overlapStart) * charWidth;
         // Vector conversion for width to handle scale accurately
         const endPt = currentViewport.convertToViewportPoint(startX + highlightWidth, startY);
@@ -507,6 +843,166 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       }
     });
   }, [currentViewport, searchResults, currentPage, searchQuery]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // 5px movement required before dragging starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setOrderedPages((items) => {
+        const oldIndex = items.indexOf(Number(active.id));
+        const newIndex = items.indexOf(Number(over.id));
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const getPagesToProcess = () => {
+    if (selectionMode && selectedPages.size > 0) {
+      return orderedPages.filter(p => selectedPages.has(p));
+    }
+    return orderedPages;
+  };
+
+  const downloadAsPdf = async () => {
+    const pages = getPagesToProcess();
+    if (pages.length === 0 || !pdfBufferRef.current) return;
+    setDownloadingType('pdf');
+
+    try {
+      // Load the original PDF using pdf-lib (clone buffer to avoid detach)
+      const srcDoc = await PDFDocument.load(pdfBufferRef.current.slice(0), {
+        ignoreEncryption: true,
+      });
+      const newDoc = await PDFDocument.create();
+
+      // Copy selected pages (pdf-lib uses 0-based page indices)
+      const pageIndices = pages.map(p => p - 1);
+      const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
+      copiedPages.forEach(page => newDoc.addPage(page));
+
+      const pdfBytes = await newDoc.save();
+      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'document.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+    } finally {
+      setDownloadingType(null);
+    }
+
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedPages(new Set());
+    }
+  };
+
+  const downloadAsZip = async (mode: 'images' | 'pdfs') => {
+    const pages = getPagesToProcess();
+    if (pages.length === 0 || !pdfBufferRef.current) return;
+    setZipMenuOpen(false);
+    setDownloadingType(mode === 'images' ? 'zip-images' : 'zip-pdfs');
+
+    try {
+      const filesToZip: { file: File | Blob; path: string }[] = [];
+
+      if (mode === 'images') {
+        // High-quality images: render each page at 3x scale via pdfjs-dist (clone buffer to avoid detach)
+        const pdfDoc = await pdfjsLib.getDocument({
+          data: new Uint8Array(pdfBufferRef.current.slice(0)),
+          useSystemFonts: true,
+          password: pdfPasswordRef.current,
+        }).promise;
+
+        for (let i = 0; i < pages.length; i++) {
+          const pageNum = pages[i];
+          const page = await pdfDoc.getPage(pageNum);
+          const renderScale = 3.0;
+          const viewport = page.getViewport({ scale: renderScale });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d')!;
+          await page.render({ canvasContext: ctx, viewport } as any).promise;
+
+          const blob: Blob = await new Promise((resolve) =>
+            canvas.toBlob((b) => resolve(b!), 'image/png')
+          );
+          filesToZip.push({ file: blob, path: `page_${pageNum}.png` });
+        }
+      } else {
+        // PDFs: combine all selected pages into a single PDF, then zip it (clone buffer to avoid detach)
+        const srcDoc = await PDFDocument.load(pdfBufferRef.current.slice(0), {
+          ignoreEncryption: true,
+        });
+        const newDoc = await PDFDocument.create();
+
+        const pageIndices = pages.map(p => p - 1);
+        const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
+        copiedPages.forEach(page => newDoc.addPage(page));
+
+        const pdfBytes = await newDoc.save();
+        const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
+        filesToZip.push({ file: blob, path: 'document.pdf' });
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const worker = new Worker(new URL("../workers/zipWorker.ts", import.meta.url), {
+          type: "module",
+        });
+
+        worker.onmessage = (e) => {
+          const { zipFile, error } = e.data;
+          if (error) {
+            worker.terminate();
+            reject(new Error(error));
+          } else if (zipFile) {
+            const url = URL.createObjectURL(zipFile);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "pages.zip";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            worker.terminate();
+            resolve();
+          }
+        };
+
+        worker.postMessage({
+          id: "pdf-zip",
+          files: filesToZip,
+          folderName: "pages"
+        });
+      });
+    } catch (err) {
+      console.error('Failed to generate ZIP:', err);
+    } finally {
+      setDownloadingType(null);
+    }
+
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedPages(new Set());
+    }
+  };
 
   if (passwordRequired) {
     return (
@@ -616,132 +1112,264 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       {showSidebar && (
         <>
           {/* Mobile backdrop */}
-          <div 
+          <div
             className="fixed inset-0 z-[29999] bg-black/60 backdrop-blur-xs sm:hidden"
             onClick={() => setShowSidebar(false)}
           />
-          <div className="fixed inset-y-0 left-0 z-[30000] w-[80%] max-w-[320px] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 sm:w-72 bg-slate-900 border-r border-slate-700/80 shadow-2xl flex flex-col transition-all duration-300">
-          <div className="flex items-center justify-between p-2 border-b border-slate-800">
-            <div className="flex items-center gap-1 bg-slate-950/50 p-1 rounded-lg">
-              <button
-                onClick={() => setSidebarTab('thumbnails')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  sidebarTab === 'thumbnails' ? 'bg-indigo-500/20 text-indigo-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <LayoutGrid size={14} />
-                Pages
-              </button>
-              <button
-                onClick={() => setSidebarTab('search')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  sidebarTab === 'search' ? 'bg-indigo-500/20 text-indigo-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <Search size={14} />
-                Search
-              </button>
+          <div className={`fixed inset-y-0 left-0 z-[30000] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 bg-slate-900/95 backdrop-blur-xl border-r border-slate-800/90 shadow-2xl flex flex-col transition-all duration-300 ease-in-out ${isSidebarExpanded ? 'w-full sm:w-[540px] md:w-[640px]' : 'w-[85%] max-w-[340px] sm:w-80'}`}>
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800/90 bg-slate-950/40">
+              <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 shadow-inner">
+                <button
+                  onClick={() => setSidebarTab('thumbnails')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sidebarTab === 'thumbnails'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                      : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                    }`}
+                >
+                  <LayoutGrid size={14} />
+                  Pages
+                </button>
+                <button
+                  onClick={() => setSidebarTab('search')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sidebarTab === 'search'
+                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm'
+                      : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                    }`}
+                >
+                  <Search size={14} />
+                  Search
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {/* Expand / Fullscreen Toggle Button */}
+                <button
+                  onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors"
+                  title={isSidebarExpanded ? 'Collapse Panel' : 'Expand Panel'}
+                >
+                  {isSidebarExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
+
+                <button
+                  onClick={() => setShowSidebar(false)}
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 rounded-lg transition-colors"
+                  title="Close Sidebar"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => setShowSidebar(false)}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-rose-500/20 rounded-md transition-colors"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 relative">
-            {sidebarTab === 'thumbnails' && (
-              <div className="flex flex-col gap-4">
-                {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && (
-                  <div className="flex flex-col items-center justify-center p-6 text-center h-48 border border-slate-800 rounded-lg bg-slate-950/30">
-                    <LayoutGrid size={24} className="text-slate-500 mb-2" />
-                    <p className="text-xs text-slate-400 mb-4">Generate thumbnails for faster visual navigation.</p>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 relative">
+              {sidebarTab === 'thumbnails' && (
+                <div className="flex flex-col gap-3">
+                  {Object.keys(thumbnails).length > 0 && (
+                    <div className="flex items-center justify-between px-1 pb-2 border-b border-slate-800/60">
+                      <span className="text-xs font-medium text-slate-400">
+                        {orderedPages.length} Pages {selectionMode ? `(${selectedPages.size} selected)` : ''}
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (selectionMode && selectedPages.size === orderedPages.length) {
+                            setSelectionMode(false);
+                            setSelectedPages(new Set());
+                          } else {
+                            setSelectionMode(true);
+                            setSelectedPages(new Set(orderedPages));
+                          }
+                        }}
+                        className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all border ${selectionMode && selectedPages.size === orderedPages.length
+                            ? 'bg-slate-800 border-indigo-500/50 text-indigo-300 hover:bg-slate-700'
+                            : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80 hover:text-white'
+                          }`}
+                      >
+                        {selectionMode && selectedPages.size === orderedPages.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                  )}
+
+                  {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && (
+                    <div className="flex flex-col items-center justify-center p-6 text-center h-52 border border-slate-800/80 rounded-2xl bg-slate-950/40 backdrop-blur-sm">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3">
+                        <LayoutGrid size={22} />
+                      </div>
+                      <p className="text-xs font-medium text-slate-400 mb-4 max-w-xs">Generate page thumbnails for visual navigation, reordering, and multi-page export.</p>
+                      <button
+                        onClick={startThumbnailGeneration}
+                        className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/25 flex items-center gap-2 transition-all active:scale-95"
+                      >
+                        <Play size={14} /> Generate Thumbnails
+                      </button>
+                    </div>
+                  )}
+
+                  {thumbnailsGenerating && (
+                    <div className="flex items-center gap-2.5 text-xs text-indigo-300 font-semibold mb-2 justify-center bg-indigo-500/15 p-2.5 rounded-xl border border-indigo-500/30 backdrop-blur-sm">
+                      <Loader2 size={15} className="animate-spin text-indigo-400" />
+                      Generating page previews...
+                    </div>
+                  )}
+
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={orderedPages.map(String)} strategy={rectSortingStrategy}>
+                      <div className="grid grid-cols-[repeat(auto-fill,minmax(135px,1fr))] gap-3.5 pb-4">
+                        {orderedPages.filter(p => thumbnails[p]).map((pageNum) => (
+                          <SortableThumbnail
+                            key={pageNum}
+                            pageNum={pageNum}
+                            url={thumbnails[pageNum]}
+                            currentPage={currentPage}
+                            selectionMode={selectionMode}
+                            isSelected={selectedPages.has(pageNum)}
+                            onSelect={(p) => {
+                              setSelectedPages(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(p)) newSet.delete(p);
+                                else newSet.add(p);
+                                return newSet;
+                              });
+                            }}
+                            onGoToPage={goToPage}
+                            onLongPress={(p) => {
+                              if (!selectionMode) {
+                                setSelectionMode(true);
+                                setSelectedPages(new Set([p]));
+                              }
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              )}
+
+              {sidebarTab === 'search' && (
+                <div className="flex flex-col gap-4">
+                  <form onSubmit={handleSearch} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSearchQuery(val);
+                        setHasSearched(false);
+                        if (val.trim() === '') {
+                          setSearchResults([]);
+                        }
+                      }}
+                      placeholder="Search in PDF..."
+                      className="flex-1 bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    />
                     <button
-                      onClick={startThumbnailGeneration}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-lg flex items-center gap-2 transition-colors active:scale-95"
+                      type="submit"
+                      disabled={isSearching || !searchQuery.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white p-2 rounded-lg transition-colors"
                     >
-                      <Play size={14} /> Generate Now
+                      {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                    </button>
+                  </form>
+
+                  <div className="flex flex-col gap-2 pb-4">
+                    {hasSearched && searchResults.length === 0 && !isSearching && (
+                      <p className="text-xs text-slate-500 text-center py-4">No results found.</p>
+                    )}
+                    {searchResults.map((result, i) => (
+                      <div
+                        key={`${result.pageNumber}-${i}`}
+                        onClick={() => goToPage(result.pageNumber)}
+                        className="p-3 bg-slate-950/50 hover:bg-indigo-500/10 border border-slate-800 hover:border-indigo-500/30 rounded-lg cursor-pointer transition-colors"
+                      >
+                        <div className="text-[10px] font-bold text-indigo-400 mb-1">Page {result.pageNumber}</div>
+                        <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{result.snippet}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Pinned Bottom Action Bar */}
+            {(selectionMode || orderedPages.some((p, i) => p !== i + 1)) && Object.keys(thumbnails).length > 0 && sidebarTab === 'thumbnails' && (
+              <div className="flex-none p-3.5 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/90 flex flex-col gap-2.5 z-20 shadow-2xl">
+                {selectionMode && (
+                  <div className="flex justify-between items-center px-0.5">
+                    <span className="text-xs font-medium text-slate-300">
+                      {selectedPages.size} page{selectedPages.size !== 1 ? 's' : ''} selected
+                    </span>
+                    <button
+                      onClick={() => { setSelectionMode(false); setSelectedPages(new Set()); }}
+                      className="text-xs text-slate-400 hover:text-slate-200 font-medium transition-colors"
+                    >
+                      Cancel
                     </button>
                   </div>
                 )}
-                
-                {thumbnailsGenerating && (
-                  <div className="flex items-center gap-2 text-xs text-indigo-400 font-medium mb-2 justify-center bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
-                    <Loader2 size={14} className="animate-spin" />
-                    Generating in background...
+                {!selectionMode && orderedPages.some((p, i) => p !== i + 1) && (
+                  <div className="flex justify-between items-center px-0.5">
+                    <span className="text-xs font-medium text-slate-300">Custom page order active</span>
+                    <button
+                      onClick={() => setOrderedPages(Array.from({ length: totalPages }, (_, i) => i + 1))}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                    >
+                      Reset Order
+                    </button>
                   </div>
                 )}
-                
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(thumbnails).map(([pageNum, url]) => (
-                    <div
-                      key={pageNum}
-                      onClick={() => goToPage(Number(pageNum))}
-                      className={`flex flex-col gap-1 cursor-pointer group ${currentPage === Number(pageNum) ? 'opacity-100' : 'opacity-70 hover:opacity-100'} transition-opacity`}
-                    >
-                      <div className={`border-2 rounded overflow-hidden aspect-[1/1.4] bg-white ${currentPage === Number(pageNum) ? 'border-indigo-500 shadow-md shadow-indigo-500/20' : 'border-transparent group-hover:border-slate-500'}`}>
-                        <img src={url} alt={`Page ${pageNum}`} className="w-full h-full object-contain bg-white" loading="lazy" />
-                      </div>
-                      <span className={`text-[10px] text-center font-semibold ${currentPage === Number(pageNum) ? 'text-indigo-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                        Page {pageNum}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {sidebarTab === 'search' && (
-              <div className="flex flex-col gap-4">
-                <form onSubmit={handleSearch} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSearchQuery(val);
-                      setHasSearched(false);
-                      if (val.trim() === '') {
-                        setSearchResults([]);
-                      }
-                    }}
-                    placeholder="Search in PDF..."
-                    className="flex-1 bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
+                <div className="flex gap-2.5">
                   <button
-                    type="submit"
-                    disabled={isSearching || !searchQuery.trim()}
-                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white p-2 rounded-lg transition-colors"
+                    onClick={downloadAsPdf}
+                    disabled={(selectionMode && selectedPages.size === 0) || downloadingType !== null}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl shadow-md shadow-indigo-600/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                   >
-                    {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                    {downloadingType === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
+                    {downloadingType === 'pdf' ? 'Generating...' : (selectionMode ? `PDF (${selectedPages.size})` : 'Download PDF')}
                   </button>
-                </form>
-
-                <div className="flex flex-col gap-2 pb-4">
-                  {hasSearched && searchResults.length === 0 && !isSearching && (
-                    <p className="text-xs text-slate-500 text-center py-4">No results found.</p>
-                  )}
-                  {searchResults.map((result, i) => (
-                    <div
-                      key={`${result.pageNumber}-${i}`}
-                      onClick={() => goToPage(result.pageNumber)}
-                      className="p-3 bg-slate-950/50 hover:bg-indigo-500/10 border border-slate-800 hover:border-indigo-500/30 rounded-lg cursor-pointer transition-colors"
+                  <div className="flex-1 relative" ref={zipMenuRef}>
+                    <button
+                      onClick={() => setZipMenuOpen(!zipMenuOpen)}
+                      disabled={(selectionMode && selectedPages.size === 0) || downloadingType !== null}
+                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-700/90 border border-slate-700/80 disabled:opacity-40 text-slate-200 text-xs font-semibold rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                     >
-                      <div className="text-[10px] font-bold text-indigo-400 mb-1">Page {result.pageNumber}</div>
-                      <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{result.snippet}</p>
-                    </div>
-                  ))}
+                      {downloadingType?.startsWith('zip-') ? <Loader2 size={14} className="animate-spin text-indigo-400" /> : <Archive size={14} className="text-slate-400" />}
+                      <span>{downloadingType?.startsWith('zip-') ? 'Zipping...' : (selectionMode ? `ZIP (${selectedPages.size})` : 'Download ZIP')}</span>
+                      {!downloadingType?.startsWith('zip-') && <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 ${zipMenuOpen ? 'rotate-180' : ''}`} />}
+                    </button>
+                    {zipMenuOpen && (
+                      <div className="absolute bottom-full right-0 mb-2 w-52 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden z-30 p-1 divide-y divide-slate-800/80 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                        <button
+                          onClick={() => downloadAsZip('images')}
+                          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-indigo-600 hover:text-white flex items-center gap-2.5 rounded-lg transition-colors group"
+                        >
+                          <FileImage size={15} className="text-emerald-400 group-hover:text-white transition-colors flex-shrink-0" />
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-xs leading-tight">PNG Images</span>
+                            <span className="text-[10px] text-slate-400 group-hover:text-indigo-100 transition-colors">Individual page files</span>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => downloadAsZip('pdfs')}
+                          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-indigo-600 hover:text-white flex items-center gap-2.5 rounded-lg transition-colors group"
+                        >
+                          <FileText size={15} className="text-indigo-400 group-hover:text-white transition-colors flex-shrink-0" />
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-xs leading-tight">Single PDF</span>
+                            <span className="text-[10px] text-slate-400 group-hover:text-indigo-100 transition-colors">Combined PDF inside ZIP</span>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
           </div>
-        </div>
-      </>
-    )}
+        </>
+      )}
 
       {/* Main Canvas Area */}
-      <div 
+      <div
         ref={containerRef}
         className={`flex-1 w-full h-full overflow-auto custom-scrollbar touch-pan-x touch-pan-y relative z-0 flex flex-col ${alignment === 'top' ? 'items-center pt-2 sm:pt-4' : ''} px-0 sm:px-4 pb-16 sm:pb-20`}
         style={{ overscrollBehavior: 'contain' }}
@@ -749,35 +1377,76 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <div 
-          className={`shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative ${alignment === 'center' ? 'm-auto' : 'mx-auto'}`}
-          style={{
-             width: baseViewportWidth ? `${baseViewportWidth * scale}px` : 'auto',
-             height: baseViewportHeight ? `${baseViewportHeight * scale}px` : 'auto',
-          }}
-        >
-          <canvas ref={canvasRef} className="w-full h-full block max-w-none relative z-0" />
-          
-          {baseViewportWidth > 0 && (
-            <div 
-              className="absolute top-0 left-0 origin-top-left pointer-events-none z-10"
-              style={{ 
-                width: `${baseViewportWidth}px`, 
-                height: `${baseViewportHeight}px`, 
-                transform: `scale(${scale})` 
-              }}
-            >
-              {renderedHighlights}
-            </div>
-          )}
-        </div>
+        {viewMode === 'vertical' ? (
+          <div className="flex flex-col gap-6 py-4 items-center w-full min-h-full">
+            {orderedPages.map((pageNum) => {
+              // Fixed window virtualization: render active canvases only for currentPage ± 2 pages
+              const renderWindow = 2;
+              const isWithinWindow = Math.abs(pageNum - currentPage) <= renderWindow;
+
+              if (isWithinWindow) {
+                return (
+                  <PdfPageCanvas
+                    key={pageNum}
+                    pdfDoc={pdfDoc}
+                    pageNum={pageNum}
+                    scale={scale}
+                    onVisible={(p) => {
+                      if (!isProgrammaticScrollRef.current) {
+                        setCurrentPage(p);
+                        setPageInput(String(p));
+                      }
+                    }}
+                  />
+                );
+              }
+
+              return (
+                <PdfPlaceholderCanvas
+                  key={pageNum}
+                  pageNum={pageNum}
+                  width={baseViewportWidth ? baseViewportWidth * scale : 0}
+                  height={baseViewportHeight ? baseViewportHeight * scale : 600}
+                  onVisible={(p) => {
+                    if (!isProgrammaticScrollRef.current) {
+                      setCurrentPage(p);
+                      setPageInput(String(p));
+                    }
+                  }}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            className={`shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative ${alignment === 'center' ? 'm-auto' : 'mx-auto'}`}
+            style={{
+              width: baseViewportWidth ? `${baseViewportWidth * scale}px` : 'auto',
+              height: baseViewportHeight ? `${baseViewportHeight * scale}px` : 'auto',
+            }}
+          >
+            <canvas ref={canvasRef} className="w-full h-full block max-w-none relative z-0" />
+
+            {baseViewportWidth > 0 && (
+              <div
+                className="absolute top-0 left-0 origin-top-left pointer-events-none z-10"
+                style={{
+                  width: `${baseViewportWidth}px`,
+                  height: `${baseViewportHeight}px`,
+                  transform: `scale(${scale})`
+                }}
+              >
+                {renderedHighlights}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Floating Controls */}
       <div
-        className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-3 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl text-slate-200 z-10 shadow-2xl transition-all duration-300 ${
-          showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-        }`}
+        className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-3 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl text-slate-200 z-10 shadow-2xl transition-all duration-300 ${showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+          }`}
       >
         <button
           onClick={() => setShowSidebar(!showSidebar)}
@@ -786,19 +1455,41 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         >
           <Sidebar size={15} />
         </button>
-        
+
+        <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
+
+        {/* View Mode Toggle Button (Single vs Continuous Vertical) */}
+        <button
+          onClick={() => {
+            const nextMode = viewMode === 'single' ? 'vertical' : 'single';
+            setViewMode(nextMode);
+            if (nextMode === 'vertical') {
+              setTimeout(() => {
+                const el = document.getElementById(`pdf-page-${currentPage}`);
+                if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+              }, 60);
+            }
+          }}
+          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 ${viewMode === 'vertical' ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-800 text-slate-300'
+            }`}
+          title={viewMode === 'vertical' ? "Switch to Single Page View" : "Switch to Continuous Vertical Scroll View"}
+        >
+          {viewMode === 'vertical' ? <Layers size={15} /> : <BookOpen size={15} />}
+          <span className="hidden sm:inline text-[11px] font-semibold">{viewMode === 'vertical' ? 'Vertical' : 'Single'}</span>
+        </button>
+
         <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={handlePrevPage}
-            disabled={currentPage <= 1 || rendering}
+            disabled={currentPage <= 1 || (viewMode === 'single' && rendering)}
             className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Previous Page"
           >
             <ChevronLeft size={16} />
           </button>
-          
+
           <form onSubmit={handlePageSubmit} className="flex items-center gap-0.5">
             <input
               type="text"
@@ -814,7 +1505,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
 
           <button
             onClick={handleNextPage}
-            disabled={currentPage >= totalPages || rendering}
+            disabled={currentPage >= totalPages || (viewMode === 'single' && rendering)}
             className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Next Page"
           >
@@ -823,11 +1514,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         </div>
 
         <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
-        
+
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={handleZoomOut}
-            disabled={scale <= 0.5 || rendering}
+            disabled={scale <= 0.4 || (viewMode === 'single' && rendering)}
             className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Zoom Out"
           >
@@ -838,7 +1529,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           </span>
           <button
             onClick={handleZoomIn}
-            disabled={scale >= 3.0 || rendering}
+            disabled={scale >= 3.0 || (viewMode === 'single' && rendering)}
             className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
             title="Zoom In"
           >

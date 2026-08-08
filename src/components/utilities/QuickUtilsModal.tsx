@@ -49,7 +49,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="relative w-full h-full md:h-[85vh] md:max-h-[800px] max-w-5xl bg-slate-50 dark:bg-[#0c0f16] shadow-2xl flex flex-col md:flex-row overflow-hidden md:rounded-2xl"
+            className="relative w-full h-full md:h-[85vh] md:max-h-[800px] max-w-5xl bg-slate-50 dark:bg-[#0c0f16] shadow-2xl border border-black/10 dark:border-white/10 flex flex-col md:flex-row overflow-hidden md:rounded-2xl"
           >
             {/* Close button for mobile (absolute top right) */}
             <button

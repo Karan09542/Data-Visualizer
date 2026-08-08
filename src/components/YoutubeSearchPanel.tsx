@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
-import { Search, X, Play, Plus, Loader2, AlertCircle, Youtube as YoutubeIcon } from 'lucide-react';
+import { X, Play, Plus, Loader2, AlertCircle, Youtube as YoutubeIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SearchResult {
@@ -50,11 +50,11 @@ export default function YoutubeSearchPanel() {
     try {
       const response = await fetch(`https://yts-tau.vercel.app/api/search?q=${encodeURIComponent(query)}&limit=20`);
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.error?.message || 'Search failed');
       }
-      
+
       if (data.data && data.data.items) {
         setResults(data.data.items.filter((item: any) => item.type === 'video'));
         if (data.data.nextPage) {
@@ -78,13 +78,13 @@ export default function YoutubeSearchPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nextPage: nextPageData })
       });
-      
+
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.error?.message || 'Pagination failed');
       }
-      
+
       if (data.data && data.data.items && data.data.items.length > 0) {
         setResults(prev => {
           const newVids = data.data.items.filter((item: any) => item.type === 'video');
@@ -105,9 +105,9 @@ export default function YoutubeSearchPanel() {
   const handleAddToCanvas = (video: SearchResult) => {
     const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
     const newId = `youtube_${video.id}`;
-    
+
     let currentData = parsedData || {};
-    
+
     if (currentData.dataSources && typeof currentData.dataSources === 'object') {
       currentData = {
         ...currentData,
@@ -130,7 +130,7 @@ export default function YoutubeSearchPanel() {
   return (
     <AnimatePresence>
       {isYoutubeSearchOpen && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -146,7 +146,7 @@ export default function YoutubeSearchPanel() {
               >
                 <X size={24} />
               </button>
-              
+
               <div>
                 <h1 className="text-3xl font-bold text-black dark:text-white">YouTube Search</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Powered by youtube-search-api</p>
@@ -190,7 +190,7 @@ export default function YoutubeSearchPanel() {
           {/* Content Area */}
           <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12 bg-[#f9f9f9] dark:bg-[#0f0f0f] custom-scrollbar">
             <div className="w-full max-w-6xl mx-auto h-full">
-              
+
               {isLoading && (
                 <div className="flex flex-col items-center justify-center h-full text-gray-500">
                   <Loader2 className="w-10 h-10 animate-spin mb-4 text-blue-500" />
@@ -202,7 +202,7 @@ export default function YoutubeSearchPanel() {
                 <div className="flex flex-col items-center justify-center h-full text-gray-500">
                   <AlertCircle size={40} className="mb-4 text-red-500" />
                   <p className="text-lg text-gray-800 dark:text-gray-200 mb-4">{error}</p>
-                  <button 
+                  <button
                     onClick={() => handleSearch()}
                     className="px-6 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
                   >
@@ -230,8 +230,8 @@ export default function YoutubeSearchPanel() {
               {!isLoading && !error && results.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-x-4 md:gap-y-8">
                   {results.map((video) => (
-                    <div 
-                      key={video.id} 
+                    <div
+                      key={video.id}
                       className="group flex flex-col bg-white dark:bg-[#121212] border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
                     >
                       {/* Thumbnail / Player Area */}
@@ -249,13 +249,13 @@ export default function YoutubeSearchPanel() {
                           />
                         ) : (
                           <>
-                            <img 
-                              src={video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`} 
+                            <img
+                              src={video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`}
                               alt={video.title}
                               className="w-full h-full object-cover"
                             />
                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
-                              <button 
+                              <button
                                 onClick={() => setActiveVideoId(video.id)}
                                 className="w-12 h-12 rounded-full bg-black/80 text-white flex items-center justify-center hover:bg-red-600 transition-colors backdrop-blur-sm"
                                 title="Play Video"
@@ -285,9 +285,9 @@ export default function YoutubeSearchPanel() {
                         <div className="text-xs text-[#606060] dark:text-[#aaaaaa] mb-3">
                           {video.channelTitle}
                         </div>
-                        
+
                         <div className="mt-auto pt-2 border-t border-gray-100 dark:border-gray-800">
-                          <button 
+                          <button
                             onClick={() => handleAddToCanvas(video)}
                             className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-md text-xs font-semibold transition-colors"
                           >

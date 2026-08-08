@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { FileImage, Download, Trash2, GripVertical, AlertCircle } from "lucide-react";
-import { jsPDF } from "jspdf";
+import { PDFDocument, PageSizes } from "pdf-lib";
 import {
   DndContext,
   closestCenter,
@@ -138,58 +138,69 @@ export const ImageToPdfConverter = () => {
     setError("");
 
     try {
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "px",
-        format: "a4",
-      });
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
+      const pdfDoc = await PDFDocument.create();
 
       for (let i = 0; i < images.length; i++) {
-        if (i > 0) pdf.addPage();
-        
         const img = images[i];
         
-        // Load image to get dimensions
-        const imgObj = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const image = new Image();
-          image.src = img.previewUrl;
-          image.onload = () => resolve(image);
-          image.onerror = reject;
-        });
+        let imgBuffer: Uint8Array;
+        let isJpg = img.file.type === "image/jpeg" || img.file.type === "image/jpg";
+        let isPng = img.file.type === "image/png";
 
-        // Calculate aspect ratio to fit A4 page with a margin to prevent clipping
+        if (isJpg || isPng) {
+          const arrayBuffer = await img.file.arrayBuffer();
+          imgBuffer = new Uint8Array(arrayBuffer);
+        } else {
+          // Convert other formats (e.g. WebP) to PNG using Canvas
+          const imgObj = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const image = new Image();
+            image.src = img.previewUrl;
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+          });
+          const canvas = document.createElement('canvas');
+          canvas.width = imgObj.width;
+          canvas.height = imgObj.height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(imgObj, 0, 0);
+          const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+          const arrayBuffer = await blob.arrayBuffer();
+          imgBuffer = new Uint8Array(arrayBuffer);
+          isPng = true;
+        }
+
+        const pdfImage = isJpg ? await pdfDoc.embedJpg(imgBuffer) : await pdfDoc.embedPng(imgBuffer);
+
+        const page = pdfDoc.addPage(PageSizes.A4);
+        const { width: pageWidth, height: pageHeight } = page.getSize();
+
         const margin = 20;
         const availableWidth = pageWidth - (margin * 2);
         const availableHeight = pageHeight - (margin * 2);
 
-        const imgRatio = imgObj.width / imgObj.height;
-        const pageRatio = availableWidth / availableHeight;
-
-        let renderWidth = availableWidth;
-        let renderHeight = availableHeight;
-
-        if (imgRatio > pageRatio) {
-          renderWidth = availableWidth;
-          renderHeight = availableWidth / imgRatio;
-        } else {
-          renderHeight = availableHeight;
-          renderWidth = availableHeight * imgRatio;
-        }
+        const imgDims = pdfImage.scaleToFit(availableWidth, availableHeight);
 
         // Center on page
-        const x = margin + (availableWidth - renderWidth) / 2;
-        const y = margin + (availableHeight - renderHeight) / 2;
+        const x = margin + (availableWidth - imgDims.width) / 2;
+        const y = margin + (availableHeight - imgDims.height) / 2;
 
-        const imgType = img.file.type.toUpperCase().includes("PNG") ? "PNG" : 
-                       (img.file.type.toUpperCase().includes("WEBP") ? "WEBP" : "JPEG");
-
-        pdf.addImage(imgObj, imgType, x, y, renderWidth, renderHeight);
+        page.drawImage(pdfImage, {
+          x,
+          y,
+          width: imgDims.width,
+          height: imgDims.height,
+        });
       }
 
-      pdf.save(`${pdfName || "converted-images"}.pdf`);
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${pdfName || "converted-images"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
     } catch (err) {
       console.error(err);
       setError("Failed to generate PDF. Make sure your images are valid.");
