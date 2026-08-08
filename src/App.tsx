@@ -597,51 +597,51 @@ function App() {
 
               {/* Mobile Canvas Floating Controls (Bottom-Left) */}
               {!isEditorPanelOpen && (
-                <div className="lg:hidden absolute bottom-4 left-4 z-[350] flex items-center bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-md border border-slate-700/40 dark:border-slate-800/60 rounded-xl p-1 shadow-lg opacity-60 hover:opacity-100 transition-all duration-200">
+                <div className="lg:hidden absolute bottom-4 left-4 z-[350] flex items-center bg-white/90 dark:bg-slate-950/60 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/60 rounded-xl p-1 shadow-lg opacity-60 hover:opacity-100 transition-all duration-200">
                   <button
                     onClick={undo}
                     disabled={undoStack.length === 0}
-                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    className="p-1.5 px-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/60 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                     title="Undo (Ctrl+Z)"
                   >
-                    <Undo2 size={14} className={undoStack.length > 0 ? "text-red-400" : ""} />
+                    <Undo2 size={14} className={undoStack.length > 0 ? "text-red-500 dark:text-red-400" : ""} />
                     <span className="text-[11px]">Undo</span>
                   </button>
-                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <div className="w-[1px] h-3.5 bg-slate-300 dark:bg-slate-700/40" />
                   <button
                     onClick={redo}
                     disabled={redoStack.length === 0}
-                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    className="p-1.5 px-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/60 disabled:opacity-30 disabled:hover:bg-transparent rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                     title="Redo (Ctrl+Y)"
                   >
-                    <Redo2 size={14} className={redoStack.length > 0 ? "text-red-400" : ""} />
+                    <Redo2 size={14} className={redoStack.length > 0 ? "text-red-500 dark:text-red-400" : ""} />
                     <span className="text-[11px]">Redo</span>
                   </button>
-                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <div className="w-[1px] h-3.5 bg-slate-300 dark:bg-slate-700/40" />
                   <button
                     onClick={() => {
                       const btnId = document.getElementById("fit-graph-btn");
                       if (btnId) btnId.click();
                     }}
-                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    className="p-1.5 px-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                     title="Fit View"
                   >
                     <Maximize2 size={14} />
                     <span className="text-[11px]">Fit</span>
                   </button>
-                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <div className="w-[1px] h-3.5 bg-slate-300 dark:bg-slate-700/40" />
                   <button
                     onClick={() => {
                       useStore.getState().setCollapsedNodes(new Set());
                       window.dispatchEvent(new CustomEvent("schema-expand-all"));
                     }}
-                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    className="p-1.5 px-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                     title="Expand All"
                   >
                     <Maximize size={14} />
                     <span className="text-[11px]">Expand</span>
                   </button>
-                  <div className="w-[1px] h-3.5 bg-slate-700/40" />
+                  <div className="w-[1px] h-3.5 bg-slate-300 dark:bg-slate-700/40" />
                   <button
                     onClick={() => {
                       const treeData = useStore.getState().treeData;
@@ -656,7 +656,7 @@ function App() {
                       useStore.getState().setCollapsedNodes(allIds);
                       window.dispatchEvent(new CustomEvent("schema-collapse-all"));
                     }}
-                    className="p-1.5 px-2 text-slate-300 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                    className="p-1.5 px-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                     title="Collapse All"
                   >
                     <Minimize size={14} />
