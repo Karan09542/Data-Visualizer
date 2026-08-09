@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 
 export const ContextMenuItem = ({ icon: Icon, label, onClick, danger, shortcut, disabled }: any) => (
    <button 
-     className={`w-full px-3 py-1.5 flex items-center justify-between text-xs transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${danger && !disabled ? 'text-red-400 hover:bg-red-500/10' : !disabled ? 'text-slate-300 hover:bg-white/5 hover:text-white' : 'text-slate-300'}`}
+     className={`w-full px-3 py-1.5 flex items-center justify-between text-xs transition-colors rounded-md ${disabled ? 'opacity-40 cursor-not-allowed' : ''} ${danger && !disabled ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10' : !disabled ? 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white' : 'text-slate-400 dark:text-slate-500'}`}
      onClick={(e) => { e.stopPropagation(); if(!disabled) onClick(); }}
      disabled={disabled}
    >
@@ -12,7 +12,7 @@ export const ContextMenuItem = ({ icon: Icon, label, onClick, danger, shortcut, 
          {Icon && <Icon size={14} className="shrink-0 mt-[1px]" />}
          <span className="leading-tight pt-[1px]">{label}</span>
       </div>
-      {shortcut && <span className="text-[10px] text-slate-600 font-mono tracking-tighter shrink-0 ml-4 pt-[2px]">{shortcut}</span>}
+      {shortcut && <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono tracking-tighter shrink-0 ml-4 pt-[2px]">{shortcut}</span>}
    </button>
 );
 
@@ -51,7 +51,7 @@ export const ContextSubMenu = ({ icon: Icon, label, children }: any) => {
          onMouseLeave={() => setIsOpen(false)}
       >
          <button 
-           className="w-full px-3 py-1.5 flex items-center justify-between text-xs transition-colors text-slate-300 hover:bg-white/5 hover:text-white"
+           className="w-full px-3 py-1.5 flex items-center justify-between text-xs transition-colors rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
            onClick={(e) => e.stopPropagation()}
          >
             <div className="flex items-start gap-2 text-left">
@@ -65,7 +65,7 @@ export const ContextSubMenu = ({ icon: Icon, label, children }: any) => {
                ref={menuRef}
                onMouseEnter={() => setIsOpen(true)}
                onMouseLeave={() => setIsOpen(false)}
-               className="context-menu-container fixed min-w-[120px] bg-[#1a1a1a] border border-[#333] rounded shadow-2xl py-1 z-[60000]"
+               className="context-menu-container fixed min-w-[140px] bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-[#333] rounded-xl shadow-2xl p-1 z-[60000] text-slate-800 dark:text-white"
                style={position ? { top: position.top, left: position.left } : { visibility: 'hidden', top: 0, left: 0 }}
             >
                {children}

@@ -61,6 +61,23 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
     setActiveDocumentId(newId as number);
     setActiveDocumentName(docName.trim());
     useStore.getState().setLastSavedCode(defaultCode);
+    
+    // Clear runtime state to prevent bleeding across documents
+    useStore.setState({
+      apiNodeResponses: {},
+      apiNodeLoading: {},
+      apiNodeErrors: {},
+      jsNodeResponses: {},
+      jsNodeLoading: {},
+      jsNodeErrors: {},
+      jsNodeDurations: {},
+      jsNodeLastRuns: {},
+      jsNodeLogs: {},
+      activePreviewMedia: null,
+      activePreviewText: null,
+      globalTextExpanded: false,
+    });
+    
     setCode(defaultCode);
     setIsDirty(false);
     setDocName('');
@@ -120,6 +137,23 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
     useStore.getState().setLastSavedCode(doc.code);
     setActiveDocumentId(doc.id);
     setActiveDocumentName(doc.name);
+    
+    // Clear runtime state to prevent bleeding across documents
+    useStore.setState({
+      apiNodeResponses: {},
+      apiNodeLoading: {},
+      apiNodeErrors: {},
+      jsNodeResponses: {},
+      jsNodeLoading: {},
+      jsNodeErrors: {},
+      jsNodeDurations: {},
+      jsNodeLastRuns: {},
+      jsNodeLogs: {},
+      activePreviewMedia: null,
+      activePreviewText: null,
+      globalTextExpanded: false,
+    });
+    
     setCode(doc.code);
     setIsDirty(false);
     setConfirmAction(null);

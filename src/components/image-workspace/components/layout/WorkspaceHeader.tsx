@@ -13,31 +13,31 @@ export const WorkspaceHeader: React.FC = () => {
   } = useWorkspaceUI();
 
   return (
-    <div className={`border-b border-[#2C2C2C] bg-[#1E1E1E] flex items-center px-2 md:px-4 gap-2 md:gap-3 shrink-0 overflow-x-auto no-scrollbar transition-all ${isMobile ? 'h-10' : 'h-12'}`}>
+    <div className={`border-b border-slate-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E] text-slate-800 dark:text-white flex items-center px-2 md:px-4 gap-2 md:gap-3 shrink-0 overflow-x-auto no-scrollbar transition-all ${isMobile ? 'h-10' : 'h-12'}`}>
         <ImageIcon size={18} className="text-blue-400 shrink-0 ml-1 md:ml-0" />
-        <span className="font-semibold text-sm mr-2 md:mr-4 tracking-tight shrink-0 hidden sm:inline-block">Studio Editor</span>
+        <span className="font-semibold text-sm text-slate-900 dark:text-white mr-2 md:mr-4 tracking-tight shrink-0 hidden sm:inline-block">Studio Editor</span>
         
         {/* Action History Tools */}
-        <div className="flex border border-[#3A3A3A] rounded shadow-sm bg-[#181818] shrink-0">
-          <button className={`flex items-center justify-center transition-colors border ${commandIndex >= 0 ? 'text-red-400 border-red-500 hover:bg-red-500/10' : 'text-[#4A4A4A] border-transparent'} ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} onClick={performUndo} title="Undo (Ctrl+Z)" disabled={commandIndex < 0}>
+        <div className="flex border border-slate-200 dark:border-[#3A3A3A] rounded shadow-sm bg-slate-100 dark:bg-[#181818] shrink-0">
+          <button className={`flex items-center justify-center transition-colors border ${commandIndex >= 0 ? 'text-red-500 dark:text-red-400 border-red-500 hover:bg-red-500/10' : 'text-slate-300 dark:text-[#4A4A4A] border-transparent'} ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} onClick={performUndo} title="Undo (Ctrl+Z)" disabled={commandIndex < 0}>
              <Undo size={14} />
           </button>
-          <div className={`w-px bg-[#3A3A3A] ${isMobile ? 'h-7' : 'h-8'}`} />
-          <button className={`flex items-center justify-center transition-colors border ${commandIndex < historyNames.length - 1 ? 'text-red-400 border-red-500 hover:bg-red-500/10' : 'text-[#4A4A4A] border-transparent'} ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} onClick={performRedo} title="Redo (Ctrl+Y)" disabled={commandIndex >= historyNames.length - 1}>
+          <div className={`w-px bg-slate-200 dark:bg-[#3A3A3A] ${isMobile ? 'h-7' : 'h-8'}`} />
+          <button className={`flex items-center justify-center transition-colors border ${commandIndex < historyNames.length - 1 ? 'text-red-500 dark:text-red-400 border-red-500 hover:bg-red-500/10' : 'text-slate-300 dark:text-[#4A4A4A] border-transparent'} ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} onClick={performRedo} title="Redo (Ctrl+Y)" disabled={commandIndex >= historyNames.length - 1}>
              <Redo size={14} />
           </button>
         </div>
 
-        <div className={`w-px bg-[#3A3A3A] mx-0.5 md:mx-1 shrink-0 ${isMobile ? 'h-5' : 'h-6'}`} />
+        <div className={`w-px bg-slate-200 dark:bg-[#3A3A3A] mx-0.5 md:mx-1 shrink-0 ${isMobile ? 'h-5' : 'h-6'}`} />
 
-        <button className={`hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white flex items-center justify-center rounded transition-colors shrink-0 ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} title="Import Image" onClick={handleImportImageClick}>
+        <button className={`hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-[#A0A0A0] hover:text-slate-900 dark:hover:text-white flex items-center justify-center rounded transition-colors shrink-0 ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} title="Import Image" onClick={handleImportImageClick}>
           <Upload size={14} />
         </button>
         <input id="img-upload" type="file" multiple className="hidden" accept="image/*,image/svg+xml" onChange={handleFileUpload} />
 
         <div className="flex-1" />
 
-        <button className={`hidden sm:flex hover:bg-[#2C2C2C] text-[#A0A0A0] hover:text-white items-center justify-center rounded transition-colors shrink-0 mr-1 h-8 w-8`} title="Shortcuts Info" onClick={() => setShowShortcuts(true)}>
+        <button className={`hidden sm:flex hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-[#A0A0A0] hover:text-slate-900 dark:hover:text-white items-center justify-center rounded transition-colors shrink-0 mr-1 h-8 w-8`} title="Shortcuts Info" onClick={() => setShowShortcuts(true)}>
           <Info size={14} />
         </button>
 

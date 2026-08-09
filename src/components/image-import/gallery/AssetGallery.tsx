@@ -144,37 +144,37 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
 
   return (
     <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-[#111] border border-[#222] sm:rounded-xl w-full max-w-5xl h-full sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-white dark:bg-[#111] border border-slate-200 dark:border-[#222] sm:rounded-xl w-full max-w-5xl h-full sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-800 dark:text-white">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border-b border-[#222] bg-[#161616] gap-3 sm:gap-0 relative">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 border-b border-slate-200 dark:border-[#222] bg-slate-50 dark:bg-[#161616] gap-3 sm:gap-0 relative">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 pr-8 sm:pr-0">
-            <div className="flex items-center gap-2 sm:pr-4 sm:border-r border-[#333]">
+            <div className="flex items-center gap-2 sm:pr-4 sm:border-r border-slate-200 dark:border-[#333]">
               <Box size={20} className="text-blue-400 shrink-0" />
-              <h2 className="text-white font-medium text-base sm:text-lg whitespace-nowrap">Asset Gallery</h2>
+              <h2 className="text-slate-900 dark:text-white font-medium text-base sm:text-lg whitespace-nowrap">Asset Gallery</h2>
             </div>
             
-            <div className="flex items-center gap-1 bg-[#0a0a0a] p-1 rounded-lg border border-[#222] self-start sm:self-auto overflow-x-auto w-full sm:w-auto">
+            <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-[#0a0a0a] p-1 rounded-lg border border-slate-200 dark:border-[#222] self-start sm:self-auto overflow-x-auto w-full sm:w-auto">
               <button
                 onClick={() => setActiveTab('local')}
-                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'local' ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'local' ? 'bg-white dark:bg-[#222] text-slate-900 dark:text-white shadow-sm font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
                 Local Assets
               </button>
               <button
                 onClick={() => setActiveTab('pexels')}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'pexels' ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'pexels' ? 'bg-white dark:bg-[#222] text-slate-900 dark:text-white shadow-sm font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
                 <Globe size={14} className="shrink-0" /> Pexels
               </button>
             </div>
           </div>
-          <button onClick={onClose} className="absolute right-3 top-3 sm:static sm:right-auto sm:top-auto p-2 hover:bg-[#222] rounded-lg text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="absolute right-3 top-3 sm:static sm:right-auto sm:top-auto p-2 hover:bg-slate-200 dark:hover:bg-[#222] text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
 
         {/* Toolbar */}
-        <div className="p-3 sm:p-4 border-b border-[#222] flex flex-wrap gap-3 sm:gap-4 items-center bg-[#181818]">
+        <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-[#222] flex flex-wrap gap-3 sm:gap-4 items-center bg-slate-100/70 dark:bg-[#181818]">
           <div className="relative flex-1 min-w-[200px] w-full sm:max-w-md">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input 
@@ -182,12 +182,12 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
               placeholder={activeTab === 'local' ? "Search local assets..." : "Search Pexels..."}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full bg-[#111] border border-[#333] rounded-lg pl-9 pr-3 sm:pl-10 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+              className="w-full bg-white dark:bg-[#111] border border-slate-200 dark:border-[#333] rounded-lg pl-9 pr-3 sm:pl-10 sm:pr-4 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all shadow-sm"
             />
           </div>
           <div className="flex-1 hidden sm:block" />
           <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="text-slate-400 text-xs sm:text-sm whitespace-nowrap">
+            <div className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm whitespace-nowrap font-medium">
               {selectedAssets.size} selected
             </div>
             <button 
@@ -208,7 +208,7 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
         )}
 
         {/* Gallery Grid */}
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-[#0D0D0D]">
+        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-slate-50 dark:bg-[#0D0D0D]">
           {isCurrentLoading ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 gap-4">
               <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
@@ -229,9 +229,9 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
                   <div 
                     key={asset.id} 
                     onClick={() => toggleSelect(asset)}
-                    className={`relative group bg-[#161616] border ${isSelected ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'border-[#222] hover:border-[#444]'} rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-lg`}
+                    className={`relative group bg-white dark:bg-[#161616] border ${isSelected ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'border-slate-200 dark:border-[#222] hover:border-slate-300 dark:hover:border-[#444]'} rounded-xl overflow-hidden cursor-pointer transition-all hover:shadow-lg`}
                   >
-                    <div className="aspect-square bg-[#0a0a0a] relative flex items-center justify-center p-2">
+                    <div className="aspect-square bg-slate-100 dark:bg-[#0a0a0a] relative flex items-center justify-center p-2">
                        <img 
                          src={asset.thumbnailUrl} 
                          alt={asset.filename} 
@@ -247,9 +247,9 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
                           {isSvg ? 'SVG' : asset.mimeType.replace('image/', '')}
                        </div>
                     </div>
-                    <div className="p-3 border-t border-[#222]">
-                      <h3 className="text-[12px] font-semibold text-white truncate mb-1" title={asset.filename}>{asset.filename}</h3>
-                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                    <div className="p-3 border-t border-slate-100 dark:border-[#222]">
+                      <h3 className="text-[12px] font-semibold text-slate-800 dark:text-white truncate mb-1" title={asset.filename}>{asset.filename}</h3>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
                         <span className="truncate flex-1">{asset.source}</span>
                         {asset.size ? <span className="ml-2 font-mono">{formatBytes(asset.size)}</span> : null}
                       </div>

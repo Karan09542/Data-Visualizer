@@ -610,7 +610,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
               const isMobile = containerWidth < 640;
               const desiredWidth = isMobile ? containerWidth : Math.max(containerWidth - 32, 200);
               const newScale = desiredWidth / baseViewport.width;
-              setScale(Math.min(Math.max(newScale, 0.4), 2.5));
+              // Cap initial scale to 1.25 on desktop to prevent absurdly large zooming on ultra-wide screens
+              const maxInitialScale = isMobile ? 2.5 : 1.25;
+              setScale(Math.min(Math.max(newScale, 0.4), maxInitialScale));
             }
           });
 

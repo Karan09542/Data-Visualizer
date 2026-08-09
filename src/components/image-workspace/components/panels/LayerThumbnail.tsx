@@ -66,7 +66,7 @@ export const LayerThumbnail: React.FC<LayerThumbnailProps> = ({ layer, sizePx })
    if (previewUrl) {
       return (
          <div 
-            className="flex items-center justify-center rounded overflow-hidden shrink-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmZmIj48L3JlY3Q+CjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNjY2MiPjwvcmVjdD4KPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjQiIGhlaWdodD0iNCIgZmlsbD0iI2NjYyI+PC9yZWN0Pgo8L3N2Zz4=')] bg-white/5 shadow-inner border border-white/10"
+            className="flex items-center justify-center rounded overflow-hidden shrink-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmZmIj48L3JlY3Q+CjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjQiIGZpbGw9IiNjY2MiPjwvcmVjdD4KPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjQiIGhlaWdodD0iNCIgZmlsbD0iI2NjYyI+PC9yZWN0Pgo8L3N2Zz4=')] bg-slate-100 dark:bg-white/5 shadow-inner border border-slate-200 dark:border-white/10"
             style={{ width: sizePx, height: sizePx }}
          >
             <img 
@@ -84,7 +84,7 @@ export const LayerThumbnail: React.FC<LayerThumbnailProps> = ({ layer, sizePx })
    
    return (
       <div 
-         className="flex items-center justify-center shrink-0 opacity-60 bg-white/5 rounded border border-transparent"
+         className="flex items-center justify-center shrink-0 opacity-60 bg-slate-100 dark:bg-white/5 rounded border border-transparent"
          style={{ width: sizePx, height: sizePx }}
       >
          {layer.type === 'image' ? <ImageIcon size={iconSize} /> :

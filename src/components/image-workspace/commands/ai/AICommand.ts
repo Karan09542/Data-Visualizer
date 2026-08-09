@@ -2,6 +2,8 @@ import * as fabric from "fabric";
 import { Command } from "../base/Command";
 import { ai } from "../../../../ai";
 import { AITask } from "../../../../ai/types";
+import { generateId } from "../../../../ai/utils";
+import { aiEventBus } from "../../../../ai/events/AIEventBus";
 
 export abstract class AICommand implements Command {
   name: string;
@@ -18,6 +20,7 @@ export abstract class AICommand implements Command {
     this.task = task;
     this.modelId = modelId;
     this.beforeSrc = obj.getSrc();
+    this.lastJobId = generateId();
   }
 
   private async applySrc(canvas: fabric.Canvas, src: string, updateLayers: () => void) {
@@ -112,21 +115,52 @@ export abstract class AICommand implements Command {
     }
 
     const { jobId, promise } = ai.execute(this.task, imageData, { modelId: this.modelId }, 5);
-    this.lastJobId = jobId;
+    
+    const unsubProgress = aiEventBus.subscribe(jobId, (event) => {
+      if (this.lastJobId) {
+        aiEventBus.emit(this.lastJobId, { ...event });
+      }
+    });
+
+    let cancelUnsub: (() => void) | undefined;
+    let isCancelling = false;
+    if (this.lastJobId) {
+      cancelUnsub = aiEventBus.subscribe(this.lastJobId, (evt) => {
+         if (evt.state === 'cancelled' && !isCancelling) {
+            isCancelling = true;
+            ai.cancel(jobId);
+         }
+      });
+    }
     
     promise.then(result => {
-      if (result.output instanceof ImageData) {
+      unsubProgress();
+      if (cancelUnsub) cancelUnsub();
+      
+      let outputImage: ImageData | ImageBitmap | null = null;
+      if (result.output instanceof ImageData || result.output instanceof ImageBitmap) {
+        outputImage = result.output;
+      }
+      
+      if (outputImage) {
         const canvasEl = document.createElement('canvas');
-        canvasEl.width = result.output.width;
-        canvasEl.height = result.output.height;
+        canvasEl.width = outputImage.width;
+        canvasEl.height = outputImage.height;
         const ctx = canvasEl.getContext('2d');
         if (ctx) {
-          ctx.putImageData(result.output, 0, 0);
+          if (outputImage instanceof ImageData) {
+            ctx.putImageData(outputImage, 0, 0);
+          } else {
+            ctx.drawImage(outputImage, 0, 0);
+          }
           this.afterSrc = canvasEl.toDataURL();
           this.applySrc(canvas, this.afterSrc, updateLayers);
         }
       }
     }).catch(e => {
+       unsubProgress();
+       if (cancelUnsub) cancelUnsub();
+       
        if (e === 'AbortError' || (e as Error)?.message === 'AbortError') {
          console.log(`[AICommand] Task ${this.task} was cancelled.`);
          return;

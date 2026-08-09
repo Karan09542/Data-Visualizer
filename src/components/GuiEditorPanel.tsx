@@ -33,6 +33,7 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { maskParsedData, unmaskParsedData } from "../utils/masker";
 
 interface LeafField {
   path: string; // e.g. "root.project", "root.settings.theme"
@@ -374,7 +375,8 @@ export default function GuiEditorPanel() {
       }
       return paths;
     }
-    return getObjectPaths(parsedData || {});
+    const masked = maskParsedData(parsedData);
+    return getObjectPaths(masked || {});
   }, [parsedData]);
 
   // 2. Linear traversal of elements with depth, pathing metadata for rich hierarchy
@@ -414,7 +416,8 @@ export default function GuiEditorPanel() {
       }
       return fields;
     }
-    return getFields(parsedData || {});
+    const masked = maskParsedData(parsedData);
+    return getFields(masked || {});
   }, [parsedData]);
 
   // Helper check to see if an element's ancestors are collapsed in Tree mode
@@ -559,7 +562,7 @@ export default function GuiEditorPanel() {
     const lastKey = parts[parts.length - 1];
     if (parent && typeof parent === "object") {
       snapshotHistory();
-      parent[lastKey] = newValue;
+      parent[lastKey] = unmaskParsedData(newValue);
       saveUpdatedData(updatedData);
       triggerToast(`Updated "${lastKey}"`, "success");
     }

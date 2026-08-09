@@ -43,6 +43,7 @@ import {
 } from "./FileIcons";
 import { performWorkspaceRenameScope, cleanNodeName } from "../utils/workspaceIntelliSense";
 import { getVirtualPath } from "../utils/vfs";
+import { maskParsedData } from "../utils/masker";
 
 interface ExplorerItem {
   id: string; // E.g., 'root.src.user_ts_node'
@@ -169,6 +170,8 @@ function isFileSystemMeaningful(value: any): boolean {
 }
 
 // Recursively map parsedData keys or properties into Explorer items
+  const maskedParsedData = useMemo(() => maskParsedData(parsedData), [parsedData]);
+  
   const fullExplorerTree = useMemo(() => {
     function parseNode(data: any, path: string = resolvedRootPath): ExplorerItem[] {
       if (!data || typeof data !== "object") return [];
@@ -327,9 +330,12 @@ function isFileSystemMeaningful(value: any): boolean {
       });
     }
 
-    const startData = resolvedRootPath === "root" ? parsedData : getValueAtPath(parsedData, resolvedRootPath);
-    return parseNode(startData || {}, resolvedRootPath);
-  }, [parsedData, resolvedRootPath]);
+    return parseNode(
+      resolvedRootPath === "root"
+        ? maskedParsedData
+        : getValueAtPath(maskedParsedData, resolvedRootPath)
+    );
+  }, [maskedParsedData, resolvedRootPath]);
 
   // Filter tree visually based on search query
   const filteredExplorerTree = useMemo(() => {

@@ -1,6 +1,6 @@
 import { useStore } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
-import { useEffect, useRef, useState, Suspense } from "react";
+import React, { useEffect, useRef, useState, Suspense } from "react";
 import { lazyWithRetry } from "../utils/lazyWithRetry";
 import {
   Play,
@@ -23,8 +23,8 @@ import {
 const SmartFetchErrorUI = lazyWithRetry(() => import("./SmartFetchErrorUI"), "SmartFetchErrorUI");
 const GuiEditorPanel = lazyWithRetry(() => import("./GuiEditorPanel"), "GuiEditorPanel");
 const FileExplorerPanel = lazyWithRetry(() => import("./FileExplorerPanel"), "FileExplorerPanel");
-import { Sparkles } from "lucide-react";
 import { applyPatchSmart, mergeJSON } from "../utils/patchUtils";
+import { maskCodeString, unmaskCodeString } from "../utils/masker";
 
 export default function EditorPanel() {
   const {
@@ -126,7 +126,7 @@ export default function EditorPanel() {
           try {
             const parsed = JSON.parse(code);
             setCode(JSON.stringify(parsed, null, 2));
-          } catch (e) {}
+          } catch (e) { }
         } else if (codeFormat === "yaml") {
           try {
             const yaml = (await import("js-yaml")).default;
@@ -134,7 +134,7 @@ export default function EditorPanel() {
             if (typeof parsed === "object") {
               setCode(yaml.dump(parsed));
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     };
@@ -190,9 +190,11 @@ export default function EditorPanel() {
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
-      setCode(value);
+      setCode(unmaskCodeString(value));
     }
   };
+
+  const maskedCode = React.useMemo(() => maskCodeString(code), [code]);
 
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor;
@@ -362,10 +364,10 @@ export default function EditorPanel() {
       } else if (code.trim() !== "") {
         setCode(
           code +
-            "\n" +
-            (typeof dataToMerge === "string"
-              ? dataToMerge
-              : dumpFn(dataToMerge)),
+          "\n" +
+          (typeof dataToMerge === "string"
+            ? dataToMerge
+            : dumpFn(dataToMerge)),
         );
       } else {
         setCode(
@@ -470,7 +472,7 @@ export default function EditorPanel() {
               height="100%"
               defaultLanguage={codeFormat}
               language={codeFormat}
-              value={code}
+              value={maskedCode}
               onChange={handleEditorChange}
               onMount={handleEditorDidMount}
               beforeMount={(m) => {
@@ -494,7 +496,7 @@ export default function EditorPanel() {
                     },
                   });
                 } catch {
-                 // ignore
+                  // ignore
                 }
               }}
               theme={appTheme === "dark" ? "customDark" : "customLight"}
@@ -576,7 +578,7 @@ export default function EditorPanel() {
                       m.editor.defineTheme("customLight", {
                         base: "vs", inherit: true, rules: [], colors: { "editor.background": "#ffffff", "editor.lineHighlightBackground": "#f1f5f9" },
                       });
-                    } catch {}
+                    } catch { }
                   }}
                   theme={appTheme === "dark" ? "customDark" : "customLight"}
                   options={{
@@ -617,7 +619,7 @@ export default function EditorPanel() {
                         m.editor.defineTheme("customLight", {
                           base: "vs", inherit: true, rules: [], colors: { "editor.background": "#ffffff", "editor.lineHighlightBackground": "#f1f5f9" },
                         });
-                      } catch {}
+                      } catch { }
                     }}
                     theme={appTheme === "dark" ? "customDark" : "customLight"}
                     options={{
@@ -927,7 +929,7 @@ export default function EditorPanel() {
                     }
                   >
                     {checkCollision(getActiveMergeKey()) &&
-                    conflictAction === "rename"
+                      conflictAction === "rename"
                       ? `${getActiveMergeKey()}_2`
                       : getActiveMergeKey()}
                   </span>

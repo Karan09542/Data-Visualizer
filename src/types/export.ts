@@ -78,6 +78,12 @@ export interface JxlOptions {
   lossless: boolean;
 }
 
+export interface TargetSizeSettings {
+  enabled: boolean;
+  value: number;
+  unit: 'KB' | 'MB';
+}
+
 export interface ExportSettings {
   format: ExportFormat;
   askForFilename?: boolean;
@@ -96,12 +102,18 @@ export interface ExportSettings {
   avif: AvifOptions;
   png: PngOptions;
   jxl: JxlOptions;
+  targetSize?: TargetSizeSettings;
 }
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   format: 'png',
   askForFilename: false,
   directNativeExport: false,
+  targetSize: {
+    enabled: false,
+    value: 500,
+    unit: 'KB',
+  },
   resize: {
     enabled: false,
     width: 800,

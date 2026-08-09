@@ -51,7 +51,7 @@ export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, dis
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1 bg-[#0a0a0a] p-1 rounded-lg border border-[#222]">
+      <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#0a0a0a] p-1 rounded-lg border border-slate-200 dark:border-[#222]">
         <TabBtn active={tab === 'color'} onClick={() => setTab('color')} icon={<Palette size={13} />} label="Color" disabled={disabled} />
         <TabBtn active={tab === 'upload'} onClick={() => setTab('upload')} icon={<Upload size={13} />} label="Upload" disabled={disabled} />
         <TabBtn active={tab === 'gallery'} onClick={() => setTab('gallery')} icon={<Globe size={13} />} label="Gallery" disabled={disabled} />
@@ -60,7 +60,7 @@ export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, dis
       <div className="flex gap-3">
         {/* Current Preview */}
         <div 
-          className="w-12 h-12 rounded-lg border border-[#333] shrink-0 bg-[#0a0a0a] relative group cursor-pointer overflow-hidden flex items-center justify-center transition-all hover:border-slate-400"
+          className="w-12 h-12 rounded-lg border border-slate-200 dark:border-[#333] shrink-0 bg-slate-100 dark:bg-[#0a0a0a] relative group cursor-pointer overflow-hidden flex items-center justify-center transition-all hover:border-slate-400"
           onClick={() => {
              if (value.type === 'image' && value.imageUrl) setPreviewOpen(true);
           }}
@@ -74,22 +74,22 @@ export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, dis
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 bg-[#0a0a0a] rounded-lg border border-[#222] p-2 min-h-[48px] flex flex-col justify-center">
+        <div className="flex-1 bg-slate-100 dark:bg-[#0a0a0a] rounded-lg border border-slate-200 dark:border-[#222] p-2 min-h-[48px] flex flex-col justify-center">
           {tab === 'color' && (
             <div className="flex items-center gap-2">
               <ColorPickerTrigger 
                 color={value.color || '#ffffff'} 
                 onChange={(c) => onChange({ type: 'color', color: c })}
-                className="w-6 h-6 rounded border border-[#333] shadow-inner cursor-pointer hover:border-slate-400"
+                className="w-6 h-6 rounded border border-slate-300 dark:border-[#333] shadow-inner cursor-pointer hover:border-slate-400"
               />
-              <span className="text-[11px] font-mono text-[#8A8A8A]">{value.color || '#ffffff'}</span>
+              <span className="text-[11px] font-mono text-slate-700 dark:text-[#8A8A8A]">{value.color || '#ffffff'}</span>
             </div>
           )}
           
           {tab === 'upload' && (
             <div className="relative">
               <input type="file" accept="image/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={disabled} />
-              <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 border border-dashed border-[#333] rounded py-1.5 hover:border-slate-500 hover:text-slate-300 transition-colors">
+              <div className="flex items-center justify-center gap-2 text-[11px] text-slate-600 dark:text-slate-400 border border-dashed border-slate-300 dark:border-[#333] rounded py-1.5 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-800 dark:hover:text-slate-300 transition-colors">
                 <Upload size={14} />
                 <span>Click to upload image</span>
               </div>
@@ -100,7 +100,7 @@ export const PassportBackgroundPicker: React.FC<Props> = ({ value, onChange, dis
              <div className="flex flex-col justify-center items-center h-full min-h-[48px]">
                <button 
                  onClick={() => setGalleryModalOpen(true)}
-                 className="flex items-center gap-2 px-4 py-2 bg-[#1A1A1A] hover:bg-[#222] border border-[#333] hover:border-[#444] text-white text-[11px] font-medium rounded-lg transition-all shadow-sm active:scale-95"
+                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1A1A1A] hover:bg-slate-50 dark:hover:bg-[#222] border border-slate-200 dark:border-[#333] hover:border-slate-300 dark:hover:border-[#444] text-slate-800 dark:text-white text-[11px] font-medium rounded-lg transition-all shadow-sm active:scale-95"
                  disabled={disabled}
                >
                  <Search size={14} className="text-slate-400" />
@@ -147,7 +147,7 @@ const TabBtn = ({ active, icon, label, onClick, disabled }: any) => (
     onClick={onClick}
     disabled={disabled}
     className={`flex items-center justify-center gap-1.5 flex-1 py-1 rounded text-[10px] font-semibold transition-all ${
-      active ? 'bg-[#222] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
+      active ? 'bg-white dark:bg-[#222] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
     } disabled:opacity-40 disabled:cursor-not-allowed`}
   >
     {icon}

@@ -28,6 +28,7 @@ import { useArtboardState } from "./hooks/useArtboardState";
 import { useShapePropertiesState, ShapePropertiesProvider } from "./hooks/useShapeProperties";
 import { useCollageConfigState, CollageConfigProvider } from "./hooks/useCollageConfig";
 import { ColorPickerTrigger } from "./components/shared/ColorPickers";
+import { ModernSelect, SelectGroup } from "./components/shared/ModernSelect";
 import { TabBtn } from "./components/shared/TabBtn";
 import { ToolBtn } from "./components/shared/ToolBtn";
 import { ContextMenuItem, ContextSubMenu } from "./components/shared/ContextMenuItem";
@@ -122,6 +123,77 @@ interface ImageWorkspaceProps {
 }
 
 // TODO(Refactor): Extract hooks, leaving only the main orchestration here
+
+const CROP_RATIO_GROUPS: SelectGroup[] = [
+   {
+      label: "General Ratios",
+      options: [
+         { value: "free", label: "Free Crop" },
+         { value: "original", label: "Original Ratio" },
+      ]
+   },
+   {
+      label: "Standard Dimensions",
+      options: [
+         { value: "1", label: "1:1 Square" },
+         { value: "1.3333333333333333", label: "4:3 Landscape" },
+         { value: "1.7777777777777777", label: "16:9 Widescreen" },
+         { value: "0.5625", label: "9:16 Vertical" },
+         { value: "1.5", label: "3:2 Classic" },
+         { value: "0.7070707070707071", label: "A4 (210x297mm)" },
+         { value: "0.7727272727272727", label: "Letter (8.5x11\")" },
+      ]
+   },
+   {
+      label: "Document Presets",
+      options: [
+         { value: "0.7777777777777778", label: "Passport (35x45mm)" },
+         { value: "1_us", label: "US Passport (2x2\")" },
+         { value: "1_visa", label: "Visa Photo (2x2\")" },
+         { value: "1.5925925925925926", label: "ID Card (86x54mm)" },
+         { value: "1_profile", label: "Profile Pic (1:1)" },
+      ]
+   },
+   {
+      label: "Social Media Presets",
+      options: [
+         { value: "1_ig", label: "Ig Post (1080x1080)" },
+         { value: "0.5625_ig", label: "Ig Story (1080x1920)" },
+         { value: "1.7777777777777777_yt", label: "YT Thumb (1280x720)" },
+         { value: "2.628205128205128", label: "Fb Cover (820x312)" },
+      ]
+   }
+];
+
+
+const getPatternStyle = (pattern: 'flat' | 'grid' | 'dots' | 'plus' | 'squares'): React.CSSProperties => {
+   switch (pattern) {
+      case 'grid':
+         return {
+            backgroundImage: 'linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)',
+            backgroundSize: '24px 24px'
+         };
+      case 'dots':
+         return {
+            backgroundImage: 'radial-gradient(currentColor 1.5px, transparent 1.5px)',
+            backgroundSize: '20px 20px'
+         };
+      case 'plus':
+         return {
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z' fill='%23888888' fill-opacity='0.6'/%3E%3C/svg%3E")`,
+            backgroundSize: '24px 24px'
+         };
+      case 'squares':
+         return {
+            backgroundImage: 'linear-gradient(45deg, currentColor 25%, transparent 25%), linear-gradient(-45deg, currentColor 25%, transparent 25%), linear-gradient(45deg, transparent 75%, currentColor 75%), linear-gradient(-45deg, transparent 75%, currentColor 75%)',
+            backgroundSize: '24px 24px',
+            backgroundPosition: '0 0, 0 12px, 12px -12px, -12px 0px'
+         };
+      default:
+         return {};
+   }
+};
+
 export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    // console.log('[ImageWorkspace] Component rendering, path:', path);
    const { parsedData, updateNodeValue, setNotification } = useStore();
@@ -172,16 +244,82 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       setShapeStrokeLineCap
    } = shapeProps;
 
+   
+   const [canvasPattern, setCanvasPattern] = useState<'flat' | 'grid' | 'dots' | 'plus' | 'squares'>(() => {
+      return (localStorage.getItem('image_workspace_canvas_pattern') as any) || 'flat';
+   });
+   const canvasPatternRef = useRef(canvasPattern);
+
+   const changeCanvasPattern = useCallback((pat: 'flat' | 'grid' | 'dots' | 'plus' | 'squares') => {
+      canvasPatternRef.current = pat;
+      setCanvasPattern(pat);
+      localStorage.setItem('image_workspace_canvas_pattern', pat);
+      if (fabricRef.current) {
+         fabricRef.current.requestRenderAll();
+      }
+   }, []);
+
+   useEffect(() => {
+      canvasPatternRef.current = canvasPattern;
+   }, [canvasPattern]);
+
    const [zoomPercent, setZoomPercent] = useState(100);
    const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
    const [snapTolerance, setSnapTolerance] = useState(10);
    const [isCropping, setIsCropping] = useState(false);
+   const [cropRatio, setCropRatio] = useState('free');
    const cropSessionRef = useRef<{
       origObj: fabric.Image | null;
       fullImg: fabric.Image | null;
       cropRect: fabric.Rect | null;
       dimRect: fabric.Rect | null;
    }>({ origObj: null, fullImg: null, cropRect: null, dimRect: null });
+   
+   const handleCropRatioChange = (val: string) => {
+      setCropRatio(val);
+      const { cropRect, origObj } = cropSessionRef.current;
+      if (!cropRect || !origObj) return;
+
+      if (val === 'free') {
+         cropRect.set({ lockUniScaling: false });
+      } else {
+         let ratio = 1;
+         if (val === 'original') {
+            ratio = (origObj.width || 1) / (origObj.height || 1);
+         } else {
+            const numericVal = parseFloat(val.split('_')[0]);
+            ratio = isNaN(numericVal) ? 1 : numericVal;
+         }
+
+         const center = cropRect.getCenterPoint();
+         const curW = cropRect.getScaledWidth();
+
+         let newW = curW;
+         let newH = newW / ratio;
+
+         if (newH > origObj.getScaledHeight()) {
+            newH = origObj.getScaledHeight();
+            newW = newH * ratio;
+         }
+         if (newW > origObj.getScaledWidth()) {
+            newW = origObj.getScaledWidth();
+            newH = newW / ratio;
+         }
+
+         cropRect.set({
+            width: newW,
+            height: newH,
+            scaleX: 1,
+            scaleY: 1,
+            lockUniScaling: true,
+         });
+
+         cropRect.setPositionByOrigin(center, 'center', 'center');
+         cropRect.setCoords();
+      }
+      fabricRef.current?.renderAll();
+   };
+
    const [activeContextMenu, setActiveContextMenu] = useState<{
       x: number;
       y: number;
@@ -439,7 +577,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       return DEFAULT_PANEL_WIDTH;
    });
    const [isResizingPanel, setIsResizingPanel] = useState(false);
+   const panelDOMRef = useRef<HTMLDivElement>(null);
    const panelWidthRef = useRef(panelWidth);
+   const currentDragPercentageRef = useRef<number | null>(null);
+   const currentDragWidthRef = useRef<number | null>(null);
 
    useEffect(() => {
       panelWidthRef.current = panelWidth;
@@ -450,18 +591,20 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!isResizingPanel) return;
 
       const handlePointerMove = (e: PointerEvent) => {
-         if (!containerRef.current) return;
+         if (!containerRef.current || !panelDOMRef.current) return;
          const containerRect = containerRef.current.getBoundingClientRect();
 
          if (isMobileRef.current) {
             const newHeightPx = containerRect.bottom - e.clientY;
             const percentage = Math.max(20, Math.min(80, (newHeightPx / containerRect.height) * 100));
-            setMobilePanelHeight(percentage);
+            currentDragPercentageRef.current = percentage;
+            panelDOMRef.current.style.height = `${percentage}vh`;
          } else {
             // Calculate width from the right edge
             const newWidth = containerRect.right - e.clientX;
             const clampedWidth = Math.max(MIN_PANEL_WIDTH, Math.min(newWidth, MAX_PANEL_WIDTH));
-            setPanelWidth(clampedWidth);
+            currentDragWidthRef.current = clampedWidth;
+            panelDOMRef.current.style.width = `${clampedWidth}px`;
 
             // Live resize of canvas during drag
             if (fabricRef.current) {
@@ -478,6 +621,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
       const handlePointerUp = () => {
          setIsResizingPanel(false);
+         if (isMobileRef.current && currentDragPercentageRef.current !== null) {
+            setMobilePanelHeight(currentDragPercentageRef.current);
+            currentDragPercentageRef.current = null;
+         } else if (!isMobileRef.current && currentDragWidthRef.current !== null) {
+            setPanelWidth(currentDragWidthRef.current);
+            currentDragWidthRef.current = null;
+         }
       };
 
       window.addEventListener('pointermove', handlePointerMove);
@@ -486,12 +636,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       // Ensure we don't accidentally select things on the page while dragging
       document.body.style.cursor = isMobileRef.current ? 'row-resize' : 'col-resize';
       document.body.style.userSelect = 'none';
+      document.body.style.touchAction = 'none';
 
       return () => {
          window.removeEventListener('pointermove', handlePointerMove);
          window.removeEventListener('pointerup', handlePointerUp);
          document.body.style.cursor = '';
          document.body.style.userSelect = '';
+         document.body.style.touchAction = '';
 
          // Snap view to fit the new viewport
          setTimeout(() => fitView(), 50);
@@ -2885,11 +3037,69 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          // Only draw on the lower canvas to avoid ghosting on cache/top canvases
          if (!ctx || !vpt || ctx !== canvas.getContext()) return;
 
-         // 1. Clear workspace background (raw pixels)
+         // 1. Clear workspace background & draw pattern (raw pixels)
          ctx.save();
          ctx.setTransform(1, 0, 0, 1, 0, 0); // ensure identity
-         ctx.fillStyle = "#121212";
+         const isDarkCanvas = document.documentElement.classList.contains('dark');
+         const canvasBgColor = isDarkCanvas ? "#121212" : "#f1f5f9";
+         ctx.fillStyle = canvasBgColor;
          ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+         const pat = canvasPatternRef.current || 'flat';
+         if (pat !== 'flat') {
+            const strokeCol = isDarkCanvas ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)";
+            ctx.strokeStyle = strokeCol;
+            ctx.fillStyle = strokeCol;
+            ctx.lineWidth = 1;
+
+            const step = 28;
+            const width = ctx.canvas.width;
+            const height = ctx.canvas.height;
+            const offsetX = (vpt[4] % step + step) % step;
+            const offsetY = (vpt[5] % step + step) % step;
+
+            if (pat === 'grid') {
+               ctx.beginPath();
+               for (let x = offsetX; x < width; x += step) {
+                  ctx.moveTo(x, 0);
+                  ctx.lineTo(x, height);
+               }
+               for (let y = offsetY; y < height; y += step) {
+                  ctx.moveTo(0, y);
+                  ctx.lineTo(width, y);
+               }
+               ctx.stroke();
+            } else if (pat === 'dots') {
+               ctx.beginPath();
+               for (let x = offsetX; x < width; x += step) {
+                  for (let y = offsetY; y < height; y += step) {
+                     ctx.rect(x - 1, y - 1, 2, 2);
+                  }
+               }
+               ctx.fill();
+            } else if (pat === 'plus') {
+               ctx.beginPath();
+               const arm = 4;
+               for (let x = offsetX; x < width; x += step) {
+                  for (let y = offsetY; y < height; y += step) {
+                     ctx.moveTo(x - arm, y);
+                     ctx.lineTo(x + arm, y);
+                     ctx.moveTo(x, y - arm);
+                     ctx.lineTo(x, y + arm);
+                  }
+               }
+               ctx.stroke();
+            } else if (pat === 'squares') {
+               const half = step / 2;
+               for (let x = offsetX - step; x < width; x += step) {
+                  for (let y = offsetY - step; y < height; y += step) {
+                     if ((Math.floor((x - offsetX) / step) + Math.floor((y - offsetY) / step)) % 2 === 0) {
+                        ctx.fillRect(x, y, half, half);
+                     }
+                  }
+               }
+            }
+         }
          ctx.restore();
 
          let boards = artboardsRef.current || [];
@@ -2903,7 +3113,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          ctx.shadowBlur = 15;
          ctx.shadowOffsetX = 0;
          ctx.shadowOffsetY = 8;
-         ctx.fillStyle = "#121212"; // Match workspace to avoid ghosting
+         ctx.fillStyle = document.documentElement.classList.contains('dark') ? "#121212" : "#f1f5f9"; // Match workspace to avoid ghosting
 
          boards.forEach((board) => {
             const x = board.x * vpt[0] + vpt[4];
@@ -2957,7 +3167,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          // 1. Draw outer dimmask (in raw pixels)
          ctx.save();
-         ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+         const isDarkCanvas = document.documentElement.classList.contains('dark');
+         ctx.fillStyle = isDarkCanvas ? "rgba(0, 0, 0, 0.35)" : "rgba(0, 0, 0, 0.08)";
          ctx.beginPath();
          // Use logical coordinates since ctx is already scaled by dpr
          ctx.rect(0, 0, canvas.width, canvas.height);
@@ -3004,7 +3215,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             const isActive = activeArtboardIdRef.current === board.id;
 
             // Base border (user defined border color)
-            ctx.strokeStyle = board.borderColor || "rgba(255, 255, 255, 0.3)";
+            const isDarkCanvas = document.documentElement.classList.contains('dark');
+            ctx.strokeStyle = board.borderColor || (isDarkCanvas ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.18)");
             ctx.lineWidth = 1 / vpt[0];
             ctx.strokeRect(board.x, board.y, board.width, board.height);
 
@@ -4158,6 +4370,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    };
 
    const enterCropMode = async (target?: any) => {
+      setCropRatio('free');
       let imgTarget = target;
       let canvas = fabricRef.current;
       if (!canvas) return;
@@ -4741,7 +4954,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             const blob = new Blob([svg], { type: 'image/svg+xml' });
             url = URL.createObjectURL(blob);
          } else {
-            url = activeObj.toDataURL({ format });
+            const fabricFormat = (format === 'jxl' ? 'png' : format) as any;
+            url = activeObj.toDataURL({ format: fabricFormat });
          }
 
          const a = document.createElement('a');
@@ -5248,6 +5462,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             webp: settings.webp,
             avif: settings.avif,
             jxl: settings.jxl,
+            targetSize: settings.targetSize,
             pngLevel: settings.png.level,
             pngInterlace: settings.png.interlace,
             paletteReduction: settings.png.paletteReduction,
@@ -5499,7 +5714,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       exportSettings.webp,
       exportSettings.avif,
       exportSettings.png,
-      exportSettings.jxl
+      exportSettings.jxl,
+      exportSettings.targetSize
    ]);
 
    // Hide objects of inactive artboards on mobile
@@ -5599,7 +5815,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                            }}>
                               <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, moveLayerUp, moveLayerDown }}>
                                  <div
-                                    className="w-full h-full flex flex-col bg-[#121212] text-[#E0E0E0] select-none"
+                                    className="w-full h-full flex flex-col bg-slate-100 dark:bg-[#121212] text-slate-800 dark:text-[#E0E0E0] select-none"
                                     ref={containerRef}
                                  >
 
@@ -5612,11 +5828,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                        <LeftToolbar />
 
                                        {/* Center Canvas & Artboard Area */}
-                                       <div className="flex-1 flex flex-col min-w-0 bg-[#121212] overflow-hidden relative">
+                                       <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#121212] overflow-hidden relative">
 
                                           {/* Artboard Bar */}
                                           {activeTab !== 'export' && !isMobile && (
-                                             <div className="h-10 bg-[#1E1E1E] border-b border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
+                                             <div className="h-10 bg-slate-200/80 dark:bg-[#1E1E1E] border-b border-slate-300/80 dark:border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
                                                 {isMobile && (
                                                    <button
                                                       onClick={() => setShowMobileArtboardsGallery(true)}
@@ -5630,7 +5846,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    return (
                                                       <div
                                                          key={b.id}
-                                                         className={`h-[30px] flex items-center gap-1.5 px-3 rounded-md cursor-pointer transition-all border border-transparent group ${isActive ? 'bg-[#292929] border-[#3C3C3C] shadow-sm' : 'hover:bg-[#202020] text-[#808080]'}`}
+                                                         className={`h-[30px] flex items-center gap-1.5 px-3 rounded-md cursor-pointer transition-all border border-transparent group ${isActive ? 'bg-white dark:bg-[#292929] border-slate-300 dark:border-[#3C3C3C] text-slate-900 dark:text-[#E0E0E0] shadow-sm' : 'hover:bg-slate-200/80 dark:hover:bg-[#202020] text-slate-600 dark:text-[#808080]'}`}
                                                          onClick={() => {
                                                             setActiveArtboardId(b.id);
                                                             if (fabricRef.current) {
@@ -5649,14 +5865,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             setArtboardDropdown({ id: b.id, x: e.clientX, y: e.clientY });
                                                          }}
                                                       >
-                                                         <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-[#E0E0E0]' : ''}`}>
+                                                         <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-slate-900 dark:text-[#E0E0E0]' : ''}`}>
                                                             {isActive && <div className="w-[4px] h-[4px] rounded-full bg-blue-500" />}
                                                             {b.name}
                                                          </span>
 
                                                          <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <button
-                                                               className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#3A3A3A] text-[#A0A0A0] transition-colors artboard-dropdown-toggle"
+                                                               className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-[#3A3A3A] text-slate-400 dark:text-[#A0A0A0] transition-colors artboard-dropdown-toggle"
                                                                onClick={(e) => {
                                                                   e.stopPropagation();
                                                                   const rect = e.currentTarget.getBoundingClientRect();
@@ -5670,10 +5886,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    );
                                                 })}
 
-                                                <div className="w-px h-5 bg-[#333] mx-1 shrink-0" />
+                                                <div className="w-px h-5 bg-slate-300 dark:bg-[#333] mx-1 shrink-0" />
 
                                                 <button
-                                                   className="h-[30px] px-3 flex items-center gap-1.5 rounded-md hover:bg-[#252525] text-[#808080] hover:text-[#C0C0C0] transition-colors shrink-0"
+                                                   className="h-[30px] px-3 flex items-center gap-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-[#252525] text-slate-500 dark:text-[#808080] hover:text-slate-900 dark:hover:text-[#C0C0C0] transition-colors shrink-0"
                                                    onClick={() => createArtboard()}
                                                 >
                                                    <Plus size={13} />
@@ -5691,9 +5907,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 <div
                                                    onClick={(e) => e.stopPropagation()}
                                                    style={{ left: Math.min(artboardDropdown.x, window.innerWidth - 180), top: artboardDropdown.y }}
-                                                   className="absolute bg-[#1A1A1A] border border-[#2D2D2D] rounded-lg shadow-2xl py-1 min-w-[170px] artboard-dropdown-container"
+                                                   className="absolute bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-lg shadow-2xl py-1 min-w-[170px] artboard-dropdown-container"
                                                 >
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-[#666] border-b border-[#252525] mb-1">Artboard</div>
+                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-[#666] border-b border-slate-100 dark:border-[#252525] mb-1">Artboard</div>
                                                    <ContextMenuItem icon={Type} label="Rename Artboard" onClick={() => {
                                                       const board = artboards.find(b => b.id === artboardDropdown.id);
                                                       if (board) {
@@ -5721,7 +5937,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    }} />
                                                    {artboards.length > 1 && (
                                                       <>
-                                                         <div className="h-px bg-[#252525] my-1" />
+                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                          <ContextMenuItem icon={Trash2} label="Delete Artboard" danger onClick={() => {
                                                             deleteArtboard(artboardDropdown.id);
                                                             setArtboardDropdown(null);
@@ -5734,7 +5950,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
                                           {/* Canvas Container */}
                                           <div
-                                             className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-[#121212]"
+                                             className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-slate-100 dark:bg-[#121212]"
                                              onContextMenu={handleContextMenu}
                                              onPointerDown={(e) => {
                                                 // Mobile panel is now a permanent split view, no tap-to-close needed
@@ -5797,7 +6013,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              }}
                                           >
                                              {/* subtle grid background */}
-                                             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+                                             <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
 
                                              {/* Main Fabric Canvas Wrapper (hidden during comparison mode) */}
                                              <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
@@ -5983,14 +6199,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
                                              {/* Empty State Overlay */}
                                              {isLoaded && artboards.length === 0 && (
-                                                <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
-                                                   <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-[#1A1A1A] border border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
+                                                <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-100/80 dark:bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
+                                                   <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
                                                       <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(45deg,transparent_25%,white_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]" />
                                                       <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 shadow-inner relative z-10 ring-1 ring-blue-500/20">
                                                          <SquareDashed size={24} className="w-5 h-5 md:w-7 md:h-7" />
                                                       </div>
                                                       <div className="relative z-10 w-full">
-                                                         <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-white mb-1.5 md:mb-2">No active project</h3>
+                                                         <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white mb-1.5 md:mb-2">No active project</h3>
                                                          <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 leading-relaxed px-2">Create a new artboard to start placing elements and building your composition.</p>
                                                       </div>
                                                       <button
@@ -6004,95 +6220,38 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              )}
 
                                              {isCropping && (
-                                                <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm sm:max-w-none sm:w-auto z-[50]">
-                                                   <div className="bg-[#1A1A1A]/95 backdrop-blur-xl border border-[#2D2D2D] p-1.5 rounded-xl shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center justify-between sm:justify-start gap-2 overflow-x-auto no-scrollbar">
-                                                      <div className="hidden sm:flex px-3 items-center gap-1.5 border-r border-[#333] pr-3 shrink-0">
-                                                         <Crop size={14} className="text-blue-400" />
-                                                         <span className="text-[11px] font-bold text-slate-200">Crop</span>
+                                                <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm sm:max-w-none sm:w-auto z-[50] animate-in fade-in slide-in-from-top-3 duration-150">
+                                                   <div className="bg-white/95 dark:bg-[#1E1E1E]/95 text-slate-800 dark:text-white backdrop-blur-xl border border-slate-200 dark:border-[#2D2D2D] p-1.5 px-3 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12)] dark:shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center justify-between sm:justify-start gap-2.5 select-none">
+                                                      <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-200 dark:border-[#333] pr-3 shrink-0">
+                                                         <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                                                            <Crop size={14} />
+                                                         </div>
+                                                         <span className="text-xs font-bold text-slate-800 dark:text-slate-100">Crop Image</span>
                                                       </div>
 
-                                                      <select
-                                                         className="bg-[#252525] hover:bg-[#333] text-slate-200 text-[10px] sm:text-[11px] px-2 py-1.5 rounded-md border border-[#3A3A3A] outline-none cursor-pointer appearance-none pr-6 bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m3%205%203%203%203-3%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[position:right_6px_center] bg-no-repeat w-24 sm:w-auto shrink-0"
-                                                         defaultValue="free"
-                                                         onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            const { cropRect, origObj } = cropSessionRef.current;
-                                                            if (!cropRect || !origObj) return;
+                                                      <div className="w-44 sm:w-52 shrink-0">
+                                                         <ModernSelect
+                                                            value={cropRatio}
+                                                            onChange={handleCropRatioChange}
+                                                            groups={CROP_RATIO_GROUPS}
+                                                         />
+                                                      </div>
 
-                                                            if (val === 'free') {
-                                                               cropRect.set({ lockUniScaling: false });
-                                                            } else {
-                                                               let ratio = 1;
-                                                               if (val === 'original') {
-                                                                  ratio = origObj.width! / origObj.height!;
-                                                               } else {
-                                                                  ratio = parseFloat(val);
-                                                               }
-
-                                                               const center = cropRect.getCenterPoint();
-                                                               const curW = cropRect.getScaledWidth();
-                                                               const curH = cropRect.getScaledHeight();
-
-                                                               let newW = curW;
-                                                               let newH = newW / ratio;
-
-                                                               // Keep it somewhat within original bounds logic (simplified)
-                                                               if (newH > origObj.getScaledHeight()) {
-                                                                  newH = origObj.getScaledHeight();
-                                                                  newW = newH * ratio;
-                                                               }
-                                                               if (newW > origObj.getScaledWidth()) {
-                                                                  newW = origObj.getScaledWidth();
-                                                                  newH = newW / ratio;
-                                                               }
-
-                                                               cropRect.set({
-                                                                  width: newW,
-                                                                  height: newH,
-                                                                  scaleX: 1,
-                                                                  scaleY: 1,
-                                                                  lockUniScaling: true,
-                                                               });
-
-                                                               cropRect.setPositionByOrigin(center, 'center', 'center');
-                                                               cropRect.setCoords();
-                                                            }
-                                                            fabricRef.current?.renderAll();
-                                                         }}
-                                                      >
-                                                         <option value="free">Free Crop</option>
-                                                         <option value="original">Original Ratio</option>
-                                                         <optgroup label="Standard Dimensions">
-                                                            <option value="1">1:1 Square</option>
-                                                            <option value={4 / 3}>4:3 (Landscape)</option>
-                                                            <option value={16 / 9}>16:9 (Widescreen)</option>
-                                                            <option value={9 / 16}>9:16 (Vertical)</option>
-                                                            <option value={3 / 2}>3:2 (Classic)</option>
-                                                            <option value={210 / 297}>A4 (210x297mm)</option>
-                                                            <option value={8.5 / 11}>Letter (8.5x11")</option>
-                                                         </optgroup>
-                                                         <optgroup label="Document Presets">
-                                                            <option value={35 / 45}>India Passport (35x45mm)</option>
-                                                            <option value={1}>US Passport (2x2")</option>
-                                                            <option value={1}>Visa Photo (2x2")</option>
-                                                            <option value={86 / 54}>ID Card (86x54mm)</option>
-                                                            <option value={35 / 45}>Student Photo (35x45)</option>
-                                                            <option value={1}>Profile Pic (1:1)</option>
-                                                         </optgroup>
-                                                         <optgroup label="Social Media Presets">
-                                                            <option value={1}>Ig Post (1080x1080)</option>
-                                                            <option value={1080 / 1920}>Ig Story (1080x1920)</option>
-                                                            <option value={16 / 9}>YT Thumb (1280x720)</option>
-                                                            <option value={1}>LinkedIn (400x400)</option>
-                                                            <option value={820 / 312}>Fb Cover (820x312)</option>
-                                                         </optgroup>
-                                                      </select>
-
-                                                      <div className="hidden sm:block h-4 w-px bg-[#333] ml-1 mr-1"></div>
+                                                      <div className="hidden sm:block h-4 w-px bg-slate-200 dark:bg-[#333]" />
 
                                                       <div className="flex items-center gap-1.5 shrink-0">
-                                                         <button onClick={applyCrop} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap"><Check size={12} /> <span className="hidden sm:inline">Apply</span></button>
-                                                         <button onClick={cancelCrop} className="px-3 py-1.5 bg-[#252525] hover:bg-[#333] text-slate-300 rounded-lg text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"><X size={12} /> <span className="hidden sm:inline">Cancel</span></button>
+                                                         <button
+                                                            onClick={applyCrop}
+                                                            className="px-3.5 h-9 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-md shadow-blue-600/20 active:scale-95"
+                                                         >
+                                                            <Check size={14} /> <span className="hidden sm:inline">Apply</span>
+                                                         </button>
+                                                         <button
+                                                            onClick={cancelCrop}
+                                                            className="px-3 h-9 bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2A2A] dark:hover:bg-[#333] text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap active:scale-95 border border-slate-200 dark:border-transparent"
+                                                         >
+                                                            <X size={14} /> <span className="hidden sm:inline">Cancel</span>
+                                                         </button>
                                                       </div>
                                                    </div>
                                                 </div>
@@ -6145,9 +6304,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                              </React.Suspense>
 
                                              {/* Floating Canvas Navigation & Zoom Controller */}
-                                             <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-[#1A1A1A]/90 hover:bg-[#1A1A1A] text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
+                                             <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-white/90 dark:bg-[#1A1A1A]/90 hover:bg-white dark:hover:bg-[#1A1A1A] text-slate-700 dark:text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
                                                 <button
-                                                   className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
+                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
                                                    onClick={() => {
                                                       if (!fabricRef.current) return;
                                                       let z = fabricRef.current.getZoom();
@@ -6161,12 +6320,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    <Minus size={13} />
                                                 </button>
 
-                                                <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-200">
+                                                <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-800 dark:text-slate-200">
                                                    {zoomPercent}%
                                                 </span>
 
                                                 <button
-                                                   className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
+                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
                                                    onClick={() => {
                                                       if (!fabricRef.current) return;
                                                       let z = fabricRef.current.getZoom();
@@ -6180,10 +6339,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    <Plus size={13} />
                                                 </button>
 
-                                                <div className="w-px h-4 bg-[#2D2D2D]" />
+                                                <div className="w-px h-4 bg-slate-200 dark:bg-[#2D2D2D]" />
 
                                                 <button
-                                                   className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
+                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
                                                    onClick={() => {
                                                       if (!fabricRef.current) return;
                                                       const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
@@ -6205,7 +6364,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 </button>
 
                                                 <button
-                                                   className="p-1 hover:bg-[#2C2C2C] hover:text-white rounded transition-colors text-slate-400"
+                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
                                                    onClick={() => {
                                                       if (!fabricRef.current || artboardsRef.current.length === 0) return;
                                                       let minX = Infinity, minY = Infinity;
@@ -6291,27 +6450,30 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                        {/* Right Sidebar / Bottom Panel - Logic Panels */}
                                        {(!isMobile || showMobilePanel) && (
                                           <div
+                                             ref={panelDOMRef}
                                              style={isMobile ? {
                                                 width: '100%',
                                                 height: `${mobilePanelHeight}vh`,
                                              } : { width: `${panelWidth}px` }}
-                                             className={`border-t md:border-t-0 md:border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-[#2C2C2C]'} bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150 relative`}
+                                             className={`border-t md:border-t-0 md:border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-slate-200 dark:border-[#2C2C2C]'} bg-slate-50 dark:bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden md:shadow-[-4px_0_12px_rgba(0,0,0,0.08)] dark:md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150 relative`}
                                           >
                                              {/* Mobile Resize Pill Handle */}
                                              {isMobile && (
                                                 <div
-                                                   className="w-full h-4 bg-[#1A1A1A] flex items-center justify-center shrink-0 cursor-row-resize z-10 active:bg-[#1A1A1A]/80 transition-colors"
+                                                   className="w-full h-8 bg-slate-100 dark:bg-[#1A1A1A] flex items-center justify-center shrink-0 cursor-row-resize z-10 active:bg-slate-200/80 dark:active:bg-[#1A1A1A]/80 transition-colors touch-none select-none"
                                                    onPointerDown={(e) => {
+                                                      e.currentTarget.setPointerCapture(e.pointerId);
                                                       setIsResizingPanel(true);
                                                       e.preventDefault();
+                                                      e.stopPropagation();
                                                    }}
                                                 >
-                                                   <div className={`w-12 h-1 rounded-full transition-colors ${isResizingPanel ? 'bg-blue-500' : 'bg-[#444] hover:bg-[#666]'}`} />
+                                                   <div className={`w-14 h-1.5 rounded-full transition-colors ${isResizingPanel ? 'bg-blue-500' : 'bg-slate-300 dark:bg-[#555] hover:bg-slate-400 dark:hover:bg-[#777]'}`} />
                                                 </div>
                                              )}
 
                                              <div
-                                                className="flex w-full bg-[#1A1A1A] border-b border-[#2C2C2C] select-none shrink-0 relative"
+                                                className="flex w-full bg-slate-100 dark:bg-[#1A1A1A] border-b border-slate-200 dark:border-[#2C2C2C] select-none shrink-0 relative"
                                                 onTouchStart={(e) => {
                                                    if (!isMobile) return;
                                                    const startY = e.touches[0].clientY;
@@ -6335,7 +6497,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                 {isMobile && (
                                                    <button
                                                       onClick={() => setShowMobilePanel(false)}
-                                                      className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center bg-[#1A1A1A] border-l border-[#2C2C2C] text-[#8C8C8C] hover:text-white shadow-[-4px_0_8px_rgba(0,0,0,0.2)] z-10 bg-gradient-to-l from-[#1A1A1A] via-[#1A1A1A] to-transparent"
+                                                      className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center bg-slate-100 dark:bg-[#1A1A1A] border-l border-slate-200 dark:border-[#2C2C2C] text-slate-400 dark:text-[#8C8C8C] hover:text-slate-700 dark:hover:text-white shadow-[-4px_0_8px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_8px_rgba(0,0,0,0.2)] z-10"
                                                    >
                                                       <ChevronDown size={18} />
                                                    </button>
@@ -6434,7 +6596,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                        {activeContextMenu && createPortal(
                                           <div
                                              ref={contextMenuRef}
-                                             className="fixed z-[9999] w-52 bg-[#1A1A1A] border border-[#2D2D2D] shadow-[0_12px_48px_rgba(0,0,0,0.7)] rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] py-1 context-menu-container"
+                                             className="fixed z-[9999] w-52 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] shadow-2xl rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] p-1 context-menu-container text-slate-800 dark:text-white"
                                              style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
                                              onClick={(e) => e.stopPropagation()}
                                           >
@@ -6470,7 +6632,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                          )}
                                                          <ContextMenuItem icon={Copy} label="Duplicate Block" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
                                                          <ContextMenuItem icon={Trash2} label="Delete Block" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
-                                                         <div className="h-px bg-[#252525] my-1" />
+                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                       </>
                                                    )}
                                                    {(activeContextMenu.targets?.filter(t => (t as any).isCollageBlock).length > 0 && activeContextMenu.targets?.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length > 0) && (
@@ -6522,32 +6684,32 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                                }} />
                                                             </>
                                                          )}
-                                                         <div className="h-px bg-[#252525] my-1" />
+                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                       </>
                                                    )}
                                                    <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
                                                    {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
                                                       <>
                                                          <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
-                                                         <div className="h-px bg-[#252525] my-1" />
+                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                       </>
                                                    )}
                                                    <ContextMenuItem icon={AlignLeft} label="Align Left" onClick={() => { alignSelection('left'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={AlignCenter} label="Align Center H" onClick={() => { alignSelection('centerH'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={AlignRight} label="Align Right" onClick={() => { alignSelection('right'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                    <ContextMenuItem icon={Move} label="Fit To Artboard" onClick={() => { alignSelection('fit'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={SquareDashed} label="Fill Artboard" onClick={() => { alignSelection('fill'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Expand} label="Stretch to Artboard" onClick={() => { alignSelection('stretch'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                    <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard to Selection" onClick={() => { resizeArtboardToSelection('both'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard Width to Selection" onClick={() => { resizeArtboardToSelection('width'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                    <ContextSubMenu icon={Download} label="Download">
                                                       <ContextMenuItem label="PNG" onClick={() => { downloadActiveObjectAsFormat('png'); closeContextMenu(); }} />
                                                       <ContextMenuItem label="JPEG" onClick={() => { downloadActiveObjectAsFormat('jpeg'); closeContextMenu(); }} />
@@ -6630,7 +6792,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                       }} />
                                                    )}
                                                    <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
 
                                                    {(() => {
                                                       let maxIdx = -1;
@@ -6651,7 +6813,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             <ContextMenuItem icon={ArrowUp} label="Bring Forward" shortcut="Ctrl+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('forward'); closeContextMenu(); }} />
                                                             <ContextMenuItem icon={ArrowDown} label="Send Backward" shortcut="Ctrl+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('backward'); closeContextMenu(); }} />
                                                             <ContextMenuItem icon={SendToBack} label="Send to Back" shortcut="Ctrl+Shift+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('back'); closeContextMenu(); }} />
-                                                            <div className="h-px bg-[#252525] my-1" />
+                                                            <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                          </>
                                                       );
                                                    })()}
@@ -6706,7 +6868,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                          }}
                                                       />
                                                    ))}
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                    <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
                                                    <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
@@ -6728,8 +6890,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                    <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Canvas Actions</div>
                                                    <ContextMenuItem icon={Plus} label="New Artboard" onClick={() => { createArtboard(); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Type} label="Add Text" onClick={() => { addText(); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Grid} label="Toggle Grid" onClick={() => { closeContextMenu(); }} />
-                                                   <div className="h-px bg-[#252525] my-1" />
+                                                   <ContextSubMenu icon={Grid} label={`Background: ${canvasPattern === 'flat' ? 'Flat Color' : canvasPattern === 'grid' ? 'Linear Grid' : canvasPattern === 'dots' ? 'Dots' : canvasPattern === 'plus' ? 'Plus Crosses' : 'Checkerboard'}`}>
+                                                       <ContextMenuItem icon={canvasPattern === 'flat' ? Check : undefined} label="Flat Color (Solid)" onClick={() => { changeCanvasPattern('flat'); closeContextMenu(); }} />
+                                                       <ContextMenuItem icon={canvasPattern === 'grid' ? Check : undefined} label="Linear Grid" onClick={() => { changeCanvasPattern('grid'); closeContextMenu(); }} />
+                                                       <ContextMenuItem icon={canvasPattern === 'dots' ? Check : undefined} label="Dots Pattern" onClick={() => { changeCanvasPattern('dots'); closeContextMenu(); }} />
+                                                       <ContextMenuItem icon={canvasPattern === 'plus' ? Check : undefined} label="Plus Crosses (+)" onClick={() => { changeCanvasPattern('plus'); closeContextMenu(); }} />
+                                                       <ContextMenuItem icon={canvasPattern === 'squares' ? Check : undefined} label="Checkerboard" onClick={() => { changeCanvasPattern('squares'); closeContextMenu(); }} />
+                                                    </ContextSubMenu>
+                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                    <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
                                                    <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
                                                    <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {

@@ -161,9 +161,11 @@ export class SegmentationCommand implements Command {
         }, 5);
         
         let cancelUnsub: (() => void) | undefined;
+        let isCancelling = false;
         if (this.lastJobId) {
           cancelUnsub = aiEventBus.subscribe(this.lastJobId, (evt) => {
-             if (evt.state === 'cancelled') {
+             if (evt.state === 'cancelled' && !isCancelling) {
+                isCancelling = true;
                 ai.cancel(jobId);
              }
           });

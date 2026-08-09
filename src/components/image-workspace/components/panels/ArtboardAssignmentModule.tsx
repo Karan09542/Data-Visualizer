@@ -1,5 +1,4 @@
 import React, { useRef, useEffect } from 'react';
-import * as fabric from 'fabric';
 import {
    SquareDashed, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
    AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal
@@ -18,12 +17,12 @@ export const ArtboardAssignmentModule: React.FC = () => {
    }, [parentAlignmentObj]);
 
    return (
-      <div className="space-y-3 pt-4 border-t border-[#2C2C2C] mb-4">
-         <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] flex items-center gap-2">
+      <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-[#2C2C2C] mb-4">
+         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#A0A0A0] flex items-center gap-2">
             <span className="flex items-center gap-2">
                <SquareDashed size={12} /> Alignment & Spacing
                {parentAlignmentObj && (
-                  <span className="text-[8px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-tight">
+                  <span className="text-[8px] bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-1.5 py-0.5 rounded uppercase font-bold tracking-tight">
                      KEY OBJECT ACTIVE
                   </span>
                )}
@@ -32,8 +31,8 @@ export const ArtboardAssignmentModule: React.FC = () => {
 
          {/* Key Object Alignment Helper text */}
          {selectionType === 'activeSelection' && (
-            <div className="p-2.5 rounded-lg bg-blue-950/20 border border-blue-500/10 text-[10px] text-[#A0A0A0] space-y-1.5 my-2">
-               <div className="flex justify-between items-center text-white text-xs font-semibold">
+            <div className="p-2.5 rounded-lg bg-blue-50/80 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-500/10 text-[10px] text-slate-600 dark:text-[#A0A0A0] space-y-1.5 my-2">
+               <div className="flex justify-between items-center text-slate-900 dark:text-white text-xs font-semibold">
                   <span>Key Object (Parent Alignment)</span>
                   {parentAlignmentObj ? (
                      <button
@@ -42,19 +41,19 @@ export const ArtboardAssignmentModule: React.FC = () => {
                            setParentAlignmentObj(null);
                            if (fabricRef.current) fabricRef.current.requestRenderAll();
                         }}
-                        className="text-[9px] text-[#A0A0A0] hover:text-white underline font-normal bg-transparent border-0 cursor-pointer"
+                        className="text-[9px] text-slate-500 dark:text-[#A0A0A0] hover:text-slate-900 dark:hover:text-white underline font-normal bg-transparent border-0 cursor-pointer"
                      >
                         Clear Parent
                      </button>
                   ) : null}
                </div>
                {parentAlignmentObj ? (
-                  <p className="text-blue-300 font-mono">
-                     Using <span className="font-bold underline text-white">{(parentAlignmentObj as any).name || (parentAlignmentObj as any).type || "object"}</span> as Parent
+                  <p className="text-blue-700 dark:text-blue-300 font-mono">
+                     Using <span className="font-bold underline text-slate-900 dark:text-white">{(parentAlignmentObj as any).name || (parentAlignmentObj as any).type || "object"}</span> as Parent
                   </p>
                ) : (
-                  <p className="text-[#8A8A8A]">
-                     Pro Tip: Hold <kbd className="px-1 py-0.5 bg-[#2C2C2C] text-white rounded font-mono text-[9px]">Ctrl / ⌘</kbd> and click any selected item to designate it as the **Parent Container**.
+                  <p className="text-slate-500 dark:text-[#8A8A8A]">
+                     Pro Tip: Hold <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-[#2C2C2C] text-slate-800 dark:text-white rounded font-mono text-[9px]">Ctrl / ⌘</kbd> and click any selected item to designate it as the **Parent Container**.
                   </p>
                )}
             </div>
@@ -63,9 +62,9 @@ export const ArtboardAssignmentModule: React.FC = () => {
          {/* Quick alignment buttons targeting assigned or closest artboard */}
          <div className="space-y-3">
             <div className="flex flex-col gap-1.5">
-               <div className="text-[10px] text-[#A0A0A0] flex justify-between items-center">
+               <div className="text-[10px] text-slate-500 dark:text-[#A0A0A0] flex justify-between items-center">
                   <span>Snap Alignment ({parentAlignmentObj ? "Key Object" : "Artboard"})</span>
-                  <span className="text-[9px] bg-[#1a2e3b] text-blue-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-tighter">{parentAlignmentObj ? "Parent" : "Artboard"}</span>
+                  <span className="text-[9px] bg-blue-100 dark:bg-[#1a2e3b] text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-tighter">{parentAlignmentObj ? "Parent" : "Artboard"}</span>
                </div>
                <div className="grid grid-cols-3 gap-1">
                   {[
@@ -79,7 +78,7 @@ export const ArtboardAssignmentModule: React.FC = () => {
                      <button
                         key={btn.action}
                         onClick={() => alignSelection(btn.action as any)}
-                        className="h-8 bg-[#282828] hover:bg-[#323232] text-white rounded transition flex items-center justify-center border border-transparent hover:border-[#444]"
+                        className="h-8 bg-slate-100 dark:bg-[#282828] hover:bg-slate-200 dark:hover:bg-[#323232] text-slate-700 dark:text-white rounded transition flex items-center justify-center border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-[#444] shadow-sm"
                         title={btn.title}
                      >
                         {btn.icon}
@@ -89,7 +88,7 @@ export const ArtboardAssignmentModule: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-1.5">
-               <div className="text-[10px] text-[#A0A0A0] flex justify-between items-center">
+               <div className="text-[10px] text-slate-500 dark:text-[#A0A0A0] flex justify-between items-center">
                   <span>Fitting, Sizing & Spacing</span>
                </div>
                <div className="grid grid-cols-2 gap-1">
@@ -113,9 +112,9 @@ export const ArtboardAssignmentModule: React.FC = () => {
                      { action: 'fitWidth', label: 'Fit Width' },
                      { action: 'fitHeight', label: 'Fit Height' }
                   ].map(btn => (
-                     <button key={btn.action} onClick={() => alignSelection(btn.action as any)} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-transparent hover:border-[#444]">{btn.label}</button>
+                     <button key={btn.action} onClick={() => alignSelection(btn.action as any)} className="h-8 bg-slate-100 dark:bg-[#282828] hover:bg-slate-200 dark:hover:bg-[#323232] text-[10px] font-medium text-slate-700 dark:text-white rounded transition flex items-center justify-center gap-1.5 px-2 border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-[#444] shadow-sm">{btn.label}</button>
                   ))}
-                  <button onClick={() => alignSelection('center')} className="h-8 bg-[#282828] hover:bg-[#323232] text-[10px] text-white rounded transition flex items-center justify-center gap-1.5 px-2 col-span-2 font-mono border border-transparent hover:border-[#444]">Center Selection</button>
+                  <button onClick={() => alignSelection('center')} className="h-8 bg-slate-100 dark:bg-[#282828] hover:bg-slate-200 dark:hover:bg-[#323232] text-[10px] font-medium text-slate-700 dark:text-white rounded transition flex items-center justify-center gap-1.5 px-2 col-span-2 font-mono border border-slate-200 dark:border-transparent hover:border-slate-300 dark:hover:border-[#444] shadow-sm">Center Selection</button>
                </div>
             </div>
          </div>

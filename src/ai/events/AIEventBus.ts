@@ -41,13 +41,6 @@ class AIEventBus {
     };
   }
 
-  emitLegacy(jobId: string, event: AIProgressEvent) {
-    const set = this.listeners.get(jobId);
-    if (set) {
-      set.forEach(handler => handler({ ...event, jobId }));
-    }
-  }
-
   clear(jobId: string) {
     this.listeners.delete(jobId);
   }
@@ -65,15 +58,25 @@ class AIEventBus {
     this.textListeners[event] = this.textListeners[event]!.filter(h => h !== handler);
   }
 
-  emit<K extends keyof AIEventMap>(event: K, payload: AIEventMap[K]) {
-    if (!this.textListeners[event]) return;
-    this.textListeners[event]!.forEach(handler => {
-      try {
-        handler(payload);
-      } catch (e) {
-        console.error(`Error in event handler for ${event}:`, e);
-      }
-    });
+  emit<K extends keyof AIEventMap>(event: K, payload: AIEventMap[K]): void;
+  emit(jobId: string, event: AIProgressEvent): void;
+  emit(eventOrJobId: string | any, payload: any): void {
+    // 1. Try New Text AI Event Architecture
+    if (this.textListeners[eventOrJobId as keyof AIEventMap]) {
+      this.textListeners[eventOrJobId as keyof AIEventMap]!.forEach(handler => {
+        try {
+          handler(payload);
+        } catch (e) {
+          console.error(`Error in event handler for ${eventOrJobId}:`, e);
+        }
+      });
+    }
+
+    // 2. Try Legacy Image Processing Job Architecture
+    const set = this.listeners.get(eventOrJobId as string);
+    if (set) {
+      set.forEach(handler => handler({ ...payload, jobId: eventOrJobId }));
+    }
   }
 }
 

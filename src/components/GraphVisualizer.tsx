@@ -99,16 +99,16 @@ export default function GraphVisualizer() {
 
   // Sync computed positions to permanent store (dragOverrides/dexie)
   useEffect(() => {
-    const missingOverrides: Record<string, {x: number, y: number}> = {};
+    const missingOverrides: Record<string, { x: number, y: number }> = {};
     let hasMissing = false;
-    
+
     for (const node of originalNodes) {
       if (!dragOverrides[node.data.id]) {
         missingOverrides[node.data.id] = { x: node.x, y: node.y };
         hasMissing = true;
       }
     }
-    
+
     if (hasMissing) {
       useStore.getState().setMultipleDragOverrides(missingOverrides);
     }
@@ -485,7 +485,7 @@ export default function GraphVisualizer() {
       const detail = (e as CustomEvent).detail;
       let factor = detail.factor || 1.5;
       if (detail.op === 'out') factor = 1 / factor;
-      
+
       if (detail.direction) {
         let dx = 0; let dy = 0;
         const panAmount = 300; // pixels to pan
@@ -493,10 +493,10 @@ export default function GraphVisualizer() {
         if (detail.direction.includes('right')) dx = -panAmount;
         if (detail.direction.includes('top')) dy = panAmount;
         if (detail.direction.includes('bottom')) dy = -panAmount;
-        
+
         // Pan first, then scale
         selection.transition().duration(300).call(zoom.translateBy, dx, dy)
-                 .transition().duration(300).call(zoom.scaleBy, factor);
+          .transition().duration(300).call(zoom.scaleBy, factor);
       } else {
         selection.transition().duration(300).call(zoom.scaleBy, factor);
       }
@@ -507,12 +507,12 @@ export default function GraphVisualizer() {
       const detail = (e as CustomEvent).detail;
       let dx = 0; let dy = 0;
       const panAmount = 300 * (detail.factor || 1); // scale pan amount by factor
-      
+
       if (detail.direction.includes('left')) dx = panAmount;
       if (detail.direction.includes('right')) dx = -panAmount;
       if (detail.direction.includes('top')) dy = panAmount;
       if (detail.direction.includes('bottom')) dy = -panAmount;
-      
+
       selection.transition().duration(300).call(zoom.translateBy, dx, dy);
     };
     window.addEventListener("voice-move", onVoiceMove);
@@ -907,9 +907,11 @@ export default function GraphVisualizer() {
     const width = wrapperRef.current.clientWidth;
     const height = wrapperRef.current.clientHeight;
 
-    const scale = width < 768 ? 0.85 : 1.2;
+    // Slightly higher zoom, as requested ("bit more zoom but not too much")
+    const scale = width < 768 ? 1.0 : 1.8;
     const tx = width / 2 - matchedNode.x * scale;
-    const ty = height / 2 - matchedNode.y * scale;
+    // Offset ty downwards to perfectly center the node within the VISIBLE area beneath the search bar
+    const ty = height / 2 + (width < 768 ? 40 : 60) - matchedNode.y * scale;
 
     d3.select(wrapperRef.current)
       .transition()
@@ -1326,10 +1328,13 @@ export default function GraphVisualizer() {
 
           <g className="edges-layer" style={{ zIndex: 0 }}>
             {links
+              .filter((link) => {
+                if (!link || !link.source?.data?.id || !link.target?.data?.id) return false;
+                return !selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
+              })
               .map((link) => {
-                if (!link || !link.source?.data?.id || !link.target?.data?.id) return null;
                 const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
-                const isSelectedEdge = selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
+                const isSelectedEdge = false;
                 const isDimmedPath = !!searchQuery && !isMatchPath;
 
                 const d = getEdgePath(link.source as any, link.target as any, edgeStyle, layoutMode);
@@ -1353,10 +1358,63 @@ export default function GraphVisualizer() {
 
           <g className="nodes-layer" style={{ zIndex: 10 }}>
             {nodes
+              .filter((node) => !selectedPathNodes.has(node.data.id) && selectedNodeId !== node.data.id)
               .map((node) => {
                 return (
                   <NodeRenderer
                     key={`node-${node.data.id}`}
+                    node={node}
+                    layoutMode={layoutMode}
+                    isSelectedPath={false}
+                    isSelected={false}
+                    isIsolatedMode={isolatedNodeId !== null}
+                    onContextMenu={(e, treeNode) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
+                    }}
+                  />
+                );
+              })}
+          </g>
+
+          <g className="selected-edges-layer" style={{ zIndex: 15 }}>
+            {links
+              .filter((link) => {
+                if (!link || !link.source?.data?.id || !link.target?.data?.id) return false;
+                return selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
+              })
+              .map((link) => {
+                const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
+                const isSelectedEdge = true;
+                const isDimmedPath = !!searchQuery && !isMatchPath;
+
+                const d = getEdgePath(link.source as any, link.target as any, edgeStyle, layoutMode);
+                return (
+                  <EdgeRenderer
+                    key={`link-selected-${link.source.data.id}-${link.target.data.id}`}
+                    d={d}
+                    style={edgeStyle}
+                    nodeTheme={nodeTheme}
+                    isHighlighted={isMatchPath}
+                    isDimmed={isDimmedPath}
+                    isSelected={isSelectedEdge}
+                    source={link.source as any}
+                    target={link.target as any}
+                    layoutMode={layoutMode}
+                    targetData={link.target.data}
+                  />
+                );
+              })}
+          </g>
+
+          <g className="selected-nodes-layer" style={{ zIndex: 20 }}>
+            {nodes
+              .filter((node) => selectedPathNodes.has(node.data.id) || selectedNodeId === node.data.id)
+              .map((node) => {
+                return (
+                  <NodeRenderer
+                    key={`node-selected-${node.data.id}`}
                     node={node}
                     layoutMode={layoutMode}
                     isSelectedPath={selectedPathNodes.has(node.data.id)}
@@ -1635,9 +1693,9 @@ export default function GraphVisualizer() {
 
               {typeof contextMenu.node.name === "string" &&
                 (contextMenu.node.name.endsWith("_api_node") ||
-                 contextMenu.node.name.endsWith("_py_node") ||
-                 contextMenu.node.name.endsWith("_js_node") ||
-                 contextMenu.node.name.endsWith("_ts_node")) && (
+                  contextMenu.node.name.endsWith("_py_node") ||
+                  contextMenu.node.name.endsWith("_js_node") ||
+                  contextMenu.node.name.endsWith("_ts_node")) && (
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-200 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
                     onClick={() => {
@@ -1647,18 +1705,18 @@ export default function GraphVisualizer() {
                         .replace("_py_node", "")
                         .replace("_js_node", "")
                         .replace("_ts_node", "");
-                        
+
                       let valStr = "";
                       if (contextMenu.node.rawValue !== undefined) {
-                         if (typeof contextMenu.node.rawValue === "object" && contextMenu.node.rawValue !== null) {
-                            valStr = safeStringify(contextMenu.node.rawValue);
-                         } else {
-                            valStr = String(contextMenu.node.rawValue);
-                         }
+                        if (typeof contextMenu.node.rawValue === "object" && contextMenu.node.rawValue !== null) {
+                          valStr = safeStringify(contextMenu.node.rawValue);
+                        } else {
+                          valStr = String(contextMenu.node.rawValue);
+                        }
                       } else {
-                         valStr = String(contextMenu.node.value);
+                        valStr = String(contextMenu.node.value);
                       }
-                        
+
                       applyJsonChange(
                         contextMenu.node.path,
                         "edit",
@@ -1690,9 +1748,9 @@ export default function GraphVisualizer() {
                       className="text-emerald-400 dark:text-emerald-500"
                     />
                     {manuallyRenderedNodes &&
-                    (manuallyRenderedNodes[contextMenu.node.id] !== undefined
-                      ? manuallyRenderedNodes[contextMenu.node.id]
-                      : showMediaPreview)
+                      (manuallyRenderedNodes[contextMenu.node.id] !== undefined
+                        ? manuallyRenderedNodes[contextMenu.node.id]
+                        : showMediaPreview)
                       ? "Hide Media Preview"
                       : "Render Media Preview"}
                   </button>
@@ -1712,7 +1770,7 @@ export default function GraphVisualizer() {
                           ? String(contextMenu.node.rawValue)
                           : String(contextMenu.node.value),
                         String(contextMenu.node.name) +
-                          "_api_node_tmp".replace("_tmp", ""),
+                        "_api_node_tmp".replace("_tmp", ""),
                         "string",
                       );
                       setContextMenu(null);
@@ -1728,14 +1786,14 @@ export default function GraphVisualizer() {
 
               {contextMenu.node.type === "string" &&
                 useStore.getState().uploadedMediaMetadata[
-                  String(contextMenu.node.value)
+                String(contextMenu.node.value)
                 ] && (
                   <button
                     className="w-full text-left px-4 py-2 text-sm text-pink-600 dark:text-pink-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-pink-700 dark:hover:text-pink-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
                     onClick={() => {
                       setMediaInfoModal(
                         useStore.getState().uploadedMediaMetadata[
-                          String(contextMenu.node.value)
+                        String(contextMenu.node.value)
                         ],
                       );
                       setContextMenu(null);
@@ -1751,7 +1809,7 @@ export default function GraphVisualizer() {
                 const nodePath = String(contextMenu.node.path);
                 const rawObj = typeof contextMenu.node.rawValue === 'object' ? contextMenu.node.rawValue : null;
                 const assetIdToCheck = rawObj?.url || rawObj?.filename || nodeVal;
-                
+
                 const state = useStore.getState();
                 let assetMimeType = '';
                 if (assetIdToCheck) {
@@ -1761,31 +1819,31 @@ export default function GraphVisualizer() {
                   }
                 }
 
-                const isImageNode = 
-                  getMediaType(nodeVal) === 'image' || 
-                  nodePath.match(/\.(png|jpe?g|gif|webp|image)$/i) || 
+                const isImageNode =
+                  getMediaType(nodeVal) === 'image' ||
+                  nodePath.match(/\.(png|jpe?g|gif|webp|image)$/i) ||
                   nodePath.endsWith('_image_node') ||
                   assetMimeType.startsWith('image/');
 
                 if (isImageNode && contextMenu.node.path !== "root") {
                   return (
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          if (state.openWorkspaceTab) {
-                            state.openWorkspaceTab(contextMenu.node.path, false);
-                          }
-                          if (state.setExpandedJsNodeId) {
-                            state.setExpandedJsNodeId(contextMenu.node.path);
-                          }
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Edit2 size={16} />
-                        Edit Image
-                      </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (state.openWorkspaceTab) {
+                          state.openWorkspaceTab(contextMenu.node.path, false);
+                        }
+                        if (state.setExpandedJsNodeId) {
+                          state.setExpandedJsNodeId(contextMenu.node.path);
+                        }
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Edit2 size={16} />
+                      Edit Image
+                    </button>
                   );
                 }
                 return null;
@@ -1975,22 +2033,22 @@ export default function GraphVisualizer() {
 
               {(contextMenu.node.type === "object" ||
                 contextMenu.node.type === "array") && (
-                <button
-                  className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
-                  onClick={() => {
-                    setEditingNode({
-                      node: contextMenu.node,
-                      value: "",
-                      action: "add",
-                      typeOverride: "auto",
-                    });
-                    setContextMenu(null);
-                  }}
-                >
-                  <Edit2 size={16} className="text-green-400" />
-                  Add {contextMenu.node.type === "array" ? "Item" : "Property"}
-                </button>
-              )}
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors border-t border-slate-300 dark:border-slate-700/50"
+                    onClick={() => {
+                      setEditingNode({
+                        node: contextMenu.node,
+                        value: "",
+                        action: "add",
+                        typeOverride: "auto",
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Edit2 size={16} className="text-green-400" />
+                    Add {contextMenu.node.type === "array" ? "Item" : "Property"}
+                  </button>
+                )}
 
               {contextMenu.node.path !== "root" && (
                 <button
@@ -2095,9 +2153,9 @@ export default function GraphVisualizer() {
                 <div className="flex gap-3">
                   {(editingNode.action === "add" &&
                     editingNode.node.type === "object") ||
-                  (editingNode.action === "edit" &&
-                    editingNode.node.path !== "root" &&
-                    !editingNode.node.path.endsWith("]")) ? (
+                    (editingNode.action === "edit" &&
+                      editingNode.node.path !== "root" &&
+                      !editingNode.node.path.endsWith("]")) ? (
                     <div className="flex flex-col gap-1 flex-1">
                       <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         {editingNode.action === "add" ? "New Key" : "Key Name"}
@@ -2139,7 +2197,7 @@ export default function GraphVisualizer() {
                       <option value="string">String</option>
                       <option value="number">Number</option>
                       <option value="boolean">Boolean</option>
-                      <option value="object">Object {}</option>
+                      <option value="object">Object { }</option>
                       <option value="array">Array []</option>
                       <option value="null">Null</option>
                     </select>
@@ -2149,34 +2207,34 @@ export default function GraphVisualizer() {
                 {!["object", "array", "null"].includes(
                   editingNode.typeOverride || "auto",
                 ) && (
-                  <div className="flex flex-col gap-1 flex-1">
-                    <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      Content
-                    </label>
-                    <textarea
-                      value={editingNode.value}
-                      onChange={(e) =>
-                        setEditingNode({
-                          ...editingNode,
-                          value: e.target.value,
-                        })
-                      }
-                      className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-2 text-slate-800 dark:text-slate-200 font-mono text-xs h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y shadow-inner custom-scrollbar"
-                      placeholder={
-                        editingNode.typeOverride === "boolean"
-                          ? "true or false"
-                          : editingNode.typeOverride === "number"
-                            ? "123.45"
-                            : "Enter value..."
-                      }
-                    />
-                    <span className="text-[10px] text-slate-500 leading-tight">
-                      {editingNode.typeOverride === "auto"
-                        ? "Valid JSON parsed automatically."
-                        : `Forced type: ${editingNode.typeOverride}`}
-                    </span>
-                  </div>
-                )}
+                    <div className="flex flex-col gap-1 flex-1">
+                      <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Content
+                      </label>
+                      <textarea
+                        value={editingNode.value}
+                        onChange={(e) =>
+                          setEditingNode({
+                            ...editingNode,
+                            value: e.target.value,
+                          })
+                        }
+                        className="bg-slate-50 dark:bg-[#0f172a] border border-slate-300 dark:border-slate-700/80 rounded-md p-2 text-slate-800 dark:text-slate-200 font-mono text-xs h-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-y shadow-inner custom-scrollbar"
+                        placeholder={
+                          editingNode.typeOverride === "boolean"
+                            ? "true or false"
+                            : editingNode.typeOverride === "number"
+                              ? "123.45"
+                              : "Enter value..."
+                        }
+                      />
+                      <span className="text-[10px] text-slate-500 leading-tight">
+                        {editingNode.typeOverride === "auto"
+                          ? "Valid JSON parsed automatically."
+                          : `Forced type: ${editingNode.typeOverride}`}
+                      </span>
+                    </div>
+                  )}
 
                 <div className="flex justify-end gap-2 pt-1">
                   <button

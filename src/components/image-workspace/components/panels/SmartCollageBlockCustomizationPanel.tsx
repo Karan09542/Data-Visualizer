@@ -109,7 +109,7 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                            setCollageBorderStyle(st as any);
                            updateCollageBlockStyleProperty('borderStyle', st);
                         }}
-                        className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${collageBorderStyle === st ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
+                        className={`py-1 text-[9px] font-bold rounded capitalize transition-all ${collageBorderStyle === st ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#1C1C1C]'}`}
                      >
                         {st}
                      </button>
@@ -239,7 +239,7 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
             <div className="pt-1 space-y-2">
                <label className="relative flex flex-col items-center justify-center border border-dashed border-[#3A3A3A] hover:border-blue-500 rounded-lg p-4 text-center cursor-pointer transition bg-[#0C0C0C] hover:bg-blue-950/10 group">
                   <LucideImage size={24} className="text-[#8A8A8A] group-hover:text-blue-400 mb-1.5 transition-colors" />
-                  <span className="text-[10px] font-bold text-white group-hover:text-blue-300">{hasImage ? 'Replace Image' : 'Upload Photograph'}</span>
+                  <span className="text-[10px] font-bold text-slate-900 dark:text-white group-hover:text-blue-300">{hasImage ? 'Replace Image' : 'Upload Photograph'}</span>
                   <span className="text-[9px] text-[#6A6A6A] mt-0.5">Crop and object-fit perfectly</span>
                   <input
                      type="file"
@@ -271,7 +271,7 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                            <button
                               key={mode} type="button"
                               onClick={() => updateCollageBlockStyleProperty('collageImageFit', mode)}
-                              className={`py-1 text-[8px] font-bold rounded capitalize transition-all ${currentFit === mode ? 'bg-blue-600 text-white' : 'text-[#8A8A8A] hover:text-white hover:bg-[#1C1C1C]'}`}
+                              className={`py-1 text-[8px] font-bold rounded capitalize transition-all ${currentFit === mode ? 'bg-blue-600 text-slate-900 dark:text-white' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#1C1C1C]'}`}
                            >
                               {mode}
                            </button>
@@ -299,14 +299,14 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                         <button 
                            type="button"
                            onClick={() => updateCollageBlockStyleProperty('collageImageFlipX', !currentFlipX)} 
-                           className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded text-[9px] font-bold transition-all border ${currentFlipX ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' : 'bg-[#181818] text-[#8A8A8A] border-[#3A3A3A] hover:bg-[#222] hover:text-white'}`}
+                           className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded text-[9px] font-bold transition-all border ${currentFlipX ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' : 'bg-[#181818] text-[#8A8A8A] border-[#3A3A3A] hover:bg-[#222] hover:text-slate-900 dark:text-white'}`}
                         >
                            <FlipHorizontal size={13} /> FLIP X
                         </button>
                         <button 
                            type="button"
                            onClick={() => updateCollageBlockStyleProperty('collageImageFlipY', !currentFlipY)} 
-                           className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded text-[9px] font-bold transition-all border ${currentFlipY ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' : 'bg-[#181818] text-[#8A8A8A] border-[#3A3A3A] hover:bg-[#222] hover:text-white'}`}
+                           className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded text-[9px] font-bold transition-all border ${currentFlipY ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' : 'bg-[#181818] text-[#8A8A8A] border-[#3A3A3A] hover:bg-[#222] hover:text-slate-900 dark:text-white'}`}
                         >
                            <FlipVertical size={13} /> FLIP Y
                         </button>
@@ -317,7 +317,7 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                      <button
                         type="button"
                         onClick={handleResetImageTransforms}
-                        className="w-full py-2 bg-[#181818] hover:bg-[#222] border border-[#3A3A3A] text-[#8A8A8A] hover:text-white text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-2 active:scale-95"
+                        className="w-full py-2 bg-[#181818] hover:bg-[#222] border border-[#3A3A3A] text-[#8A8A8A] hover:text-slate-900 dark:text-white text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-2 active:scale-95"
                      >
                         <RotateCcw size={13} /> Reset Transforms
                      </button>
@@ -341,7 +341,7 @@ export const SmartCollageBlockCustomizationPanel: React.FC = () => {
                      key={btn.id}
                      type="button"
                      onClick={() => addAlignedCollageText(btn.id)}
-                     className="h-11 bg-[#1F1F1F] hover:bg-blue-600 border border-[#2C2C2C] hover:border-blue-500 rounded flex flex-col items-center justify-center text-[#8A8A8A] hover:text-white transition-all gap-1 shadow-sm"
+                     className="h-11 bg-[#1F1F1F] hover:bg-blue-600 border border-[#2C2C2C] hover:border-blue-500 rounded flex flex-col items-center justify-center text-[#8A8A8A] hover:text-slate-900 dark:text-white transition-all gap-1 shadow-sm"
                      title={`Add Text Aligned to ${btn.label}`}
                   >
                      {btn.icon}

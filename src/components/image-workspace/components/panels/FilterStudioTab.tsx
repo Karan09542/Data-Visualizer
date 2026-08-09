@@ -114,35 +114,35 @@ export const FilterStudioTab: React.FC = () => {
    return (
       <>
          {/* FILTER STUDIO PANEL */}
-         <div className="p-4 space-y-6 text-[#C0C0C0]">
+         <div className="p-4 space-y-6 text-slate-700 dark:text-[#C0C0C0]">
             {selectionType !== 'image' && selectionType !== 'frameGroup' && !isCollageSelected ? (
                <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
                   <Sparkles size={32} className="mb-4 text-amber-500 animate-pulse" />
-                  <span className="text-sm font-semibold text-white">Filter Studio</span>
-                  <span className="text-xs mt-2 w-48 text-[#8A8A8A]">Select an Image or Collage Block layer to utilize the professional filter pipeline.</span>
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white">Filter Studio</span>
+                  <span className="text-xs mt-2 w-48 text-slate-500 dark:text-[#8A8A8A]">Select an Image or Collage Block layer to utilize the professional filter pipeline.</span>
                </div>
             ) : (
                <div className="space-y-6 flex flex-col h-full">
 
                   {/* BENCHMARK & DIAGNOSTICS */}
-                  <div className="bg-[#181818] border border-[#2C2C2C] rounded-lg p-3 space-y-2">
+                  <div className="bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-[#2C2C2C] rounded-lg p-3 space-y-2">
                      <div className="flex justify-between items-center border-b border-[#2C2C2C] pb-1.5 mb-1.5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#8A8A8A] flex items-center gap-1.5 font-sans">
                            <Activity size={12} className="text-emerald-500" /> Pipeline Diagnostics
                         </span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${(benchmarkInfo?.backend || 'WebGL') === 'WebGL' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/30' : 'bg-amber-950/40 text-amber-500 border border-amber-800/20'
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${(benchmarkInfo?.backend || 'WebGL') === 'WebGL' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/30' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-500 border border-amber-200 dark:border-amber-800/20'
                            }`}>
                            {benchmarkInfo?.backend || 'WebGL'}
                         </span>
                      </div>
                      <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
                         <div>
-                           <span className="text-[#8A8A8A] text-[9px] block">Process Time</span>
-                           <span className="text-white font-semibold">{benchmarkInfo?.filterTimeMs || '0.0'} ms</span>
+                           <span className="text-slate-500 dark:text-[#8A8A8A] text-[9px] block">Process Time</span>
+                           <span className="text-slate-900 dark:text-white font-semibold">{benchmarkInfo?.filterTimeMs || '0.0'} ms</span>
                         </div>
                         <div>
-                           <span className="text-[#8A8A8A] text-[9px] block">Dimensions</span>
-                           <span className="text-white font-semibold truncate block">
+                           <span className="text-slate-500 dark:text-[#8A8A8A] text-[9px] block">Dimensions</span>
+                           <span className="text-slate-900 dark:text-white font-semibold truncate block">
                               {benchmarkInfo?.outputWidth || 0} x {benchmarkInfo?.outputHeight || 0}
                            </span>
                         </div>
@@ -151,7 +151,7 @@ export const FilterStudioTab: React.FC = () => {
 
                   {/* PRESETS BLOCK */}
                   <div className="space-y-2">
-                     <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                     <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#8A8A8A] flex items-center gap-1.5 font-sans">
                         <Bookmark size={11} className="text-blue-400" /> Instant Creative Presets
                      </div>
                      <div className="grid grid-cols-2 gap-1.5">
@@ -171,7 +171,7 @@ export const FilterStudioTab: React.FC = () => {
                               key={p.id}
                               onClick={() => applyCreativePreset(p.id)}
                               type="button"
-                              className="py-1 px-2 border border-[#2C2C2C] hover:border-blue-500/50 hover:text-white bg-[#1A1A1A] hover:bg-[#252525] rounded text-left text-[11px] font-medium transition duration-150 flex items-center justify-between group font-sans"
+                              className="py-1 px-2 border border-slate-200 dark:border-[#2C2C2C] hover:border-blue-500/50 text-slate-700 hover:text-slate-900 dark:text-white bg-white dark:bg-[#1A1A1A] hover:bg-slate-100 dark:hover:bg-[#252525] rounded text-left text-[11px] font-medium transition duration-150 flex items-center justify-between group font-sans shadow-sm"
                            >
                               <span className="truncate">{p.label}</span>
                               <Plus size={10} className="opacity-40 group-hover:opacity-100 text-blue-400 shrink-0 ml-1" />
@@ -182,10 +182,10 @@ export const FilterStudioTab: React.FC = () => {
 
                   {/* ADD NEW FILTER */}
                   <div className="space-y-2">
-                     <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                     <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#8A8A8A] flex items-center gap-1.5 font-sans">
                         <Plus size={12} className="text-blue-500" /> Apply Filter Effect
                      </div>
-                     <div className="space-y-3 bg-[#181818] border border-[#2C2C2C] p-3 rounded-lg">
+                     <div className="space-y-3 bg-slate-50 dark:bg-[#181818] border border-slate-200 dark:border-[#2C2C2C] p-3 rounded-lg">
 
                         {/* Adjustments */}
                         <div>
@@ -206,7 +206,7 @@ export const FilterStudioTab: React.FC = () => {
                                     key={f.type}
                                     onClick={() => addFilterToPipeline(f.type)}
                                     type="button"
-                                    className="px-2 py-0.5 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] hover:border-blue-500/50 text-white rounded text-[10px] font-medium transition font-sans"
+                                    className="px-2 py-0.5 bg-white dark:bg-[#2C2C2C] hover:bg-slate-100 dark:hover:bg-[#3A3A3A] border border-slate-200 dark:border-[#3A3A3A] hover:border-blue-500/50 text-slate-700 dark:text-white rounded text-[10px] font-medium transition font-sans shadow-sm"
                                  >
                                     + {f.label}
                                  </button>
@@ -229,7 +229,7 @@ export const FilterStudioTab: React.FC = () => {
                                     key={f.type}
                                     onClick={() => addFilterToPipeline(f.type)}
                                     type="button"
-                                    className="px-2 py-0.5 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] hover:border-[#525252] text-white rounded text-[10px] font-medium transition font-sans"
+                                    className="px-2 py-0.5 bg-white dark:bg-[#2C2C2C] hover:bg-slate-100 dark:hover:bg-[#3A3A3A] border border-slate-200 dark:border-[#3A3A3A] hover:border-slate-300 dark:hover:border-[#525252] text-slate-700 dark:text-white rounded text-[10px] font-medium transition font-sans shadow-sm"
                                  >
                                     + {f.label}
                                  </button>
@@ -258,7 +258,7 @@ export const FilterStudioTab: React.FC = () => {
                                     key={f.type}
                                     onClick={() => addFilterToPipeline(f.type)}
                                     type="button"
-                                    className="px-2 py-0.5 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] hover:border-[#525252] text-white rounded text-[10px] font-medium transition font-sans"
+                                    className="px-2 py-0.5 bg-white dark:bg-[#2C2C2C] hover:bg-slate-100 dark:hover:bg-[#3A3A3A] border border-slate-200 dark:border-[#3A3A3A] hover:border-slate-300 dark:hover:border-[#525252] text-slate-700 dark:text-white rounded text-[10px] font-medium transition font-sans shadow-sm"
                                  >
                                     + {f.label}
                                  </button>
@@ -273,7 +273,7 @@ export const FilterStudioTab: React.FC = () => {
                               <button
                                  onClick={() => addFilterToPipeline('blendColor')}
                                  type="button"
-                                 className="px-2 py-0.5 bg-[#2C2C2C] hover:bg-[#3A3A3A] border border-[#3A3A3A] hover:border-amber-500/50 text-white rounded text-[10px] font-medium transition flex items-center gap-1 font-sans"
+                                 className="px-2 py-0.5 bg-white dark:bg-[#2C2C2C] hover:bg-slate-100 dark:hover:bg-[#3A3A3A] border border-slate-200 dark:border-[#3A3A3A] hover:border-amber-500/50 text-slate-700 dark:text-white rounded text-[10px] font-medium transition flex items-center gap-1 font-sans shadow-sm"
                               >
                                  <Sliders size={10} className="text-amber-500" /> + Blend Color Map
                               </button>
@@ -302,7 +302,7 @@ export const FilterStudioTab: React.FC = () => {
                                     key={f.type}
                                     onClick={() => addFilterToPipeline(f.type)}
                                     type="button"
-                                    className="px-2 py-0.5 bg-[#1F1735] hover:bg-[#30214f] border border-[#3c2a63] hover:border-[#6a49b0] text-[#E0D4F5] rounded text-[10px] font-medium transition font-sans"
+                                    className="px-2 py-0.5 bg-purple-50 dark:bg-[#1F1735] hover:bg-purple-100 dark:hover:bg-[#30214f] border border-purple-200 dark:border-[#3c2a63] hover:border-purple-400 dark:hover:border-[#6a49b0] text-purple-900 dark:text-[#E0D4F5] rounded text-[10px] font-medium transition font-sans shadow-sm"
                                  >
                                     + {f.label}
                                  </button>
@@ -316,14 +316,14 @@ export const FilterStudioTab: React.FC = () => {
                   {/* ACTIVE STACK CONTAINER */}
                   <div className="space-y-3">
                      <div className="flex justify-between items-center border-b border-[#2C2C2C] pb-2 font-sans">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#8A8A8A] flex items-center gap-1.5">
                            <Sliders size={12} className="text-blue-500" /> Filter Stack ({imageFilters.length})
                         </span>
                         {imageFilters.length > 0 && (
                            <button
                               onClick={() => setShowSavePresetModal(true)}
                               type="button"
-                              className="text-[11px] font-semibold text-blue-400 hover:text-white transition flex items-center gap-1 bg-blue-950/40 px-2 py-0.5 border border-blue-900/40 rounded"
+                              className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-slate-900 dark:hover:text-white transition flex items-center gap-1 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 border border-blue-200 dark:border-blue-900/40 rounded shadow-sm"
                            >
                               <Bookmark size={10} /> Save Preset
                            </button>
@@ -332,27 +332,27 @@ export const FilterStudioTab: React.FC = () => {
 
                      {/* Preset Save Modal Form */}
                      {showSavePresetModal && (
-                        <div className="bg-[#1A1A1A] border border-[#2C2C2C] rounded-lg p-3 space-y-2">
-                           <span className="text-xs font-semibold text-white block font-sans">Preset Name</span>
+                        <div className="bg-slate-50 dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2C2C2C] rounded-lg p-3 space-y-2">
+                           <span className="text-xs font-semibold text-slate-900 dark:text-white block font-sans">Preset Name</span>
                            <div className="flex gap-1">
                               <input
                                  type="text"
                                  placeholder="Epic cinematic grain..."
                                  value={newPresetName}
                                  onChange={(e) => setNewPresetName(e.target.value)}
-                                 className="min-w-0 flex-1 h-8 bg-black border border-[#2C2C2C] rounded text-xs px-2 text-white placeholder-[#444] outline-none focus:border-blue-500 font-sans"
+                                 className="min-w-0 flex-1 h-8 bg-white dark:bg-black border border-slate-200 dark:border-[#2C2C2C] rounded text-xs px-2 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-[#444] outline-none focus:border-blue-500 font-sans"
                               />
                               <button
                                  onClick={() => saveCurrentStackAsPreset(newPresetName)}
                                  type="button"
-                                 className="h-8 px-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-[10px] transition font-sans shrink-0"
+                                 className="h-8 px-2 bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-bold rounded text-[10px] transition font-sans shrink-0"
                               >
                                  Save
                               </button>
                               <button
                                  onClick={() => setShowSavePresetModal(false)}
                                  type="button"
-                                 className="h-8 px-2 border border-[#2C2C2C] text-[#8A8A8A] hover:text-white rounded text-[10px] transition font-sans shrink-0"
+                                 className="h-8 px-2 border border-slate-200 dark:border-[#2C2C2C] text-slate-500 dark:text-[#8A8A8A] hover:text-slate-900 dark:hover:text-white rounded text-[10px] transition font-sans shrink-0"
                               >
                                  Cancel
                               </button>
@@ -361,7 +361,7 @@ export const FilterStudioTab: React.FC = () => {
                      )}
 
                      {imageFilters.length === 0 ? (
-                        <div className="py-8 bg-black/10 border border-dashed border-[#2C2C2C] rounded-lg flex flex-col items-center justify-center p-4 text-center">
+                        <div className="py-8 bg-slate-50 dark:bg-black/10 border border-dashed border-slate-200 dark:border-[#2C2C2C] rounded-lg flex flex-col items-center justify-center p-4 text-center">
                            <span className="text-xs text-[#8A8A8A] line-clamp-2 font-sans">No active filters in stack. Click filters above or quick presets to style this layer!</span>
                         </div>
                      ) : (
@@ -377,17 +377,17 @@ export const FilterStudioTab: React.FC = () => {
                                     onDragOver={(e) => handleDragOver(e, f.id)}
                                     onDragLeave={(e) => handleDragLeave(e, f.id)}
                                     onDrop={(e) => handleDrop(e, f.id)}
-                                    className={`filter-card-item bg-[#181818] border ${f.enabled ? 'border-[#2C2C2C]' : 'border-dashed border-[#2A2A2A] opacity-50'} rounded-lg transition-all shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-t-2 border-t-blue-500 shadow-[0_-2px_8px_rgba(59,130,246,0.2)]' : ''}`}
+                                    className={`filter-card-item bg-white dark:bg-[#181818] border ${f.enabled ? 'border-slate-200 dark:border-[#2C2C2C]' : 'border-dashed border-slate-200 dark:border-[#2A2A2A] opacity-50'} rounded-lg transition-all shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-t-2 border-t-blue-500 shadow-[0_-2px_8px_rgba(59,130,246,0.2)]' : ''}`}
                                  >
 
                                     {/* Title & Control buttons bar */}
-                                    <div className="flex items-center justify-between px-3 py-1.5 bg-[#1B1B1B] border-b border-[#2C2C2C] rounded-t-lg">
+                                    <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 dark:bg-[#1B1B1B] border-b border-slate-200 dark:border-[#2C2C2C] rounded-t-lg">
                                        <div className="flex items-center gap-2">
                                           <div 
                                              draggable
                                              onDragStart={(e) => handleDragStart(e, f.id)}
                                              onDragEnd={handleDragEnd}
-                                             className="cursor-grab text-[#555] hover:text-[#888] active:cursor-grabbing p-1 rounded hover:bg-[#2A2A2A] transition"
+                                             className="cursor-grab text-slate-400 dark:text-[#555] hover:text-slate-700 dark:hover:text-[#888] active:cursor-grabbing p-1 rounded hover:bg-slate-200 dark:hover:bg-[#2A2A2A] transition"
                                              title="Drag to reorder filter"
                                           >
                                              <GripVertical size={14} />
@@ -395,12 +395,12 @@ export const FilterStudioTab: React.FC = () => {
                                           <button
                                              onClick={() => toggleFilterEnabled(f.id)}
                                              type="button"
-                                             className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition duration-150 touch-manipulation ${f.enabled ? 'bg-blue-600/20 text-blue-400' : 'bg-[#2A2A2A] text-[#8A8A8A]'}`}
+                                             className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition duration-150 touch-manipulation ${f.enabled ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-transparent' : 'bg-slate-200 dark:bg-[#2A2A2A] text-slate-500 dark:text-[#8A8A8A]'}`}
                                              title={f.enabled ? 'Disable Filter' : 'Enable Filter'}
                                           >
                                              <Power size={11} />
                                           </button>
-                                          <span className="text-[11px] font-bold text-white tracking-tight font-sans">{f.name}</span>
+                                          <span className="text-[11px] font-bold text-slate-900 dark:text-white tracking-tight font-sans">{f.name}</span>
                                        </div>
 
                                        <div className="flex items-center gap-1">
@@ -408,7 +408,7 @@ export const FilterStudioTab: React.FC = () => {
                                              onClick={() => moveFilterInPipeline(f.id, 'down')}
                                              disabled={index === imageFilters.length - 1}
                                              type="button"
-                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-white disabled:opacity-30 disabled:pointer-events-none transition touch-manipulation"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-slate-400 dark:text-[#8A8A8A] hover:text-slate-800 dark:hover:text-white disabled:opacity-30 disabled:pointer-events-none transition touch-manipulation"
                                              title="Move Up"
                                           >
                                              <ChevronUp size={13} />
@@ -417,7 +417,7 @@ export const FilterStudioTab: React.FC = () => {
                                              onClick={() => moveFilterInPipeline(f.id, 'up')}
                                              disabled={index === 0}
                                              type="button"
-                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-white disabled:opacity-30 disabled:pointer-events-none transition touch-manipulation"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-slate-400 dark:text-[#8A8A8A] hover:text-slate-800 dark:hover:text-white disabled:opacity-30 disabled:pointer-events-none transition touch-manipulation"
                                              title="Move Down"
                                           >
                                              <ChevronDown size={13} />
@@ -425,7 +425,7 @@ export const FilterStudioTab: React.FC = () => {
                                           <button
                                              onClick={() => duplicateFilterInPipeline(f.id)}
                                              type="button"
-                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-white transition touch-manipulation"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-slate-400 dark:text-[#8A8A8A] hover:text-slate-800 dark:hover:text-white transition touch-manipulation"
                                              title="Duplicate"
                                           >
                                              <Copy size={12} />
@@ -433,7 +433,7 @@ export const FilterStudioTab: React.FC = () => {
                                           <button
                                              onClick={() => removeFilterFromPipeline(f.id)}
                                              type="button"
-                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-[#8A8A8A] hover:text-red-400 font-semibold transition touch-manipulation"
+                                             className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center text-slate-400 dark:text-[#8A8A8A] hover:text-red-600 dark:hover:text-red-400 font-semibold transition touch-manipulation"
                                              title="Delete Filter"
                                           >
                                              <X size={13} />
@@ -448,9 +448,9 @@ export const FilterStudioTab: React.FC = () => {
                                           {/* Adjustments: Brightness, Contrast, Saturation, Vibrance, Exposure, HueRotation */}
                                           {['brightness', 'contrast', 'saturation', 'vibrance', 'exposure', 'hueRotation', 'temperature', 'tint'].includes(f.type) && (
                                              <div className="space-y-1.5 font-sans">
-                                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0]">
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0]">
                                                    <span>Intensity</span>
-                                                   <span className="font-mono text-white text-[11px] font-semibold">
+                                                   <span className="font-mono text-slate-900 dark:text-white text-[11px] font-semibold">
                                                       {f.params.value || 0}
                                                    </span>
                                                 </div>
@@ -461,7 +461,7 @@ export const FilterStudioTab: React.FC = () => {
                                                    step="0.01"
                                                    value={f.params.value || 0}
                                                    onChange={(e) => updateFilterParam(f.id, 'value', Number(e.target.value))}
-                                                   className="w-full accent-blue-500 h-1 cursor-pointer bg-[#2A2A2A]"
+                                                   className="w-full accent-blue-500 h-1 cursor-pointer bg-slate-200 dark:bg-[#2A2A2A]"
                                                 />
                                              </div>
                                           )}
@@ -471,9 +471,9 @@ export const FilterStudioTab: React.FC = () => {
                                              <div className="space-y-2 font-sans">
                                                 {/* Red */}
                                                 <div className="space-y-1">
-                                                   <div className="flex justify-between items-center text-[9px] text-[#A0A0A0]">
+                                                   <div className="flex justify-between items-center text-[9px] text-slate-500 dark:text-[#A0A0A0]">
                                                       <span className="text-red-400 font-sans">Red Channel</span>
-                                                      <span className="font-mono text-white text-[10px]">
+                                                      <span className="font-mono text-slate-900 dark:text-white text-[10px]">
                                                          {f.params.red !== undefined ? f.params.red : 1.0}
                                                       </span>
                                                    </div>
@@ -486,9 +486,9 @@ export const FilterStudioTab: React.FC = () => {
                                                 </div>
                                                 {/* Green */}
                                                 <div className="space-y-1">
-                                                   <div className="flex justify-between items-center text-[9px] text-[#A0A0A0]">
+                                                   <div className="flex justify-between items-center text-[9px] text-slate-500 dark:text-[#A0A0A0]">
                                                       <span className="text-emerald-400 font-sans">Green Channel</span>
-                                                      <span className="font-mono text-white text-[10px]">
+                                                      <span className="font-mono text-slate-900 dark:text-white text-[10px]">
                                                          {f.params.green !== undefined ? f.params.green : 1.0}
                                                       </span>
                                                    </div>
@@ -501,9 +501,9 @@ export const FilterStudioTab: React.FC = () => {
                                                 </div>
                                                 {/* Blue */}
                                                 <div className="space-y-1">
-                                                   <div className="flex justify-between items-center text-[9px] text-[#A0A0A0]">
+                                                   <div className="flex justify-between items-center text-[9px] text-slate-500 dark:text-[#A0A0A0]">
                                                       <span className="text-[#3b82f6] font-sans">Blue Channel</span>
-                                                      <span className="font-mono text-white text-[10px]">
+                                                      <span className="font-mono text-slate-900 dark:text-white text-[10px]">
                                                          {f.params.blue !== undefined ? f.params.blue : 1.0}
                                                       </span>
                                                    </div>
@@ -520,9 +520,9 @@ export const FilterStudioTab: React.FC = () => {
                                           {/* Noise & Grain */}
                                           {f.type === 'noise' && (
                                              <div className="space-y-1.5 font-sans">
-                                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0]">
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0]">
                                                    <span>Grain Density</span>
-                                                   <span className="font-mono text-white">
+                                                   <span className="font-mono text-slate-900 dark:text-white">
                                                       {f.params.value}
                                                    </span>
                                                 </div>
@@ -538,9 +538,9 @@ export const FilterStudioTab: React.FC = () => {
                                           {/* Pixelate */}
                                           {f.type === 'pixelate' && (
                                              <div className="space-y-1.5 font-sans">
-                                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0]">
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0]">
                                                    <span>Block Size</span>
-                                                   <span className="font-mono text-white">
+                                                   <span className="font-mono text-slate-900 dark:text-white">
                                                       {f.params.value} px
                                                    </span>
                                                 </div>
@@ -556,9 +556,9 @@ export const FilterStudioTab: React.FC = () => {
                                           {/* Blur */}
                                           {f.type === 'blur' && (
                                              <div className="space-y-1.5 font-sans">
-                                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0]">
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0]">
                                                    <span>Blur Radius</span>
-                                                   <span className="font-mono text-white font-sans">
+                                                   <span className="font-mono text-slate-900 dark:text-white font-sans">
                                                       {(f.params.value || 0).toFixed(2)}
                                                    </span>
                                                 </div>
@@ -574,9 +574,9 @@ export const FilterStudioTab: React.FC = () => {
                                           {/* Chromatic Color Key */}
                                           {f.type === 'removeColor' && (
                                              <div className="space-y-2 font-sans">
-                                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0]">
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0]">
                                                    <span>Tolerance</span>
-                                                   <span className="font-mono text-white">
+                                                   <span className="font-mono text-slate-900 dark:text-white">
                                                       {f.params.distance !== undefined ? f.params.distance : 0.15}
                                                    </span>
                                                 </div>
@@ -586,7 +586,7 @@ export const FilterStudioTab: React.FC = () => {
                                                    onChange={(e) => updateFilterParam(f.id, 'distance', Number(e.target.value))}
                                                    className="w-full accent-blue-500 h-1"
                                                 />
-                                                <div className="flex items-center justify-between text-[10px] text-[#A0A0A0] font-sans">
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-[#A0A0A0] font-sans">
                                                    <span>Key Color</span>
                                                    <ColorPickerTrigger
                                                       color={f.params.color || '#ffffff'}
@@ -605,7 +605,7 @@ export const FilterStudioTab: React.FC = () => {
                                                    <select
                                                       value={f.params.mode || 'multiply'}
                                                       onChange={(e) => updateFilterParam(f.id, 'mode', e.target.value)}
-                                                      className="bg-[#1A1A1A] border border-[#2D2D2D] rounded px-1.5 py-0.5 outline-none text-xs hover:border-[#444] text-white font-sans"
+                                                      className="bg-slate-100 dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded px-1.5 py-0.5 outline-none text-xs text-slate-800 dark:text-white font-sans"
                                                    >
                                                       <option value="multiply">Multiply</option>
                                                       <option value="screen">Screen</option>
@@ -615,9 +615,9 @@ export const FilterStudioTab: React.FC = () => {
                                                    </select>
                                                 </div>
                                                 <div className="space-y-1">
-                                                   <div className="flex justify-between items-center text-[9px] text-[#A0A0A0]">
+                                                   <div className="flex justify-between items-center text-[9px] text-slate-500 dark:text-[#A0A0A0]">
                                                       <span className="font-sans">Blend Opacity</span>
-                                                      <span className="font-mono text-white">
+                                                      <span className="font-mono text-slate-900 dark:text-white">
                                                          {f.params.alpha !== undefined ? f.params.alpha : 0.4}
                                                       </span>
                                                    </div>
@@ -628,7 +628,7 @@ export const FilterStudioTab: React.FC = () => {
                                                       className="w-full accent-blue-500 h-1"
                                                    />
                                                 </div>
-                                                <div className="flex items-center justify-between text-[10px] text-[#A0A0A0] font-sans">
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-[#A0A0A0] font-sans">
                                                    <span>Color</span>
                                                    <ColorPickerTrigger
                                                       color={f.params.color || '#3b82f6'}
@@ -641,7 +641,7 @@ export const FilterStudioTab: React.FC = () => {
                                           {/* WebGL Intensity */}
                                           {['cyberpunkDuotone', 'halationBloom', 'vhsGlitch', 'frostedGlass', 'vaporwaveHalftone', 'thermalHeatmap', 'neonSobelEdge', 'liquidRipple', 'asciiMatrix', 'mandalaMirror', 'godRays', 'anamorphicFlare'].includes(f.type) && (
                                              <div className="space-y-1.5 font-sans">
-                                                <div className="flex justify-between items-center text-[10px] text-[#A0A0A0]">
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0]">
                                                    <span>Effect Intensity</span>
                                                    <span className="font-mono text-purple-400 font-semibold">
                                                       {(f.params.value !== undefined ? f.params.value : 1.0).toFixed(2)}
@@ -651,14 +651,14 @@ export const FilterStudioTab: React.FC = () => {
                                                    type="range" min="0" max="2" step="0.05"
                                                    value={f.params.value !== undefined ? f.params.value : 1.0}
                                                    onChange={(e) => updateFilterParam(f.id, 'value', Number(e.target.value))}
-                                                   className="w-full accent-purple-500 h-1 cursor-pointer bg-[#2A2A2A]"
+                                                   className="w-full accent-purple-500 h-1 cursor-pointer bg-slate-200 dark:bg-[#2A2A2A]"
                                                 />
                                              </div>
                                           )}
 
                                           {/* Neon Edge Custom Color Picker */}
                                           {f.type === 'neonSobelEdge' && (
-                                             <div className="flex items-center justify-between text-[10px] text-[#A0A0A0] font-sans">
+                                             <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-[#A0A0A0] font-sans">
                                                 <span>Neon Glow Color</span>
                                                 <ColorPickerTrigger
                                                    color={f.params.color || '#00ffcc'}
@@ -670,12 +670,12 @@ export const FilterStudioTab: React.FC = () => {
 
                                           {/* Grayscale Modes */}
                                           {f.type === 'grayscale' && (
-                                             <div className="flex items-center justify-between text-[11px] font-sans">
+                                             <div className="flex items-center justify-between text-[11px] font-sans text-slate-500 dark:text-[#A0A0A0]">
                                                 <span className="text-[#A0A0A0]">Formula Mode</span>
                                                 <select
                                                    value={f.params.mode || 'luminosity'}
                                                    onChange={(e) => updateFilterParam(f.id, 'mode', e.target.value)}
-                                                   className="bg-[#1A1A1A] border border-[#2D2D2D] rounded px-1.5 py-0.5 outline-none text-xs text-white font-sans"
+                                                   className="bg-slate-100 dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded px-1.5 py-0.5 outline-none text-xs text-slate-800 dark:text-white font-sans"
                                                 >
                                                    <option value="average">Average</option>
                                                    <option value="luminosity">Luminosity</option>
@@ -704,31 +704,31 @@ export const FilterStudioTab: React.FC = () => {
 
                   {/* CUSTOM SAVED PRESETS LOGIC */}
                   <div className="space-y-2 pb-6">
-                     <div className="text-[10px] uppercase font-bold tracking-wider text-[#8A8A8A] flex items-center gap-1.5 font-sans">
+                     <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#8A8A8A] flex items-center gap-1.5 font-sans">
                         <Bookmark size={11} className="text-emerald-400" /> Custom Saved Presets
                      </div>
 
                      {customPresets.length === 0 ? (
-                        <div className="py-6 bg-black/15 rounded-lg border border-dashed border-[#2C2C2C] text-center p-3 text-[11px] text-[#8A8A8A] font-sans">
+                        <div className="py-6 bg-slate-50 dark:bg-black/15 rounded-lg border border-dashed border-slate-200 dark:border-[#2C2C2C] text-center p-3 text-[11px] text-slate-500 dark:text-[#8A8A8A] font-sans">
                            No saved custom presets yet. Build a stack and save it!
                         </div>
                      ) : (
                         <div className="space-y-1.5">
                            {customPresets.map((p, pIdx) => (
-                              <div key={p.name + pIdx} className="flex items-center justify-between p-2 bg-[#1A1A1A] border border-[#2C2C2C] rounded-md text-[11px] font-sans">
-                                 <span className="font-semibold truncate text-[#C0C0C0] max-w-[150px]" title={p.name}>{p.name}</span>
+                              <div key={p.name + pIdx} className="flex items-center justify-between p-2 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2C2C2C] rounded-md text-[11px] font-sans shadow-sm">
+                                 <span className="font-semibold truncate text-slate-800 dark:text-[#C0C0C0] max-w-[150px]" title={p.name}>{p.name}</span>
                                  <div className="flex gap-1.5 font-sans">
                                     <button
                                        onClick={() => loadSavedPreset(p)}
                                        type="button"
-                                       className="px-2 py-0.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 text-blue-200 hover:text-white rounded text-[10px] font-semibold transition"
+                                       className="px-2 py-0.5 bg-blue-50 dark:bg-blue-600/10 hover:bg-blue-600 text-blue-600 hover:text-white dark:text-blue-200 rounded text-[10px] font-semibold transition border border-blue-200 dark:border-blue-500/20"
                                     >
                                        Apply
                                     </button>
                                     <button
                                        onClick={() => deleteCustomPreset(p.name)}
                                        type="button"
-                                       className="px-2 py-0.5 bg-red-950/20 hover:bg-red-900 border border-red-900/20 text-red-400 hover:text-white rounded text-[10px] font-semibold transition"
+                                       className="px-2 py-0.5 bg-red-50 dark:bg-red-950/20 hover:bg-red-600 text-red-600 hover:text-white dark:text-red-400 rounded text-[10px] font-semibold transition border border-red-200 dark:border-red-900/20"
                                     >
                                        Delete
                                     </button>

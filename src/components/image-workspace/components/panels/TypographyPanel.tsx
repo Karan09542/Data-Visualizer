@@ -96,7 +96,7 @@ export const TypographyPanel: React.FC = () => {
                   <label className="text-[9px] text-[#8A8A8A] font-semibold uppercase tracking-wider block">Size</label>
                   <input
                      type="number"
-                     className="w-full h-7 bg-[#121212] border border-[#333] rounded text-xs px-2 outline-none text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all font-mono"
+                     className="w-full h-7 bg-[#121212] border border-[#333] rounded text-xs px-2 outline-none text-slate-900 dark:text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all font-mono"
                      value={textProps.fontSize}
                      onChange={(e) => {
                         const val = Math.max(1, Number(e.target.value));
@@ -107,7 +107,7 @@ export const TypographyPanel: React.FC = () => {
                <div className="space-y-1">
                   <label className="text-[9px] text-[#8A8A8A] font-semibold uppercase tracking-wider block">Weight</label>
                   <select
-                     className="w-full h-7 bg-[#121212] border border-[#333] rounded text-xs px-1.5 outline-none text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all cursor-pointer"
+                     className="w-full h-7 bg-[#121212] border border-[#333] rounded text-xs px-1.5 outline-none text-slate-900 dark:text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all cursor-pointer"
                      value={textProps.fontWeight}
                      onChange={(e) => changeTextProp("fontWeight", e.target.value, "Change Font Weight")}
                   >
@@ -130,7 +130,7 @@ export const TypographyPanel: React.FC = () => {
                   <div className="flex-1 flex bg-[#121212] border border-[#333] rounded p-0.5 justify-between gap-0.5 shadow-inner">
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'left' ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'left' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("textAlign", 'left', "Align Left")}
                         title="Align Left"
                      >
@@ -138,7 +138,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'center' ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'center' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("textAlign", 'center', "Align Center")}
                         title="Align Center"
                      >
@@ -146,7 +146,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'right' ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'right' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("textAlign", 'right', "Align Right")}
                         title="Align Right"
                      >
@@ -154,7 +154,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'justify' ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.textAlign === 'justify' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("textAlign", 'justify', "Justify")}
                         title="Justify"
                      >
@@ -168,7 +168,7 @@ export const TypographyPanel: React.FC = () => {
                   <div className="flex-1 flex bg-[#121212] border border-[#333] rounded p-0.5 justify-between gap-0.5 shadow-inner">
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.fontWeight === 'bold' || textProps.fontWeight === '700' || textProps.fontWeight === '900' ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.fontWeight === 'bold' || textProps.fontWeight === '700' || textProps.fontWeight === '900' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("fontWeight", (textProps.fontWeight === 'bold' || textProps.fontWeight === '700' || textProps.fontWeight === '900') ? 'normal' : 'bold', "Toggle Bold")}
                         title="Bold"
                      >
@@ -176,7 +176,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.fontStyle === 'italic' ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.fontStyle === 'italic' ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("fontStyle", textProps.fontStyle === 'italic' ? 'normal' : 'italic', "Toggle Italic")}
                         title="Italic"
                      >
@@ -184,7 +184,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.underline ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all active:scale-95 ${textProps.underline ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("underline", !textProps.underline, "Toggle Underline")}
                         title="Underline"
                      >
@@ -192,7 +192,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all font-bold active:scale-95 text-[10px] ${textProps.overline ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all font-bold active:scale-95 text-[10px] ${textProps.overline ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("overline", !textProps.overline, "Toggle Overline")}
                         title="Overline"
                      >
@@ -200,7 +200,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all line-through active:scale-95 text-[10px] ${textProps.linethrough ? 'bg-blue-600 text-white shadow-sm font-semibold' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 flex items-center justify-center rounded-sm transition-all line-through active:scale-95 text-[10px] ${textProps.linethrough ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm font-semibold' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("linethrough", !textProps.linethrough, "Toggle Strikethrough")}
                         title="Strikethrough"
                      >
@@ -219,7 +219,7 @@ export const TypographyPanel: React.FC = () => {
                   <div className="flex-1 flex bg-[#121212] border border-[#333] rounded p-0.5 gap-0.5 shadow-inner">
                      <button
                         type="button"
-                        className={`flex-1 h-6 text-[9px] font-bold rounded-sm transition-all active:scale-95 ${textProps.angle === 0 ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 text-[9px] font-bold rounded-sm transition-all active:scale-95 ${textProps.angle === 0 ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("angle", 0, "Set Horizontal")}
                         title="Horizontal (0°)"
                      >
@@ -227,7 +227,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 text-[9px] font-bold rounded-sm transition-all active:scale-95 ${textProps.angle === 90 ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 text-[9px] font-bold rounded-sm transition-all active:scale-95 ${textProps.angle === 90 ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("angle", 90, "Set Vertical Clockwise")}
                         title="Vertical CW (90°)"
                      >
@@ -235,7 +235,7 @@ export const TypographyPanel: React.FC = () => {
                      </button>
                      <button
                         type="button"
-                        className={`flex-1 h-6 text-[9px] font-bold rounded-sm transition-all active:scale-95 ${textProps.angle === 270 ? 'bg-blue-600 text-white shadow-sm' : 'text-[#8A8A8A] hover:text-white hover:bg-[#2A2A2A]'}`}
+                        className={`flex-1 h-6 text-[9px] font-bold rounded-sm transition-all active:scale-95 ${textProps.angle === 270 ? 'bg-blue-600 text-slate-900 dark:text-white shadow-sm' : 'text-[#8A8A8A] hover:text-slate-900 dark:text-white hover:bg-[#2A2A2A]'}`}
                         onClick={() => changeTextProp("angle", 270, "Set Vertical Counter-Clockwise")}
                         title="Vertical CCW (270°)"
                      >
@@ -248,7 +248,7 @@ export const TypographyPanel: React.FC = () => {
                <div className="space-y-1">
                   <div className="flex justify-between items-center text-[9px] text-[#A0A0A0]">
                      <span className="flex items-center gap-1 font-semibold"><RotateCw size={10} /> Angle</span>
-                     <span className="font-mono text-white bg-[#121212] px-1.5 py-[1px] rounded border border-[#333]">{Math.round(textProps.angle || 0)}°</span>
+                     <span className="font-mono text-slate-900 dark:text-white bg-[#121212] px-1.5 py-[1px] rounded border border-[#333]">{Math.round(textProps.angle || 0)}°</span>
                   </div>
                   <input
                      type="range"
@@ -268,7 +268,7 @@ export const TypographyPanel: React.FC = () => {
                <div className="space-y-1">
                   <div className="flex justify-between items-center text-[9px] text-[#A0A0A0]">
                      <span className="font-semibold">Letter Spacing</span>
-                     <span className="font-mono text-white bg-[#121212] px-1.5 py-[1px] rounded border border-[#333]">{textProps.charSpacing}</span>
+                     <span className="font-mono text-slate-900 dark:text-white bg-[#121212] px-1.5 py-[1px] rounded border border-[#333]">{textProps.charSpacing}</span>
                   </div>
                   <input
                      type="range"

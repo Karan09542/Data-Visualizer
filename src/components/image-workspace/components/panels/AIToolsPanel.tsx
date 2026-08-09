@@ -98,12 +98,12 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
         onClick={isActive ? undefined : () => onClick(selectedModel)}
         className={`w-full p-3 border rounded-xl text-left transition duration-150 group flex items-center gap-3 relative z-[1] ${
           isActive
-            ? 'border-white/10 bg-[#1A1A1A] cursor-wait'
+            ? 'border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#1A1A1A] cursor-wait'
             : isDone
             ? 'border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10'
             : isFailed
             ? 'border-red-500/30 bg-red-500/5'
-            : 'border-[#2D2D2D] bg-[#1A1A1A] hover:bg-[#222] hover:border-white/20 active:scale-[0.98]'
+            : 'border-slate-200 dark:border-[#2D2D2D] bg-white dark:bg-[#1A1A1A] hover:bg-slate-50 dark:hover:bg-[#222] hover:border-slate-300 dark:hover:border-white/20 active:scale-[0.98]'
         }`}
       >
         {isActive && (
@@ -132,7 +132,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
 
         <div className="flex-1 min-w-0 relative z-[1]">
           <div className={`font-semibold text-sm transition-colors ${
-            isActive ? 'text-white' : isDone ? 'text-emerald-300' : isFailed ? 'text-red-300' : 'text-white group-hover:text-blue-300'
+            isActive ? 'text-slate-900 dark:text-white' : isDone ? 'text-emerald-300' : isFailed ? 'text-red-300' : 'text-slate-900 dark:text-white group-hover:text-blue-300'
           }`}>
             {config.label}
           </div>
@@ -149,7 +149,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
                 )}
               </>
             ) : (
-              <span className="text-[#8A8A8A]">{config.desc}</span>
+              <span className="text-slate-500 dark:text-[#8A8A8A]">{config.desc}</span>
             )}
             
             {models.length > 1 && !isActive && (
@@ -160,7 +160,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
               >
                 <div 
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className={`flex items-center gap-1.5 bg-black/40 hover:bg-black/60 border ${isDropdownOpen ? 'border-white/30 bg-black/60' : 'border-white/10 hover:border-white/20'} rounded-md px-2 py-0.5 cursor-pointer text-white/60 hover:text-white transition-all group/pill`}
+                  className={`flex items-center gap-1.5 bg-slate-100 dark:bg-black/40 hover:bg-slate-200 dark:hover:bg-black/60 border ${isDropdownOpen ? 'border-slate-300 dark:border-white/30 bg-slate-200 dark:bg-black/60' : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'} rounded-md px-2 py-0.5 cursor-pointer text-slate-600 dark:text-white/60 hover:text-slate-900 dark:hover:text-white transition-all group/pill`}
                   title="Click to select model"
                 >
                   <Settings2 size={10} className={`opacity-50 group-hover/pill:opacity-100 transition-all ${isDropdownOpen ? 'opacity-100 rotate-90' : ''}`} />
@@ -171,9 +171,9 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
 
                 {isDropdownOpen && (
                   <div className="absolute right-0 top-full pt-2 z-[100]">
-                    <div className="w-56 bg-[#1A1A1A] border border-[#333] rounded-lg shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col overflow-hidden">
-                      <div className="px-3 py-2 border-b border-[#2D2D2D] bg-[#111] rounded-t-lg">
-                        <div className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Select AI Model</div>
+                    <div className="w-56 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col overflow-hidden">
+                      <div className="px-3 py-2 border-b border-slate-200 dark:border-[#2D2D2D] bg-slate-50 dark:bg-[#111] rounded-t-lg">
+                        <div className="text-[9px] font-bold text-slate-500 dark:text-white/50 uppercase tracking-widest">Select AI Model</div>
                       </div>
                       <div className="max-h-[220px] overflow-y-auto">
                         {models.map(m => (
@@ -183,12 +183,12 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
                               setSelectedModel(m.id);
                               setIsDropdownOpen(false);
                             }}
-                            className={`px-3 py-2.5 cursor-pointer transition-colors border-b border-[#222] last:border-0 ${m.id === selectedModel ? 'bg-blue-500/10' : 'hover:bg-[#252525]'}`}
+                            className={`px-3 py-2.5 cursor-pointer transition-colors border-b border-slate-100 dark:border-[#222] last:border-0 ${m.id === selectedModel ? 'bg-blue-500/10' : 'hover:bg-slate-100 dark:hover:bg-[#252525]'}`}
                           >
-                            <div className={`text-[10px] font-bold uppercase tracking-wider ${m.id === selectedModel ? 'text-blue-400' : 'text-white/90'}`}>
+                            <div className={`text-[10px] font-bold uppercase tracking-wider ${m.id === selectedModel ? 'text-blue-400' : 'text-slate-800 dark:text-white/90'}`}>
                               {m.id}
                             </div>
-                            <div className={`text-[9px] mt-1 leading-snug ${m.id === selectedModel ? 'text-blue-300/70' : 'text-[#888]'}`}>
+                            <div className={`text-[9px] mt-1 leading-snug ${m.id === selectedModel ? 'text-blue-600 dark:text-blue-300/70' : 'text-slate-500 dark:text-[#888]'}`}>
                               {m.name}
                             </div>
                           </div>
@@ -202,7 +202,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
           </div>
 
           {isDownloading && progress > 0 && (
-            <div className="mt-1.5 h-1 bg-white/5 rounded-full overflow-hidden">
+            <div className="mt-1.5 h-1 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-300 ease-out"
                 style={{
@@ -219,7 +219,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
           <div
             role="button"
             onClick={(e) => { e.stopPropagation(); onCancel(); }}
-            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-white/5 hover:bg-red-500/20 text-[#666] hover:text-red-400 transition-colors relative z-[1] cursor-pointer"
+            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-slate-100 dark:bg-white/5 hover:bg-red-500/20 text-[#666] hover:text-red-400 transition-colors relative z-[1] cursor-pointer"
             title="Cancel"
           >
             <X size={12} />
@@ -228,6 +228,21 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
       </button>
     </div>
   );
+};
+
+const globalTaskJobsStore = {
+  taskJobs: {} as Record<string, TaskJobInfo>,
+  activeJobs: {} as Record<string, { task: string; unsubscribe: () => void }>,
+  listeners: new Set<(jobs: Record<string, TaskJobInfo>) => void>(),
+  setTaskJobs(updater: (prev: Record<string, TaskJobInfo>) => Record<string, TaskJobInfo>) {
+    this.taskJobs = updater(this.taskJobs);
+    this.listeners.forEach(l => l(this.taskJobs));
+  },
+  subscribe(listener: (jobs: Record<string, TaskJobInfo>) => void) {
+    this.listeners.add(listener);
+    listener(this.taskJobs);
+    return () => this.listeners.delete(listener);
+  }
 };
 
 export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, executeCommand }) => {
@@ -239,36 +254,43 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   
   const [segModel, setSegModel] = useState<string>('ormbg');
 
-  const [taskJobs, setTaskJobs] = useState<Record<string, TaskJobInfo>>({});
-  const activeJobsRef = useRef<Record<string, { task: string; unsubscribe: () => void }>>({});
+  const [taskJobs, setTaskJobsState] = useState<Record<string, TaskJobInfo>>(globalTaskJobsStore.taskJobs);
+
+  useEffect(() => {
+    return globalTaskJobsStore.subscribe(setTaskJobsState);
+  }, []);
 
   const trackJob = useCallback((jobId: string, task: string, initialState: AIProgressState = 'queued') => {
-    setTaskJobs(prev => ({
+    globalTaskJobsStore.setTaskJobs(prev => ({
       ...prev,
       [task]: { jobId, state: initialState, progress: 0 }
     }));
 
     const unsub = aiEventBus.subscribe(jobId, (event) => {
-      setTaskJobs(prev => ({
+      globalTaskJobsStore.setTaskJobs(prev => ({
         ...prev,
         [task]: { jobId, state: event.state, progress: event.progress ?? prev[task]?.progress ?? 0 }
       }));
 
       if (['completed', 'failed', 'cancelled'].includes(event.state)) {
         setTimeout(() => {
-          setTaskJobs(prev => {
+          globalTaskJobsStore.setTaskJobs(prev => {
             const next = { ...prev };
             if (next[task]?.jobId === jobId) {
               delete next[task];
             }
             return next;
           });
-          delete activeJobsRef.current[jobId];
+          const activeJob = globalTaskJobsStore.activeJobs[jobId];
+          if (activeJob) {
+            activeJob.unsubscribe();
+            delete globalTaskJobsStore.activeJobs[jobId];
+          }
         }, 2500);
       }
     });
 
-    activeJobsRef.current[jobId] = { task, unsubscribe: unsub };
+    globalTaskJobsStore.activeJobs[jobId] = { task, unsubscribe: unsub };
   }, []);
 
   useEffect(() => {
@@ -280,9 +302,6 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       }
     });
 
-    return () => {
-      Object.values(activeJobsRef.current).forEach(({ unsubscribe }) => unsubscribe());
-    };
   }, [trackJob]);
 
   const handleTaskClick = (task: AITask, modelId?: string) => {
@@ -298,17 +317,10 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     const config = TASK_CONFIG[task];
     if (config?.commandClass) {
       const cmd = new config.commandClass(activeObj, modelId);
-      executeCommand(cmd);
-
       if (cmd.lastJobId) {
         trackJob(cmd.lastJobId, task);
-      } else {
-        setTimeout(() => {
-          if (cmd.lastJobId) {
-            trackJob(cmd.lastJobId, task);
-          }
-        }, 0);
       }
+      executeCommand(cmd);
     } else {
       alert(`Task ${task} is not yet implemented or is a placeholder.`);
     }
@@ -328,13 +340,10 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       return;
     }
     const cmd = new SegmentationCommand(activeObj as any, segModel, effectId, options);
+    if (cmd.lastJobId) {
+      trackJob(cmd.lastJobId, 'background-removal', 'preparing-image');
+    }
     executeCommand(cmd);
-    
-    setTimeout(() => {
-      if (cmd.lastJobId) {
-        trackJob(cmd.lastJobId, 'background-removal');
-      }
-    }, 0);
   };
 
   const handleFaceUtilityExecute = (effectId: string, options?: any) => {
@@ -343,13 +352,10 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       return;
     }
     const cmd = new FaceUtilityCommand(activeObj as any, options.modelId, effectId, options);
+    if (cmd.lastJobId) {
+      trackJob(cmd.lastJobId, 'office-utilities', 'preparing-image');
+    }
     executeCommand(cmd);
-    
-    setTimeout(() => {
-      if (cmd.lastJobId) {
-        trackJob(cmd.lastJobId, 'office-utilities');
-      }
-    }, 0);
   };
 
   const TABS = [
@@ -359,18 +365,18 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   ];
 
   return (
-    <div className="p-4 space-y-6 text-[#C0C0C0] font-sans h-full flex flex-col">
+    <div className="p-4 pb-24 md:pb-6 space-y-6 text-slate-700 dark:text-[#C0C0C0] font-sans h-full flex flex-col overflow-y-auto">
       <div className="space-y-3">
         {/* Tabs */}
-        <div className="flex bg-[#1C1C1C] rounded-lg p-1 border border-[#2D2D2D] mb-4">
+        <div className="flex bg-slate-100 dark:bg-[#1C1C1C] rounded-lg p-1 border border-slate-200 dark:border-[#2D2D2D] mb-4">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-md transition-all ${
                 activeTab === tab.id 
-                  ? 'bg-[#2D2D2D] text-white shadow-sm' 
-                  : 'text-[#8A8A8A] hover:text-[#C0C0C0] hover:bg-[#252525]'
+                  ? 'bg-white dark:bg-[#2D2D2D] text-slate-900 dark:text-white shadow-sm' 
+                  : 'text-slate-500 dark:text-[#8A8A8A] hover:text-slate-800 dark:hover:text-[#C0C0C0] hover:bg-slate-200/50 dark:hover:bg-[#252525]'
               }`}
             >
               {tab.icon}
@@ -380,12 +386,12 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
         </div>
         
         {selectionType !== 'image' && (
-          <div className="bg-[#1C1C1C] border border-[#2D2D2D] p-3 rounded-xl text-[11px] text-[#8A8A8A] text-center mb-4">
+          <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 text-center mb-4">
             Select an image layer to use AI tools.
           </div>
         )}
 
-        <div className={`grid grid-cols-1 gap-2 ${selectionType !== 'image' ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="grid grid-cols-1 gap-2">
           {activeTab === 'segmentation' && tasks.includes('background-removal') && (
             <SegmentationPanel
               isActive={!!taskJobs['background-removal'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['background-removal'].state)}
@@ -411,18 +417,28 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
           {activeTab === 'office-utilities' && (
             <OfficeUtilitiesPanel 
               onExecute={handleFaceUtilityExecute}
-              onPrintSheet={() => setShowPrintModal(true)}
+              onPrintSheet={() => {
+                if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {
+                  alert("Please select an image to create a print sheet.");
+                  return;
+                }
+                setShowPrintModal(true);
+              }}
+              isActive={!!taskJobs['office-utilities'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['office-utilities'].state)}
+              jobState={taskJobs['office-utilities']?.state}
+              progress={taskJobs['office-utilities']?.progress}
+              onCancel={() => handleCancel('office-utilities')}
               disabled={!!taskJobs['office-utilities'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['office-utilities'].state)}
             />
           )}
         </div>
       </div>
 
-      <div className="flex-1" />
+      <div className="flex-1 min-h-[16px]" />
 
       <button 
         onClick={() => setShowManager(true)}
-        className="w-full flex items-center justify-center gap-2 p-2.5 bg-[#1C1C1C] hover:bg-[#252525] border border-[#2D2D2D] hover:border-[#444] rounded-xl text-white text-[11px] font-semibold transition-all active:scale-[0.98]"
+        className="w-full flex items-center justify-center gap-2 p-2.5 bg-white dark:bg-[#1C1C1C] hover:bg-slate-100 dark:hover:bg-[#252525] border border-slate-200 dark:border-[#2D2D2D] hover:border-slate-300 dark:hover:border-[#444] rounded-xl text-slate-900 dark:text-white text-[11px] font-semibold transition-all active:scale-[0.98] shrink-0 mb-6 md:mb-0 shadow-sm"
       >
         <Settings2 size={14} /> Manage AI Models
       </button>

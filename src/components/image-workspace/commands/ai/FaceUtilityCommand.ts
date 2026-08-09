@@ -197,9 +197,11 @@ export class FaceUtilityCommand implements Command {
         }, 5);
         
         let cancelUnsub: (() => void) | undefined;
+        let isCancelling = false;
         if (this.lastJobId) {
           cancelUnsub = aiEventBus.subscribe(this.lastJobId, (evt) => {
-             if (evt.state === 'cancelled') {
+             if (evt.state === 'cancelled' && !isCancelling) {
+                isCancelling = true;
                 ai.cancel(jobId);
              }
           });
@@ -327,10 +329,16 @@ export class FaceUtilityCommand implements Command {
         
         this.afterSrc = canvasEl.toDataURL();
         this.afterData = { ...this.beforeData, _faceOriginalSrc: originalSrc };
-        this.applySrc(canvas, this.afterSrc, updateLayers, this.afterData);
-        
-        if (this.lastJobId) {
-          aiEventBus.emit(this.lastJobId, { state: 'completed', progress: 100 });
+        try {
+          await this.applySrc(canvas, this.afterSrc, updateLayers, this.afterData);
+          if (this.lastJobId) {
+            aiEventBus.emit(this.lastJobId, { state: 'completed', progress: 100 });
+          }
+        } catch (applyErr) {
+          console.error('[FaceUtilityCommand] Error applying cropped image:', applyErr);
+          if (this.lastJobId) {
+            aiEventBus.emit(this.lastJobId, { state: 'failed', progress: 0 });
+          }
         }
       }
       

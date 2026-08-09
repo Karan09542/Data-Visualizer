@@ -125,10 +125,10 @@ export const BrushPreview = ({ type, color, size, opacity, hardness, flow }: any
   }, [type, color, size, opacity, hardness, flow]);
 
   return (
-    <div className="flex flex-col items-center bg-[#151515] p-3 rounded-lg border border-[#2C2C2C] space-y-1.5 w-full">
-      <div className="w-full h-16 bg-[#1a1a1a] rounded border border-[#2a2a2a] flex items-center justify-center overflow-hidden relative">
+    <div className="flex flex-col items-center bg-slate-50 dark:bg-[#151515] p-3 rounded-xl border border-slate-200 dark:border-[#2C2C2C] space-y-1.5 w-full shadow-sm">
+      <div className="w-full h-16 bg-white dark:bg-[#1a1a1a] rounded-lg border border-slate-200 dark:border-[#2a2a2a] flex items-center justify-center overflow-hidden relative shadow-inner">
         <canvas ref={canvasRef} width={120} height={60} className="block" />
-        <span className="absolute bottom-1 right-2 text-[9px] text-[#555] font-semibold">{size}px • {opacity}%</span>
+        <span className="absolute bottom-1 right-2 text-[9px] text-slate-400 dark:text-[#555] font-mono font-semibold">{size}px • {opacity}%</span>
       </div>
     </div>
   );

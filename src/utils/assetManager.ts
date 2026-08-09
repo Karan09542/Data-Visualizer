@@ -273,6 +273,35 @@ export async function deleteUnusedAssets(parsedData: any, historyCodes: string[]
       console.warn("Failed to check workspace objects for asset references", e);
     }
 
+    // Check history codes for references
+    for (const codeStr of historyCodes) {
+      try {
+        if (!codeStr) continue;
+        const histData = JSON.parse(codeStr);
+        const ids = collectReferencedAssetIds(histData);
+        ids.forEach(id => referencedIds.add(id));
+      } catch (e) {
+        // ignore invalid json
+      }
+    }
+
+    // Check all saved documents for references
+    try {
+      const docs = await db.documents.toArray();
+      for (const doc of docs) {
+        try {
+          if (!doc.code) continue;
+          const docData = JSON.parse(doc.code);
+          const ids = collectReferencedAssetIds(docData);
+          ids.forEach(id => referencedIds.add(id));
+        } catch (e) {
+          // ignore invalid json
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to check saved documents for asset references", e);
+    }
+
     const allAssets = await db.assets.toArray();
 
     const toDelete: string[] = [];
