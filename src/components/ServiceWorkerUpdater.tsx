@@ -9,16 +9,22 @@ export function ServiceWorkerUpdater() {
   const [wb, setWb] = useState<Workbox | null>(null);
 
   useEffect(() => {
-    // Detect if running in standalone mode (PWA)
+    // Detect if running as an installed Progressive Web App (PWA / standalone mode)
     const checkIsPWA = () => {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-      // @ts-ignore - for iOS Safari
+      const isMinimalUI = window.matchMedia('(display-mode: minimal-ui)').matches;
+      const isWindowControls = window.matchMedia('(display-mode: window-controls-overlay)').matches;
+      const isFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
+      // @ts-ignore - for iOS Safari standalone mode
       const isIOSStandalone = window.navigator.standalone === true;
-      setIsPWA(isStandalone || isIOSStandalone);
+      // Android TWA / PWA check
+      const isAndroidApp = typeof document !== 'undefined' && document.referrer ? document.referrer.startsWith('android-app://') : false;
+
+      setIsPWA(isStandalone || isMinimalUI || isWindowControls || isFullscreen || isIOSStandalone || isAndroidApp);
     };
     checkIsPWA();
 
-    // Listen for display mode changes just in case
+    // Listen for display mode changes
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const handleChange = () => checkIsPWA();
     mediaQuery.addEventListener('change', handleChange);
@@ -56,7 +62,8 @@ export function ServiceWorkerUpdater() {
     setShowPrompt(false);
   };
 
-  if (!showPrompt) return null;
+  // Only render update prompt if running as a downloaded/installed PWA (not in normal browser tab)
+  if (!isPWA || !showPrompt) return null;
 
   return (
     <div className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-[360px] z-[99999] bg-white dark:bg-[#1e293b] border border-blue-500/30 dark:border-blue-400/30 rounded-2xl shadow-2xl p-5 flex flex-col gap-3 animate-in slide-in-from-bottom-5">

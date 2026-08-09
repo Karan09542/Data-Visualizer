@@ -926,13 +926,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       }`}>
         
         {/* Left: Passport Studio Branding */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl text-white shadow-md shadow-blue-500/20 shrink-0">
-            <Printer size={18} className="sm:w-[20px] sm:h-[20px]" />
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+          <div className="p-1.5 sm:p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl text-white shadow-md shadow-blue-500/20 shrink-0">
+            <UserCheck size={18} className="sm:w-[20px] sm:h-[20px]" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-black tracking-tight truncate">
+              <h1 className="text-xs sm:text-base font-black tracking-tight whitespace-nowrap">
                 Passport Studio
               </h1>
               <span className="hidden md:inline-flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full shrink-0">
