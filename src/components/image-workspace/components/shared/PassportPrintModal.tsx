@@ -259,8 +259,35 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   // Mobile View Toggle: 'preview' | 'settings'
   const [mobileTab, setMobileTab] = useState<'preview' | 'settings'>('preview');
   
-  // Preview Zoom Scale
+  // Preview Zoom Scale & 360-Degree Interactive Panning Offset State
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+
+  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({
+    x: 0, y: 0, panX: 0, panY: 0
+  });
+
+  const touchStateRef = useRef<{
+    startDist: number | null;
+    startZoom: number;
+    startPan: { x: number; y: number };
+    startTouch1: { x: number; y: number };
+    startTouch2?: { x: number; y: number };
+    isMultiTouch: boolean;
+  }>({
+    startDist: null,
+    startZoom: 100,
+    startPan: { x: 0, y: 0 },
+    startTouch1: { x: 0, y: 0 },
+    isMultiTouch: false
+  });
+
+  // Reset Viewport Zoom & Pan to Exact Center
+  const resetView = useCallback(() => {
+    setZoomLevel(100);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
 
   // Responsive window width tracking for mobile viewport fitting
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1000);
@@ -362,49 +389,138 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Trackpad / Wheel pinch zoom handler
+  // Mouse Drag Panning Handler
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: panOffset.x,
+      panY: panOffset.y
+    };
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPanOffset({
+        x: dragStartRef.current.panX + dx,
+        y: dragStartRef.current.panY + dy
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // Trackpad 2D scroll panning & Ctrl+Wheel pinch zoom handler
   const handleWheelZoom = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 10 : -10;
-      setZoomLevel(prev => Math.min(250, Math.max(40, prev + delta)));
+      const delta = e.deltaY < 0 ? 12 : -12;
+      setZoomLevel(prev => Math.min(300, Math.max(40, prev + delta)));
+    } else {
+      // Direct 360 degree panning for touchpad & mouse scroll wheels
+      setPanOffset(prev => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY
+      }));
     }
   };
 
-  // Mobile Touch Pinch-to-Zoom gesture listener
+  // Mobile Touch Gestures: 1-finger smooth 360° pan & 2-finger pinch zoom + pan
   useEffect(() => {
     const viewport = canvasViewportRef.current;
     if (!viewport) return;
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        const dist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        touchStartDistRef.current = dist;
-        touchStartZoomRef.current = zoomLevel;
+      if (e.touches.length === 1) {
+        touchStateRef.current = {
+          startDist: null,
+          startZoom: zoomLevel,
+          startPan: { ...panOffset },
+          startTouch1: { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          isMultiTouch: false
+        };
+      } else if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        touchStateRef.current = {
+          startDist: dist,
+          startZoom: zoomLevel,
+          startPan: { ...panOffset },
+          startTouch1: { x: t1.clientX, y: t1.clientY },
+          startTouch2: { x: t2.clientX, y: t2.clientY },
+          isMultiTouch: true
+        };
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && touchStartDistRef.current !== null && touchStartDistRef.current > 0) {
-        if (e.cancelable) e.preventDefault();
-        const currentDist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        const scaleRatio = currentDist / touchStartDistRef.current;
-        const newZoom = Math.min(250, Math.max(40, Math.round(touchStartZoomRef.current * scaleRatio)));
+      if (e.cancelable) e.preventDefault();
+
+      if (e.touches.length === 1 && !touchStateRef.current.isMultiTouch) {
+        // 1-finger 360° pan in any direction
+        const dx = e.touches[0].clientX - touchStateRef.current.startTouch1.x;
+        const dy = e.touches[0].clientY - touchStateRef.current.startTouch1.y;
+        setPanOffset({
+          x: touchStateRef.current.startPan.x + dx,
+          y: touchStateRef.current.startPan.y + dy
+        });
+      } else if (e.touches.length === 2 && touchStateRef.current.startDist) {
+        // 2-finger pinch zoom + pan simultaneously
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const scaleRatio = currentDist / touchStateRef.current.startDist;
+        const newZoom = Math.min(300, Math.max(40, Math.round(touchStateRef.current.startZoom * scaleRatio)));
         setZoomLevel(newZoom);
+
+        // Pinch center shift
+        const currentMidX = (t1.clientX + t2.clientX) / 2;
+        const currentMidY = (t1.clientY + t2.clientY) / 2;
+        const startMidX = touchStateRef.current.startTouch2 
+          ? (touchStateRef.current.startTouch1.x + touchStateRef.current.startTouch2.x) / 2 
+          : touchStateRef.current.startTouch1.x;
+        const startMidY = touchStateRef.current.startTouch2 
+          ? (touchStateRef.current.startTouch1.y + touchStateRef.current.startTouch2.y) / 2 
+          : touchStateRef.current.startTouch1.y;
+
+        const dx = currentMidX - startMidX;
+        const dy = currentMidY - startMidY;
+
+        setPanOffset({
+          x: touchStateRef.current.startPan.x + dx,
+          y: touchStateRef.current.startPan.y + dy
+        });
       }
     };
 
-    const handleTouchEnd = () => {
-      touchStartDistRef.current = null;
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        touchStateRef.current.startDist = null;
+        touchStateRef.current.isMultiTouch = false;
+      } else if (e.touches.length === 1) {
+        touchStateRef.current.isMultiTouch = false;
+        touchStateRef.current.startPan = { ...panOffset };
+        touchStateRef.current.startTouch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
     };
 
-    viewport.addEventListener('touchstart', handleTouchStart, { passive: true });
+    viewport.addEventListener('touchstart', handleTouchStart, { passive: false });
     viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
     viewport.addEventListener('touchend', handleTouchEnd);
     viewport.addEventListener('touchcancel', handleTouchEnd);
@@ -415,7 +531,16 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       viewport.removeEventListener('touchend', handleTouchEnd);
       viewport.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [zoomLevel]);
+  }, [zoomLevel, panOffset]);
+
+  // Double click / tap to toggle zoom between 100% and 160%
+  const handleDoubleClickViewport = () => {
+    if (zoomLevel === 100 && panOffset.x === 0 && panOffset.y === 0) {
+      setZoomLevel(160);
+    } else {
+      resetView();
+    }
+  };
 
   // Sync photo display numeric inputs when MM or photoUnit changes
   useEffect(() => {
@@ -921,18 +1046,18 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     }`}>
       
       {/* Studio Header Navigation */}
-      <header className={`h-14 sm:h-16 border-b px-3 sm:px-6 flex items-center justify-between shrink-0 z-40 relative shadow-sm ${
+      <header className={`h-14 sm:h-16 border-b px-2.5 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-40 relative shadow-sm ${
         isDark ? 'border-[#222] bg-[#111111]' : 'border-slate-200 bg-white'
       }`}>
         
         {/* Left: Passport Studio Branding */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
           <div className="p-1.5 sm:p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl text-white shadow-md shadow-blue-500/20 shrink-0">
             <UserCheck size={18} className="sm:w-[20px] sm:h-[20px]" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xs sm:text-base font-black tracking-tight whitespace-nowrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="text-xs sm:text-base font-black tracking-tight truncate min-w-0">
                 Passport Studio
               </h1>
               <span className="hidden md:inline-flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full shrink-0">
@@ -946,7 +1071,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         </div>
 
         {/* Right: Actions & Theme Toggle */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2.5 shrink-0 ml-auto">
           
           {/* Hidden file input for Upload Photo */}
           <input
@@ -959,25 +1084,25 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           />
 
           {/* Modern Camera & Upload Pill Group */}
-          <div className={`flex items-center rounded-xl border overflow-hidden ${
+          <div className={`flex items-center rounded-xl border overflow-hidden shrink-0 ${
             isDark ? 'border-[#333] bg-[#1C1C1C]' : 'border-slate-200 bg-white shadow-sm'
           }`}>
             {/* Camera Button */}
             <button
               onClick={() => setIsCameraOpen(true)}
               title="Snap new photo with camera"
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold transition-all active:scale-[0.97] ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${
                 isDark
                   ? 'text-indigo-400 hover:bg-[#252525]'
                   : 'text-indigo-700 hover:bg-indigo-50'
               }`}
             >
-              <Camera size={15} />
+              <Camera size={15} className="shrink-0" />
               <span className="hidden sm:inline">Camera</span>
             </button>
 
             {/* Divider */}
-            <div className={`w-px h-5 ${
+            <div className={`w-px h-4 sm:h-5 ${
               isDark ? 'bg-[#333]' : 'bg-slate-200'
             }`} />
 
@@ -985,13 +1110,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             <button
               onClick={() => fileInputRef.current?.click()}
               title="Upload photo from device"
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold transition-all active:scale-[0.97] ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${
                 isDark
                   ? 'text-emerald-400 hover:bg-[#252525]'
                   : 'text-emerald-700 hover:bg-emerald-50'
               }`}
             >
-              <Upload size={15} />
+              <Upload size={15} className="shrink-0" />
               <span className="hidden sm:inline">Upload</span>
             </button>
           </div>
@@ -1000,33 +1125,33 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <button
             onClick={() => setAppTheme(isDark ? 'light' : 'dark')}
             title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
-            className={`p-2 rounded-xl border transition-all ${
+            className={`p-1.5 sm:p-2 rounded-xl border transition-all shrink-0 ${
               isDark 
                 ? 'bg-[#1C1C1C] border-[#333] text-amber-400 hover:bg-[#252525]' 
                 : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
-          <div className={`w-px h-5 sm:h-6 mx-0.5 sm:mx-1 ${isDark ? 'bg-[#2B2B2B]' : 'bg-slate-200'}`} />
+          <div className={`hidden xs:block w-px h-4 sm:h-6 mx-0.5 ${isDark ? 'bg-[#2B2B2B]' : 'bg-slate-200'}`} />
 
           {/* Modern Export Image Format Dropdown */}
-          <div className="relative" ref={exportDropdownRef}>
+          <div className="relative shrink-0" ref={exportDropdownRef}>
             <button
               onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-              className={`flex items-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 border ${
+              className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 border ${
                 isDark 
                   ? 'bg-[#1C1C1C] hover:bg-[#282828] border-[#333] text-white' 
                   : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-sm'
               }`}
             >
-              <Download size={15} className="text-blue-500" />
+              <Download size={15} className="text-blue-500 shrink-0" />
               <span className="hidden sm:inline">Export</span>
-              <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">
+              <span className="text-[10px] font-mono font-bold uppercase px-1 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">
                 {exportFormat}
               </span>
-              <ChevronDown size={14} className={`transition-transform duration-200 text-slate-400 ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={14} className={`transition-transform duration-200 text-slate-400 shrink-0 ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isExportDropdownOpen && (
@@ -1072,20 +1197,22 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <button
             onClick={handleExportPDF}
             title="Print or Save PDF"
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white p-2 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95 shadow-md shadow-blue-600/20"
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white p-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95 shadow-md shadow-blue-600/20 shrink-0"
           >
-            <Printer size={15} />
+            <Printer size={15} className="shrink-0" />
             <span className="hidden sm:inline">Print / PDF</span>
           </button>
 
           <button 
             onClick={onClose} 
-            className={`p-2 rounded-xl transition-colors shrink-0 ${
-              isDark ? 'text-slate-400 hover:text-white hover:bg-[#222]' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+            className={`p-1.5 sm:p-2 rounded-xl transition-all shrink-0 border ${
+              isDark 
+                ? 'bg-[#1C1C1C] border-[#333] text-slate-300 hover:text-white hover:bg-[#2A2A2A]' 
+                : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
             }`}
             title="Close Passport Studio"
           >
-            <X size={19} />
+            <X size={18} className="shrink-0" />
           </button>
         </div>
       </header>
@@ -1146,17 +1273,17 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             </button>
             <button
               type="button"
-              onClick={() => setZoomLevel(100)}
+              onClick={resetView}
               className={`px-2 py-0.5 text-[11px] font-mono font-bold tracking-tight rounded-md transition-colors ${
                 isDark ? 'hover:bg-[#252525] text-blue-400' : 'hover:bg-slate-200 text-blue-600'
               }`}
-              title="Reset Zoom to 100%"
+              title="Reset Zoom to 100% & Recenter"
             >
               {zoomLevel}%
             </button>
             <button 
               type="button"
-              onClick={() => setZoomLevel(prev => Math.min(200, prev + 15))}
+              onClick={() => setZoomLevel(prev => Math.min(300, prev + 15))}
               className={`p-1.5 rounded-lg transition-colors ${
                 isDark ? 'hover:bg-[#282828] text-slate-300 active:text-white' : 'hover:bg-slate-200 text-slate-700'
               }`}
@@ -1167,11 +1294,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             <div className={`w-px h-3.5 mx-0.5 ${isDark ? 'bg-[#333]' : 'bg-slate-300'}`} />
             <button 
               type="button"
-              onClick={() => setZoomLevel(100)}
+              onClick={resetView}
               className={`p-1.5 rounded-lg transition-colors ${
                 isDark ? 'hover:bg-[#282828] text-slate-300 hover:text-blue-400' : 'hover:bg-slate-200 text-slate-700 hover:text-blue-600'
               }`}
-              title="Reset Zoom to Fit"
+              title="Reset Zoom & Recenter to Fit"
             >
               <Maximize2 size={13} />
             </button>
@@ -2060,10 +2187,14 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <div 
             ref={canvasViewportRef}
             onWheel={handleWheelZoom}
-            className="flex-1 relative flex overflow-auto p-3 sm:p-12 custom-scrollbar touch-none select-none"
+            onMouseDown={handleMouseDown}
+            onDoubleClick={handleDoubleClickViewport}
+            className={`flex-1 relative overflow-hidden select-none touch-none flex items-center justify-center ${
+              isDragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
           >
-            {/* Floating Paper Dimension Badge */}
-            <div className="absolute top-3 left-3 z-20 pointer-events-none">
+            {/* Floating Paper Dimension & Recenter Badge */}
+            <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-auto">
               <div className={`px-2.5 py-1 rounded-xl border backdrop-blur-md shadow-md text-[10px] font-mono font-bold flex items-center gap-1.5 ${
                 isDark 
                   ? 'bg-[#121212]/85 border-[#2A2A2A] text-slate-300' 
@@ -2072,6 +2203,17 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 {layout.pWidth} × {layout.pHeight} mm ({orientation} • {printDPI} DPI)
               </div>
+
+              {(zoomLevel !== 100 || panOffset.x !== 0 || panOffset.y !== 0) && (
+                <button
+                  type="button"
+                  onClick={resetView}
+                  className="px-2 py-1 rounded-xl border backdrop-blur-md shadow-md text-[10px] font-semibold text-blue-500 bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20 transition-all flex items-center gap-1 shrink-0"
+                  title="Recenter & Reset Zoom"
+                >
+                  <RotateCcw size={11} /> Recenter
+                </button>
+              )}
             </div>
 
             {/* Background grid dot pattern */}
@@ -2083,23 +2225,22 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               }} 
             />
 
-            {/* Outer Scroll Sizing Wrapper (Instant Size Bounds for Scrollbar) */}
+            {/* Interactive Transform Container (Always Centered + Smooth Pan Offset + Center Zoom) */}
             <div 
-              className="m-auto flex items-center justify-center shrink-0"
+              className="absolute flex items-center justify-center will-change-transform"
               style={{ 
-                width: `${basePaperWidthPx * (zoomLevel / 100)}px`,
-                height: `${(basePaperWidthPx * (zoomLevel / 100) * layout.pHeight) / layout.pWidth}px`,
+                transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale(${zoomLevel / 100})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 75ms cubic-bezier(0.1, 0.9, 0.2, 1.0)',
               }}
             >
-              {/* Paper Sheet Rendering Container (60fps Hardware Accelerated Center Zoom) */}
+              {/* Paper Sheet Rendering Container */}
               <div 
-                className="relative bg-white shadow-2xl shrink-0 will-change-transform"
+                className="relative bg-white shadow-2xl shrink-0"
                 style={{ 
                   width: `${basePaperWidthPx}px`,
                   height: `${(basePaperWidthPx * layout.pHeight) / layout.pWidth}px`,
-                  transform: `scale(${zoomLevel / 100})`,
-                  transformOrigin: '50% 50%',
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)'
+                  boxShadow: isDark ? '0 25px 60px -12px rgba(0, 0, 0, 0.95)' : '0 25px 60px -12px rgba(0, 0, 0, 0.3)'
                 }}
               >
 

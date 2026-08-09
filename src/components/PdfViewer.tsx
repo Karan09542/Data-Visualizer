@@ -1,11 +1,14 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download } from "lucide-react";
 import * as pdfjsLib from "pdfjs-dist";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PDFDocument } from 'pdf-lib';
 
+
+export type ExportImageFormat = 'png' | 'jpeg' | 'webp';
 
 interface SortableThumbnailProps {
   pageNum: number;
@@ -13,111 +16,282 @@ interface SortableThumbnailProps {
   currentPage: number;
   selectionMode: boolean;
   isSelected: boolean;
+  defaultFormat: ExportImageFormat;
+  isDownloadingThisPage?: boolean;
+  isFormatMenuOpen?: boolean;
   onSelect: (pageNum: number) => void;
   onGoToPage: (pageNum: number) => void;
   onLongPress: (pageNum: number) => void;
+  onDownloadPage: (pageNum: number, format: ExportImageFormat) => void;
+  onOpenFormatMenu: (pageNum: number) => void;
+  onCloseFormatMenu: () => void;
 }
 
-const SortableThumbnail: React.FC<SortableThumbnailProps> = ({ pageNum, url, currentPage, selectionMode, isSelected, onSelect, onGoToPage, onLongPress }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pageNum.toString() });
+interface ThumbnailCardProps {
+  pageNum: number;
+  url: string;
+  currentPage: number;
+  selectionMode: boolean;
+  isSelected: boolean;
+  defaultFormat: ExportImageFormat;
+  isDownloadingThisPage?: boolean;
+  isFormatMenuOpen?: boolean;
+  onSelect?: (pageNum: number) => void;
+  onGoToPage?: (pageNum: number) => void;
+  onLongPress?: (pageNum: number) => void;
+  onDownloadPage?: (pageNum: number, format: ExportImageFormat) => void;
+  onOpenFormatMenu?: (pageNum: number) => void;
+  onCloseFormatMenu?: () => void;
+  isOverlay?: boolean;
+}
 
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
+interface FormatMenuPortalProps {
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+  defaultFormat: ExportImageFormat;
+  pageNum: number;
+  onSelectFormat: (pageNum: number, format: ExportImageFormat) => void;
+  onClose: () => void;
+}
 
-  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFiredRef = React.useRef(false);
+const FormatMenuPortal: React.FC<FormatMenuPortalProps> = ({
+  buttonRef,
+  defaultFormat,
+  pageNum,
+  onSelectFormat,
+  onClose,
+}) => {
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
 
-  const cancelLongPress = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+  useLayoutEffect(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 152;
+    const menuHeight = 155;
+
+    let top = rect.bottom + 6;
+    let left = rect.left;
+
+    // Flip vertically above button if near screen bottom edge
+    if (top + menuHeight > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - menuHeight - 6);
+    }
+
+    // Shift horizontally left if near screen right edge
+    if (left + menuWidth > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - menuWidth - 12);
+    }
+
+    // Clamp to left screen edge
+    if (left < 12) {
+      left = 12;
+    }
+
+    setCoords({ top, left });
+  }, [buttonRef]);
+
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (buttonRef.current && buttonRef.current.contains(target)) return;
+      onClose();
+    };
+
+    const handleScroll = () => onClose();
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [buttonRef, onClose]);
+
+  if (!coords) return null;
+
+  return createPortal(
+    <div
+      style={{ top: `${coords.top}px`, left: `${coords.left}px` }}
+      className="fixed w-38 bg-slate-900/98 backdrop-blur-2xl border border-slate-700/90 rounded-2xl shadow-2xl overflow-hidden z-[999999] p-1.5 divide-y divide-slate-800/80 animate-in fade-in zoom-in-95 duration-150 font-sans"
+    >
+      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 select-none flex items-center justify-between">
+        <span>Format Options</span>
+        <span className="text-[8px] font-mono text-indigo-400 font-bold">P.{pageNum}</span>
+      </div>
+
+      <div className="py-1 flex flex-col gap-0.5">
+        {[
+          { id: 'png' as const, label: 'PNG Image', ext: '.png', desc: 'Lossless 3x HD' },
+          { id: 'jpeg' as const, label: 'JPEG Image', ext: '.jpg', desc: 'High quality' },
+          { id: 'webp' as const, label: 'WEBP Image', ext: '.webp', desc: 'Modern compact' },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectFormat(pageNum, item.id);
+              onClose();
+            }}
+            className={`w-full px-2 py-1.5 text-left text-xs font-semibold rounded-xl flex items-center justify-between transition-colors ${
+              defaultFormat === item.id
+                ? 'bg-indigo-600/35 text-indigo-200 font-bold border border-indigo-500/40 shadow-sm'
+                : 'text-slate-300 hover:bg-indigo-600 hover:text-white border border-transparent'
+            }`}
+          >
+            <div>
+              <div className="text-[11px] font-bold flex items-center gap-1">
+                {item.label}
+                {defaultFormat === item.id && <Check size={10} className="text-indigo-400" />}
+              </div>
+              <div className="text-[9px] text-slate-400 font-normal">{item.desc}</div>
+            </div>
+            <span className="text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">
+              {item.ext}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+const ThumbnailCard: React.FC<ThumbnailCardProps> = React.memo(({
+  pageNum,
+  url,
+  currentPage,
+  selectionMode,
+  isSelected,
+  defaultFormat,
+  isDownloadingThisPage = false,
+  isFormatMenuOpen = false,
+  onSelect,
+  onGoToPage,
+  onLongPress,
+  onDownloadPage,
+  onOpenFormatMenu,
+  onCloseFormatMenu,
+  isOverlay
+}) => {
+  const downloadHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const downloadButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const clearHoldTimer = () => {
+    if (downloadHoldTimerRef.current) {
+      clearTimeout(downloadHoldTimerRef.current);
+      downloadHoldTimerRef.current = null;
     }
   };
 
-  React.useEffect(() => {
-    if (isDragging) {
-      cancelLongPress();
-    }
-  }, [isDragging]);
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    longPressFiredRef.current = false;
-    longPressTimerRef.current = setTimeout(() => {
-      longPressFiredRef.current = true;
-      onLongPress(pageNum);
-      longPressTimerRef.current = null;
-    }, 500);
-    // Also delegate to dnd-kit
-    if (listeners?.onPointerDown) {
-      listeners.onPointerDown(e as any);
-    }
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
+  const handleDownloadPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
-    cancelLongPress();
-    // Don't fire click if long-press just fired or if we were dragging
-    if (longPressFiredRef.current || isDragging) {
-      longPressFiredRef.current = false;
-      return;
-    }
-    // Clicking anywhere on the preview renders that page
-    onGoToPage(pageNum);
+    clearHoldTimer();
+    downloadHoldTimerRef.current = setTimeout(() => {
+      onOpenFormatMenu?.(pageNum);
+      downloadHoldTimerRef.current = null;
+    }, 350);
   };
 
-  // Build props for the container: take all dnd-kit listeners/attributes EXCEPT onPointerDown (we handle it ourselves)
-  const { onPointerDown: _dndPointerDown, ...restListeners } = listeners || {};
+  const handleDownloadPointerUp = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    clearHoldTimer();
+  };
+
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    clearHoldTimer();
+    onDownloadPage?.(pageNum, defaultFormat);
+  };
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative flex flex-col gap-1.5 cursor-pointer group transition-all duration-200 ${selectionMode ? '' : (currentPage === pageNum ? 'opacity-100 scale-[1.01]' : 'opacity-85 hover:opacity-100 hover:scale-[1.01]')
-        }`}
-      onPointerDown={handlePointerDown}
-      onPointerUp={cancelLongPress}
-      onPointerCancel={cancelLongPress}
-      onPointerLeave={cancelLongPress}
-      onClick={handleClick}
-      {...attributes}
-      {...restListeners}
+      onClick={(e) => {
+        if (!isOverlay) {
+          onGoToPage?.(pageNum);
+        }
+      }}
+      className={`relative flex flex-col gap-1.5 cursor-pointer group select-none ${
+        isOverlay
+          ? 'scale-105 shadow-2xl z-50 pointer-events-none'
+          : selectionMode
+            ? ''
+            : (currentPage === pageNum ? 'opacity-100' : 'opacity-85 hover:opacity-100')
+      }`}
     >
       <div
-        className={`rounded-xl overflow-hidden aspect-[1/1.4] bg-slate-950 relative border transition-all duration-200 shadow-md ${isSelected
+        className={`rounded-xl overflow-hidden aspect-[1/1.4] bg-slate-950 relative border shadow-md transition-colors duration-150 ${
+          isSelected
             ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/15'
             : (currentPage === pageNum && !selectionMode
               ? 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/15'
-              : 'border-slate-800/80 group-hover:border-slate-600/80 group-hover:shadow-indigo-500/10')
-          }`}
+              : 'border-slate-800/80 group-hover:border-slate-600/80')
+        }`}
       >
         <img
           src={url}
           alt={`Page ${pageNum}`}
-          className="w-full h-full object-contain bg-white pointer-events-none select-none group-hover:scale-[1.015] transition-transform duration-200"
+          className="w-full h-full object-contain bg-white pointer-events-none select-none"
           loading="lazy"
           draggable={false}
         />
 
-        {/* Soft top gradient for button contrast */}
+        {/* Soft top gradient */}
         <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-slate-950/40 to-transparent pointer-events-none" />
 
-        {/* Professional Checkbox Button */}
+        {/* Download Button (Top-Left Corner) */}
+        {!isOverlay && (
+          <div className="absolute top-1.5 left-1.5 z-20">
+            <button
+              ref={downloadButtonRef}
+              type="button"
+              onPointerDown={handleDownloadPointerDown}
+              onPointerUp={handleDownloadPointerUp}
+              onPointerCancel={clearHoldTimer}
+              onPointerLeave={clearHoldTimer}
+              onClick={handleDownloadClick}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-slate-900/85 hover:bg-indigo-600 backdrop-blur-md border border-slate-700/80 hover:border-indigo-500 text-slate-200 hover:text-white shadow-md transition-all ${
+                selectionMode ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
+              }`}
+              title={`Click to download ${defaultFormat.toUpperCase()} • Hold for format options`}
+            >
+              {isDownloadingThisPage ? (
+                <Loader2 size={11} className="animate-spin text-indigo-400" />
+              ) : (
+                <Download size={11} className="shrink-0" />
+              )}
+              <span className="text-[9px] font-mono font-bold uppercase tracking-tight text-indigo-300 group-hover:text-white">
+                {defaultFormat}
+              </span>
+            </button>
+
+            {/* Portal-based Format Picker Popover Menu */}
+            {isFormatMenuOpen && (
+              <FormatMenuPortal
+                buttonRef={downloadButtonRef}
+                defaultFormat={defaultFormat}
+                pageNum={pageNum}
+                onSelectFormat={(p, fmt) => onDownloadPage?.(p, fmt)}
+                onClose={() => onCloseFormatMenu?.()}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Checkbox Button (Top-Right Corner) */}
         <button
-          className={`absolute top-1.5 right-1.5 z-10 transition-all duration-200 ${selectionMode
+          className={`absolute top-1.5 right-1.5 z-10 transition-all duration-200 ${
+            selectionMode
               ? 'opacity-100 scale-100'
-              : 'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100'
-            }`}
+              : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 scale-90 sm:group-hover:scale-100'
+          }`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             if (!selectionMode) {
-              onLongPress(pageNum);
+              onLongPress?.(pageNum);
             } else {
-              onSelect(pageNum);
+              onSelect?.(pageNum);
             }
           }}
           title={isSelected ? 'Deselect Page' : 'Select Page'}
@@ -140,18 +314,72 @@ const SortableThumbnail: React.FC<SortableThumbnailProps> = ({ pageNum, url, cur
       </div>
 
       <span
-        className={`text-[11px] text-center font-medium tracking-tight select-none transition-colors ${isSelected
+        className={`text-[11px] text-center font-medium tracking-tight select-none transition-colors ${
+          isSelected
             ? 'text-indigo-300 font-semibold'
             : (currentPage === pageNum && !selectionMode
               ? 'text-blue-400 font-semibold'
               : 'text-slate-400 group-hover:text-slate-200')
-          }`}
+        }`}
       >
         Page {pageNum}
       </span>
     </div>
   );
-};
+});
+
+const SortableThumbnail: React.FC<SortableThumbnailProps> = React.memo(({
+  pageNum,
+  url,
+  currentPage,
+  selectionMode,
+  isSelected,
+  defaultFormat,
+  isDownloadingThisPage,
+  isFormatMenuOpen,
+  onSelect,
+  onGoToPage,
+  onLongPress,
+  onDownloadPage,
+  onOpenFormatMenu,
+  onCloseFormatMenu
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pageNum.toString() });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? undefined : transition,
+    opacity: isDragging ? 0.25 : 1,
+    touchAction: 'none',
+    willChange: 'transform',
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      <ThumbnailCard
+        pageNum={pageNum}
+        url={url}
+        currentPage={currentPage}
+        selectionMode={selectionMode}
+        isSelected={isSelected}
+        defaultFormat={defaultFormat}
+        isDownloadingThisPage={isDownloadingThisPage}
+        isFormatMenuOpen={isFormatMenuOpen}
+        onSelect={onSelect}
+        onGoToPage={onGoToPage}
+        onLongPress={onLongPress}
+        onDownloadPage={onDownloadPage}
+        onOpenFormatMenu={onOpenFormatMenu}
+        onCloseFormatMenu={onCloseFormatMenu}
+      />
+    </div>
+  );
+});
 
 // Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -351,9 +579,60 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const [orderedPages, setOrderedPages] = useState<number[]>([]);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [selectionMode, setSelectionMode] = useState<boolean>(false);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [zipMenuOpen, setZipMenuOpen] = useState<boolean>(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
+  const [defaultDownloadFormat, setDefaultDownloadFormat] = useState<ExportImageFormat>('png');
+  const [downloadingPageNum, setDownloadingPageNum] = useState<number | null>(null);
+  const [formatMenuPageNum, setFormatMenuPageNum] = useState<number | null>(null);
   const zipMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const handleDownloadSinglePageImage = async (pageNum: number, format: ExportImageFormat = defaultDownloadFormat) => {
+    if (!pdfDoc || downloadingPageNum !== null) return;
+
+    setDefaultDownloadFormat(format);
+    setFormatMenuPageNum(null);
+    setDownloadingPageNum(pageNum);
+
+    try {
+      const page = await pdfDoc.getPage(pageNum);
+      const renderScale = 3.0;
+      const viewport = page.getViewport({ scale: renderScale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+
+      if (ctx) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport } as any).promise;
+
+        const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+        const ext = format === 'jpeg' ? 'jpg' : format;
+
+        const blob: Blob | null = await new Promise((resolve) =>
+          canvas.toBlob((b) => resolve(b), mimeType, 0.95)
+        );
+
+        if (blob) {
+          const docTitle = url.split('/').pop()?.replace(/#.*$/, '').replace(/\.pdf$/i, '') || 'document';
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${docTitle}_page_${pageNum}.${ext}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(link.href);
+        }
+      }
+    } catch (err) {
+      console.error(`Error downloading page ${pageNum} image:`, err);
+    } finally {
+      setDownloadingPageNum(null);
+    }
+  };
 
   const workerRef = useRef<Worker | null>(null);
   const pdfBufferRef = useRef<ArrayBuffer | null>(null);
@@ -847,15 +1126,25 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   }, [currentViewport, searchResults, currentPage, searchQuery]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 5, // 5px movement required before dragging starts
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 120,
+        tolerance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(Number(event.active.id));
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -866,6 +1155,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         return arrayMove(items, oldIndex, newIndex);
       });
     }
+    setActiveId(null);
   };
 
   const getPagesToProcess = () => {
@@ -1118,7 +1408,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
             className="fixed inset-0 z-[29999] bg-black/60 backdrop-blur-xs sm:hidden"
             onClick={() => setShowSidebar(false)}
           />
-          <div className={`fixed inset-y-0 left-0 z-[30000] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 bg-slate-900/95 backdrop-blur-xl border-r border-slate-800/90 shadow-2xl flex flex-col transition-all duration-300 ease-in-out ${isSidebarExpanded ? 'w-full sm:w-[540px] md:w-[640px]' : 'w-[85%] max-w-[340px] sm:w-80'}`}>
+          <div className={`fixed inset-y-0 left-0 z-[30000] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 bg-slate-900 border-r border-slate-800/90 shadow-2xl flex flex-col ${isSidebarExpanded ? 'w-full sm:w-[540px] md:w-[640px]' : 'w-[85%] max-w-[340px] sm:w-80'}`}>
             <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800/90 bg-slate-950/40">
               <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 shadow-inner">
                 <button
@@ -1213,9 +1503,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                     </div>
                   )}
 
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <DndContext 
+                    sensors={sensors} 
+                    collisionDetection={closestCenter} 
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onDragCancel={() => setActiveId(null)}
+                  >
                     <SortableContext items={orderedPages.map(String)} strategy={rectSortingStrategy}>
-                      <div className="grid grid-cols-[repeat(auto-fill,minmax(135px,1fr))] gap-3.5 pb-4">
+                      <div className={`grid gap-2.5 sm:gap-3.5 pb-4 ${isSidebarExpanded ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : 'grid-cols-2'}`}>
                         {orderedPages.filter(p => thumbnails[p]).map((pageNum) => (
                           <SortableThumbnail
                             key={pageNum}
@@ -1224,6 +1520,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                             currentPage={currentPage}
                             selectionMode={selectionMode}
                             isSelected={selectedPages.has(pageNum)}
+                            defaultFormat={defaultDownloadFormat}
+                            isDownloadingThisPage={downloadingPageNum === pageNum}
+                            isFormatMenuOpen={formatMenuPageNum === pageNum}
                             onSelect={(p) => {
                               setSelectedPages(prev => {
                                 const newSet = new Set(prev);
@@ -1239,10 +1538,26 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                                 setSelectedPages(new Set([p]));
                               }
                             }}
+                            onDownloadPage={handleDownloadSinglePageImage}
+                            onOpenFormatMenu={(p) => setFormatMenuPageNum(p)}
+                            onCloseFormatMenu={() => setFormatMenuPageNum(null)}
                           />
                         ))}
                       </div>
                     </SortableContext>
+                    <DragOverlay dropAnimation={{ duration: 150, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+                      {activeId ? (
+                        <ThumbnailCard
+                          pageNum={activeId}
+                          url={thumbnails[activeId]}
+                          currentPage={currentPage}
+                          selectionMode={selectionMode}
+                          isSelected={selectedPages.has(activeId)}
+                          defaultFormat={defaultDownloadFormat}
+                          isOverlay
+                        />
+                      ) : null}
+                    </DragOverlay>
                   </DndContext>
                 </div>
               )}

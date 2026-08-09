@@ -793,7 +793,8 @@ export default function GuiEditorPanel() {
   const startEditing = (field: LeafField) => {
     setEditingPath(field.path);
     if (field.type === "string") {
-      setEditingTextValue(field.value);
+      const realValue = typeof field.value === "string" ? unmaskParsedData(field.value) : field.value;
+      setEditingTextValue(realValue);
     } else if (field.type === "number") {
       setEditingNumValue(field.value);
     } else if (field.type === "boolean") {
@@ -1663,21 +1664,26 @@ export default function GuiEditorPanel() {
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
-                                    Edit String Value
+                                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                                    <span>Edit String Value</span>
+                                    {typeof field.value === "string" && field.value.startsWith("[Massive") && (
+                                      <span className="px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                                        Massive Text Unmasked
+                                      </span>
+                                    )}
                                   </span>
-                                  <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400">
-                                    {field.value ? `${String(field.value).length} characters` : "Empty string"}
+                                  <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 font-bold">
+                                    {editingTextValue ? `${editingTextValue.length.toLocaleString()} characters` : "Empty string"}
                                   </span>
                                 </div>
 
                                 <textarea
                                   value={editingTextValue}
                                   onChange={(e) => setEditingTextValue(e.target.value)}
-                                  className="px-3 py-2 text-xs font-mono bg-white dark:bg-[#111726] border border-slate-250 dark:border-slate-800/80 rounded-lg text-slate-800 dark:text-slate-100 w-full focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y min-h-[96px]"
+                                  className="px-3 py-2 text-xs font-mono bg-white dark:bg-[#111726] border border-slate-250 dark:border-slate-800/80 rounded-lg text-slate-800 dark:text-slate-100 w-full focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y min-h-[140px] max-h-[400px]"
                                   autoFocus
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter" && !e.shiftKey) {
+                                    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
                                       e.preventDefault();
                                       handleUpdateFieldValue(field.path, editingTextValue);
                                     }
@@ -1704,7 +1710,7 @@ export default function GuiEditorPanel() {
                                     </button>
                                   </div>
                                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium font-sans">
-                                    Press <kbd className="bg-slate-150 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-1 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono text-[9px]">Enter</kbd> to save, <kbd className="bg-slate-150 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-1 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono text-[9px]">Shift+Enter</kbd> for newline
+                                    Press <kbd className="bg-slate-150 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 px-1 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono text-[9px]">Ctrl+Enter</kbd> or click <span className="font-bold text-emerald-400">Save Content</span>
                                   </span>
                                 </div>
                               </div>
