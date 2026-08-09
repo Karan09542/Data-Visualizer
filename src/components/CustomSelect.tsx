@@ -112,7 +112,7 @@ export default function CustomSelect({
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center justify-between gap-2 text-xs font-semibold transition-all outline-none w-full
           ${variant === "toolbar"
-            ? `px-2.5 py-1 rounded border border-white/[0.08] bg-white/[0.04] dark:bg-transparent hover:bg-black dark:hover:bg-white/[0.08] hover:border-white/[0.12] ${isOpen ? "bg-white/[0.1] dark:bg-black border-white/[0.15]" : ""
+            ? `px-2.5 py-1 rounded border border-slate-200 dark:border-white/[0.08] bg-slate-100/60 dark:bg-transparent hover:bg-slate-200/80 dark:hover:bg-white/[0.08] hover:border-slate-300 dark:hover:border-white/[0.12] text-slate-800 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white ${isOpen ? "bg-slate-200/90 dark:bg-white/[0.12] border-slate-300 dark:border-white/[0.15] text-slate-900 dark:text-white" : ""
             }`
             : `px-3 py-2 rounded-xl border ${isOpen
               ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/50 dark:bg-blue-900/10"
@@ -120,7 +120,6 @@ export default function CustomSelect({
             }`
           }
           ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
-          text-slate-800 dark:text-slate-200
         `}
       >
         <div className="flex items-center gap-1.5 truncate">

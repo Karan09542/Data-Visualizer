@@ -471,13 +471,9 @@ function NodeRenderer({
   const getThemeClasses = (theme: NodeTheme) => {
     switch (theme) {
       case "vscode":
-        return appTheme === "dark"
-          ? "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md"
-          : "bg-white border-slate-300 text-slate-800 shadow-sm";
+        return "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md";
       case "github":
-        return appTheme === "dark"
-          ? "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm"
-          : "bg-white border-slate-200 text-slate-800 shadow-sm";
+        return "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm";
       case "glassmorphism":
         return "bg-white/10 border-white/20 text-white backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]";
       case "cyberpunk":
@@ -885,14 +881,14 @@ function NodeRenderer({
       "chess",
       "octopus",
       "chalk",
+      "vscode",
+      "github",
     ].includes(nodeTheme) ||
     (nodeTheme === "cloud" && appTheme === "dark") ||
     (nodeTheme === "pastel" && appTheme === "dark") ||
     (nodeTheme === "math" && appTheme === "dark") ||
     (nodeTheme === "zen" && appTheme === "dark") ||
     (nodeTheme === "architect" && appTheme === "dark") ||
-    (nodeTheme === "vscode" && appTheme === "dark") ||
-    (nodeTheme === "github" && appTheme === "dark") ||
     (nodeTheme === "nature2" && data.id === "root") ||
     (nodeTheme === "hydrogen" && appTheme === "dark") ||
     (nodeTheme === "seed" && data.id === "root");
@@ -905,8 +901,6 @@ function NodeRenderer({
     (nodeTheme === "architect" && appTheme !== "dark") ||
     (nodeTheme === "cloud" && appTheme !== "dark") ||
     (nodeTheme === "pastel" && appTheme !== "dark") ||
-    (nodeTheme === "vscode" && appTheme !== "dark") ||
-    (nodeTheme === "github" && appTheme !== "dark") ||
     (nodeTheme === "nature2" && data.id !== "root") ||
     (nodeTheme === "hydrogen" && appTheme !== "dark") ||
     (nodeTheme === "seed" && data.id !== "root");

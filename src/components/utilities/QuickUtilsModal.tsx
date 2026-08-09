@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -9,7 +9,7 @@ import { ColorConverter } from "./ColorConverter";
 import { CsvToJsonConverter } from "./CsvToJsonConverter";
 import { JwtDecoder } from "./JwtDecoder";
 import { ImageColorExtractor } from "./ImageColorExtractor";
-import { Pipette } from "lucide-react";
+import { PassportStudioUtil } from "./PassportStudioUtil";
 
 interface QuickUtilsModalProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"img2pdf" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("img2pdf");
+  const [activeTab, setActiveTab] = useState<"passport" | "img2pdf" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
 
   // Close on Escape key
   useEffect(() => {
@@ -75,6 +75,18 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               </div>
               
               <div className="flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto p-3 gap-2 scrollbar-none">
+                <button
+                  onClick={() => setActiveTab("passport")}
+                  className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    activeTab === "passport"
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-transparent"
+                  }`}
+                >
+                  <Printer size={18} className="shrink-0 text-blue-500" />
+                  <span>Passport Studio</span>
+                </button>
+
                 <button
                   onClick={() => setActiveTab("img2pdf")}
                   className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
@@ -175,6 +187,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
 
             {/* Main Content Area */}
             <div className="flex-1 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-[#0c0f16]/50">
+              {activeTab === "passport" && <PassportStudioUtil />}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
               {activeTab === "folder2zip" && <FolderToZipConverter />}
               {activeTab === "base64" && <Base64Converter />}

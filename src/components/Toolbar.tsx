@@ -858,12 +858,12 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-2 xl:pr-4 flex-shrink-0">
               <button
                 onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
-                className="group flex items-center gap-1.5 px-2.5 py-1 rounded border border-purple-500/30 bg-gradient-to-r from-purple-600/15 via-indigo-500/15 to-blue-500/15 hover:from-purple-600/25 hover:via-indigo-500/25 hover:to-blue-500/25 hover:border-purple-400/40 text-slate-100 transition-all cursor-pointer text-xs font-semibold"
+                className="group flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:via-indigo-500 hover:to-blue-500 text-white transition-all cursor-pointer text-xs font-bold shadow-sm shadow-purple-500/20 active:scale-95 border border-purple-400/30"
                 title="Open AI Command Palette (Ctrl+J)"
               >
-                <Sparkles size={12} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
-                <span className="truncate">Ask AI</span>
-                <kbd className="hidden sm:inline-flex items-center px-1 py-0.5 rounded border border-purple-500/20 bg-purple-500/10 text-[9px] font-mono text-purple-300/70">
+                <Sparkles size={13} className="text-white group-hover:scale-110 transition-transform" />
+                <span className="truncate text-white font-black tracking-wide">Ask AI</span>
+                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-black/20 text-[9px] font-mono font-bold text-white/90 border border-white/20">
                   ⌘J
                 </kbd>
               </button>
