@@ -29,6 +29,9 @@ export default defineConfig(({ mode }) => {
           name: 'Data Visualizer',
           short_name: 'Visualizer',
           theme_color: '#ffffff',
+          background_color: '#ffffff',
+          display: 'standalone',
+          start_url: '/',
           icons: [
             {
               src: '/app-icon.png',
