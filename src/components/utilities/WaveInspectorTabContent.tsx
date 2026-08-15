@@ -1,7 +1,7 @@
 import React from 'react';
 import { Compass, Sparkles, Check, Palette, RotateCcw, SlidersHorizontal, RefreshCw, Film, Download, Pause, Image as ImageIcon, ArrowRightLeft, ArrowUpDown, Move, Clock, Zap, X, PenTool, Circle, Square, Triangle, Trash2, Eraser, MousePointer2, Brush, Undo, Redo, Type, Waves } from 'lucide-react';
 import { FilterMode, FILTER_PRESETS, QUICK_ANGLES, DISPLACEMENT_FUNCTIONS } from './WaveDisplacementShaders';
-import { PoolImage } from './WaveDisplacementStudio';
+import type { PoolImage } from './WaveDisplacementStudio';
 import { FontPicker } from '../FontPicker';
 import { ColorPickerTrigger } from '../image-workspace/components/shared/ColorPickers';
 import { FilterSlider } from '../image-workspace/components/shared/FilterSlider';

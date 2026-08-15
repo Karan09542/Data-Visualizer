@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2 } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
@@ -10,7 +10,8 @@ import { CsvToJsonConverter } from "./CsvToJsonConverter";
 import { JwtDecoder } from "./JwtDecoder";
 import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
-import { WaveDisplacementStudio } from "./WaveDisplacementStudio";
+
+const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
 
 const TABS = [
   { id: "passport", label: "Passport Studio", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },
@@ -124,7 +125,9 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
             {/* Main Content Area */}
             <div className="flex-1 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-[#0c0f16]/50">
               <div className={activeTab === "wavedisp" ? "w-full h-full flex flex-col" : "hidden"}>
-                <WaveDisplacementStudio />
+                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Wave Studio...</div>}>
+                  <WaveDisplacementStudio />
+                </Suspense>
               </div>
               {activeTab === "passport" && <PassportStudioUtil />}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
