@@ -4,6 +4,7 @@ import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
+import { db } from './lib/db';
 
 declare let self: ServiceWorkerGlobalScope;
 
@@ -48,9 +49,39 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// --- Intercept Fetch for STDIN ---
+// --- Intercept Fetch for STDIN and Share Target ---
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Intercept PWA Share Target POST
+  if (url.pathname === '/share-receiver/' && event.request.method === 'POST') {
+    event.respondWith((async () => {
+      try {
+        const formData = await event.request.formData();
+        const files = formData.getAll('files') as File[];
+        const title = (formData.get('name') || formData.get('title')) as string;
+        const text = (formData.get('description') || formData.get('text')) as string;
+        const link = (formData.get('link') || formData.get('url')) as string;
+
+        const sharedId = `share_${Date.now()}`;
+        await db.sharedFiles.put({
+          id: sharedId,
+          files: files,
+          title: title,
+          text: text,
+          link: link,
+          timestamp: Date.now()
+        });
+        
+        // Redirect to the main app with the shared ID
+        return Response.redirect(`/?shared_id=${sharedId}`, 303);
+      } catch (err) {
+        console.error('[SW] Share target failed:', err);
+        return Response.redirect('/', 303);
+      }
+    })());
+    return;
+  }
 
   // STDIN Synchronous Sync
   if (url.pathname === '/api/stdin-get') {

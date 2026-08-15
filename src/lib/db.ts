@@ -178,6 +178,15 @@ export interface StickyNoteMedia {
   createdAt: number;
 }
 
+export interface SharedFileRecord {
+  id: string;
+  files?: File[] | Blob[];
+  title?: string;
+  text?: string;
+  link?: string;
+  timestamp: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -197,6 +206,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   audio_tracks: EntityTable<AudioTrack, 'id'>;
   stickyNotes: EntityTable<StickyNote, 'id'>;
   stickyNoteMedia: EntityTable<StickyNoteMedia, 'id'>;
+  sharedFiles: EntityTable<SharedFileRecord, 'id'>;
 };
 
 db.version(8).stores({
@@ -240,6 +250,10 @@ db.version(14).stores({
 
 db.version(15).stores({
   stickyNoteMedia: 'id, noteId'
+});
+
+db.version(16).stores({
+  sharedFiles: 'id, timestamp'
 });
 
 export { db };

@@ -35,7 +35,37 @@ export default defineConfig(({ mode }) => {
               sizes: '192x192',
               type: 'image/png'
             }
-          ]
+          ],
+          share_target: {
+            action: '/share-receiver/',
+            method: 'POST',
+            enctype: 'multipart/form-data',
+            params: {
+              title: 'name',
+              text: 'description',
+              url: 'link',
+              files: [
+                {
+                  name: 'files',
+                  accept: [
+                    'image/*',
+                    'video/*',
+                    'audio/*',
+                    'text/*',
+                    'application/*',
+                    '.csv',
+                    '.json',
+                    '.yaml',
+                    '.yml',
+                    '.glb',
+                    '.gltf',
+                    '.txt',
+                    '.pdf'
+                  ]
+                }
+              ]
+            }
+          }
         },
         injectManifest: {
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,

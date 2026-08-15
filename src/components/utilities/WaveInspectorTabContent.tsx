@@ -5,6 +5,7 @@ import { PoolImage } from './WaveDisplacementStudio';
 import { FontPicker } from '../FontPicker';
 import { ColorPickerTrigger } from '../image-workspace/components/shared/ColorPickers';
 import { FilterSlider } from '../image-workspace/components/shared/FilterSlider';
+import CustomSelect from '../CustomSelect';
 
 // ----------------------------------------------------------------------
 // EFFECTS TAB
@@ -416,31 +417,33 @@ export function WaveExportTab({ exportFormat, setExportFormat, recordDuration, s
                </div>
                <div>
                   <label className="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">FPS Target</label>
-                  <select
-                     value={recordFramerate}
-                     onChange={(e) => setRecordFramerate(parseInt(e.target.value))}
-                     className="w-full bg-slate-900 border border-white/10 text-xs text-slate-100 p-2 rounded-xl font-mono outline-none focus:border-purple-400"
-                  >
-                     <option value={15}>15 FPS</option>
-                     <option value={30}>30 FPS</option>
-                     <option value={60}>60 FPS</option>
-                  </select>
+                  <CustomSelect
+                     value={recordFramerate.toString()}
+                     onChange={(val) => setRecordFramerate(parseInt(val))}
+                     options={[
+                        { value: '15', label: '15 FPS' },
+                        { value: '30', label: '30 FPS' },
+                        { value: '60', label: '60 FPS' }
+                     ]}
+                     className="w-full font-mono"
+                  />
                </div>
 
                <div>
                   <label className="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">Resolution Size</label>
-                  <select
+                  <CustomSelect
                      value={exportSize}
-                     onChange={(e) => setExportSize(e.target.value as 'viewport' | '360p' | '480p' | '720p' | '1080p' | '4k')}
-                     className="flex-1 bg-slate-800 border border-white/10 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/50"
-                  >
-                     <option value="viewport">Match Viewport</option>
-                     <option value="360p">360p (Web)</option>
-                     <option value="480p">480p (SD)</option>
-                     <option value="720p">720p (HD)</option>
-                     <option value="1080p">1080p (FHD)</option>
-                     <option value="4k">4K (UHD)</option>
-                  </select>
+                     onChange={(val) => setExportSize(val as any)}
+                     options={[
+                        { value: 'viewport', label: 'Match Viewport' },
+                        { value: '360p', label: '360p (Web)' },
+                        { value: '480p', label: '480p (SD)' },
+                        { value: '720p', label: '720p (HD)' },
+                        { value: '1080p', label: '1080p (FHD)' },
+                        { value: '4k', label: '4K (UHD)' }
+                     ]}
+                     className="w-full"
+                  />
                </div>
                <div>
                   <label className="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">

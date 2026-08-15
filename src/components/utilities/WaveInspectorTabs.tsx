@@ -19,18 +19,18 @@ interface WaveInspectorTabsProps {
 
 export function WaveInspectorTabs({ activeTab, onTabChange }: WaveInspectorTabsProps) {
    return (
-      <div className="w-full p-2 bg-[#131824] border-b border-white/10 flex items-center justify-between gap-1 shrink-0">
+      <div className="w-full p-2 bg-[#131824] border-b border-white/10 flex items-center gap-1 shrink-0 overflow-x-auto scrollbar-none">
          {INSPECTOR_TABS.map((tab) => (
             <button
                key={tab.id}
                onClick={() => onTabChange(tab.id as InspectorTabType)}
-               className={`flex-1 py-2 px-1 text-[11px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all truncate ${activeTab === tab.id
+               className={`shrink-0 py-2 px-3 text-[11px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${activeTab === tab.id
                      ? tab.activeClass
                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent'
                   }`}
             >
                <tab.icon size={13} className="shrink-0" />
-               <span className="truncate">{tab.label}</span>
+               <span>{tab.label}</span>
             </button>
          ))}
       </div>

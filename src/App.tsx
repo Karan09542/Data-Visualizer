@@ -161,6 +161,111 @@ function App() {
     }
   }, [focusNodeType, focusNodePath, setExpandedJsNodeId]);
 
+  // Handle incoming PWA shared content
+  useEffect(() => {
+    const processSharedContent = async () => {
+      const sharedId = searchParams.get('shared_id');
+      
+      if (sharedId) {
+        try {
+          const { db } = await import("./lib/db");
+          const sharedData = await db.sharedFiles.get(sharedId);
+
+          if (sharedData) {
+            // Delete it so we don't process it again
+            await db.sharedFiles.delete(sharedId);
+
+            const { files, title, text, link } = sharedData;
+
+            // Handle files via fileProcessor
+            if (files && files.length > 0) {
+              const { processFiles } = await import("./utils/fileProcessor");
+              const fileList = files.map((f, i) => 
+                f instanceof File ? f : new File([f], `shared-file-${i}`, { type: f.type })
+              );
+              processFiles(fileList);
+            }
+
+            // Handle text/links if present
+            if (title || text || link) {
+              const sharedContentObj = {
+                title: title || '',
+                text: text || '',
+                url: link || '',
+                timestamp: Date.now()
+              };
+              
+              const currentCode = useStore.getState().code;
+              let currentData: any = {};
+              try {
+                currentData = JSON.parse(currentCode || "{}");
+              } catch (e) {
+                currentData = { _raw: currentCode };
+              }
+              
+              const keyName = `shared_text_${Date.now()}`;
+              
+              if (typeof currentData === "object" && currentData !== null && !Array.isArray(currentData)) {
+                currentData[keyName] = sharedContentObj;
+                setCode(JSON.stringify(currentData, null, 2));
+              } else {
+                const newData = { _previousData: currentData, [keyName]: sharedContentObj };
+                setCode(JSON.stringify(newData, null, 2));
+              }
+            }
+
+            useStore.getState().setNotification({ message: 'Received shared content via PWA!', type: 'success' });
+          }
+        } catch (err) {
+          console.error("Failed to process shared files:", err);
+        }
+
+        // Clear the URL params so it doesn't re-trigger on refresh
+        window.history.replaceState(null, '', window.location.pathname);
+        return;
+      }
+
+      // Legacy GET method fallback just in case
+      const sharedName = searchParams.get('name');
+      const sharedDesc = searchParams.get('description');
+      const sharedLink = searchParams.get('link');
+
+      if (sharedName || sharedDesc || sharedLink) {
+        const sharedContent = {
+          title: sharedName || '',
+          text: sharedDesc || '',
+          url: sharedLink || '',
+          timestamp: Date.now()
+        };
+        
+        const currentCode = useStore.getState().code;
+        let currentData: any = {};
+        try {
+          currentData = JSON.parse(currentCode || "{}");
+        } catch (e) {
+          currentData = { _raw: currentCode };
+        }
+        
+        const keyName = `shared_${Date.now()}`;
+        
+        if (typeof currentData === "object" && currentData !== null && !Array.isArray(currentData)) {
+          currentData[keyName] = sharedContent;
+          setCode(JSON.stringify(currentData, null, 2));
+        } else {
+          const newData = { _previousData: currentData, [keyName]: sharedContent };
+          setCode(JSON.stringify(newData, null, 2));
+        }
+        
+        useStore.getState().setNotification({ message: 'Received shared text via PWA!', type: 'success' });
+        
+        // Clear the URL params so it doesn't re-trigger on refresh
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    };
+
+    processSharedContent();
+  }, [searchParams, setCode]);
+
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragSplitting, setIsDragSplitting] = useState(false);

@@ -38,6 +38,7 @@ import {
   Barcode,
   Sparkles,
   Wrench,
+  Camera,
 } from "lucide-react";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
@@ -46,6 +47,7 @@ import { db } from "../lib/db";
 import NodeHelpModal from "./NodeHelpModal";
 import BarcodeGeneratorModal from "./BarcodeGeneratorModal";
 import { QuickUtilsModal } from "./utilities/QuickUtilsModal";
+import { CameraCaptureModal } from "./CameraCaptureModal";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
@@ -140,6 +142,38 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
   const [isBarcodeGeneratorOpen, setIsBarcodeGeneratorOpen] = useState(false);
   const [isQuickUtilsOpen, setIsQuickUtilsOpen] = useState(false);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+
+  const handleCameraCapture = (file: File) => {
+    setIsCameraModalOpen(false);
+    
+    const defaultKey = `capture_${Date.now()}`;
+    const userInput = prompt("Enter a key name to embed the capture (leave blank for random):", defaultKey);
+    const keyName = userInput ? userInput.trim() : defaultKey;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (!dataUrl) return;
+
+      try {
+        const currentData = JSON.parse(code || "{}");
+        if (typeof currentData === "object" && currentData !== null && !Array.isArray(currentData)) {
+          currentData[keyName] = dataUrl;
+          useStore.getState().setCode(JSON.stringify(currentData, null, 2));
+        } else {
+          const newData = { _previousData: currentData, [keyName]: dataUrl };
+          useStore.getState().setCode(JSON.stringify(newData, null, 2));
+        }
+        setNotification({ message: `Successfully embedded under key '${keyName}'`, type: "success" });
+      } catch (err) {
+        const currentData = { _raw: code, [keyName]: dataUrl };
+        useStore.getState().setCode(JSON.stringify(currentData, null, 2));
+        setNotification({ message: `Code was invalid JSON. Embedded under key '${keyName}'`, type: "success" });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const exportHDImageRef = useRef<((type?: string) => Promise<void>) | null>(null);
   
@@ -1030,6 +1064,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <Barcode size={16} />
               </button>
               <button
+                onClick={() => setIsCameraModalOpen(true)}
+                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                title="Camera"
+              >
+                <Camera size={16} />
+              </button>
+              <button
                 onClick={toggleTheme}
                 className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
                 title="Toggle Theme"
@@ -1363,6 +1404,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   </button>
 
                   <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsCameraModalOpen(true);
+                    }}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                  >
+                    <Camera size={16} className="text-rose-500" />
+                    <span>Camera</span>
+                  </button>
+
+                  <button
                     onClick={toggleTheme}
                     className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
                   >
@@ -1637,6 +1689,12 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         isOpen={isQuickUtilsOpen}
         onClose={() => setIsQuickUtilsOpen(false)}
       />
+      {isCameraModalOpen && (
+        <CameraCaptureModal
+          onClose={() => setIsCameraModalOpen(false)}
+          onCapture={handleCameraCapture}
+        />
+      )}
     </>
   );
 }
