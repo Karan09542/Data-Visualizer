@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Star, Clock, ChevronDown, Check } from 'lucide-react';
 import { FONTS, FontNode, loadGoogleFont } from '../utils/fontRegistry';
 import { useStore } from '../store/useStore';
@@ -35,6 +36,14 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
   });
 
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [hoverCardPos, setHoverCardPos] = useState<{top: number, right: number} | null>(null);
+
+  useEffect(() => {
+    if (hoveredFont && pickerRef.current) {
+       const rect = pickerRef.current.getBoundingClientRect();
+       setHoverCardPos({ top: rect.top, right: window.innerWidth - rect.left + 8 });
+    }
+  }, [hoveredFont]);
 
   useEffect(() => {
     localStorage.setItem('studio_favorite_fonts', JSON.stringify(favorites));
@@ -244,8 +253,15 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
       )}
 
       {/* Floating Hover Card */}
-      {hoveredFont && (
-         <div className="fixed z-[1000] pointer-events-none md:absolute md:top-0 md:right-[102%] w-64 md:w-80 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl shadow-2xl p-4 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-100 hidden md:flex" style={{ transform: "translateY(10px)" }}>
+      {hoveredFont && hoverCardPos && createPortal(
+         <div 
+            className="fixed z-[1000] pointer-events-none w-64 md:w-80 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl shadow-2xl p-4 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-100 hidden md:flex" 
+            style={{ 
+               top: `${hoverCardPos.top}px`, 
+               right: `${hoverCardPos.right}px`,
+               transform: "translateY(10px)" 
+            }}
+         >
             <div>
                <div className="flex items-center justify-between">
                   <h3 className="text-white font-bold text-sm tracking-tight">{hoveredFont.fontFamily}</h3>
@@ -264,7 +280,8 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
                  {selectedText || hoveredFont.previewText || (hoveredFont.supportsHindi ? "Aa राम" : "The quick brown fox jumps over the lazy dog")}
                </div>
             </div>
-         </div>
+         </div>,
+         document.body
       )}
     </div>
   );

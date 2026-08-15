@@ -55,7 +55,7 @@ class AIEventBus {
 
   off<K extends keyof AIEventMap>(event: K, handler: TextEventHandler<AIEventMap[K]>) {
     if (!this.textListeners[event]) return;
-    this.textListeners[event] = this.textListeners[event]!.filter(h => h !== handler);
+    this.textListeners[event] = this.textListeners[event]!.filter(h => h !== handler) as any;
   }
 
   emit<K extends keyof AIEventMap>(event: K, payload: AIEventMap[K]): void;

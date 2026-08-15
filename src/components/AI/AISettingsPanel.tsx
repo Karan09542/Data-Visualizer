@@ -13,7 +13,7 @@ export const ParameterSlider = ({ label, tooltip, min, max, step, ticks, value, 
     <div className="flex items-center justify-between">
       <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-black'}`}>
         {label}
-        {tooltip && <Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} title={tooltip} />}
+        {tooltip && <span title={tooltip} className="cursor-help"><Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} /></span>}
       </label>
     </div>
 
@@ -105,7 +105,7 @@ export const AISettingsPanel: React.FC = () => {
             <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-black'}`}>
               <Key size={13} className={isDark ? "text-white" : "text-black"} />
               API Key
-              <Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} title={`Required to use cloud models from ${provider.name}`} />
+              <span title={`Required to use cloud models from ${provider.name}`} className="cursor-help"><Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} /></span>
             </label>
             <span className={`text-[10px] font-mono ${isDark ? 'text-neutral-500' : 'text-neutral-500'}`}>Stored locally</span>
           </div>
@@ -143,16 +143,14 @@ export const AISettingsPanel: React.FC = () => {
                       className={`p-1 rounded-none transition-colors ${
                         isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
                       }`} 
-                      title="Copy Key"
                     >
-                      <Copy size={14} />
+                      <span title="Copy Key"><Copy size={14} /></span>
                     </button>
                     <button 
                       onClick={() => removeApiKey(activeProviderId)} 
                       className="p-1 hover:bg-red-500/20 rounded-none text-red-500 transition-colors" 
-                      title="Clear Key"
                     >
-                      <Trash2 size={14} />
+                      <span title="Clear Key"><Trash2 size={14} /></span>
                     </button>
                   </>
                 ) : (
@@ -161,9 +159,8 @@ export const AISettingsPanel: React.FC = () => {
                     className={`p-1 rounded-none transition-colors ${
                       isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
                     }`} 
-                    title="Paste from clipboard"
                   >
-                    <ClipboardPaste size={14} />
+                    <span title="Paste from clipboard"><ClipboardPaste size={14} /></span>
                   </button>
                 )}
               </div>
@@ -234,7 +231,7 @@ export const AIParameters: React.FC = () => {
         </label>
         <span className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-black'}`}>
           Stream
-          <Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} title="Stream response tokens in real-time as they generate" />
+          <span title="Stream response tokens in real-time as they generate" className="cursor-help"><Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} /></span>
         </span>
       </div>
 
@@ -242,7 +239,7 @@ export const AIParameters: React.FC = () => {
       <div className="space-y-2">
         <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-black'}`}>
           Reasoning Effort
-          <Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} title="Controls chain-of-thought reasoning depth" />
+          <span title="Controls chain-of-thought reasoning depth" className="cursor-help"><Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} /></span>
         </label>
         <div className="flex flex-wrap items-center gap-5">
           {(['none', 'low', 'medium', 'high'] as const).map((effort) => {
@@ -311,7 +308,7 @@ export const AIParameters: React.FC = () => {
       <div className="space-y-1.5">
         <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-black'}`}>
           Seed
-          <Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} title="Seed value for deterministic output generation" />
+          <span title="Seed value for deterministic output generation" className="cursor-help"><Info size={13} className={isDark ? 'text-neutral-500' : 'text-neutral-500'} /></span>
         </label>
         <input
           type="number"

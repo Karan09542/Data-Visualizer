@@ -2,7 +2,7 @@ import React from 'react';
 import * as fabric from 'fabric';
 import {
    Brush, FlipHorizontal, FlipVertical, Move, SquareDashed, Layout, Square, Palette, MousePointer2, Copy, Trash2, Crop, RotateCcw, Settings,
-   Droplets, Sparkles, LucideImage, Printer, Plus, Minus
+   Droplets, Sparkles, Printer, Plus, Minus
 } from 'lucide-react';
 import { useTool } from '../../../contexts/ToolContext';
 import { useCanvas } from '../../../contexts/CanvasContext';
@@ -496,15 +496,6 @@ export const PropertiesTab: React.FC = () => {
                                  <button key={c} onClick={() => updateArtboardPropDirect(activeArtboardId, 'backgroundColor', c, true)} className="w-full h-5 rounded-md border border-slate-200 dark:border-white/10 hover:border-white/50 hover:scale-110 active:scale-95 transition-all shadow-sm" style={{ backgroundColor: c }} />
                               ))}
                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                           <button className="py-2.5 px-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 hover:border-blue-500/50 text-blue-400 text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95">
-                              <Sparkles size={14} /> Auto-Remove BG
-                           </button>
-                           <button className="py-2.5 px-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95">
-                              <LucideImage size={14} /> Gen AI Fill
-                           </button>
                         </div>
                      </PanelSection>
 
