@@ -51,19 +51,23 @@ export default defineConfig(({ mode }) => {
                 {
                   name: 'files',
                   accept: [
-                    'image/*',
-                    'video/*',
-                    'audio/*',
-                    'text/*',
-                    'application/*',
+                    'application/json',
+                    'application/x-yaml',
+                    'text/yaml',
+                    'text/plain',
+                    'text/csv',
+                    'application/pdf',
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     '.csv',
                     '.json',
                     '.yaml',
                     '.yml',
                     '.glb',
                     '.gltf',
+                    '.obj',
                     '.txt',
-                    '.pdf'
+                    '.pdf',
+                    '.xlsx'
                   ]
                 }
               ]
