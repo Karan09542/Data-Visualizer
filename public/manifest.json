@@ -30,7 +30,7 @@
     }
   ],
   "share_target": {
-    "action": "https://datavisualizer.urlmediainspector.dev/share-receiver/",
+    "action": "/share-receiver/",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
@@ -40,7 +40,26 @@
       "files": [
         {
           "name": "files",
-          "accept": ["*/*"]
+          "accept": [
+            "application/json",
+            "text/yaml",
+            "application/x-yaml",
+            "text/plain",
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "audio/*",
+            "video/*",
+            "model/*",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".csv",
+            ".xlsx",
+            ".gltf",
+            ".glb",
+            ".obj",
+            ".stl"
+          ]
         }
       ]
     }
