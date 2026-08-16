@@ -42,20 +42,104 @@ import { FloatingMic } from "./voice/components/FloatingMic";
 import { useVoice } from "./voice/useVoice";
 
 
-class GlobalErrorBoundary extends React.Component<any, any> {
+class GlobalErrorBoundary extends React.Component<any, { hasError: boolean; error: any; errorInfo: any; copied: boolean }> {
   constructor(props: any) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null, copied: false };
   }
   static getDerivedStateFromError(error: any) {
     return { hasError: true, error };
   }
   componentDidCatch(error: any, errorInfo: any) {
     console.error("TOP LEVEL REACT ERROR:", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+  handleCopy = () => {
+    const errorText = [
+      `Error: ${this.state.error?.message || 'Unknown error'}`,
+      '',
+      `Stack:`,
+      this.state.error?.stack || 'No stack trace',
+      '',
+      `Component Stack:`,
+      this.state.errorInfo?.componentStack || 'N/A'
+    ].join('\n');
+    navigator.clipboard.writeText(errorText).then(() => {
+      this.setState({ copied: true });
+      setTimeout(() => this.setState({ copied: false }), 2000);
+    }).catch(() => {
+      // Fallback for HTTP contexts
+      const textarea = document.createElement('textarea');
+      textarea.value = errorText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      this.setState({ copied: true });
+      setTimeout(() => this.setState({ copied: false }), 2000);
+    });
   }
   render() {
     if (this.state.hasError) {
-      return <h1>Something went wrong: {this.state.error?.message}</h1>;
+      return (
+        <div className="fixed inset-0 z-[99999] bg-[#0a0e17] flex items-center justify-center p-4 font-sans">
+          <div className="w-full max-w-lg bg-[#111827] border border-red-500/30 rounded-2xl shadow-2xl shadow-red-500/10 overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 bg-red-500/10 border-b border-red-500/20 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-red-300">Application Error</h2>
+                <p className="text-[11px] text-red-400/70 truncate">Something went wrong in this component</p>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            <div className="px-5 py-4 space-y-3">
+              <div className="bg-[#0d1117] border border-white/10 rounded-xl p-3.5 max-h-[200px] overflow-y-auto">
+                <p className="text-xs font-mono text-red-300 leading-relaxed break-words whitespace-pre-wrap">
+                  {this.state.error?.message || 'Unknown error'}
+                </p>
+              </div>
+
+              {/* Stack trace (collapsed) */}
+              {this.state.error?.stack && (
+                <details className="group">
+                  <summary className="text-[11px] font-semibold text-slate-400 cursor-pointer hover:text-slate-300 transition-colors select-none">
+                    ▸ Stack Trace
+                  </summary>
+                  <div className="mt-2 bg-[#0d1117] border border-white/10 rounded-xl p-3 max-h-[150px] overflow-y-auto">
+                    <pre className="text-[10px] font-mono text-slate-500 leading-relaxed whitespace-pre-wrap break-words">
+                      {this.state.error.stack}
+                    </pre>
+                  </div>
+                </details>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-4 border-t border-white/10 flex items-center gap-2">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 px-4 py-2.5 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 text-xs font-bold rounded-xl transition-all active:scale-95"
+              >
+                ↻ Reload App
+              </button>
+              <button
+                onClick={this.handleCopy}
+                className={`flex-1 px-4 py-2.5 border text-xs font-bold rounded-xl transition-all active:scale-95 ${
+                  this.state.copied
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300'
+                }`}
+              >
+                {this.state.copied ? '✓ Copied!' : '⧉ Copy Error'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
     }
     return this.props.children;
   }

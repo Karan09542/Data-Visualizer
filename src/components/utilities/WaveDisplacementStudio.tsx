@@ -5,7 +5,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, horizontalList
 import { CSS } from '@dnd-kit/utilities';
 import {
    Upload, Play, Pause, Layers, Trash2, Waves,
-   Plus, Ratio, Clock
+   Plus, Ratio, Clock, Maximize, Minimize, Sliders, X
 } from 'lucide-react';
 import { FilterMode, AspectRatioMode, FILTER_PRESETS, ASPECT_PRESETS, VERTEX_SHADER, FRAGMENT_SHADER } from './WaveDisplacementShaders';
 import { WaveInspectorTabs, InspectorTabType } from './WaveInspectorTabs';
@@ -66,6 +66,20 @@ export interface PoolImage {
    maskObjects?: MaskObject[];
 }
 
+// Fallback for crypto.randomUUID which requires secure context (HTTPS)
+const generateId = (): string => {
+   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+   }
+   // Fallback using crypto.getRandomValues (works on HTTP too)
+   const arr = new Uint8Array(16);
+   crypto.getRandomValues(arr);
+   arr[6] = (arr[6] & 0x0f) | 0x40;
+   arr[8] = (arr[8] & 0x3f) | 0x80;
+   const hex = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+};
+
 const SortableThumbnail = ({ id, img, index, currentIndex, onSelect, onRemove }: any) => {
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
    const style = {
@@ -73,6 +87,7 @@ const SortableThumbnail = ({ id, img, index, currentIndex, onSelect, onRemove }:
       transition,
       zIndex: isDragging ? 10 : 1,
    };
+   const isActive = index === currentIndex;
 
    return (
       <div
@@ -80,23 +95,27 @@ const SortableThumbnail = ({ id, img, index, currentIndex, onSelect, onRemove }:
          style={style}
          {...attributes}
          {...listeners}
-         onClick={() => onSelect(index)}
-         className={`relative group shrink-0 w-12 h-12 rounded-xl border overflow-hidden transition-all cursor-grab active:cursor-grabbing touch-none ${index === currentIndex
+         onPointerUp={(e) => {
+            // Only select if it wasn't a drag (DnD sets isDragging)
+            if (!isDragging) onSelect(index);
+         }}
+         className={`relative group shrink-0 w-9 h-9 md:w-12 md:h-12 rounded-lg md:rounded-xl border overflow-hidden transition-all cursor-grab active:cursor-grabbing touch-none ${isActive
             ? 'border-cyan-400 ring-2 ring-cyan-500/40 scale-105 shadow-md shadow-cyan-500/20'
             : 'border-white/10 opacity-70 hover:opacity-100 hover:border-white/30'
             }`}
       >
          <img src={img.url} alt={img.name} className="w-full h-full object-cover pointer-events-none" />
+         {/* Delete button: always visible on active thumbnail, hover-only on desktop for others */}
          <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
                e.stopPropagation();
                onRemove(img.id);
             }}
-            className="absolute top-0.5 right-0.5 p-1 bg-black/80 text-red-400 hover:text-red-300 rounded-md opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            className={`absolute -top-0.5 -right-0.5 p-0.5 md:p-1 bg-black/90 text-red-400 hover:text-red-300 rounded-full md:rounded-md transition-opacity z-10 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
             title="Remove Image"
          >
-            <Trash2 size={10} />
+            <Trash2 size={8} className="md:w-2.5 md:h-2.5" />
          </button>
       </div>
    );
@@ -124,6 +143,43 @@ export function WaveDisplacementStudio() {
    const [detectedImageAspect, setDetectedImageAspect] = useState<number>(1.0);
    const viewportRef = useRef<HTMLDivElement | null>(null);
    const [viewportSize, setViewportSize] = useState<{ w: number, h: number }>({ w: 600, h: 400 });
+
+   const [isFullscreen, setIsFullscreen] = useState(false);
+   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+   const [sheetHeight, setSheetHeight] = useState(50); // percentage (vh)
+   const isDraggingSheetRef = useRef(false);
+
+   useEffect(() => {
+      const handleFullscreenChange = () => {
+         setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+      };
+      document.addEventListener('fullscreenchange', handleFullscreenChange);
+      document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+      return () => {
+         document.removeEventListener('fullscreenchange', handleFullscreenChange);
+         document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      };
+   }, []);
+
+   const toggleFullscreen = () => {
+      const doc = document as any;
+      const fsElement = document.fullscreenElement || doc.webkitFullscreenElement;
+      if (!fsElement) {
+         const el = viewportRef.current as any;
+         if (!el) return;
+         if (el.requestFullscreen) {
+            el.requestFullscreen().catch((err: Error) => console.error(`Fullscreen error: ${err.message}`));
+         } else if (el.webkitRequestFullscreen) {
+            el.webkitRequestFullscreen();
+         }
+      } else {
+         if (document.exitFullscreen) {
+            document.exitFullscreen();
+         } else if (doc.webkitExitFullscreen) {
+            doc.webkitExitFullscreen();
+         }
+      }
+   };
 
    // DND Sensors
    const sensors = useSensors(
@@ -1487,7 +1543,7 @@ export function WaveDisplacementStudio() {
          } else {
             // Start new bezier path
             const newObj: MaskObject = {
-               id: crypto.randomUUID(),
+               id: generateId(),
                type: 'bezier',
                isEraser: false,
                x, y, size: maskBrushSize, rotation: 0,
@@ -1507,7 +1563,7 @@ export function WaveDisplacementStudio() {
 
       // Drawing a new object (brush, eraser, shapes, text)
       const newObj: MaskObject = {
-         id: crypto.randomUUID(),
+         id: generateId(),
          type: (maskTool === 'brush' || maskTool === 'eraser' || maskTool === 'text') ? (maskTool === 'text' ? 'text' : 'path') : maskTool as any,
          isEraser: maskTool === 'eraser',
          x: x,
@@ -1965,6 +2021,8 @@ export function WaveDisplacementStudio() {
 
             const targetHeight = Math.round(targetWidth / aspect);
             rendererRef.current.setSize(targetWidth, targetHeight, false);
+            // FIX FOR MOBILE: Force pixel ratio to 1 during export to avoid CCapture memory crash
+            rendererRef.current.setPixelRatio(1);
             if (materialRef.current) {
                materialRef.current.uniforms.uResolution.value.set(targetWidth, targetHeight);
             }
@@ -2028,6 +2086,7 @@ export function WaveDisplacementStudio() {
 
       // Now we can safely restore the viewport size
       if (handleResizeRef.current) {
+         if (rendererRef.current) rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
          handleResizeRef.current();
       }
       
@@ -2121,30 +2180,30 @@ export function WaveDisplacementStudio() {
 
    return (
       <div
-         className="w-full h-full flex flex-col md:flex-row bg-[#080b11] text-slate-100 overflow-y-auto overflow-x-hidden md:overflow-hidden font-sans select-none min-w-0"
+         className="w-full h-[100dvh] flex flex-col md:flex-row bg-[#080b11] text-slate-100 overflow-hidden font-sans select-none min-w-0"
          onDrop={handleDrop}
          onDragOver={handleDragOver}
          onDragEnter={handleDragOver}
       >
          {/* LEFT WORKSPACE: Viewport & Canvas Area */}
-         <div className="flex-none md:flex-1 flex flex-col relative bg-[#0d111a] border-b md:border-b-0 md:border-r border-white/10 h-[55vh] md:h-auto min-h-[400px] md:min-h-0 min-w-0">
+         <div className="flex flex-col relative bg-[#0d111a] border-b md:border-b-0 md:border-r border-white/10 min-w-0 min-h-0 flex-1">
             {/* Top Studio Header Toolbar */}
-            <div className="px-4 py-3 bg-[#111622]/90 border-b border-white/10 flex items-center justify-between backdrop-blur-md shrink-0 flex-wrap gap-2">
-               <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-inner">
+            <div className="px-2.5 py-2 md:px-4 md:py-3 bg-[#111622]/90 border-b border-white/10 flex items-center justify-between backdrop-blur-md shrink-0 gap-2">
+               <div className="flex items-center gap-2 min-w-0">
+                  <div className="hidden sm:flex w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 items-center justify-center text-cyan-400 shadow-inner shrink-0">
                      <Waves size={18} />
                   </div>
-                  <div>
-                     <div className="flex items-center gap-2">
-                        <h2 className="text-xs font-black uppercase tracking-wider text-slate-100">WebGL Wave Studio</h2>
-                        <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">PRO SHADER</span>
+                  <div className="min-w-0">
+                     <div className="flex items-center gap-1.5">
+                        <h2 className="text-[11px] md:text-xs font-black uppercase tracking-wider text-slate-100 truncate">Wave Studio</h2>
+                        <span className="hidden sm:inline px-2 py-0.5 text-[9px] font-bold rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0">PRO SHADER</span>
                      </div>
-                     <p className="text-[10px] text-slate-400 hidden sm:block">Multi-texture GLSL wave displacement & transition pipeline</p>
+                     <p className="text-[10px] text-slate-400 hidden sm:block">Multi-texture GLSL wave displacement &amp; transition pipeline</p>
                   </div>
                </div>
 
                {/* Header Actions */}
-               <div className="flex items-center gap-2">
+               <div className="flex items-center gap-1.5 shrink-0">
                   <label className="hidden sm:flex px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-semibold text-slate-200 cursor-pointer transition-all items-center gap-1.5 active:scale-95">
                      <Upload size={14} className="text-cyan-400" />
                      <span>Add Images</span>
@@ -2153,17 +2212,25 @@ export function WaveDisplacementStudio() {
 
                   <button
                      onClick={() => setIsPlaying(!isPlaying)}
-                     className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${isPlaying ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
+                     className={`p-1.5 md:px-3 md:py-1.5 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${isPlaying ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
                         }`}
                   >
                      {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-                     <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                     <span className="hidden md:inline">{isPlaying ? 'Pause' : 'Play'}</span>
+                  </button>
+
+                  {/* Mobile Settings Toggle */}
+                  <button
+                     onClick={() => setIsMobileSheetOpen(!isMobileSheetOpen)}
+                     className={`md:hidden p-1.5 rounded-lg transition-all active:scale-95 ${isMobileSheetOpen ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-white/5 text-slate-300 border border-white/10'}`}
+                  >
+                     {isMobileSheetOpen ? <X size={16} /> : <Sliders size={16} />}
                   </button>
                </div>
             </div>
 
-            {/* Viewport Aspect Ratio Selector Toolbar */}
-            <div className="px-4 py-2 bg-[#090d15] border-b border-white/5 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
+            {/* Viewport Aspect Ratio Selector Toolbar - hidden on mobile when sheet is open to save space */}
+            <div className={`px-4 py-2 bg-[#090d15] border-b border-white/5 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0 ${isMobileSheetOpen ? 'hidden md:flex' : ''}`}>
                <div className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-400 shrink-0 mr-1">
                   <Ratio size={13} className="text-cyan-400" />
                   <span>Ratio:</span>
@@ -2184,7 +2251,7 @@ export function WaveDisplacementStudio() {
 
             {/* Canvas Viewport Box - Dynamically Shrinkwraps Aspect Ratio */}
             <div className="flex-1 relative flex items-center justify-center p-3 md:p-6 overflow-hidden min-h-0 bg-[#06080d]">
-               <div className="relative w-full h-full shadow-2xl flex items-center justify-center group bg-black border border-white/10 overflow-hidden rounded-xl">
+               <div ref={viewportRef} className="relative w-full h-full shadow-2xl flex items-center justify-center group bg-black border border-white/10 overflow-hidden rounded-xl">
                   <canvas ref={canvasRef} className="block shadow-xl" />
                   <canvas
                      ref={maskCanvasRef}
@@ -2260,14 +2327,25 @@ export function WaveDisplacementStudio() {
                         </span>
                      )}
                   </div>
+
+                  {/* Fullscreen Button */}
+                  {!isRecording && (
+                     <button
+                        onClick={toggleFullscreen}
+                        className="absolute top-3 right-3 p-2 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 text-slate-200 hover:text-cyan-400 hover:bg-black/90 transition-all z-40 opacity-100 md:opacity-0 md:group-hover:opacity-100 active:scale-90"
+                        title="Toggle Fullscreen"
+                     >
+                        {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+                     </button>
+                  )}
                </div>
             </div>
 
             {/* Bottom Image Sequence Rail */}
-            <div className="px-4 py-3 bg-[#111622]/90 border-t border-white/10 flex items-center gap-3 overflow-x-auto scrollbar-thin shrink-0 min-w-0">
-               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
-                  <Layers size={12} className="text-cyan-400" />
-                  <span>Pool ({images.length})</span>
+            <div className="px-2.5 py-1.5 md:px-4 md:py-3 bg-[#111622]/90 border-t border-white/10 flex items-center gap-2 md:gap-3 overflow-x-auto scrollbar-thin shrink-0 min-w-0">
+               <div className="flex items-center gap-1 md:gap-1.5 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                  <Layers size={10} className="text-cyan-400 md:w-3 md:h-3" />
+                  <span>{images.length}</span>
                </div>
 
                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -2286,16 +2364,50 @@ export function WaveDisplacementStudio() {
                   } />
                </DndContext>
 
-               {/* Mobile Quick Add Button */}
-               <label className="shrink-0 w-12 h-12 rounded-xl border border-dashed border-white/20 hover:border-cyan-400/60 bg-white/5 hover:bg-cyan-500/10 flex flex-col items-center justify-center text-slate-400 hover:text-cyan-300 cursor-pointer transition-all">
-                  <Plus size={16} />
+               {/* Quick Add Button */}
+               <label className="shrink-0 w-9 h-9 md:w-12 md:h-12 rounded-lg md:rounded-xl border border-dashed border-white/20 hover:border-cyan-400/60 bg-white/5 hover:bg-cyan-500/10 flex flex-col items-center justify-center text-slate-400 hover:text-cyan-300 cursor-pointer transition-all">
+                  <Plus size={14} />
                   <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
                </label>
             </div>
          </div>
 
-         {/* RIGHT INSPECTOR SIDEBAR (No Clipping & Full Lucide Icons) */}
-         <div className="w-full md:w-80 lg:w-96 xl:w-[380px] bg-[#0c1018] flex flex-col flex-none md:overflow-y-auto md:shrink-0 border-t md:border-t-0 border-white/10 min-w-0">
+         {/* MOBILE DRAG HANDLE — must be OUTSIDE the scrollable sidebar */}
+         {isMobileSheetOpen && (
+            <div 
+               className="md:hidden w-full flex justify-center items-center py-2 cursor-ns-resize bg-[#0c1018] border-t border-white/10 flex-none z-10"
+               onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  isDraggingSheetRef.current = true;
+               }}
+               onPointerMove={(e) => {
+                  if (isDraggingSheetRef.current) {
+                     e.preventDefault();
+                     const percent = 100 - (e.clientY / window.innerHeight) * 100;
+                     setSheetHeight(Math.max(20, Math.min(80, percent)));
+                  }
+               }}
+               onPointerUp={(e) => {
+                  isDraggingSheetRef.current = false;
+                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch(err){}
+               }}
+               onPointerCancel={(e) => {
+                  isDraggingSheetRef.current = false;
+                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch(err){}
+               }}
+               style={{ touchAction: 'none' }}
+            >
+               <div className="w-10 h-1 bg-white/25 hover:bg-white/50 rounded-full transition-colors pointer-events-none" />
+            </div>
+         )}
+
+         {/* RIGHT INSPECTOR SIDEBAR */}
+         <div 
+            className={`w-full md:w-80 lg:w-96 xl:w-[380px] bg-[#0c1018] flex flex-col flex-none overflow-y-auto md:shrink-0 border-t md:border-t-0 border-white/10 min-w-0 md:h-full ${isMobileSheetOpen ? 'md:h-full' : 'hidden md:flex'}`}
+            style={isMobileSheetOpen ? { height: `${sheetHeight}dvh` } : {}}  
+         >
+
             {/* Inspector Navigation Tabs */}
             <WaveInspectorTabs activeTab={inspectorTab} onTabChange={setInspectorTab} />
 

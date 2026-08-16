@@ -463,9 +463,9 @@ export function WaveExportTab({ exportFormat, setExportFormat, recordDuration, s
                      <span>100% (max)</span>
                   </div>
                   {exportFormat === 'webm' && (
-                     <div className="mt-3 p-2 bg-slate-900/50 border border-slate-700/50 rounded text-[9px] text-slate-400 leading-relaxed">
-                        <strong className="text-slate-300">Note:</strong> Browser-based WebM export uses Intra-frame compression (saving every frame individually like a flipbook). This results in naturally larger file sizes than standard MP4 videos. To reduce file size, lower the <strong className="text-purple-400">FPS Target</strong> or <strong className="text-purple-400">Export Quality</strong>.
-                     </div>
+                     <p className="mt-2 text-[9px] text-slate-500 leading-relaxed">
+                        💡 WebM uses per-frame encoding — files are larger than MP4. Lower <strong className="text-purple-400">FPS</strong> or <strong className="text-purple-400">Quality</strong> to reduce size.
+                     </p>
                   )}
                </div>
             </div>
@@ -1035,7 +1035,7 @@ export function WaveTextTab({
    deleteActiveObject
 }: WaveTextTabProps) {
    return (
-      <div className="p-4 space-y-5 overflow-visible min-w-0">
+      <div className="p-4 space-y-5 min-w-0">
          {/* Top Controls */}
          <div className="flex items-center justify-between">
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
