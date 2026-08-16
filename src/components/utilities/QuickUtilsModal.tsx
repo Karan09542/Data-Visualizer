@@ -32,7 +32,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("wavedisp");
+  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   // Close on Escape key
@@ -66,8 +66,8 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className={`relative transition-all duration-300 ${isMaximized
-                ? "w-screen h-screen max-w-none max-h-none rounded-none border-none p-0"
-                : "w-full h-full md:h-[90vh] md:max-h-[850px] max-w-6xl md:rounded-2xl border border-black/10 dark:border-white/10"
+              ? "w-screen h-screen max-w-none max-h-none rounded-none border-none p-0"
+              : "w-full h-full md:h-[90vh] md:max-h-[850px] max-w-6xl md:rounded-2xl border border-black/10 dark:border-white/10"
               } bg-slate-50 dark:bg-[#080b11] shadow-2xl flex flex-col md:flex-row overflow-hidden`}
           >
             {/* Close & Maximize buttons for mobile (absolute top right) */}
@@ -111,8 +111,8 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
                     className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === tab.id
-                        ? tab.activeClass
-                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-transparent"
+                      ? tab.activeClass
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-transparent"
                       }`}
                   >
                     <tab.icon size={18} className={`shrink-0 ${tab.iconClass}`} />

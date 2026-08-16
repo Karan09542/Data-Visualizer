@@ -11,6 +11,9 @@ import { FilterMode, AspectRatioMode, FILTER_PRESETS, ASPECT_PRESETS, VERTEX_SHA
 import { WaveInspectorTabs, InspectorTabType } from './WaveInspectorTabs';
 import { WaveEffectsTab, WaveControlsTab, WaveExportTab, WaveImageTab, WaveMaskTab, WaveTextTab } from './WaveInspectorTabContent';
 
+const NATIVE_RAF = typeof window !== 'undefined' ? window.requestAnimationFrame.bind(window) : ((cb: FrameRequestCallback) => setTimeout(cb, 16) as unknown as number);
+const NATIVE_CAF = typeof window !== 'undefined' ? window.cancelAnimationFrame.bind(window) : clearTimeout;
+
 export type MaskTool = 'select' | 'brush' | 'pen' | 'eraser' | 'circle' | 'square' | 'triangle' | 'text';
 export type TransformHandle = 'rotate' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-l' | 'resize-r' | 'resize-t' | 'resize-b';
 
@@ -297,6 +300,7 @@ export function WaveDisplacementStudio() {
    const transitionProgressRef = useRef<number>(0);
    const targetAspectRef = useRef<number>(1.0);
    const handleResizeRef = useRef<(() => void) | null>(null);
+   const effectiveFPSRef = useRef<number>(30);
 
    // Helper: Load HTMLImageElement with cross-origin safety
    const loadHTMLImage = (url: string): Promise<HTMLImageElement> => {
@@ -555,6 +559,7 @@ export function WaveDisplacementStudio() {
       materialRef.current = material;
 
       const handleResize = () => {
+         if (isRecordingRef.current) return; // Prevent resizing WebGL buffer during active export!
          if (!canvasRef.current || !rendererRef.current || !materialRef.current) return;
          const parent = canvasRef.current.parentElement;
          if (!parent) return;
@@ -694,7 +699,7 @@ export function WaveDisplacementStudio() {
          // MediaRecorder (WebM) records in real-time, so we MUST use real time steps, 
          // otherwise heavy 4K renders play in slow-motion and don't finish before the timeout.
          const isFrameByFrame = isRecordingRef.current && !!capturerRef.current;
-         const deltaTime = isFrameByFrame ? (1.0 / recordFramerate) : realDelta;
+         const deltaTime = isFrameByFrame ? (1.0 / effectiveFPSRef.current) : realDelta;
 
          lastTime = currentTime;
 
@@ -724,17 +729,15 @@ export function WaveDisplacementStudio() {
 
                      // No-loop mode during recording: stop after one complete pass
                      if (isRecordingRef.current && !exportLoopRef.current && nextRaw >= Math.max(1, textures.length - 1)) {
-                        // Hold on last image, auto-stop will be triggered by duration timer or frame counter
+                        // Hold on last image, auto-stop will be triggered by duration timer or frame counter at the bottom of the loop
                         currentIndexRef.current = textures.length - 1;
                         materialRef.current.uniforms.uTransitionProgress.value = 0.0;
-                        setTimeout(() => stopRecording(), 250); // Buffer to ensure final frame is recorded
-                        return;
+                     } else {
+                        const nextIdx = nextRaw % textures.length;
+                        currentIndexRef.current = nextIdx;
+                        setCurrentIndex(nextIdx);
+                        bindTexturesForIndex(nextIdx);
                      }
-
-                     const nextIdx = nextRaw % textures.length;
-                     currentIndexRef.current = nextIdx;
-                     setCurrentIndex(nextIdx);
-                     bindTexturesForIndex(nextIdx);
                   }
 
                   materialRef.current.uniforms.uTransitionProgress.value = transitionProgressRef.current;
@@ -752,34 +755,35 @@ export function WaveDisplacementStudio() {
 
             if (isRecordingRef.current) {
                if (capturerRef.current && canvasRef.current) {
-                  // CCapture frame-by-frame progress
-                  capturerRef.current.capture(canvasRef.current);
-                  framesRecordedRef.current += 1;
-                  const elapsed = framesRecordedRef.current / recordFramerate;
-                  const progress = Math.min(100, Math.round((elapsed / recordDuration) * 100));
-                  setRecordProgress(progress);
+                  try {
+                     // CCapture frame-by-frame progress
+                     capturerRef.current.capture(canvasRef.current);
+                     framesRecordedRef.current += 1;
+                     const elapsed = framesRecordedRef.current / effectiveFPSRef.current;
+                     const progress = Math.min(100, Math.round((elapsed / recordDuration) * 100));
+                     setRecordProgress(progress);
 
-                  if (elapsed >= recordDuration) {
-                     stopRecording();
+                     // > instead of >= captures 1 extra frame, ensuring the final video's timestamp reaches EXACTLY recordDuration
+                     if (elapsed > recordDuration) {
+                        stopRecording();
+                     }
+                  } catch (e) {
+                     console.error("CCapture capture error:", e);
+                     stopRecording(true);
                   }
-               } else if (mediaRecorderRef.current) {
-                  // WebM real-time progress
-                  const elapsedRealTime = (performance.now() - recordStartTimeRef.current) / 1000;
-                  const progress = Math.min(100, Math.round((elapsedRealTime / recordDuration) * 100));
-                  setRecordProgress(progress);
                }
             }
          }
 
-         animFrameIdRef.current = requestAnimationFrame(animate);
+         animFrameIdRef.current = NATIVE_RAF(animate);
       };
 
-      animFrameIdRef.current = requestAnimationFrame(animate);
+      animFrameIdRef.current = NATIVE_RAF(animate);
 
       return () => {
-         if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+         if (animFrameIdRef.current) NATIVE_CAF(animFrameIdRef.current);
       };
-   }, [isPlaying, autoTransition, transitionDuration, manualProgress, recordDuration, bindTexturesForIndex]);
+   }, [isPlaying, autoTransition, transitionDuration, manualProgress, recordDuration, bindTexturesForIndex, loopRestartToggle]);
 
    // Masking Logic
    useEffect(() => {
@@ -1968,16 +1972,14 @@ export function WaveDisplacementStudio() {
 
          // Effective framerate — cap GIF to 10fps to avoid massive file sizes
          const effectiveFPS = exportFormat === 'gif' ? Math.min(recordFramerate, 10) : recordFramerate;
+         effectiveFPSRef.current = effectiveFPS;
 
          if (exportFormat === 'png') {
             setStatusMessage('Loading JSZip module...');
             const JSZip = (await import('jszip')).default;
             jszipRef.current = new JSZip();
-         } else if (exportFormat === 'webm') {
-            // Native MediaRecorder for WebM is much faster/lighter for browser memory
-            return startNativeWebMRecording();
          } else {
-            // Frame-by-frame export via CCapture (guarantees perfect framerate for GIF)
+            // Frame-by-frame export via CCapture (guarantees perfect framerate for WebM/GIF)
             if (!(window as any).CCapture) {
                setStatusMessage('Loading CCapture module...');
                await loadScript('https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js');
@@ -1986,9 +1988,9 @@ export function WaveDisplacementStudio() {
             if (!CCaptureClass) throw new Error('CCapture engine unavailable');
 
             const options: any = {
-               format: 'gif',
+               format: exportFormat === 'webm' ? 'webm' : 'gif',
                framerate: effectiveFPS,
-               quality: Math.max(1, Math.round(31 - (exportQuality / 100) * 30)),
+               quality: exportFormat === 'webm' ? (exportQuality / 100) : Math.max(1, Math.round(31 - (exportQuality / 100) * 30)),
                name: `wave_displacement_${Date.now()}`,
                verbose: false,
                workersPath: '/',
@@ -2012,101 +2014,35 @@ export function WaveDisplacementStudio() {
       }
    };
 
-   // Native WebM Recorder with bitrate control
-   const startNativeWebMRecording = () => {
-      if (!canvasRef.current) return;
-      try {
-         const stream = canvasRef.current.captureStream(recordFramerate);
-
-         const width = canvasRef.current.width;
-         const height = canvasRef.current.height;
-         const totalPixels = width * height;
-
-         // More conservative bitrate to prevent massive files
-         // 720p (approx 1M pixels) at 30fps ~ 1.5 Mbps base
-         const maxBitrateForRes = totalPixels * 1.5;
-         const maxBitrateForFPS = maxBitrateForRes * (recordFramerate / 30);
-         const targetBitsPerSecond = Math.max(100_000, Math.round((exportQuality / 100) * maxBitrateForFPS));
-
-         // Prefer VP8 for better bitrate adherence, VP9 often ignores videoBitsPerSecond and makes huge files
-         let mimeType = 'video/webm;codecs=vp8';
-         if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/webm;codecs=vp9';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-               mimeType = 'video/webm';
-            }
-         }
-
-         const recorder = new MediaRecorder(stream, {
-            mimeType,
-            videoBitsPerSecond: targetBitsPerSecond,
-         });
-         const chunks: Blob[] = [];
-
-         recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data);
-         };
-
-         recorder.onstop = () => {
-            stream.getTracks().forEach(track => track.stop());
-            if (handleResizeRef.current) handleResizeRef.current();
-            oldSizeRef.current = null;
-
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `wave_animation_${Date.now()}.webm`;
-            a.click();
-            setIsRecording(false);
-            isRecordingRef.current = false;
-            mediaRecorderRef.current = null;
-            setStatusMessage(`Export complete! (${sizeMB} MB WebM)`);
-            setLoopRestartToggle(prev => !prev);
-         };
-
-         recorder.start(500);
-         mediaRecorderRef.current = recorder;
-         isRecordingRef.current = true;
-         framesRecordedRef.current = 0;
-         recordStartTimeRef.current = performance.now();
-         setIsRecording(true);
-         setRecordProgress(0);
-         const kbps = Math.round(targetBitsPerSecond / 1000);
-         setStatusMessage(`Recording WebM (${recordDuration}s, ${kbps}kbps, ${mimeType.includes('vp9') ? 'VP9' : 'VP8'})...`);
-
-         setTimeout(() => {
-            if (recorder.state !== 'inactive') {
-               try { recorder.requestData(); } catch (e) { }
-               recorder.stop();
-            }
-         }, (recordDuration * 1000) + 250); // 250ms buffer to prevent duration truncation by players
-      } catch (e: any) {
-         setStatusMessage('Recording error: ' + e.message);
-         setIsRecording(false);
-         isRecordingRef.current = false;
-      }
-   };
-
-
-
    // Stop Recording & Export
-   const stopRecording = async () => {
+   const stopRecording = async (abort = false) => {
       if (!isRecordingRef.current) return;
-      isRecordingRef.current = false;
-      setStatusMessage('Packaging exported multi-image animation... Please wait.');
 
-      // Restore renderer size if it was changed
+      // Permanently drop the recording lock
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      
+      // Detach the capturer instantly so the native render loop stops feeding it frames!
+      const capturer = capturerRef.current;
+      capturerRef.current = null;
+
+      // Now we can safely restore the viewport size
       if (handleResizeRef.current) {
          handleResizeRef.current();
       }
+      
       oldSizeRef.current = null;
+      setStatusMessage(abort ? 'Recording cancelled.' : 'Packaging exported multi-image animation... Please wait.');
 
       if (exportFormat === 'png' && jszipRef.current) {
          const zip = jszipRef.current;
          jszipRef.current = null;
          setLoopRestartToggle(prev => !prev);
+
+         if (abort || framesRecordedRef.current === 0) {
+            setStatusMessage(abort ? 'Recording cancelled.' : 'Recording aborted (0 frames captured).');
+            return;
+         }
 
          const blob = await zip.generateAsync({ type: 'blob' });
          const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
@@ -2116,30 +2052,27 @@ export function WaveDisplacementStudio() {
          a.download = `wave_sequence_${Date.now()}.zip`;
          a.click();
          setStatusMessage(`Export complete! (${sizeMB} MB ZIP)`);
+         isRecordingRef.current = false;
          setIsRecording(false);
-      } else if (capturerRef.current) {
-         capturerRef.current.stop();
+      } else if (capturer) {
+         capturer.stop();
          setLoopRestartToggle(prev => !prev);
 
-         if (framesRecordedRef.current === 0) {
-            setStatusMessage('Recording aborted (0 frames captured).');
-            capturerRef.current = null;
+         if (abort || framesRecordedRef.current === 0) {
+            setStatusMessage(abort ? 'Recording cancelled.' : 'Recording aborted (0 frames captured).');
+            isRecordingRef.current = false;
             setIsRecording(false);
          } else {
             try {
                // Safety timeout: if processing hangs for more than 60s, unlock the UI
                const timeoutId = setTimeout(() => {
-                  if (capturerRef.current) {
-                     setStatusMessage('Processing timed out.');
-                     capturerRef.current = null;
-                     setIsRecording(false);
-                  }
+                  setStatusMessage('Processing timed out.');
+                  isRecordingRef.current = false;
+                  setIsRecording(false);
                }, 60000);
 
-               capturerRef.current.save((blob: Blob) => {
+               capturer.save((blob: Blob) => {
                   clearTimeout(timeoutId);
-                  // Ensure we haven't already timed out
-                  if (!capturerRef.current) return;
                   const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -2148,19 +2081,18 @@ export function WaveDisplacementStudio() {
                   a.download = `wave_displacement_animation.${ext}`;
                   a.click();
                   setStatusMessage(`Export complete! (${sizeMB} MB ${ext.toUpperCase()})`);
-                  capturerRef.current = null;
+                  isRecordingRef.current = false;
                   setIsRecording(false);
                });
             } catch (err: any) {
                console.error('Export save error:', err);
                setStatusMessage(`Export Error: ${err.message || 'Unknown error'}`);
-               capturerRef.current = null;
+               isRecordingRef.current = false;
                setIsRecording(false);
             }
          }
-      } else if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-         mediaRecorderRef.current.stop();
       } else {
+         isRecordingRef.current = false;
          setIsRecording(false);
       }
    };

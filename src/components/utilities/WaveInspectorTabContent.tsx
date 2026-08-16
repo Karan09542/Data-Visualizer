@@ -381,7 +381,7 @@ export interface WaveExportTabProps {
    setExportLoop: (v: boolean) => void;
    isRecording: boolean;
    startRecording: () => void;
-   stopRecording: () => void;
+   stopRecording: (abort?: boolean) => void;
    statusMessage: string;
 }
 
@@ -421,7 +421,9 @@ export function WaveExportTab({ exportFormat, setExportFormat, recordDuration, s
                      value={recordFramerate.toString()}
                      onChange={(val) => setRecordFramerate(parseInt(val))}
                      options={[
+                        { value: '10', label: '10 FPS (Smallest File)' },
                         { value: '15', label: '15 FPS' },
+                        { value: '24', label: '24 FPS (Cinematic)' },
                         { value: '30', label: '30 FPS' },
                         { value: '60', label: '60 FPS' }
                      ]}
@@ -460,6 +462,11 @@ export function WaveExportTab({ exportFormat, setExportFormat, recordDuration, s
                      <span>{exportQuality}%</span>
                      <span>100% (max)</span>
                   </div>
+                  {exportFormat === 'webm' && (
+                     <div className="mt-3 p-2 bg-slate-900/50 border border-slate-700/50 rounded text-[9px] text-slate-400 leading-relaxed">
+                        <strong className="text-slate-300">Note:</strong> Browser-based WebM export uses Intra-frame compression (saving every frame individually like a flipbook). This results in naturally larger file sizes than standard MP4 videos. To reduce file size, lower the <strong className="text-purple-400">FPS Target</strong> or <strong className="text-purple-400">Export Quality</strong>.
+                     </div>
+                  )}
                </div>
             </div>
 
@@ -487,13 +494,23 @@ export function WaveExportTab({ exportFormat, setExportFormat, recordDuration, s
                   <span>Export Animation ({exportFormat.toUpperCase()})</span>
                </button>
             ) : (
-               <button
-                  onClick={stopRecording}
-                  className="w-full py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-               >
-                  <Pause size={15} />
-                  <span>Stop & Download Output</span>
-               </button>
+               <div className="flex gap-2">
+                  <button
+                     onClick={() => stopRecording(true)}
+                     className="flex-[1] py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                     title="Cancel Recording"
+                  >
+                     <X size={15} />
+                     <span>Cancel</span>
+                  </button>
+                  <button
+                     onClick={() => stopRecording(false)}
+                     className="flex-[2] py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-extrabold text-xs shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                  >
+                     <Pause size={15} />
+                     <span>Stop & Download</span>
+                  </button>
+               </div>
             )}
 
             {statusMessage && (
