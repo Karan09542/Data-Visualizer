@@ -5,7 +5,7 @@ import {
   Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
   ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft,
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
-  Undo, Redo, Keyboard, CornerDownLeft, Delete
+  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1352,19 +1352,10 @@ const TextPreviewPopup: React.FC = () => {
                   {/* Formatting & Navigation Toolbar */}
                   <div
                     ref={toolbarRef}
-                    onWheel={(e) => {
-                      if (toolbarRef.current && e.deltaY !== 0) {
-                        toolbarRef.current.scrollLeft += e.deltaY;
-                      }
-                    }}
-                    style={{
-                      WebkitOverflowScrolling: 'touch',
-                      touchAction: 'pan-x'
-                    }}
-                    className="w-full max-w-full min-w-0 flex flex-nowrap items-center gap-1 sm:gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-lg shrink-0 overflow-x-auto touch-pan-x overscroll-x-contain custom-scrollbar shadow-sm"
+                    className="w-full max-w-full min-w-0 flex flex-wrap items-center gap-1 sm:gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-lg shrink-0 shadow-sm"
                   >
-                    {/* History & Lock */}
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    {/* Group 1: Utilities & Formatting */}
+                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
                       <button
                         type="button"
                         onClick={() => setKeyboardLocked(!keyboardLocked)}
@@ -1396,12 +1387,21 @@ const TextPreviewPopup: React.FC = () => {
                       >
                         <Redo size={15} />
                       </button>
-                    </div>
-
-                    <div className="w-px h-4 bg-slate-800 shrink-0" />
-
-                    {/* Markdown formatting group */}
-                    <div className="flex items-center gap-0.5 shrink-0">
+                      <div className="w-px h-3.5 bg-slate-800/80 mx-0.5 shrink-0" />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handlePasteClipboard()}
+                        className={`p-1.5 rounded transition-all flex items-center gap-1.5 shrink-0 ${pasted
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                          }`}
+                        title="Paste from clipboard"
+                      >
+                        {pasted ? <Check size={15} className="text-emerald-400" /> : <ClipboardPaste size={15} />}
+                        <span className="text-[11px] font-medium hidden md:inline">{pasted ? 'Pasted!' : 'Paste'}</span>
+                      </button>
+                      <div className="w-px h-3.5 bg-slate-800/80 mx-0.5 shrink-0" />
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
@@ -1420,12 +1420,38 @@ const TextPreviewPopup: React.FC = () => {
                       >
                         <Italic size={15} />
                       </button>
+                      <div className="w-px h-3.5 bg-slate-800/80 mx-0.5 shrink-0" />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('[](', ')')}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Insert Link [text](url)"
+                      >
+                        <LinkIcon size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('`', '`')}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Inline Code (`code`)"
+                      >
+                        <Code size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('```\n', '\n```')}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Code Block (```)"
+                      >
+                        <div className="flex flex-col gap-0.5 items-center justify-center h-3.5 w-3.5"><Code size={10} /><Code size={10} /></div>
+                      </button>
                     </div>
 
-                    <div className="w-px h-4 bg-slate-800 shrink-0" />
-
-                    {/* Headers & Lists */}
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    {/* Group 2: Blocks & Extra Nav */}
+                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
                       <div className="flex items-center rounded transition-colors bg-slate-900 border border-slate-700/60 shrink-0 overflow-hidden">
                         <button
                           type="button"
@@ -1502,97 +1528,16 @@ const TextPreviewPopup: React.FC = () => {
                       >
                         <Quote size={15} />
                       </button>
-                    </div>
-
-                    <div className="w-px h-4 bg-slate-800 shrink-0" />
-
-                    {/* Code & Links */}
-                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('[](', ')')}
+                        onClick={() => insertTextAtCursor('\n---\n\n', '')}
                         className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Insert Link [text](url)"
+                        title="Divider (---)"
                       >
-                        <LinkIcon size={15} />
+                        <Minus size={15} />
                       </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('`', '`')}
-                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Inline Code (`code`)"
-                      >
-                        <Code size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('```\n', '\n```')}
-                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Code Block (```)"
-                      >
-                        <div className="flex flex-col gap-0.5 items-center justify-center h-3.5 w-3.5"><Code size={10} /><Code size={10} /></div>
-                      </button>
-                    </div>
-
-                    <div className="w-px h-4 bg-slate-800 shrink-0" />
-
-                    {/* Typing Controls Group */}
-                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={handleBackspace}
-                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Backspace"
-                      >
-                        <Delete size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={handleDelete}
-                        className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Delete"
-                      >
-                        DEL
-                      </button>
-                      <div className="w-px h-3 bg-slate-800 shrink-0 mx-0.5" />
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('  ')}
-                        className="px-2 py-1 text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Tab"
-                      >
-                        Tab
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('\n')}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Enter"
-                      >
-                        <CornerDownLeft size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor(' ')}
-                        className="px-4 py-1 text-[10px] uppercase font-bold tracking-widest text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Space"
-                      >
-                        Space
-                      </button>
-                    </div>
-
-                    <div className="w-px h-4 bg-slate-800 shrink-0" />
-
-                    {/* Cursor Navigation Group */}
-                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
+                      <div className="w-px h-3.5 bg-slate-800/80 mx-0.5 shrink-0" />
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
@@ -1602,6 +1547,19 @@ const TextPreviewPopup: React.FC = () => {
                       >
                         <ArrowLeftToLine size={15} />
                       </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => moveCursorToLineEnd()}
+                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="End of Line (End)"
+                      >
+                        <ArrowRightToLine size={15} />
+                      </button>
+                    </div>
+
+                    {/* Group 3: Navigation & Typing */}
+                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
@@ -1656,33 +1614,52 @@ const TextPreviewPopup: React.FC = () => {
                       >
                         <ArrowRight size={15} />
                       </button>
+                      <div className="w-px h-3 bg-slate-800/80 mx-0.5 shrink-0" />
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => moveCursorToLineEnd()}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="End of Line (End)"
+                        onClick={handleBackspace}
+                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Backspace"
                       >
-                        <ArrowRightToLine size={15} />
+                        <Delete size={15} />
                       </button>
-                    </div>
-
-                    <div className="w-px h-4 bg-slate-800 shrink-0" />
-
-                    {/* Clipboard Paste Button */}
-                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => handlePasteClipboard()}
-                        className={`p-1.5 rounded transition-all flex items-center gap-1.5 shrink-0 ${pasted
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
-                          }`}
-                        title="Paste from clipboard"
+                        onClick={handleDelete}
+                        className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Delete"
                       >
-                        {pasted ? <Check size={15} className="text-emerald-400" /> : <ClipboardPaste size={15} />}
-                        <span className="text-[11px] font-medium hidden md:inline">{pasted ? 'Pasted!' : 'Paste'}</span>
+                        DEL
+                      </button>
+                      <div className="w-px h-3 bg-slate-800/80 mx-0.5 shrink-0" />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('  ')}
+                        className="px-2 py-1 text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Tab"
+                      >
+                        Tab
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('\n')}
+                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Enter"
+                      >
+                        <CornerDownLeft size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor(' ')}
+                        className="px-4 py-1 text-[10px] uppercase font-bold tracking-widest text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Space"
+                      >
+                        Space
                       </button>
                     </div>
                   </div>

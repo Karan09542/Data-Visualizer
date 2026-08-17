@@ -151,11 +151,11 @@ export const Base64Converter = () => {
 
       <div className="flex flex-col gap-4">
         {/* Toolbar */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="bg-slate-200 dark:bg-slate-800 p-1 rounded-xl flex items-center gap-1 shadow-inner border border-slate-300 dark:border-slate-700/50">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-2 mb-2">
+          <div className="bg-slate-200 dark:bg-slate-800 p-1 rounded-xl flex items-center gap-1 shadow-inner border border-slate-300 dark:border-slate-700/50 w-full sm:w-auto">
             <button
               onClick={() => setMode("encode")}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              className={`flex-1 sm:flex-none px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
                 mode === "encode"
                   ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
                   : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
@@ -165,7 +165,7 @@ export const Base64Converter = () => {
             </button>
             <button
               onClick={() => setMode("decode")}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+              className={`flex-1 sm:flex-none px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
                 mode === "decode"
                   ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
                   : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
@@ -176,7 +176,7 @@ export const Base64Converter = () => {
           </div>
 
           {mode === "encode" && !uploadedImageFile && (
-            <label className="flex items-center gap-2 cursor-pointer group">
+            <label className="flex items-center gap-2 cursor-pointer group self-end sm:self-auto mt-1 sm:mt-0">
               <div className="relative flex items-center">
                 <input 
                   type="checkbox" 
