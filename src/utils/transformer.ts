@@ -89,7 +89,14 @@ export const transformToTree = (
       transformToTree(val, `[${index}]`, `${path}[${index}]`, apiNodeResponses, jsNodeResponses, jsNodeVisibility)
     );
   } else {
-    node.value = data;
+    // Aggressive truncation for massive strings to prevent memory & GC lags in D3/React
+    if (type === 'string' && typeof data === 'string' && data.length > 50000) {
+      const truncated = data.substring(0, 50000) + '\n\n... [TRUNCATED: Value exceeded 50KB to prevent memory lag]';
+      node.value = truncated;
+      node.rawValue = truncated; // Drop reference to the massive string
+    } else {
+      node.value = data;
+    }
     
     // Inject fetched API response if available
     if (isApiNode && apiNodeResponses && apiNodeResponses[path] !== undefined) {

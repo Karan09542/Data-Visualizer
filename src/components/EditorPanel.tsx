@@ -257,7 +257,7 @@ export default function EditorPanel() {
 
       // Column positions (1-indexed)
       const startCol = markerStart + 1;
-      const endCol = markerEnd + 2; // +1 for suffix char, +1 for 1-indexing
+      const endCol = markerEnd + suffix.length + 1; // +length for suffix, +1 for 1-indexing
 
       // Hide the raw marker text via decoration
       newDecorations.push({
@@ -293,7 +293,7 @@ export default function EditorPanel() {
         getId: () => widgetId,
         getDomNode: () => widgetDom,
         getPosition: () => ({
-          position: { lineNumber: lineNum, column: endCol },
+          position: { lineNumber: lineNum, column: startCol },
           preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
         }),
       };

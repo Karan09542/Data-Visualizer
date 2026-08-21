@@ -2173,7 +2173,7 @@ function NodeRenderer({
                 )}
 
                 <button
-                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 hover:bg-indigo-600 backdrop-blur-md hover:text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-0 group-hover/media-container:opacity-100 shadow-xl border z-20 whitespace-nowrap ${isDarkBase ? "bg-black/60 text-white border-white/10" : "bg-white/90 text-slate-800 border-slate-200"}`}
+                  className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 hover:bg-indigo-600 backdrop-blur-md hover:text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-100 md:opacity-0 group-hover/media-container:opacity-100 shadow-xl border z-20 whitespace-nowrap ${isDarkBase ? "bg-black/60 text-white border-white/10" : "bg-white/90 text-slate-800 border-slate-200"}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setActivePreviewMedia({

@@ -820,97 +820,89 @@ input[type="number"] {
   /* Monaco "Show more" inline decorations for large values */
   .show-more-marker-hidden {
     font-size: 0 !important;
-    letter-spacing: 0 !important;
+    letter-spacing: -10px !important;
     width: 0 !important;
+    height: 0 !important;
     display: inline-block !important;
     overflow: hidden !important;
     color: transparent !important;
+    opacity: 0 !important;
+    line-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
   }
 
   .show-more-widget {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 1px 8px;
-    margin-left: 4px;
-    font-size: 11px;
+    padding: 1px 6px;
+    margin-left: 2px;
+    font-size: 9px;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-weight: 600;
-    line-height: 18px;
-    color: #fff;
-    background: #2ea043;
-    border: 1px solid #2ea043;
-    border-radius: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgb(74, 222, 128);
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: 4px;
     cursor: pointer;
     white-space: nowrap;
     user-select: none;
-    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    transition: all 0.15s ease;
     z-index: 10;
     position: relative;
     vertical-align: middle;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
 
   .show-more-widget:hover {
-    background: #3fb950;
-    border-color: #3fb950;
-    box-shadow: 0 0 0 2px rgba(46, 160, 67, 0.25);
+    background: rgba(34, 197, 94, 0.25);
+    border-color: rgba(34, 197, 94, 0.35);
   }
 
   .show-more-widget:active {
-    background: #238636;
-    border-color: #238636;
+    background: rgba(34, 197, 94, 0.35);
   }
 
+  /* Dark mode overrides */
   .dark .show-more-widget {
-    background: #238636;
-    border-color: #30a14e;
-    color: #f0fff4;
+    color: rgb(74, 222, 128);
   }
 
-  .dark .show-more-widget:hover {
-    background: #2ea043;
-    border-color: #3fb950;
-    box-shadow: 0 0 0 2px rgba(46, 160, 67, 0.3);
-  }
-
-  .dark .show-more-widget:active {
-    background: #196c2e;
-    border-color: #238636;
-  }
-
-  /* "Show less" widget — amber/orange to contrast with green "Show more" */
+  /* "Show less" widget */
   .show-less-widget {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 1px 8px;
-    margin-left: 4px;
-    font-size: 11px;
+    padding: 1px 6px;
+    margin-left: 2px;
+    font-size: 9px;
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-weight: 600;
-    line-height: 18px;
-    color: #fff;
-    background: #d97706;
-    border: 1px solid #d97706;
-    border-radius: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgb(252, 211, 77);
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 4px;
     cursor: pointer;
     white-space: nowrap;
     user-select: none;
-    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    transition: all 0.15s ease;
     z-index: 10;
     position: relative;
     vertical-align: middle;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
 
   .show-less-widget:hover {
-    background: #f59e0b;
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.25);
-  }
-
-  .show-less-widget:active {
-    background: #b45309;
-    border-color: #b45309;
+    background: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.3);
   }
 
   .dark .show-less-widget {

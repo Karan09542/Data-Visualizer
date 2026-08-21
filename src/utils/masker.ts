@@ -12,10 +12,10 @@ const PREVIEW_LENGTH = 40;
  * The marker is embedded at the end of the truncated string value so that
  * Monaco decorations can detect and render a "Show more" widget.
  */
-const SHOW_MORE_PREFIX = '\u2039SHOW_MORE:';
-const SHOW_MORE_SUFFIX = '\u203A';
-const SHOW_LESS_PREFIX = '\u2039SHOW_LESS:';
-const SHOW_LESS_SUFFIX = '\u203A';
+const SHOW_MORE_PREFIX = '__SHOW_MORE:';
+const SHOW_MORE_SUFFIX = '__';
+const SHOW_LESS_PREFIX = '__SHOW_LESS:';
+const SHOW_LESS_SUFFIX = '__';
 
 /** Registry mapping mask id → original full string (without surrounding quotes) */
 const largeValueRegistry = new Map<number, string>();
