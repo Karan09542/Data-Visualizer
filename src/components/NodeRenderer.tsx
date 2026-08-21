@@ -1837,7 +1837,7 @@ function NodeRenderer({
                   !isSearchNode && (
                     <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
                       <div
-                        className={`flex-1 min-w-0 ${isExpanded ? `overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}
+                        className={`flex-1 min-w-0 ${isExpanded ? `nodrag overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}
                       >
                         {isKnownDataUrl && (
                           <span className="inline-block px-1 mr-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 align-middle">
@@ -1851,7 +1851,7 @@ function NodeRenderer({
                               ? "line-clamp-3 whitespace-normal break-all block"
                               : "truncate w-full max-w-full block"
                             } ${valText}`}
-                          title={!isExpanded ? String(data.value) : undefined}
+                          title={!isExpanded && strVal.length < 500 ? strVal : undefined}
                           style={{
                             ...(isCustom
                               ? { color: nodeTextColor, opacity: 0.9 }
@@ -1863,7 +1863,28 @@ function NodeRenderer({
                               : {}),
                           }}
                         >
-                          {String(data.value)}
+                          {isExpanded ? (
+                            strVal.length > 5000 ? (
+                              <>
+                                {strVal.substring(0, 5000)}...
+                                <span 
+                                  className="inline-block ml-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 align-middle whitespace-nowrap shadow-sm backdrop-blur-sm cursor-pointer hover:bg-indigo-500/25 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActivePreviewText(strVal, data.name);
+                                  }}
+                                >
+                                  Open Preview to see all
+                                </span>
+                              </>
+                            ) : (
+                              strVal
+                            )
+                          ) : strVal.length > 500 ? (
+                            strVal.substring(0, 500) + "..."
+                          ) : (
+                            strVal
+                          )}
                         </span>
                       </div>
                       {strVal.length > 50 && (

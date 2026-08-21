@@ -24,7 +24,7 @@ const SmartFetchErrorUI = lazyWithRetry(() => import("./SmartFetchErrorUI"), "Sm
 const GuiEditorPanel = lazyWithRetry(() => import("./GuiEditorPanel"), "GuiEditorPanel");
 const FileExplorerPanel = lazyWithRetry(() => import("./FileExplorerPanel"), "FileExplorerPanel");
 import { applyPatchSmart, mergeJSON } from "../utils/patchUtils";
-import { maskCodeString, unmaskCodeString } from "../utils/masker";
+import { maskCodeString, unmaskCodeString, SHOW_MORE_MARKERS, markAsExpanded, markAsCollapsed } from "../utils/masker";
 
 export default function EditorPanel() {
   const {
@@ -51,6 +51,9 @@ export default function EditorPanel() {
     setIsAIPaletteOpen,
   } = useStore();
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const showMoreWidgetsRef = useRef<any[]>([]);
+  const decorationsRef = useRef<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -62,6 +65,8 @@ export default function EditorPanel() {
   } | null>(null);
   const [fetchResult, setFetchResult] = useState<SmartFetchResult | null>(null);
   const [appendData, setAppendData] = useState(false);
+  const [expandTrigger, setExpandTrigger] = useState(0);
+  const [wordWrapMode, setWordWrapMode] = useState<"on" | "off">("on");
 
   useEffect(() => {
     // Other effects
@@ -194,10 +199,146 @@ export default function EditorPanel() {
     }
   };
 
-  const maskedCode = React.useMemo(() => maskCodeString(code), [code]);
+  const maskedCode = React.useMemo(() => maskCodeString(code), [code, expandTrigger]);
 
-  const handleEditorDidMount = (editor: any) => {
+  // Set up "Show more" / "Show less" content widgets on lines with truncated values
+  const setupShowMoreWidgets = React.useCallback((editor: any, monaco: any) => {
+    // Remove existing widgets
+    for (const widget of showMoreWidgetsRef.current) {
+      try { editor.removeContentWidget(widget); } catch { /* ignore */ }
+    }
+    showMoreWidgetsRef.current = [];
+
+    // Remove existing decorations
+    if (decorationsRef.current) {
+      try { decorationsRef.current.clear(); } catch { /* ignore */ }
+      decorationsRef.current = null;
+    }
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    const morePrefix = SHOW_MORE_MARKERS.PREFIX;
+    const moreSuffix = SHOW_MORE_MARKERS.SUFFIX;
+    const lessPrefix = SHOW_MORE_MARKERS.LESS_PREFIX;
+    const lessSuffix = SHOW_MORE_MARKERS.LESS_SUFFIX;
+    const lineCount = model.getLineCount();
+    const newDecorations: any[] = [];
+
+    for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
+      const lineContent = model.getLineContent(lineNum);
+
+      // Check for SHOW_MORE marker (collapsed/truncated value)
+      let markerStart = lineContent.indexOf(morePrefix);
+      let isShowLess = false;
+
+      if (markerStart === -1) {
+        // Check for SHOW_LESS marker (expanded value)
+        markerStart = lineContent.indexOf(lessPrefix);
+        if (markerStart === -1) continue;
+        isShowLess = true;
+      }
+
+      const prefix = isShowLess ? lessPrefix : morePrefix;
+      const suffix = isShowLess ? lessSuffix : moreSuffix;
+
+      const markerEnd = lineContent.indexOf(suffix, markerStart + prefix.length);
+      if (markerEnd === -1) continue;
+
+      // Extract id and size from the marker
+      const markerBody = lineContent.slice(markerStart + prefix.length, markerEnd);
+      const colonIdx = markerBody.indexOf(':');
+      if (colonIdx === -1) continue;
+
+      const id = parseInt(markerBody.slice(0, colonIdx), 10);
+      const sizeLabel = markerBody.slice(colonIdx + 1);
+
+      if (isNaN(id)) continue;
+
+      // Column positions (1-indexed)
+      const startCol = markerStart + 1;
+      const endCol = markerEnd + 2; // +1 for suffix char, +1 for 1-indexing
+
+      // Hide the raw marker text via decoration
+      newDecorations.push({
+        range: new monaco.Range(lineNum, startCol, lineNum, endCol),
+        options: {
+          inlineClassName: 'show-more-marker-hidden',
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+        },
+      });
+
+      // Create the widget DOM
+      const widgetId = `show-${isShowLess ? 'less' : 'more'}-widget-${lineNum}-${id}`;
+      const widgetDom = document.createElement('span');
+      widgetDom.className = isShowLess ? 'show-less-widget' : 'show-more-widget';
+      widgetDom.textContent = isShowLess ? `Show less (${sizeLabel})` : `Show more (${sizeLabel})`;
+      widgetDom.title = isShowLess
+        ? `Click to collapse this value (${sizeLabel})`
+        : `Click to show the full value (${sizeLabel})`;
+      widgetDom.setAttribute('data-mask-id', String(id));
+
+      widgetDom.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (isShowLess) {
+          markAsCollapsed(id);
+        } else {
+          markAsExpanded(id);
+        }
+        setExpandTrigger(prev => prev + 1);
+      });
+
+      const contentWidget = {
+        getId: () => widgetId,
+        getDomNode: () => widgetDom,
+        getPosition: () => ({
+          position: { lineNumber: lineNum, column: endCol },
+          preference: [monaco.editor.ContentWidgetPositionPreference.EXACT],
+        }),
+      };
+
+      editor.addContentWidget(contentWidget);
+      showMoreWidgetsRef.current.push(contentWidget);
+    }
+
+    // Apply decorations
+    if (newDecorations.length > 0) {
+      decorationsRef.current = editor.createDecorationsCollection(newDecorations);
+    }
+  }, []);
+
+  // Update widgets when the masked code changes
+  React.useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (editor && monaco && activeTab === 'raw') {
+      // Small delay to ensure the model is updated
+      const timer = setTimeout(() => setupShowMoreWidgets(editor, monaco), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [maskedCode, activeTab, setupShowMoreWidgets]);
+
+  const handleEditorDidMount = (editor: any, monaco?: any) => {
     editorRef.current = editor;
+    if (monaco) {
+      monacoRef.current = monaco;
+      
+      // Add Alt+Z word wrap toggle action
+      editor.addAction({
+        id: 'toggle-word-wrap',
+        label: 'Toggle Word Wrap',
+        keybindings: [
+          monaco.KeyMod.Alt | monaco.KeyCode.KeyZ,
+        ],
+        run: function () {
+          setWordWrapMode((prev) => prev === "on" ? "off" : "on");
+        }
+      });
+
+      // Initial widget setup
+      setTimeout(() => setupShowMoreWidgets(editor, monaco), 100);
+    }
   };
 
   const abortFetch = () => {
@@ -504,7 +645,7 @@ export default function EditorPanel() {
                 minimap: { enabled: false },
                 fontSize: 13,
                 fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                wordWrap: "on",
+                wordWrap: wordWrapMode,
                 scrollBeyondLastLine: false,
                 folding: true,
                 lineNumbersMinChars: 3,

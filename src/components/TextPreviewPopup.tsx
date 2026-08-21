@@ -5,7 +5,7 @@ import {
   Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
   ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft,
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
-  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus
+  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -326,22 +326,7 @@ const HeadingRenderer = (props: any) => {
       className: `scroll-mt-20 group relative cursor-pointer hover:opacity-90 transition-opacity ${getHeadingClass(level)}`,
       ...restProps
     },
-    [
-      <a
-        href={`#${id}`}
-        key="anchor"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (onHeadingClick) onHeadingClick(id);
-        }}
-        className="absolute -left-6 top-1 opacity-0 group-hover:opacity-100 text-slate-400 hidden sm:block hover:text-indigo-400 transition-colors"
-        title="Direct link to section"
-      >
-        <LinkIcon size={16} />
-      </a>,
-      ...childArray
-    ]
+    childArray
   );
 };
 
@@ -595,9 +580,20 @@ const TextPreviewPopup: React.FC = () => {
   const [editText, setEditText] = React.useState('');
   const [showHeader, setShowHeader] = React.useState(true);
   const [showOutline, setShowOutline] = React.useState(false);
+  const [outlineFullScreen, setOutlineFullScreen] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
   const [activeHeadingId, setActiveHeadingId] = React.useState<string>('');
   const [keyboardLocked, setKeyboardLocked] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 640 && !showHeader) {
+        setShowHeader(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [showHeader]);
 
   const initializedPathRef = React.useRef<string | null>(null);
   const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -608,6 +604,26 @@ const TextPreviewPopup: React.FC = () => {
   
   const navHoldTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNavHoldRef = React.useRef(false);
+
+  const touchStartX = React.useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const dx = touchEndX - touchStartX.current;
+    
+    if (dx > 50 && viewMode === 'markdown' && window.innerWidth < 640 && !showOutline) {
+      setShowOutline(true);
+    } else if (dx < -50 && showOutline) {
+      setShowOutline(false);
+    }
+    
+    touchStartX.current = null;
+  };
 
   const handleHeadingClick = React.useCallback((id: string) => {
     setActiveHeadingId(id);
@@ -1185,7 +1201,11 @@ const TextPreviewPopup: React.FC = () => {
             </AnimatePresence>
 
             {/* Content Area with optional Sidebar */}
-            <div className="flex-1 overflow-hidden flex flex-row bg-slate-950 relative min-w-0 w-full">
+            <div 
+              className="flex-1 overflow-hidden flex flex-row bg-slate-950 relative min-w-0 w-full"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
 
               {/* Document Outline Sidebar (Desktop) / Drawer (Mobile) */}
               <AnimatePresence>
@@ -1200,16 +1220,29 @@ const TextPreviewPopup: React.FC = () => {
                       />
                     )}
                     {/* Sidebar */}
-                    <motion.div
-                      initial={{ x: -300, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: -300, opacity: 0 }}
-                      className={`absolute sm:relative z-30 w-64 h-full bg-slate-900 border-r border-slate-800 flex flex-col ${showOutline ? 'block' : 'hidden sm:flex'}`}
+                    <div
+                      className={`absolute sm:relative z-30 ${outlineFullScreen ? 'w-full' : 'w-64'} sm:w-64 h-full bg-slate-900 border-r border-slate-800 flex flex-col transition-all duration-300 ease-out sm:translate-x-0 ${showOutline ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
                     >
-                      <div className="p-3 border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0">
+                      <div className="p-3 border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 flex items-center justify-between">
                         <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                           <ListOrdered size={14} /> Outline
                         </h4>
+                        <div className="flex items-center gap-1 sm:hidden">
+                          <button
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+                            onClick={() => setOutlineFullScreen(!outlineFullScreen)}
+                            title={outlineFullScreen ? "Collapse Width" : "Expand to Full Width"}
+                          >
+                            {outlineFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                          </button>
+                          <button
+                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-red-400 transition-colors"
+                            onClick={() => setShowOutline(false)}
+                            title="Close Outline"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
                       </div>
                       <div ref={outlineRef} className="flex-1 overflow-y-auto p-2 custom-scrollbar">
                         {headings.map((h, i) => {
@@ -1234,7 +1267,7 @@ const TextPreviewPopup: React.FC = () => {
                           )
                         })}
                       </div>
-                    </motion.div>
+                    </div>
                   </>
                 )}
               </AnimatePresence>

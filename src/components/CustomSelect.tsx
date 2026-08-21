@@ -1,4 +1,5 @@
 import { useState, useRef, useLayoutEffect, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, Check, Search } from "lucide-react";
 
@@ -135,69 +136,74 @@ export default function CustomSelect({
         />
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            ref={dropdownRef}
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            transition={{ duration: 0.1, ease: "easeOut" }}
-            style={{
-              position: "fixed",
-              top: coords.top,
-              left: coords.left,
-              minWidth: coords.width,
-              zIndex: 99999,
-            }}
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl overflow-hidden py-1"
-          >
-            {searchable && (
-              <div className="p-2 border-b border-slate-200 dark:border-slate-800">
-                <div className="relative">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Search..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs rounded-md pl-7 pr-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-              {filteredOptions.length > 0 ? (
-                filteredOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      onChange(option.value);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors
-                    ${value === option.value
-                        ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      }
-                  `}
-                  >
-                    <div className="flex items-center gap-2">
-                      {option.icon}
-                      <span>{option.label}</span>
+      {typeof document !== 'undefined'
+        ? createPortal(
+            <AnimatePresence>
+              {isOpen && (
+                <motion.div
+                  ref={dropdownRef}
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  transition={{ duration: 0.1, ease: "easeOut" }}
+                  style={{
+                    position: "fixed",
+                    top: coords.top,
+                    left: coords.left,
+                    minWidth: coords.width,
+                    zIndex: 999999,
+                  }}
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl overflow-hidden py-1"
+                >
+                  {searchable && (
+                    <div className="p-2 border-b border-slate-200 dark:border-slate-800">
+                      <div className="relative">
+                        <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="Search..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs rounded-md pl-7 pr-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+                        />
+                      </div>
                     </div>
-                    {value === option.value && <Check size={12} />}
-                  </button>
-                ))
-              ) : (
-                <div className="p-3 text-xs text-center text-slate-500">No results found</div>
+                  )}
+                  <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                    {filteredOptions.length > 0 ? (
+                      filteredOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            onChange(option.value);
+                            setIsOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors
+                          ${value === option.value
+                              ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                            }
+                        `}
+                        >
+                          <div className="flex items-center gap-2">
+                            {option.icon}
+                            <span>{option.label}</span>
+                          </div>
+                          {value === option.value && <Check size={12} />}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3 text-xs text-center text-slate-500">No results found</div>
+                    )}
+                  </div>
+                </motion.div>
               )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </AnimatePresence>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

@@ -53,8 +53,7 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Intercept PWA Share Target POST
-  if (url.pathname === '/share-receiver/' && event.request.method === 'POST') {
+  if ((url.pathname === '/share-receiver/' || url.pathname === '/share-receiver') && event.request.method === 'POST') {
     event.respondWith((async () => {
       try {
         const formData = await event.request.formData();
@@ -73,11 +72,21 @@ self.addEventListener('fetch', (event) => {
           timestamp: Date.now()
         });
         
-        // Redirect to the main app with the shared ID
-        return Response.redirect(`/?shared_id=${sharedId}`, 303);
+        // Use HTML meta refresh to redirect reliably across all browsers for POST Share Targets
+        const redirectUrl = `/?shared_id=${sharedId}`;
+        const html = `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${redirectUrl}"></head><body>Redirecting...</body></html>`;
+        
+        return new Response(html, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' }
+        });
       } catch (err) {
         console.error('[SW] Share target failed:', err);
-        return Response.redirect('/', 303);
+        const html = `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Redirecting...</body></html>`;
+        return new Response(html, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' }
+        });
       }
     })());
     return;
