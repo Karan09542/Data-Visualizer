@@ -1257,9 +1257,14 @@ export const useStore = create<StoreState>()(
     {
       name: "json-graph-viewer-settings",
       partialize: (state) => {
+        // Prevent localStorage QuotaExceededError and massive JSON.stringify lag on every frame
+        const isCodeMassive = state.code && state.code.length > 1024 * 1024;
+        const isLastSavedMassive = state.lastSavedCode && state.lastSavedCode.length > 1024 * 1024;
+
         const persistedKeys = [
           ...Object.keys(defaultSettings),
-          "code",
+          ...(isCodeMassive ? [] : ["code"]),
+          ...(isLastSavedMassive ? [] : ["lastSavedCode"]),
           "codeFormat",
           "isEditorPanelOpen",
           "isAdvancedPanelOpen",
@@ -1281,7 +1286,6 @@ export const useStore = create<StoreState>()(
           "activeDocumentId",
           "activeDocumentName",
           "isDirty",
-          "lastSavedCode",
           "stickyNotesEnabled",
         ];
         return Object.fromEntries(
