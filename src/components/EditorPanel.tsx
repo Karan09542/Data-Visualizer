@@ -278,7 +278,7 @@ export default function EditorPanel() {
         : `Click to show the full value (${sizeLabel})`;
       widgetDom.setAttribute('data-mask-id', String(id));
 
-      widgetDom.addEventListener('click', (e) => {
+      const handleInteraction = (e: Event) => {
         e.stopPropagation();
         e.preventDefault();
         if (isShowLess) {
@@ -287,7 +287,10 @@ export default function EditorPanel() {
           markAsExpanded(id);
         }
         setExpandTrigger(prev => prev + 1);
-      });
+      };
+
+      widgetDom.addEventListener('click', handleInteraction);
+      widgetDom.addEventListener('pointerdown', handleInteraction);
 
       const contentWidget = {
         getId: () => widgetId,
