@@ -54,36 +54,40 @@ interface NodeProps {
 export const getMediaType = (val: string) => {
   if (!val || typeof val !== "string") return null;
   val = val.trim();
-  if (
-    val.match(/\.pdf(\?.*)?$/i) ||
-    val.startsWith("data:application/pdf") ||
-    (val.startsWith("blob:http") && val.includes("pdf"))
-  )
+  
+  const isDataOrBlob = val.startsWith("data:") || val.startsWith("blob:");
+  if (val.length > 5000 && !isDataOrBlob) {
+    return null; // A standard URL or filename will never be this long. Avoid catastrophic regex backtracking on massive text nodes.
+  }
+
+  // Fast path for data/blob urls to avoid regex matching the end of massive strings
+  if (isDataOrBlob) {
+    if (val.startsWith("data:application/pdf") || (val.startsWith("blob:http") && val.includes("pdf"))) return "pdf";
+    if (val.startsWith("data:image/") || (val.startsWith("blob:http") && val.includes("image"))) return "image";
+    if (val.startsWith("data:audio/") || (val.startsWith("blob:http") && val.includes("audio"))) return "audio";
+    if (val.startsWith("data:video/") || (val.startsWith("blob:http") && val.includes("video"))) return "video";
+    if ((val.startsWith("blob:http") && (val.includes("model") || val.includes("3d-model")))) return "3d-model";
+    return null;
+  }
+
+  if (val.match(/\.pdf(\?.*)?$/i))
     return "pdf";
   if (
-    val.startsWith("data:image/") ||
-    (val.startsWith("blob:http") && val.includes("image")) ||
     val.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(jpeg|jpg|gif|png|webp|svg|bmp)/i)
   )
     return "image";
   if (
-    val.startsWith("data:audio/") ||
-    (val.startsWith("blob:http") && val.includes("audio")) ||
     val.match(/\.(mp3|wav|ogg|aac|flac|m4a)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(mp3|wav|ogg|aac|flac|m4a)/i)
   )
     return "audio";
   if (
-    val.startsWith("data:video/") ||
-    (val.startsWith("blob:http") && val.includes("video")) ||
     val.match(/\.(mp4|webm|ogv|mov|mkv)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(mp4|webm|ogv|mov|mkv)/i)
   )
     return "video";
   if (
-    (val.startsWith("blob:http") &&
-      (val.includes("model") || val.includes("3d-model"))) ||
     val.match(/\.(glb|gltf|obj)(\?.*)?$/i) ||
     val.match(/^https?:\/\/.*\.(glb|gltf|obj)/i) ||
     val.startsWith("model/")
@@ -382,7 +386,7 @@ function NodeRenderer({
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]
       : showMediaPreview;
-  const isKnownDataUrl = !!knownDataUrls[strVal];
+  const isKnownDataUrl = strVal.length < 5000 && !!knownDataUrls[strVal];
 
   const assetMimeType = assetDetails?.mimeType?.toLowerCase() || "";
   const assetName =
@@ -1316,8 +1320,9 @@ function NodeRenderer({
   return (
     <foreignObject
       ref={foreignRef}
-      x={node.x - foWidth / 2}
-      y={node.y - foHeight / 2}
+      x={0}
+      y={0}
+      transform={`translate(${node.x - foWidth / 2}, ${node.y - foHeight / 2})`}
       width={foWidth}
       height={foHeight}
       className={`origin-center ${isDimmed ? "opacity-30 grayscale scale-95" : "opacity-100"} ${isMatch || isSelected ? "z-[100]" : isAncestor || isSelectedPath ? "z-[90]" : "z-[50]"}`}

@@ -252,7 +252,7 @@ const flatten = (text: string, child: any): string => {
 
 const customRehypeSlug = () => (tree: any) => {
   const slugCounts: Record<string, number> = {};
-  
+
   const addSlugsToTree = (node: any) => {
     if (node.type === 'element' && /^h[1-6]$/.test(node.tagName)) {
       let text = '';
@@ -276,7 +276,7 @@ const customRehypeSlug = () => (tree: any) => {
       node.children.forEach((child: any) => addSlugsToTree(child));
     }
   };
-  
+
   addSlugsToTree(tree);
 };
 
@@ -558,7 +558,10 @@ const getCaretCoordinates = (element: HTMLTextAreaElement, position: number) => 
 };
 
 const TextPreviewPopup: React.FC = () => {
-  const { activePreviewText, activePreviewPath, setActivePreviewText, updateNodeValue } = useStore();
+  const activePreviewText = useStore(state => state.activePreviewText);
+  const activePreviewPath = useStore(state => state.activePreviewPath);
+  const setActivePreviewText = useStore(state => state.setActivePreviewText);
+  const updateNodeValue = useStore(state => state.updateNodeValue);
   const [copied, setCopied] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'raw' | 'markdown' | 'html' | 'edit'>('raw');
   const [mdTheme, setMdTheme] = React.useState<string>(() => localStorage.getItem('mdTheme') || 'notebook-dark');
@@ -601,7 +604,7 @@ const TextPreviewPopup: React.FC = () => {
   const outlineRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const toolbarRef = React.useRef<HTMLDivElement>(null);
-  
+
   const navHoldTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNavHoldRef = React.useRef(false);
 
@@ -615,13 +618,13 @@ const TextPreviewPopup: React.FC = () => {
     if (touchStartX.current === null) return;
     const touchEndX = e.changedTouches[0].clientX;
     const dx = touchEndX - touchStartX.current;
-    
+
     if (dx > 50 && viewMode === 'markdown' && window.innerWidth < 640 && !showOutline) {
       setShowOutline(true);
     } else if (dx < -50 && showOutline) {
       setShowOutline(false);
     }
-    
+
     touchStartX.current = null;
   };
 
@@ -870,7 +873,7 @@ const TextPreviewPopup: React.FC = () => {
       } else if (caretTop > scrollTop + clientHeight - lineHeight * 2) {
         textarea.scrollTop = caretTop - clientHeight + lineHeight * 3;
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const moveCursorLeft = () => {
@@ -1013,12 +1016,12 @@ const TextPreviewPopup: React.FC = () => {
     if (!textarea) return;
     let start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    
+
     if (start === end) {
       if (start === 0) return;
       start -= 1;
     }
-    
+
     textarea.focus();
     textarea.setSelectionRange(start, end);
     if (!document.execCommand('delete', false)) {
@@ -1034,12 +1037,12 @@ const TextPreviewPopup: React.FC = () => {
     if (!textarea) return;
     const start = textarea.selectionStart;
     let end = textarea.selectionEnd;
-    
+
     if (start === end) {
       if (end === editText.length) return;
       end += 1;
     }
-    
+
     textarea.focus();
     textarea.setSelectionRange(start, end);
     if (!document.execCommand('forwardDelete', false)) {
@@ -1201,7 +1204,7 @@ const TextPreviewPopup: React.FC = () => {
             </AnimatePresence>
 
             {/* Content Area with optional Sidebar */}
-            <div 
+            <div
               className="flex-1 overflow-hidden flex flex-row bg-slate-950 relative min-w-0 w-full"
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -1392,11 +1395,10 @@ const TextPreviewPopup: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setKeyboardLocked(!keyboardLocked)}
-                        className={`p-1.5 rounded transition-colors shrink-0 flex items-center gap-1.5 ${
-                          keyboardLocked 
-                            ? 'bg-red-500/20 text-red-400 border border-red-500/40' 
+                        className={`p-1.5 rounded transition-colors shrink-0 flex items-center gap-1.5 ${keyboardLocked
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/40'
                             : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 border border-transparent'
-                        }`}
+                          }`}
                         title={keyboardLocked ? "Unlock Native Keyboard" : "Lock Native Keyboard (Use UI Only)"}
                       >
                         <Keyboard size={15} />
@@ -1426,8 +1428,8 @@ const TextPreviewPopup: React.FC = () => {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => handlePasteClipboard()}
                         className={`p-1.5 rounded transition-all flex items-center gap-1.5 shrink-0 ${pasted
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
                           }`}
                         title="Paste from clipboard"
                       >
@@ -1506,9 +1508,8 @@ const TextPreviewPopup: React.FC = () => {
                             }
                             insertTextAtCursor('# ', '');
                           }}
-                          className={`p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 transition-colors flex items-center justify-center ${
-                            showHeadingMenu ? 'bg-indigo-600/30 text-indigo-300' : ''
-                          }`}
+                          className={`p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 transition-colors flex items-center justify-center ${showHeadingMenu ? 'bg-indigo-600/30 text-indigo-300' : ''
+                            }`}
                           title="Insert H1 (# ) - Hold for H1-H6"
                         >
                           <Hash size={15} />
@@ -1517,9 +1518,8 @@ const TextPreviewPopup: React.FC = () => {
                           type="button"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => setShowHeadingMenu(prev => !prev)}
-                          className={`py-1.5 px-1 text-slate-400 hover:text-white hover:bg-slate-800 border-l border-slate-700/60 transition-colors flex items-center justify-center ${
-                            showHeadingMenu ? 'bg-indigo-600/30 text-indigo-300' : ''
-                          }`}
+                          className={`py-1.5 px-1 text-slate-400 hover:text-white hover:bg-slate-800 border-l border-slate-700/60 transition-colors flex items-center justify-center ${showHeadingMenu ? 'bg-indigo-600/30 text-indigo-300' : ''
+                            }`}
                           title="Choose Heading Level (H1-H6)"
                         >
                           <ChevronDown size={11} className={`transition-transform duration-150 ${showHeadingMenu ? 'rotate-180 text-indigo-400' : ''}`} />
