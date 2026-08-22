@@ -68,11 +68,16 @@ const CellRenderer = ({ value, globalFilter }: { value: any; globalFilter: strin
   
   const strVal = String(value);
 
+  // Truncate at JavaScript level to avoid huge DOM text nodes which cause 
+  // severe lag and memory issues on mobile, even if visually clipped via CSS.
+  const MAX_RENDER_LEN = 1000;
+  const displayVal = strVal.length > MAX_RENDER_LEN ? strVal.substring(0, MAX_RENDER_LEN) + '...' : strVal;
+
   if (isHexColor(strVal) || isRgb(strVal)) {
     return (
       <div className="flex items-center gap-2">
         <span className="w-4 h-4 rounded shadow-sm border border-slate-200 dark:border-slate-700 flex-shrink-0" style={{ backgroundColor: strVal }} />
-        <span className="font-mono text-xs truncate w-full"><HighlightText text={strVal} highlight={globalFilter} /></span>
+        <span className="font-mono text-xs truncate w-full"><HighlightText text={displayVal} highlight={globalFilter} /></span>
       </div>
     );
   }
@@ -83,14 +88,14 @@ const CellRenderer = ({ value, globalFilter }: { value: any; globalFilter: strin
       return (
         <div className="flex items-center gap-2 group/img relative w-full">
           <img src={strVal} alt="" className="w-6 h-6 object-cover rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex-shrink-0" loading="lazy" />
-          <span className="text-xs truncate text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"><HighlightText text={strVal} highlight={globalFilter} /></span>
+          <span className="text-xs truncate text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"><HighlightText text={displayVal} highlight={globalFilter} /></span>
         </div>
       );
     }
     return (
       <a href={strVal} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline text-xs max-w-full" onClick={e => e.stopPropagation()}>
         <LinkIcon size={12} className="flex-shrink-0" />
-        <span className="truncate"><HighlightText text={strVal} highlight={globalFilter} /></span>
+        <span className="truncate"><HighlightText text={displayVal} highlight={globalFilter} /></span>
       </a>
     );
   }
@@ -99,12 +104,12 @@ const CellRenderer = ({ value, globalFilter }: { value: any; globalFilter: strin
     return (
       <a href={`mailto:${strVal}`} className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline text-xs max-w-full" onClick={e => e.stopPropagation()}>
         <Mail size={12} className="flex-shrink-0" />
-        <span className="truncate"><HighlightText text={strVal} highlight={globalFilter} /></span>
+        <span className="truncate"><HighlightText text={displayVal} highlight={globalFilter} /></span>
       </a>
     );
   }
 
-  return <span className="truncate block w-full"><HighlightText text={strVal} highlight={globalFilter} /></span>;
+  return <span className="truncate block w-full"><HighlightText text={displayVal} highlight={globalFilter} /></span>;
 };
 
 // ------------------------------
