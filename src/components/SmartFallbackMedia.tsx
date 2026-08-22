@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getProxiedUrl } from '../utils/mediaUtils';
 import { resolveAssetUrl } from '../utils/assetManager';
+import CustomAudioPlayer from './CustomAudioPlayer';
 
 interface SmartFallbackMediaProps extends React.HTMLAttributes<HTMLElement> {
   type: 'image' | 'video' | 'audio';
@@ -11,19 +12,20 @@ interface SmartFallbackMediaProps extends React.HTMLAttributes<HTMLElement> {
   loop?: boolean;
   autoPlay?: boolean;
   draggable?: boolean;
+  isDark?: boolean;
   referrerPolicy?: React.HTMLAttributeReferrerPolicy;
   [key: string]: any;
 }
 
-export function SmartFallbackMedia({ 
-  type, 
-  src, 
-  alt, 
-  ...props 
+export function SmartFallbackMedia({
+  type,
+  src,
+  alt,
+  ...props
 }: SmartFallbackMediaProps) {
   const [renderState, setRenderState] = useState<'direct' | 'proxied' | 'failed'>('direct');
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
-  
+
   const isAsset = src && (src.startsWith('img_') || src.startsWith('thumb_'));
 
   useEffect(() => {
@@ -99,10 +101,10 @@ export function SmartFallbackMedia({
 
   if (type === 'audio') {
     return (
-      <audio
+      <CustomAudioPlayer
         src={currentUrl}
-        crossOrigin={crossOrigin as any}
-        onError={handleError}
+        isDark={props.isDark}
+        className={(props as any).className || "w-full justify-center"}
         {...(props as any)}
       />
     );

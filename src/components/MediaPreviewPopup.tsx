@@ -104,6 +104,38 @@ const MediaPreviewPopup: React.FC = () => {
       setResolvedAssetUrl(null);
     }
 
+    if (activePreviewMedia.type === 'audio') {
+      const fileName = uploadedMediaMetadata[url]?.filename || getFileName(url);
+      const openAudioPlayer = async () => {
+        let finalSrc = url;
+        if (cleanUrl.startsWith('img_') || cleanUrl.startsWith('thumb_')) {
+          finalSrc = (await resolveAssetUrl(url)) || url;
+        } else if (uuidRegex.test(cleanUrl)) {
+          finalSrc = (await MediaStore.getMediaUrl(cleanUrl)) || url;
+        }
+
+        const { db } = await import('../lib/db');
+        const existingTrack = await db.audio_tracks.get(url);
+
+        const track: any = existingTrack || {
+          id: url,
+          title: fileName,
+          artist: 'Workspace Audio',
+          source: finalSrc,
+          type: 'audio/mpeg',
+          createdAt: Date.now(),
+        };
+
+        const { useAudioStore } = await import('../audio/stores/audioStore');
+        const { audioEngine } = await import('../audio/services/audioEngine');
+        useAudioStore.getState().playTrackNow(track);
+        audioEngine.playTrack(track);
+        setActivePreviewMedia(null);
+      };
+
+      openAudioPlayer();
+    }
+
     return () => {
       cancelled = true;
     };
@@ -218,53 +250,91 @@ const MediaPreviewPopup: React.FC = () => {
     if (type === 'audio') {
       const waveformBars = [34, 58, 42, 76, 50, 88, 44, 66, 38, 72, 54, 84, 46, 62, 36, 70, 48, 80];
 
+      const handleOpenWorkspace = async () => {
+        const track: any = {
+          id: originalUrl,
+          title: fileName,
+          artist: 'Workspace Audio',
+          source: resolvedUrl,
+          type: 'audio/mpeg',
+          createdAt: Date.now(),
+        };
+        const { useAudioStore } = await import('../audio/stores/audioStore');
+        const { audioEngine } = await import('../audio/services/audioEngine');
+        useAudioStore.getState().setQueue([track]);
+        useAudioStore.getState().setQueueIndex(0);
+        useAudioStore.getState().setCurrentTrack(track);
+        audioEngine.playTrack(track);
+        useAudioStore.getState().setIsPlayerOpen(true);
+        setActivePreviewMedia(null);
+      };
+
       return (
         <div className="flex h-full w-full items-center justify-center p-4 sm:p-8">
-          <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900 shadow-2xl shadow-black/50">
-            <div className="flex items-center gap-4 border-b border-slate-800 bg-slate-900 px-5 py-5 sm:px-6">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-indigo-400/25 bg-indigo-500/15 text-indigo-200">
-                <Music size={28} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <p className="truncate text-base font-semibold text-slate-50">{fileName}</p>
-                  <span className="shrink-0 rounded-md border border-indigo-400/25 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-indigo-200">
-                    Audio
-                  </span>
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl shadow-slate-200/50 dark:shadow-black/60">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 px-5 py-5 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3.5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-500/25 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 shadow-sm">
+                  <Music size={24} />
                 </div>
-                <p className="mt-1 truncate text-xs text-slate-500">{sourceLabel}</p>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-base font-semibold text-slate-900 dark:text-white">{fileName}</p>
+                    <span className="shrink-0 rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300">
+                      Audio
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{sourceLabel}</p>
+                </div>
               </div>
+
+              <button
+                onClick={handleOpenWorkspace}
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-50 dark:bg-cyan-950/40 px-3.5 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-200 transition-all hover:bg-cyan-100 dark:hover:bg-cyan-900/50 active:scale-95 shadow-sm"
+              >
+                <Maximize2 size={14} />
+                Audio Workspace
+              </button>
             </div>
 
             <div className="space-y-5 p-5 sm:p-6">
-              <div className="flex h-24 items-end gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-4 py-4">
+              <div className="flex h-24 items-end gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950 px-4 py-4">
                 {waveformBars.map((height, index) => (
                   <span
                     key={index}
-                    className="flex-1 rounded-t bg-indigo-300/75"
+                    className="flex-1 rounded-t bg-cyan-500/60 dark:bg-cyan-300/70"
                     style={{ height: `${height}%` }}
                   />
                 ))}
               </div>
 
-              <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3">
                 <SmartFallbackMedia
                   type="audio"
                   src={originalUrl}
                   controls
-                  className="h-11 w-full accent-indigo-400"
+                  className="h-11 w-full"
                 />
               </div>
 
-              {metadataItems.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  {metadataItems.map((item) => (
-                    <span key={item} className="rounded-md border border-slate-800 bg-slate-950 px-2.5 py-1">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                {metadataItems.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    {metadataItems.map((item) => (
+                      <span key={item} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 px-2.5 py-1 font-medium">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={handleOpenWorkspace}
+                  className="sm:hidden inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-50 dark:bg-cyan-950/40 px-3 py-1.5 text-xs font-semibold text-cyan-700 dark:text-cyan-200"
+                >
+                  <Maximize2 size={13} />
+                  Open Workspace
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -326,11 +396,11 @@ const MediaPreviewPopup: React.FC = () => {
   return createPortal(
     <AnimatePresence>
       {activePreviewMedia && (
-        <motion.div
+          <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[20000] flex flex-col bg-slate-950 text-slate-100"
+          className="fixed inset-0 z-[20000] flex flex-col bg-slate-100/90 dark:bg-slate-950 text-slate-900 dark:text-slate-100 backdrop-blur-xl"
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
@@ -341,22 +411,22 @@ const MediaPreviewPopup: React.FC = () => {
               <>
                 <motion.button
                   initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 0.3, y: 0 }}
+                  animate={{ opacity: 0.7, y: 0 }}
                   whileHover={{ opacity: 1 }}
                   exit={{ opacity: 0, y: -20 }}
                   onClick={() => setIsUIHidden(false)}
-                  className="absolute top-4 left-1/2 -translate-x-1/2 z-[20050] flex items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-300 shadow-2xl backdrop-blur-md transition-colors hover:bg-slate-800 hover:text-white"
+                  className="absolute top-4 left-1/2 -translate-x-1/2 z-[20050] flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-2xl backdrop-blur-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white"
                 >
                   <ChevronDown size={16} />
                   Show Header
                 </motion.button>
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 0.3, scale: 1 }}
+                  animate={{ opacity: 0.7, scale: 1 }}
                   whileHover={{ opacity: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   onClick={() => setActivePreviewMedia(null)}
-                  className="absolute top-4 right-4 z-[20050] flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/90 text-slate-400 shadow-2xl backdrop-blur-md transition-all hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/50"
+                  className="absolute top-4 right-4 z-[20050] flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 shadow-2xl backdrop-blur-md transition-all hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-500/50"
                 >
                   <X size={20} />
                 </motion.button>
@@ -371,31 +441,31 @@ const MediaPreviewPopup: React.FC = () => {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="z-50 shrink-0 border-b border-slate-800 bg-slate-950/95 overflow-hidden"
+                className="z-50 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 shadow-sm overflow-hidden"
               >
                 <div className="flex min-h-[48px] sm:min-h-[56px] items-center justify-between gap-2.5 px-3 py-1.5 sm:px-5 sm:py-2">
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <div className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border ${activePreviewMedia.type === 'pdf' ? 'border-rose-500/40 bg-rose-500/15 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]' : 'border-slate-700 bg-slate-900 text-indigo-300'}`}>
+                    <div className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border ${activePreviewMedia.type === 'pdf' ? 'border-rose-500/40 bg-rose-500/15 text-rose-500 dark:text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]' : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-indigo-600 dark:text-indigo-300'}`}>
                       {getIcon()}
                     </div>
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
-                        <h3 className="truncate text-xs font-semibold text-white sm:text-sm">{fileName}</h3>
-                        <span className="hidden shrink-0 rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 sm:inline-flex">
+                        <h3 className="truncate text-xs font-semibold text-slate-900 dark:text-white sm:text-sm">{fileName}</h3>
+                        <span className="hidden shrink-0 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 sm:inline-flex">
                           {getReadableType(activePreviewMedia.type)}
                         </span>
                       </div>
-                      <p className="hidden sm:block truncate text-[11px] text-slate-400">{sourceLabel}</p>
+                      <p className="hidden sm:block truncate text-[11px] text-slate-500 dark:text-slate-400">{sourceLabel}</p>
                     </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
                     {activePreviewMedia.type === 'image' && (
-                      <div className="flex items-center gap-0.5 rounded-lg border border-slate-700/80 bg-slate-900/60 p-1 shadow-sm">
+                      <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-slate-100/80 dark:bg-slate-900/60 p-1 shadow-sm">
                         <button
                           onClick={() => setRotation((prev) => (prev + 90) % 360)}
                           disabled={isResolvingAsset}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Rotate image"
                         >
                           <RotateCw size={14} />
@@ -404,7 +474,7 @@ const MediaPreviewPopup: React.FC = () => {
                         <button
                           onClick={copyImage}
                           disabled={isCopyingImage || isResolvingAsset}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Copy image"
                         >
                           {isCopyingImage ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
@@ -413,7 +483,7 @@ const MediaPreviewPopup: React.FC = () => {
                         <button
                           onClick={downloadCurrentImage}
                           disabled={isDownloading || isResolvingAsset}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Download image"
                         >
                           {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
@@ -425,7 +495,7 @@ const MediaPreviewPopup: React.FC = () => {
                     {activePreviewMedia.type !== 'pdf' && activePreviewMedia.type !== 'image' && (
                       <button
                         onClick={copySource}
-                        className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-700/80 bg-slate-900/60 px-3 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700/50 hover:text-slate-100"
+                        className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Copy source"
                       >
                         <ExternalLink size={14} />
@@ -436,7 +506,7 @@ const MediaPreviewPopup: React.FC = () => {
                     {activePreviewMedia.type === 'pdf' && (
                       <button
                         onClick={() => setPdfAlignment(prev => prev === 'top' ? 'center' : 'top')}
-                        className={`inline-flex h-8 items-center justify-center rounded-md border border-slate-700/80 px-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${pdfAlignment === 'center' ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+                        className={`inline-flex h-8 items-center justify-center rounded-md border px-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${pdfAlignment === 'center' ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/40' : 'border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                         title="Toggle PDF Alignment"
                       >
                         {pdfAlignment === 'top' ? 'Align: Top' : 'Align: Ctr'}
@@ -445,7 +515,7 @@ const MediaPreviewPopup: React.FC = () => {
 
                     <button
                       onClick={() => setIsUIHidden(true)}
-                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/60 text-slate-400 transition-all hover:bg-slate-800 hover:text-slate-100"
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 transition-all hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
                       title="Hide Header"
                     >
                       <ChevronUp size={16} />
@@ -453,7 +523,7 @@ const MediaPreviewPopup: React.FC = () => {
 
                     <button
                       onClick={() => setActivePreviewMedia(null)}
-                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/60 text-slate-400 transition-all hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-400"
+                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 transition-all hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
                       title="Close preview"
                     >
                       <X size={16} />
@@ -464,7 +534,7 @@ const MediaPreviewPopup: React.FC = () => {
             )}
           </AnimatePresence>
 
-          <motion.div className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'p-0 sm:p-0 bg-slate-950' : 'bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.42),transparent_46%)] px-3 py-4 sm:px-6 sm:py-6'}`}>
+          <motion.div className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'p-0 sm:p-0 bg-slate-100 dark:bg-slate-950' : 'bg-slate-100/60 dark:bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.42),transparent_46%)] px-3 py-4 sm:px-6 sm:py-6'}`}>
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -472,7 +542,7 @@ const MediaPreviewPopup: React.FC = () => {
               className={`flex h-full w-full items-center justify-center transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'max-w-full' : isDocumentPreview ? 'max-w-[min(1480px,100%)]' : 'max-w-[min(1280px,100%)]'}`}
             >
               <div
-                className={`h-full w-full overflow-hidden transition-all duration-300 ${isAudioPreview ? 'bg-transparent' : isUIHidden || activePreviewMedia.type === 'pdf' ? 'bg-slate-950 border-0 rounded-none shadow-none' : 'rounded-xl border border-slate-800 bg-slate-950/80 shadow-2xl shadow-black/30'}`}
+                className={`h-full w-full overflow-hidden transition-all duration-300 ${isAudioPreview ? 'bg-transparent' : isUIHidden || activePreviewMedia.type === 'pdf' ? 'bg-slate-100 dark:bg-slate-950 border-0 rounded-none shadow-none' : 'rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/80 shadow-2xl shadow-slate-200/50 dark:shadow-black/30'}`}
               >
                 {isResolvingAsset ? (
                   <div className="flex h-full w-full items-center justify-center gap-3 text-sm text-slate-400">

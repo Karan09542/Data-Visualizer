@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getProxiedUrl } from '../utils/mediaUtils';
 import SafeIframe from './SafeIframe';
 import { useStore } from '../store/useStore';
+import CustomAudioPlayer from './CustomAudioPlayer';
 
 export const mediaCache = new Map<string, any>();
 export const failedCache = new Map<string, { error?: any, errorType?: string, message?: string, timestamp: number, expiresAt: number }>();
@@ -201,12 +202,9 @@ export default function SmartMediaRenderer({ url, onMediaFailed, onResolvedType 
     );
   } else if (mediaData.strategy === 'audio' || (mediaData.html && mediaData.html.startsWith('<audio'))) {
     content = (
-      <audio 
+      <CustomAudioPlayer 
         src={currentUrl} 
-        controls 
-        crossOrigin={crossOrigin as any}
-        onError={handleError}
-        className="w-full h-10 outline-none"
+        className="w-full justify-center"
       />
     );
   } else if (mediaData.strategy === 'iframe' || (mediaData.html && mediaData.html.includes('<iframe'))) {

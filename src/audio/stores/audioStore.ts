@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { AudioState, AudioTrack } from '../types/audio';
 
 interface AudioStore extends AudioState {
@@ -19,21 +20,24 @@ interface AudioStore extends AudioState {
   removeFromQueue: (index: number) => void;
   reorderQueue: (startIndex: number, endIndex: number) => void;
   clearQueue: () => void;
+  playTrackNow: (track: AudioTrack) => void;
 }
 
-export const useAudioStore = create<AudioStore>((set) => ({
-  currentTrack: null,
-  isPlaying: false,
-  volume: 1,
-  progress: 0,
-  duration: 0,
-  isMuted: false,
-  playbackRate: 1,
-  isLooping: false,
-  isShuffle: false,
-  queue: [],
-  queueIndex: -1,
-  isPlayerOpen: false,
+export const useAudioStore = create<AudioStore>()(
+  persist(
+    (set) => ({
+      currentTrack: null,
+      isPlaying: false,
+      volume: 1,
+      progress: 0,
+      duration: 0,
+      isMuted: false,
+      playbackRate: 1,
+      isLooping: false,
+      isShuffle: false,
+      queue: [],
+      queueIndex: -1,
+      isPlayerOpen: false,
 
   setCurrentTrack: (track) => set({ currentTrack: track }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
@@ -77,5 +81,27 @@ export const useAudioStore = create<AudioStore>((set) => ({
 
     return { queue: newQueue, queueIndex: newIndex };
   }),
-  clearQueue: () => set({ queue: [], queueIndex: -1 })
+  clearQueue: () => set({ queue: [], queueIndex: -1 }),
+  playTrackNow: (track) => set((state) => {
+    const existingIndex = state.queue.findIndex(t => t.id === track.id);
+    if (existingIndex !== -1) {
+      return { currentTrack: track, queueIndex: existingIndex, isPlayerOpen: true };
+    }
+    const newQueue = [...state.queue];
+    const insertIndex = state.queueIndex >= 0 ? state.queueIndex + 1 : 0;
+    newQueue.splice(insertIndex, 0, track);
+    return { currentTrack: track, queue: newQueue, queueIndex: insertIndex, isPlayerOpen: true };
+  })
+}), {
+  name: 'audio-workspace-storage',
+  partialize: (state) => ({
+    queue: state.queue,
+    queueIndex: state.queueIndex,
+    currentTrack: state.currentTrack,
+    volume: state.volume,
+    isMuted: state.isMuted,
+    playbackRate: state.playbackRate,
+    isLooping: state.isLooping,
+    isShuffle: state.isShuffle,
+  })
 }));

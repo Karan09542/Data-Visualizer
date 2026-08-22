@@ -72,10 +72,10 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
 
   return (
     <div
-      className={`group flex min-h-[68px] cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-all ${
+      className={`group flex min-h-[68px] cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition-all ${
         isCurrentTrack
-          ? "border-cyan-400 bg-cyan-50 shadow-[0_0_0_1px_rgba(34,211,238,0.2),0_18px_40px_-26px_rgba(34,211,238,0.3)] dark:border-cyan-300/35 dark:bg-cyan-300/10 dark:shadow-[0_0_0_1px_rgba(34,211,238,0.08),0_18px_40px_-26px_rgba(34,211,238,0.55)]"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-white/15 dark:hover:bg-white/[0.06]"
+          ? "border-cyan-500 bg-cyan-50/90 shadow-md shadow-cyan-500/10 ring-1 ring-cyan-400/30 dark:border-cyan-300/35 dark:bg-cyan-300/10 dark:shadow-[0_0_0_1px_rgba(34,211,238,0.08),0_18px_40px_-26px_rgba(34,211,238,0.55)] dark:ring-0"
+          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/90 dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-white/15 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-none"
       }`}
       onClick={handlePlayClick}
     >
@@ -119,13 +119,13 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
         <div className="flex min-w-0 items-center gap-2">
           <h4
             className={`truncate text-sm font-semibold ${
-              isCurrentTrack ? "text-cyan-800 dark:text-cyan-100" : "text-slate-800 dark:text-slate-100"
+              isCurrentTrack ? "text-cyan-900 dark:text-cyan-100" : "text-slate-900 dark:text-slate-100"
             }`}
           >
             {track.title}
           </h4>
           {isCurrentTrack && (
-            <span className="hidden rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-800 dark:bg-cyan-300/10 dark:text-cyan-200 sm:inline">
+            <span className="hidden rounded bg-cyan-100 dark:bg-cyan-300/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-800 dark:text-cyan-200 sm:inline">
               Live
             </span>
           )}
@@ -145,7 +145,7 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all sm:opacity-0 sm:group-hover:opacity-100 ${
             added
               ? "border-emerald-400 bg-emerald-50 text-emerald-600 sm:opacity-100 dark:border-emerald-300/30 dark:bg-emerald-300/10 dark:text-emerald-200"
-              : "border-transparent text-slate-500 hover:border-cyan-400 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:border-cyan-300/20 dark:hover:bg-cyan-300/10 dark:hover:text-cyan-200"
+              : "border-transparent text-slate-400 hover:border-cyan-500/30 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:border-cyan-300/20 dark:hover:bg-cyan-300/10 dark:hover:text-cyan-200"
           }`}
           title="Add to Queue"
         >

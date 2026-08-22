@@ -47,7 +47,7 @@ export const AudioControls: React.FC = () => {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-5 p-3 sm:p-4">
       <div className="flex w-full items-center gap-3 text-[11px] font-bold tabular-nums text-slate-500">
-        <span className="w-10 text-right text-slate-500 dark:text-slate-400">{formatTime(progress)}</span>
+        <span className="w-10 text-right text-slate-600 dark:text-slate-400">{formatTime(progress)}</span>
         <input
           type="range"
           min="0"
@@ -55,9 +55,9 @@ export const AudioControls: React.FC = () => {
           value={progress}
           onChange={handleSeek}
           aria-label="Audio progress"
-          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-800 accent-cyan-400 dark:accent-cyan-300"
+          className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-800 accent-cyan-500 dark:accent-cyan-300 transition-all"
         />
-        <span className="w-10 text-slate-500 dark:text-slate-400">{formatTime(duration)}</span>
+        <span className="w-10 text-slate-600 dark:text-slate-400">{formatTime(duration)}</span>
       </div>
 
       <div className="flex flex-col items-center justify-between gap-5 sm:flex-row sm:gap-4">
@@ -90,27 +90,27 @@ export const AudioControls: React.FC = () => {
           <button
             onClick={previous}
             title="Previous"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-950 dark:hover:text-white active:scale-95 shadow-sm"
           >
-            <SkipBack size={22} fill="currentColor" />
+            <SkipBack size={20} fill="currentColor" />
           </button>
           <button
             onClick={togglePlay}
             title={isPlaying ? "Pause" : "Play"}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-cyan-400 dark:bg-cyan-300 text-slate-950 shadow-xl shadow-cyan-500/20 transition-all hover:bg-cyan-300 dark:hover:bg-cyan-200 hover:scale-[1.03] active:scale-95"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-cyan-500 dark:bg-cyan-300 text-white dark:text-slate-950 shadow-xl shadow-cyan-500/25 transition-all hover:bg-cyan-400 dark:hover:bg-cyan-200 hover:scale-[1.04] active:scale-95"
           >
             {isPlaying ? (
-              <Pause size={30} fill="currentColor" />
+              <Pause size={28} fill="currentColor" />
             ) : (
-              <Play size={30} className="ml-1" fill="currentColor" />
+              <Play size={28} className="ml-1" fill="currentColor" />
             )}
           </button>
           <button
             onClick={next}
             title="Next"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/[0.04] text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-950 dark:hover:text-white active:scale-95 shadow-sm"
           >
-            <SkipForward size={22} fill="currentColor" />
+            <SkipForward size={20} fill="currentColor" />
           </button>
         </div>
 
@@ -118,7 +118,7 @@ export const AudioControls: React.FC = () => {
           <button
             onClick={toggleMute}
             title={isMuted || volume === 0 ? "Unmute" : "Mute"}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/5 dark:hover:text-slate-100"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-slate-100"
           >
             {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
@@ -130,7 +130,7 @@ export const AudioControls: React.FC = () => {
             value={isMuted ? 0 : volume}
             onChange={handleVolume}
             aria-label="Volume"
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-800 accent-emerald-400 dark:accent-emerald-300"
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-800 accent-emerald-500 dark:accent-emerald-300 transition-all"
           />
         </div>
       </div>

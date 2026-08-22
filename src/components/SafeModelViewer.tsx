@@ -1,16 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { resolveAssetUrl } from "../utils/assetManager";
 import { HexColorPicker } from "react-colorful";
-import { 
-  RotateCw, 
-  Box, 
-  Grid3X3, 
-  Camera, 
-  Sun, 
-  Palette, 
-  Maximize, 
-  RefreshCcw, 
-  Info, 
+import {
+  RotateCw,
+  Box,
+  Grid3X3,
+  Camera,
+  Sun,
+  Palette,
+  Maximize,
+  RefreshCcw,
+  Info,
   ChevronRight,
   Download,
   Settings2,
@@ -31,13 +31,13 @@ interface SafeModelViewerProps {
 type BgPreset = "dark" | "light" | "transparent" | "gradient" | "custom";
 type LightPreset = "studio" | "neutral" | "outdoor" | "spruit" | "moon" | "photo_studio" | "kloofendal" | "custom";
 
-export function SafeModelViewer({ 
-  src, 
-  alt, 
-  autoRotate: initialAutoRotate, 
-  cameraControls, 
+export function SafeModelViewer({
+  src,
+  alt,
+  autoRotate: initialAutoRotate,
+  cameraControls,
   style,
-  showControls = false 
+  showControls = false
 }: SafeModelViewerProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +56,6 @@ export function SafeModelViewer({
   const [showGrid, setShowGrid] = useState(false);
   const [isWireframe, setIsWireframe] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  const [stats, setStats] = useState<any>(null);
 
   // Persistence
   useEffect(() => {
@@ -101,7 +100,7 @@ export function SafeModelViewer({
     } else {
       setResolvedUrl(src);
     }
-    
+
     return () => { active = false; };
   }, [src]);
 
@@ -151,9 +150,9 @@ export function SafeModelViewer({
         case 'r': handleResetCamera(); break;
         case 'g': setShowGrid(prev => !prev); break;
         case 'w': setIsWireframe(prev => !prev); break;
-        case ' ': 
+        case ' ':
           e.preventDefault();
-          setIsRotating(prev => !prev); 
+          setIsRotating(prev => !prev);
           break;
       }
     };
@@ -165,7 +164,7 @@ export function SafeModelViewer({
   useEffect(() => {
     if (!modelViewerRef.current || !loaded) return;
     const mv = modelViewerRef.current;
-    
+
     const applyWireframe = (obj: any, wireframe: boolean, visited = new Set()) => {
       if (!obj || visited.has(obj)) return;
       visited.add(obj);
@@ -204,9 +203,9 @@ export function SafeModelViewer({
                 applyWireframe(val, wireframe, visited);
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         }
-        
+
         // Also check symbols
         const symbols = Object.getOwnPropertySymbols(obj);
         for (const sym of symbols) {
@@ -215,7 +214,7 @@ export function SafeModelViewer({
             if (val && typeof val === 'object') {
               applyWireframe(val, wireframe, visited);
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     };
@@ -230,9 +229,9 @@ export function SafeModelViewer({
           if (val && typeof val === 'object') {
             applyWireframe(val, isWireframe, visited);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
-      
+
       // Request update from model-viewer
       if (typeof mv.requestUpdate === 'function') {
         mv.requestUpdate();
@@ -295,18 +294,18 @@ export function SafeModelViewer({
 
   if (showControls) {
     return (
-      <div 
+      <div
         className={`relative w-full h-full overflow-hidden ${bgPreset === 'custom' ? '' : bgStyles[bgPreset]} transition-colors duration-500 group/viewer`}
         style={{ ...style, backgroundColor: bgPreset === 'custom' ? bgColor : undefined }}
       >
         {/* Grid Overlay */}
         {showGrid && (
-          <div className="absolute inset-0 pointer-events-none opacity-20" 
-               style={{ 
-                 backgroundImage: `radial-gradient(circle, #4f46e5 1px, transparent 1px), linear-gradient(to right, #1e293b 1px, transparent 1px), linear-gradient(to bottom, #1e293b 1px, transparent 1px)`,
-                 backgroundSize: `40px 40px, 40px 40px, 40px 40px`,
-                 maskImage: 'radial-gradient(circle at center, black, transparent 80%)'
-               }} 
+          <div className="absolute inset-0 pointer-events-none opacity-20"
+            style={{
+              backgroundImage: `radial-gradient(circle, #4f46e5 1px, transparent 1px), linear-gradient(to right, #1e293b 1px, transparent 1px), linear-gradient(to bottom, #1e293b 1px, transparent 1px)`,
+              backgroundSize: `40px 40px, 40px 40px, 40px 40px`,
+              maskImage: 'radial-gradient(circle at center, black, transparent 80%)'
+            }}
           />
         )}
 
@@ -329,7 +328,7 @@ export function SafeModelViewer({
         {/* Controls Overlay */}
         <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 flex flex-wrap md:flex-nowrap items-center justify-center gap-2 p-2 bg-slate-950/85 md:bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl opacity-100 md:opacity-0 md:group-hover/viewer:opacity-100 transition-all duration-300 w-[92%] sm:w-auto max-w-[480px] md:max-w-none z-50">
           <div className="flex items-center gap-1">
-             <button 
+            <button
               onClick={() => setIsRotating(!isRotating)}
               className={`p-1.5 md:p-2 rounded-xl transition-all ${isRotating ? 'bg-indigo-500 text-white' : 'hover:bg-white/10 text-slate-400'}`}
               title="Auto Rotate (Space)"
@@ -337,12 +336,12 @@ export function SafeModelViewer({
               <RotateCw size={16} className={isRotating ? 'animate-spin-slow' : ''} />
             </button>
             {isRotating && (
-              <input 
-                type="range" 
-                min="0.1" 
-                max="5" 
-                step="0.1" 
-                value={rotateSpeed} 
+              <input
+                type="range"
+                min="0.1"
+                max="5"
+                step="0.1"
+                value={rotateSpeed}
                 onChange={(e) => setRotateSpeed(parseFloat(e.target.value))}
                 className="w-16 sm:w-20 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
               />
@@ -352,14 +351,14 @@ export function SafeModelViewer({
           <div className="hidden md:block w-[1px] h-4 bg-white/10 mx-1" />
 
           <div className="flex items-center gap-1">
-            <button 
+            <button
               onClick={() => setShowGrid(!showGrid)}
               className={`p-1.5 md:p-2 rounded-xl transition-all ${showGrid ? 'bg-indigo-500 text-white' : 'hover:bg-white/10 text-slate-400'}`}
               title="Toggle Grid (G)"
             >
               <Grid3X3 size={16} />
             </button>
-            <button 
+            <button
               onClick={() => setIsWireframe(!isWireframe)}
               className={`p-1.5 md:p-2 rounded-xl transition-all ${isWireframe ? 'bg-indigo-500 text-white' : 'hover:bg-white/10 text-slate-400'}`}
               title="Toggle Wireframe (W)"
@@ -371,8 +370,8 @@ export function SafeModelViewer({
           <div className="hidden md:block w-[1px] h-4 bg-white/10 mx-1" />
 
           <div className="flex items-center gap-1.5">
-            <select 
-              value={bgPreset} 
+            <select
+              value={bgPreset}
               onChange={(e) => setBgPreset(e.target.value as BgPreset)}
               className="w-[95px] sm:w-[110px] bg-transparent text-slate-300 text-xs border border-white/10 rounded-lg px-2 py-1.5 hover:bg-white/5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 appearance-none cursor-pointer text-center"
             >
@@ -385,14 +384,14 @@ export function SafeModelViewer({
 
             {bgPreset === 'custom' && (
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setIsPickerOpen(!isPickerOpen)}
                   className="w-5 h-5 rounded-md border border-white/20 shadow-inner"
                   style={{ backgroundColor: bgColor }}
                 />
                 <AnimatePresence>
                   {isPickerOpen && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, scale: 0.9, y: 10 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -417,10 +416,10 @@ export function SafeModelViewer({
             )}
 
             <div className="w-[1px] h-4 bg-white/10" />
-            
+
             <div className="flex items-center gap-1.5">
-              <select 
-                value={lightPreset} 
+              <select
+                value={lightPreset}
                 onChange={(e) => setLightPreset(e.target.value as LightPreset)}
                 className="w-[90px] sm:w-[110px] bg-transparent text-slate-300 text-xs border border-white/10 rounded-lg px-2 py-1.5 hover:bg-white/5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 appearance-none cursor-pointer text-center"
               >
@@ -463,7 +462,7 @@ export function SafeModelViewer({
                           </div>
                           <div className="flex flex-col gap-2">
                             <div className="flex gap-2">
-                               <input
+                              <input
                                 type="text"
                                 value={customLightUrl}
                                 onChange={(e) => setCustomLightUrl(e.target.value)}
@@ -495,21 +494,21 @@ export function SafeModelViewer({
           <div className="hidden md:block w-[1px] h-4 bg-white/10 mx-1" />
 
           <div className="flex items-center gap-1">
-            <button 
+            <button
               onClick={handleResetCamera}
               className="p-1.5 md:p-2 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl transition-all"
               title="Reset Camera (R)"
             >
               <RefreshCcw size={16} />
             </button>
-            <button 
+            <button
               onClick={handleScreenshot}
               className="p-1.5 md:p-2 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl transition-all"
               title="Capture Screenshot (PNG)"
             >
               <Camera size={16} />
             </button>
-            <button 
+            <button
               onClick={() => setShowStats(!showStats)}
               className={`p-1.5 md:p-2 rounded-xl transition-all ${showStats ? 'bg-indigo-500 text-white' : 'hover:bg-white/10 text-slate-400'}`}
               title="Model Info"

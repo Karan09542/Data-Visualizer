@@ -101,14 +101,14 @@ const AudioPlayerModal: React.FC = () => {
       >
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#080b12]/95 px-4 shadow-2xl shadow-black/5 dark:shadow-black/20 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-cyan-300/25 bg-cyan-300/10 shadow-[0_0_24px_rgba(34,211,238,0.12)]">
-              <ListMusic className="h-5 w-5 text-cyan-300" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-cyan-500/20 dark:border-cyan-300/25 bg-cyan-500/10 dark:bg-cyan-300/10 shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+              <ListMusic className="h-5 w-5 text-cyan-600 dark:text-cyan-300" />
             </div>
             <div className="min-w-0">
               <h2 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-white sm:text-lg">
                 Audio Workspace
               </h2>
-              <p className="hidden text-xs font-medium text-slate-400 sm:block">
+              <p className="hidden text-xs font-medium text-slate-500 dark:text-slate-400 sm:block">
                 {libraryCount} discovered audio files - {queueCount} queued
               </p>
             </div>
@@ -211,7 +211,7 @@ const AudioPlayerModal: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="w-full max-w-2xl rounded-lg border border-slate-200 dark:border-white/10 bg-white/50 dark:bg-black/20 shadow-2xl shadow-slate-200/50 dark:shadow-black/20 backdrop-blur">
+                  <div className="w-full max-w-2xl rounded-xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-black/20 shadow-xl shadow-slate-200/50 dark:shadow-black/20 backdrop-blur-md">
                     <AudioControls />
                   </div>
                 </div>

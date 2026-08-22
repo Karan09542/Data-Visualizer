@@ -527,6 +527,32 @@ export function NodeContextMenu({
                           }
                         }
 
+                        if (detectedType === "audio") {
+                          const url = detectedUrl;
+                          const cleanUrl = url.split("?")[0].split("#")[0];
+                          const fileName = cleanUrl.split("/").pop() || "Audio Track";
+                          import("../lib/db").then(({ db }) => {
+                            db.audio_tracks.get(url).then((existingTrack) => {
+                              const track: any = existingTrack || {
+                                id: url,
+                                title: fileName,
+                                artist: "Workspace Audio",
+                                source: url,
+                                type: "audio/mpeg",
+                                createdAt: Date.now(),
+                              };
+                              import("../audio/stores/audioStore").then((m) => {
+                                m.useAudioStore.getState().playTrackNow(track);
+                              });
+                              import("../audio/services/audioEngine").then((m) => {
+                                m.audioEngine.playTrack(track);
+                              });
+                            });
+                          });
+                          setContextMenu(null);
+                          return;
+                        }
+
                         if (detectedType) {
                           setActivePreviewMedia({
                             url: detectedUrl,

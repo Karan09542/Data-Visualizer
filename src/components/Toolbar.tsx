@@ -35,9 +35,10 @@ import {
   FileImage,
   FileType,
   Barcode,
-  Sparkles,
   Wrench,
   Camera,
+  ClipboardPaste,
+  Sparkles,
 } from "lucide-react";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
@@ -239,6 +240,25 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
     // Clear input so same file can be selected again
     e.target.value = "";
+  };
+
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        useStore.getState().setPendingImport({
+          filename: 'clipboard_paste.txt',
+          text: text,
+          fileContext: 'data',
+          fileSize: text.length
+        });
+      } else {
+        useStore.getState().setNotification({ message: 'Clipboard is empty', type: 'error' });
+      }
+    } catch (err) {
+      console.error('Failed to read clipboard contents: ', err);
+      useStore.getState().setNotification({ message: 'Failed to access clipboard. Please check permissions.', type: 'error' });
+    }
   };
 
   const toggleTheme = () => {
@@ -949,8 +969,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 onClick={undo}
                 disabled={undoStack.length === 0}
                 className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${undoStack.length > 0
-                    ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
-                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
                   }`}
                 title="Undo (Ctrl+Z)"
               >
@@ -960,12 +980,19 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 onClick={redo}
                 disabled={redoStack.length === 0}
                 className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${redoStack.length > 0
-                    ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
-                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
+                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
                   }`}
                 title="Redo (Ctrl+Y)"
               >
                 <Redo2 size={16} />
+              </button>
+              <button
+                onClick={handlePasteClipboard}
+                className="p-1.5 rounded transition-colors border border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                title="Paste from Clipboard"
+              >
+                <ClipboardPaste size={16} />
               </button>
             </div>
 
@@ -1302,8 +1329,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <button
                     onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
                     className={`flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${isAutosaveEnabled
-                        ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
-                        : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
+                      ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                      : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -1371,6 +1398,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                       }}
                     />
                   </label>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      handlePasteClipboard();
+                    }}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition-all cursor-pointer"
+                  >
+                    <ClipboardPaste size={16} />
+                    <span className="truncate">Paste Clipboard</span>
+                  </button>
                 </div>
               </div>
 

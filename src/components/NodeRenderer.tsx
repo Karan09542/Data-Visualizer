@@ -2101,6 +2101,7 @@ function NodeRenderer({
                       type="audio"
                       src={mediaSrc}
                       controls
+                      isDark={isDarkBase}
                       className="w-full h-11 outline-none py-1"
                     />
                   )}
@@ -2195,6 +2196,35 @@ function NodeRenderer({
                   className={`absolute ${mediaType === "audio" ? "top-1 right-1" : "bottom-1.5 left-1/2 -translate-x-1/2"} flex items-center gap-1.5 px-2 py-1 hover:bg-indigo-600 backdrop-blur-md hover:text-white rounded-full text-[9px] font-bold tracking-tight transition-all opacity-100 md:opacity-0 group-hover/media-container:opacity-100 shadow-xl border z-20 whitespace-nowrap ${isDarkBase ? "bg-black/60 text-white border-white/10" : "bg-white/90 text-slate-800 border-slate-200"}`}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (mediaType === "audio") {
+                      const url = actualAssetId || strVal;
+                      const cleanUrl = url.split("?")[0].split("#")[0];
+                      const fileName =
+                        assetDetails?.name ||
+                        cleanUrl.split("/").pop() ||
+                        "Audio Track";
+                      const finalSource = mediaSrc || url;
+                      
+                      import("../lib/db").then(({ db }) => {
+                        db.audio_tracks.get(url).then((existingTrack) => {
+                          const track: any = existingTrack || {
+                            id: url,
+                            title: fileName,
+                            artist: "Workspace Audio",
+                            source: finalSource,
+                            type: "audio/mpeg",
+                            createdAt: Date.now(),
+                          };
+                          import("../audio/stores/audioStore").then((m) => {
+                            m.useAudioStore.getState().playTrackNow(track);
+                          });
+                          import("../audio/services/audioEngine").then((m) => {
+                            m.audioEngine.playTrack(track);
+                          });
+                        });
+                      });
+                      return;
+                    }
                     setActivePreviewMedia({
                       url: actualAssetId || strVal,
                       type:
