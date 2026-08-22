@@ -21,7 +21,10 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["utilities", "developer"],
+  "categories": [
+    "utilities",
+    "developer"
+  ],
   "shortcuts": [
     {
       "name": "JSON & YAML Visualizer",
@@ -41,34 +44,31 @@
         {
           "name": "files",
           "accept": [
-            "image/*",
-            "video/*",
-            "audio/*",
-            "application/pdf",
             "application/json",
             "text/yaml",
             "application/x-yaml",
+            "text/vnd.yaml",
             "text/plain",
             "text/csv",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "application/pdf",
+            "image/*",
+            "video/*",
+            "audio/*",
+            "model/gltf+json",
+            "model/gltf-binary",
             ".json",
             ".yaml",
             ".yml",
+            ".txt",
             ".csv",
             ".xlsx",
+            ".xls",
             ".gltf",
             ".glb",
             ".obj",
             ".stl",
-            ".png",
-            ".jpg",
-            ".jpeg",
-            ".webp",
-            ".gif",
-            ".mp4",
-            ".webm",
-            ".mp3",
-            ".wav",
             ".pdf"
           ]
         }

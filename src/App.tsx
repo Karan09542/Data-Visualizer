@@ -196,6 +196,7 @@ function App() {
                 const newData = { _previousData: currentData, [keyName]: sharedTextStr };
                 setCode(JSON.stringify(newData, null, 2));
               }
+              useStore.getState().setSelectedNodeId(`root.${keyName}`);
             }
 
             useStore.getState().setNotification({ message: 'Received shared content via PWA!', type: 'success' });
@@ -239,6 +240,7 @@ function App() {
           const newData = { _previousData: currentData, [keyName]: sharedTextStr };
           setCode(JSON.stringify(newData, null, 2));
         }
+        useStore.getState().setSelectedNodeId(`root.${keyName}`);
 
         useStore.getState().setNotification({ message: 'Received shared text via PWA!', type: 'success' });
 
