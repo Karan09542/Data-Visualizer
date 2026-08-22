@@ -51,12 +51,15 @@ export default defineConfig(({ mode }) => {
                 {
                   name: 'files',
                   accept: [
+                    'image/*',
+                    'video/*',
+                    'audio/*',
+                    'application/pdf',
                     'application/json',
                     'application/x-yaml',
                     'text/yaml',
                     'text/plain',
                     'text/csv',
-                    'application/pdf',
                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     '.csv',
                     '.json',
@@ -67,7 +70,16 @@ export default defineConfig(({ mode }) => {
                     '.obj',
                     '.txt',
                     '.pdf',
-                    '.xlsx'
+                    '.xlsx',
+                    '.png',
+                    '.jpg',
+                    '.jpeg',
+                    '.webp',
+                    '.gif',
+                    '.mp4',
+                    '.webm',
+                    '.mp3',
+                    '.wav'
                   ]
                 }
               ]

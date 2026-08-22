@@ -41,6 +41,10 @@
         {
           "name": "files",
           "accept": [
+            "image/*",
+            "video/*",
+            "audio/*",
+            "application/pdf",
             "application/json",
             "text/yaml",
             "application/x-yaml",
@@ -55,7 +59,17 @@
             ".gltf",
             ".glb",
             ".obj",
-            ".stl"
+            ".stl",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".gif",
+            ".mp4",
+            ".webm",
+            ".mp3",
+            ".wav",
+            ".pdf"
           ]
         }
       ]

@@ -172,12 +172,12 @@ function App() {
 
             // Handle text/links if present
             if (title || text || link) {
-              const sharedContentObj = {
-                title: title || '',
-                text: text || '',
-                url: link || '',
-                timestamp: Date.now()
-              };
+              let sharedTextStr = "";
+              if (text && link) sharedTextStr = `${text}\n${link}`;
+              else if (title && link) sharedTextStr = `${title}\n${link}`;
+              else if (text) sharedTextStr = text;
+              else if (link) sharedTextStr = link;
+              else if (title) sharedTextStr = title;
 
               const currentCode = useStore.getState().code;
               let currentData: any = {};
@@ -190,10 +190,10 @@ function App() {
               const keyName = `shared_text_${Date.now()}`;
 
               if (typeof currentData === "object" && currentData !== null && !Array.isArray(currentData)) {
-                currentData[keyName] = sharedContentObj;
+                currentData[keyName] = sharedTextStr;
                 setCode(JSON.stringify(currentData, null, 2));
               } else {
-                const newData = { _previousData: currentData, [keyName]: sharedContentObj };
+                const newData = { _previousData: currentData, [keyName]: sharedTextStr };
                 setCode(JSON.stringify(newData, null, 2));
               }
             }
@@ -215,12 +215,12 @@ function App() {
       const sharedLink = searchParams.get('link');
 
       if (sharedName || sharedDesc || sharedLink) {
-        const sharedContent = {
-          title: sharedName || '',
-          text: sharedDesc || '',
-          url: sharedLink || '',
-          timestamp: Date.now()
-        };
+        let sharedTextStr = "";
+        if (sharedDesc && sharedLink) sharedTextStr = `${sharedDesc}\n${sharedLink}`;
+        else if (sharedName && sharedLink) sharedTextStr = `${sharedName}\n${sharedLink}`;
+        else if (sharedDesc) sharedTextStr = sharedDesc;
+        else if (sharedLink) sharedTextStr = sharedLink;
+        else if (sharedName) sharedTextStr = sharedName;
 
         const currentCode = useStore.getState().code;
         let currentData: any = {};
@@ -233,10 +233,10 @@ function App() {
         const keyName = `shared_${Date.now()}`;
 
         if (typeof currentData === "object" && currentData !== null && !Array.isArray(currentData)) {
-          currentData[keyName] = sharedContent;
+          currentData[keyName] = sharedTextStr;
           setCode(JSON.stringify(currentData, null, 2));
         } else {
-          const newData = { _previousData: currentData, [keyName]: sharedContent };
+          const newData = { _previousData: currentData, [keyName]: sharedTextStr };
           setCode(JSON.stringify(newData, null, 2));
         }
 
