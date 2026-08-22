@@ -1309,28 +1309,6 @@ export default function GraphVisualizer() {
               })}
           </g>
 
-          <g className="nodes-layer" style={{ zIndex: 10 }}>
-            {nodes
-              .filter((node) => !selectedPathNodes.has(node.data.id) && selectedNodeId !== node.data.id)
-              .map((node) => {
-                return (
-                  <NodeRenderer
-                    key={`node-${node.data.id}`}
-                    node={node}
-                    layoutMode={layoutMode}
-                    isSelectedPath={false}
-                    isSelected={false}
-                    isIsolatedMode={isolatedNodeId !== null}
-                    onContextMenu={(e, treeNode) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
-                    }}
-                  />
-                );
-              })}
-          </g>
-
           <g className="selected-edges-layer" style={{ zIndex: 15 }}>
             {links
               .filter((link) => {
@@ -1361,26 +1339,26 @@ export default function GraphVisualizer() {
               })}
           </g>
 
-          <g className="selected-nodes-layer" style={{ zIndex: 20 }}>
-            {nodes
-              .filter((node) => selectedPathNodes.has(node.data.id) || selectedNodeId === node.data.id)
-              .map((node) => {
-                return (
-                  <NodeRenderer
-                    key={`node-selected-${node.data.id}`}
-                    node={node}
-                    layoutMode={layoutMode}
-                    isSelectedPath={selectedPathNodes.has(node.data.id)}
-                    isSelected={selectedNodeId === node.data.id}
-                    isIsolatedMode={isolatedNodeId !== null}
-                    onContextMenu={(e, treeNode) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
-                    }}
-                  />
-                );
-              })}
+          <g className="nodes-layer" style={{ zIndex: 20 }}>
+            {nodes.map((node) => {
+              const isSelectedPath = selectedPathNodes.has(node.data.id);
+              const isSelected = selectedNodeId === node.data.id;
+              return (
+                <NodeRenderer
+                  key={`node-${node.data.id}`}
+                  node={node}
+                  layoutMode={layoutMode}
+                  isSelectedPath={isSelectedPath}
+                  isSelected={isSelected}
+                  isIsolatedMode={isolatedNodeId !== null}
+                  onContextMenu={(e, treeNode) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
+                  }}
+                />
+              );
+            })}
           </g>
           <g className="annotations-layer">
             <AnnotationRenderer />

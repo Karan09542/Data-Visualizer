@@ -41,6 +41,21 @@ import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 import { SafeModelViewer } from "./SafeModelViewer";
 
+const MemoApiNodeRenderer = React.memo(ApiNodeRenderer);
+const MemoJsNodeRenderer = React.memo(JsNodeRenderer);
+const MemoJsNodeCodeRenderer = React.memo(JsNodeCodeRenderer);
+const MemoJsNodeTerminalRenderer = React.memo(JsNodeTerminalRenderer);
+const MemoTsNodeRenderer = React.memo(TsNodeRenderer);
+const MemoTsNodeCodeRenderer = React.memo(TsNodeCodeRenderer);
+const MemoTsNodeTerminalRenderer = React.memo(TsNodeTerminalRenderer);
+const MemoPyNodeRenderer = React.memo(PyNodeRenderer);
+const MemoPyNodeCodeRenderer = React.memo(PyNodeCodeRenderer);
+const MemoPyNodeTerminalRenderer = React.memo(PyNodeTerminalRenderer);
+const MemoMathNodeRenderer = React.memo(MathNodeRenderer);
+const MemoTransferNodeRenderer = React.memo(TransferNodeRenderer);
+const MemoTodoNodeRenderer = React.memo(TodoNodeRenderer);
+const MemoSearchNodeRenderer = React.memo(SearchNodeRenderer);
+
 interface NodeProps {
   key?: React.Key;
   node: HierarchyPointNode<TreeNode>;
@@ -54,7 +69,7 @@ interface NodeProps {
 export const getMediaType = (val: string) => {
   if (!val || typeof val !== "string") return null;
   val = val.trim();
-  
+
   const isDataOrBlob = val.startsWith("data:") || val.startsWith("blob:");
   if (val.length > 5000 && !isDataOrBlob) {
     return null; // A standard URL or filename will never be this long. Avoid catastrophic regex backtracking on massive text nodes.
@@ -539,8 +554,8 @@ function NodeRenderer({
       case "hacker":
         return "bg-black border-[#00ff41] text-[#00ff41] shadow-[0_0_5px_#00ff41] font-mono lowercase animate-scanline";
       case "cloud":
-        return appTheme === "dark" 
-          ? "bg-slate-800 text-yellow-400 drop-shadow-[0_10px_25px_rgba(250,204,21,0.2)] thunder-cloud" 
+        return appTheme === "dark"
+          ? "bg-slate-800 text-yellow-400 drop-shadow-[0_10px_25px_rgba(250,204,21,0.2)] thunder-cloud"
           : "bg-white text-sky-900 drop-shadow-xl";
       case "dna":
         return "bg-[#1a1a2e] border-fuchsia-500/60 text-fuchsia-200 shadow-[0_0_15px_rgba(217,70,239,0.3),inset_0_0_15px_rgba(59,130,246,0.3)] ring-1 ring-blue-500/50";
@@ -923,13 +938,13 @@ function NodeRenderer({
           ? "text-[#385c40]"
           : nodeTheme === "pastel"
             ? appTheme === "dark" ? "text-purple-300/70" : "text-purple-600/70"
-          : isDarkBase
-            ? "text-white/50"
-            : isLightBase
-              ? "text-slate-500"
-              : nodeTheme === "retro"
-                ? "text-[#8a2be2]/70"
-                : "text-black/50";
+            : isDarkBase
+              ? "text-white/50"
+              : isLightBase
+                ? "text-slate-500"
+                : nodeTheme === "retro"
+                  ? "text-[#8a2be2]/70"
+                  : "text-black/50";
   const valText = isCustom
     ? ""
     : nodeTheme === "hydrogen"
@@ -940,17 +955,17 @@ function NodeRenderer({
         ? "text-black"
         : nodeTheme === "seed" && data.id !== "root"
           ? "text-[#1c2e19]"
-            : nodeTheme === "nature2" && data.id !== "root"
-              ? "text-[#1a3821]"
-              : nodeTheme === "pastel"
-                ? appTheme === "dark" ? "text-purple-200" : "text-purple-800"
+          : nodeTheme === "nature2" && data.id !== "root"
+            ? "text-[#1a3821]"
+            : nodeTheme === "pastel"
+              ? appTheme === "dark" ? "text-purple-200" : "text-purple-800"
               : isDarkBase
-              ? "text-white/90"
-              : isLightBase
-                ? "text-slate-900"
-                : nodeTheme === "retro"
-                  ? "text-[#8a2be2]/90"
-                  : "text-black/90";
+                ? "text-white/90"
+                : isLightBase
+                  ? "text-slate-900"
+                  : nodeTheme === "retro"
+                    ? "text-[#8a2be2]/90"
+                    : "text-black/90";
   const labelText = isCustom ? "" : ""; // Label usually inherits or has own logic
 
   let highlightClasses = "";
@@ -1872,7 +1887,7 @@ function NodeRenderer({
                             strVal.length > 5000 ? (
                               <>
                                 {strVal.substring(0, 5000)}...
-                                <span 
+                                <span
                                   className="inline-block ml-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 align-middle whitespace-nowrap shadow-sm backdrop-blur-sm cursor-pointer hover:bg-indigo-500/25 transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1919,7 +1934,7 @@ function NodeRenderer({
                     </div>
                   )}
                 {isApiNode && (
-                  <ApiNodeRenderer
+                  <MemoApiNodeRenderer
                     url={strVal}
                     path={data.path}
                     nodeId={data.id}
@@ -1929,7 +1944,7 @@ function NodeRenderer({
                   />
                 )}
                 {isJsNode && (
-                  <JsNodeRenderer
+                  <MemoJsNodeRenderer
                     path={data.path}
                     code={strVal}
                     width={fWidth}
@@ -1937,7 +1952,7 @@ function NodeRenderer({
                   />
                 )}
                 {isJsCode && (
-                  <JsNodeCodeRenderer
+                  <MemoJsNodeCodeRenderer
                     code={strVal}
                     path={data.path.replace(".__js_code", "")}
                     width={fWidth}
@@ -1945,14 +1960,14 @@ function NodeRenderer({
                   />
                 )}
                 {isJsTerminal && (
-                  <JsNodeTerminalRenderer
+                  <MemoJsNodeTerminalRenderer
                     path={data.path.replace(".__js_terminal", "")}
                     width={fWidth}
                     height={fHeight}
                   />
                 )}
                 {isTsNode && (
-                  <TsNodeRenderer
+                  <MemoTsNodeRenderer
                     path={data.path}
                     code={strVal}
                     width={fWidth}
@@ -1960,7 +1975,7 @@ function NodeRenderer({
                   />
                 )}
                 {isPyNode && (
-                  <PyNodeRenderer
+                  <MemoPyNodeRenderer
                     path={data.path}
                     code={strVal}
                     width={fWidth}
@@ -1968,7 +1983,7 @@ function NodeRenderer({
                   />
                 )}
                 {isTsCode && (
-                  <TsNodeCodeRenderer
+                  <MemoTsNodeCodeRenderer
                     code={strVal}
                     path={data.path.replace(".__ts_code", "")}
                     width={fWidth}
@@ -1976,14 +1991,14 @@ function NodeRenderer({
                   />
                 )}
                 {isTsTerminal && (
-                  <TsNodeTerminalRenderer
+                  <MemoTsNodeTerminalRenderer
                     path={data.path.replace(".__ts_terminal", "")}
                     width={fWidth}
                     height={fHeight}
                   />
                 )}
                 {isPyCode && (
-                  <PyNodeCodeRenderer
+                  <MemoPyNodeCodeRenderer
                     code={strVal}
                     path={data.path.replace(".__py_code", "")}
                     width={fWidth}
@@ -1991,24 +2006,24 @@ function NodeRenderer({
                   />
                 )}
                 {isPyTerminal && (
-                  <PyNodeTerminalRenderer
+                  <MemoPyNodeTerminalRenderer
                     path={data.path.replace(".__py_terminal", "")}
                     width={fWidth}
                     height={fHeight}
                   />
                 )}
                 {isTodoNode && (
-                  <TodoNodeRenderer
+                  <MemoTodoNodeRenderer
                     nodeId={data.id}
                     data={data}
                     isExpanded={isExpanded}
                   />
                 )}
                 {isTransferNode && (
-                  <TransferNodeRenderer node={node} isSelected={isSelected} />
+                  <MemoTransferNodeRenderer node={node} isSelected={isSelected} />
                 )}
                 {isMathNode && (
-                  <MathNodeRenderer
+                  <MemoMathNodeRenderer
                     key={data.path}
                     nodeId={data.id}
                     data={data}
@@ -2018,7 +2033,7 @@ function NodeRenderer({
                   />
                 )}
                 {isSearchNode && (
-                  <SearchNodeRenderer
+                  <MemoSearchNodeRenderer
                     key={data.path}
                     nodeId={data.id}
                     data={data}
@@ -2066,11 +2081,10 @@ function NodeRenderer({
                 className="flex flex-col w-full mt-2 relative group/media-container"
               >
                 <div
-                  className={`w-full rounded overflow-hidden border relative ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"} ${
-                    isDarkBase 
-                      ? "bg-black/20 border-white/5" 
+                  className={`w-full rounded overflow-hidden border relative ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"} ${isDarkBase
+                      ? "bg-black/20 border-white/5"
                       : "bg-slate-100 border-slate-200"
-                  }`}
+                    }`}
                   style={{ pointerEvents: isDraggingLocally ? "none" : "auto" }}
                 >
                   {mediaType === "image" && (
