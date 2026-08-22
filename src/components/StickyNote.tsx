@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, Minimize2, Trash2, GripVertical, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check, Eraser, ListTodo, Square, CheckSquare, Type, Minus, Plus, ChevronDown, MoreVertical } from 'lucide-react';
+import { X, Maximize2, Minimize2, Trash2, GripVertical, Edit2, Palette, Clipboard, CornerRightDown, CopyPlus, Check, Eraser, ListTodo, Square, CheckSquare, Type, Minus, Plus, ChevronDown, MoreVertical, Undo2, Redo2 } from 'lucide-react';
 import type { StickyNote as IStickyNote } from '../lib/db';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
 import { getMinNoteWidth } from '../utils/NoteUtils';
 import LexicalEditor from './notes/editor/LexicalEditor';
+import { UNDO_COMMAND, REDO_COMMAND, LexicalEditor as ILexicalEditor } from 'lexical';
 
 
 
@@ -62,6 +63,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
   const [duplicateStatus, setDuplicateStatus] = useState(false);
   const [clearKey, setClearKey] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<ILexicalEditor | null>(null);
 
   const isMax = note.isMaximized;
   const activeFontFamily = note.fontFamily || DEFAULT_STICKY_FONT;
@@ -284,6 +286,33 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
           >
             <Type size={16} className={showTypography ? 'opacity-100' : 'opacity-70'} />
           </button>
+          <div className="w-px h-4 bg-black/10 dark:bg-white/10 mx-1 hidden sm:block" />
+          <button
+            type="button"
+            onPointerDown={handleActionPointerDown}
+            onClick={() => {
+              if (editorRef.current) {
+                editorRef.current.dispatchCommand(UNDO_COMMAND, undefined);
+              }
+            }}
+            className="hidden sm:flex p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg transition-colors"
+            title="Undo"
+          >
+            <Undo2 size={16} className="opacity-70" />
+          </button>
+          <button
+            type="button"
+            onPointerDown={handleActionPointerDown}
+            onClick={() => {
+              if (editorRef.current) {
+                editorRef.current.dispatchCommand(REDO_COMMAND, undefined);
+              }
+            }}
+            className="hidden sm:flex p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg transition-colors"
+            title="Redo"
+          >
+            <Redo2 size={16} className="opacity-70" />
+          </button>
           <button
             type="button"
             onPointerDown={handleActionPointerDown}
@@ -427,6 +456,33 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
               <CopyPlus size={15} className="opacity-70" />
               <span>Duplicate</span>
             </button>
+            <div className="my-1 h-px bg-black/5 dark:bg-white/10" />
+            <button
+              type="button"
+              onClick={() => {
+                if (editorRef.current) {
+                  editorRef.current.dispatchCommand(UNDO_COMMAND, undefined);
+                }
+                setShowMobileActions(false);
+              }}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-black/80 dark:text-white/80 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <Undo2 size={15} className="opacity-70" />
+              <span>Undo</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (editorRef.current) {
+                  editorRef.current.dispatchCommand(REDO_COMMAND, undefined);
+                }
+                setShowMobileActions(false);
+              }}
+              className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-black/80 dark:text-white/80 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <Redo2 size={15} className="opacity-70" />
+              <span>Redo</span>
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -521,6 +577,7 @@ export default function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFo
           onChange={handleInstantChange}
           isEditing={true}
           style={noteTextStyle}
+          editorRef={editorRef}
         />
 
         {/* Color Picker Overlay */}

@@ -619,7 +619,7 @@ const TextPreviewPopup: React.FC = () => {
     const touchEndX = e.changedTouches[0].clientX;
     const dx = touchEndX - touchStartX.current;
 
-    if (dx > 50 && viewMode === 'markdown' && window.innerWidth < 640 && !showOutline) {
+    if (dx > 50 && viewMode === 'markdown' && window.innerWidth < 640 && !showOutline && touchStartX.current < window.innerWidth / 2) {
       setShowOutline(true);
     } else if (dx < -50 && showOutline) {
       setShowOutline(false);

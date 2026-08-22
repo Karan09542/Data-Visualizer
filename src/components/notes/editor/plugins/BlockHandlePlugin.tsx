@@ -3,10 +3,11 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import {
   $getSelection, COMMAND_PRIORITY_LOW, SELECTION_CHANGE_COMMAND,
   $getNearestNodeFromDOMNode,
-  $isElementNode
+  $isElementNode,
+  $getRoot, $createParagraphNode
 } from 'lexical';
 import { createPortal } from 'react-dom';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Trash2 } from 'lucide-react';
 import { CommandOption, getBaseOptions } from './BlockMenuOptions';
 
 export default function BlockHandlePlugin() {
@@ -227,6 +228,37 @@ export default function BlockHandlePlugin() {
               {option.title}
             </button>
           ))}
+          <div className="my-1 mx-2 h-px bg-black/5 dark:bg-white/10" />
+          <button
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (targetElement) {
+                editor.update(() => {
+                  const node = $getNearestNodeFromDOMNode(targetElement);
+                  if (node) {
+                    if ($isElementNode(node)) {
+                      node.remove();
+                    } else if (node.getParent()) {
+                      node.getParent()?.remove();
+                    }
+                    const root = $getRoot();
+                    if (root.getChildrenSize() === 0) {
+                      root.append($createParagraphNode());
+                    }
+                  }
+                });
+              }
+              setMenuOpen(false);
+              setTargetElement(null);
+            }}
+          >
+            <div className="p-1.5 rounded-md bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400">
+              <Trash2 size={16} />
+            </div>
+            Delete Block
+          </button>
         </div>
         );
       })()}

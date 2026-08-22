@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
@@ -65,6 +66,7 @@ interface LexicalEditorProps {
   onChange?: (content: string) => void;
   isEditing: boolean;
   style?: React.CSSProperties;
+  editorRef?: React.MutableRefObject<import('lexical').LexicalEditor | null>;
 }
 
 const theme = {
@@ -128,7 +130,17 @@ const theme = {
   tableCellHeader: 'editor-tableCellHeader',
 } as any;
 
-export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style }: LexicalEditorProps) {
+function EditorRefPlugin({ editorRef }: { editorRef?: React.MutableRefObject<import('lexical').LexicalEditor | null> }) {
+  const [editor] = useLexicalComposerContext();
+  React.useEffect(() => {
+    if (editorRef) {
+      editorRef.current = editor;
+    }
+  }, [editor, editorRef]);
+  return null;
+}
+
+export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style, editorRef }: LexicalEditorProps) {
   
   const initialConfig = useMemo(() => {
     let parsedState = null;
@@ -206,6 +218,7 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
             ErrorBoundary={LexicalErrorBoundary}
           />
           <HistoryPlugin />
+          <EditorRefPlugin editorRef={editorRef} />
           <ListPlugin />
           <CheckListPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
