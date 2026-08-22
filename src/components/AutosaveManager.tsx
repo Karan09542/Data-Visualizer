@@ -1,10 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { db } from '../lib/db';
 
 export default function AutosaveManager() {
-  const { code, isAutosaveEnabled, activeDocumentId, isDirty, setIsDirty, setLastSavedCode } = useStore();
-  
+  const code = useStore((state) => state.code);
+  const isAutosaveEnabled = useStore((state) => state.isAutosaveEnabled);
+  const activeDocumentId = useStore((state) => state.activeDocumentId);
+  const isDirty = useStore((state) => state.isDirty);
+  const setIsDirty = useStore((state) => state.setIsDirty);
+  const setLastSavedCode = useStore((state) => state.setLastSavedCode);
+
   // Save changes
   useEffect(() => {
     if (!isAutosaveEnabled || !isDirty || !activeDocumentId) return;
@@ -30,15 +35,15 @@ export default function AutosaveManager() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty) {
         if (isAutosaveEnabled && activeDocumentId) {
-            // Attempt a synchronous looking beacon or just let it be since IndexedDB is async
-            // We can't safely await here, but the data is in Zustand persist anyway.
+          // Attempt a synchronous looking beacon or just let it be since IndexedDB is async
+          // We can't safely await here, but the data is in Zustand persist anyway.
         } else if (!isAutosaveEnabled) {
           e.preventDefault();
           e.returnValue = '';
         }
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty, isAutosaveEnabled, activeDocumentId]);

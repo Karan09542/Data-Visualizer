@@ -5,7 +5,9 @@ import { executePyNode } from "../utils/pyExecutor";
 import { AlertTriangle, Loader2, Play, CheckCircle2, X } from "lucide-react";
 
 export const PyMissingPromptModal: React.FC = () => {
-  const { showMissingModal, setShowMissingModal, installPackage } = usePyPackageStore();
+  const showMissingModal = usePyPackageStore((state) => state.showMissingModal);
+  const setShowMissingModal = usePyPackageStore((state) => state.setShowMissingModal);
+  const installPackage = usePyPackageStore((state) => state.installPackage);
   const store = useStore();
 
   const [installing, setInstalling] = useState(false);

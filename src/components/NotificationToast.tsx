@@ -3,7 +3,8 @@ import { AlertCircle, CheckCircle2, Info, X, AlertTriangle } from 'lucide-react'
 import { useStore } from '../store/useStore';
 
 export function NotificationToast() {
-  const { notification, setNotification } = useStore();
+  const notification = useStore((state) => state.notification);
+  const setNotification = useStore((state) => state.setNotification);
 
   useEffect(() => {
     if (notification) {

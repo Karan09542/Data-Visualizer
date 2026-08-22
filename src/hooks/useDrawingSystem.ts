@@ -27,11 +27,10 @@ export function useDrawingSystem(
   isReactFlow: boolean = false,
   reactFlowViewportRef?: React.RefObject<{ x: number; y: number; zoom: number } | null>
 ) {
-  const { 
-    activeTool, color, width, opacity, glowIntensity, brushStyle, 
-    smoothing, addAnnotation, updateAnnotation, blinkDuration, fadeOutDuration, autoRemove
-  } = useAnnotationStore();
-  
+  const addAnnotation = useAnnotationStore((state) => state.addAnnotation);
+  const updateAnnotation = useAnnotationStore((state) => state.updateAnnotation);
+
+
   const isDrawing = useRef(false);
   const currentAnnotationId = useRef<string | null>(null);
   const currentPoints = useRef<Point[]>([]);
@@ -45,7 +44,7 @@ export function useDrawingSystem(
       const rect = el.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      
+
       if (isReactFlow && reactFlowViewportRef?.current) {
         const vp = reactFlowViewportRef.current;
         return {
@@ -53,7 +52,7 @@ export function useDrawingSystem(
           y: (py - vp.y) / vp.zoom
         };
       }
-      
+
       // Apply inverse D3 transform
       const transform = d3.zoomTransform(el);
       return {
@@ -74,12 +73,12 @@ export function useDrawingSystem(
       }
 
       const pt = getGraphPos(e);
-      
+
       if (state.activeTool === 'select') {
         const target = e.target as SVGElement;
         const idMatch = target.id?.match(/^anno-(.+)$/);
         const isTransformBox = target.closest('.transform-box');
-        
+
         if (idMatch || isTransformBox) {
           if (idMatch) {
             const id = idMatch[1];
@@ -98,7 +97,7 @@ export function useDrawingSystem(
         }
         return;
       }
-      
+
       if (state.activeTool === 'eraser') {
         const target = e.target as SVGElement;
         const idMatch = target.id?.match(/^anno-(.+)$/);
@@ -111,9 +110,9 @@ export function useDrawingSystem(
 
       isDrawing.current = true;
       e.preventDefault();
-      
+
       currentPoints.current = [pt];
-      const id = 'anno_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+      const id = 'anno_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
       currentAnnotationId.current = id;
 
       const newAnno: Annotation = {
@@ -157,16 +156,16 @@ export function useDrawingSystem(
     const handlePointerMove = (e: PointerEvent) => {
       if (!e.isPrimary) return;
       if (!isDrawing.current || !currentAnnotationId.current) return;
-      
+
       const state = useAnnotationStore.getState();
       let pt = getGraphPos(e);
-      
+
       if (state.activeTool === 'select' && currentAnnotationId.current) {
         // Dragging existing annotation
         const startPt = currentPoints.current[0];
         const dx = pt.x - startPt.x;
         const dy = pt.y - startPt.y;
-        
+
         const anno = state.annotations.find(a => a.id === currentAnnotationId.current);
         if (anno) {
           const newPoints = anno.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
@@ -182,11 +181,11 @@ export function useDrawingSystem(
         const dx = pt.x - startPt.x;
         const dy = pt.y - startPt.y;
         const angle = Math.atan2(dy, dx);
-        
+
         // Snap to nearest 45 degrees (PI / 4)
         const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
         const dist = Math.sqrt(dx * dx + dy * dy);
-        
+
         pt = {
           x: startPt.x + Math.cos(snapAngle) * dist,
           y: startPt.y + Math.sin(snapAngle) * dist
@@ -206,11 +205,11 @@ export function useDrawingSystem(
       if (!e.isPrimary) return;
       if (!isDrawing.current) return;
       isDrawing.current = false;
-      
+
       if (currentAnnotationId.current) {
         // Finalize drawing
         const state = useAnnotationStore.getState();
-        
+
         if (state.activeTool === 'select') {
           // Finished dragging
           currentAnnotationId.current = null;
@@ -221,27 +220,27 @@ export function useDrawingSystem(
         let pts = simplifyPath(currentPoints.current, state.smoothing * 10);
         let finalTool: DrawingTool = state.activeTool;
         let finalPoints = pts;
-        
+
         if (state.autoShapeDetection && (state.activeTool === 'pen' || state.activeTool === 'highlighter') && currentPoints.current.length > 5) {
           const detected = detectShape(currentPoints.current);
           if (detected.type !== 'none' && detected.confidence >= 0.65) {
-            
+
             if (detected.pathPoints) {
               const startPoints = [...currentPoints.current];
               const targetPoints = detected.pathPoints;
               const targetTool = detected.type as DrawingTool;
               const annId = currentAnnotationId.current;
-              
+
               const duration = 250; // ms
               const startTime = performance.now();
-              
+
               const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-              
+
               const animate = (time: number) => {
                 let t = (time - startTime) / duration;
                 if (t > 1) t = 1;
                 t = ease(t);
-                
+
                 const currentPts = startPoints.map((sp, i) => {
                   const tp = targetPoints[i] || targetPoints[targetPoints.length - 1];
                   return {
@@ -249,11 +248,11 @@ export function useDrawingSystem(
                     y: sp.y + (tp.y - sp.y) * t
                   };
                 });
-                
+
                 useAnnotationStore.getState().updateAnnotation(annId, {
                   points: currentPts,
                 });
-                
+
                 if (t < 1) {
                   requestAnimationFrame(animate);
                 } else {
@@ -262,7 +261,7 @@ export function useDrawingSystem(
                     tool: targetTool,
                   });
                   useAnnotationStore.getState().commitAction();
-                  
+
                   if (state.activeTool === 'highlighter' && state.blinkDuration > 0) {
                     setTimeout(() => {
                       useAnnotationStore.getState().updateAnnotation(annId, { isFading: true });
@@ -284,7 +283,7 @@ export function useDrawingSystem(
             }
           }
         }
-        
+
         updateAnnotation(currentAnnotationId.current, {
           points: finalPoints,
           tool: finalTool,
@@ -299,7 +298,7 @@ export function useDrawingSystem(
           setTimeout(() => {
             // Start the fade out CSS transition
             useAnnotationStore.getState().updateAnnotation(id, { isFading: true });
-            
+
             // Remove the annotation from state after the fade duration
             setTimeout(() => {
               useAnnotationStore.getState().removeAnnotations([id]);

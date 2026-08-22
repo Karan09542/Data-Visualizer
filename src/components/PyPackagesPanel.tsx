@@ -3,18 +3,16 @@ import { usePyPackageStore } from "../store/usePyPackageStore";
 import { Search, Loader2, CheckCircle2, AlertCircle, Trash2, RefreshCw, Layers, ChevronDown, ChevronUp, Play, Check } from "lucide-react";
 
 export const PyPackagesPanel: React.FC = () => {
-  const {
-    installedPackages,
-    isLoadingRegistry,
-    activeInstallations,
-    autoInstallMissing,
-    pyPackageCacheEnabled,
-    loadRegistry,
-    installPackage,
-    uninstallPackage,
-    setAutoInstallMissing,
-    setPyPackageCacheEnabled,
-  } = usePyPackageStore();
+  const installedPackages = usePyPackageStore((state) => state.installedPackages);
+  const isLoadingRegistry = usePyPackageStore((state) => state.isLoadingRegistry);
+  const activeInstallations = usePyPackageStore((state) => state.activeInstallations);
+  const autoInstallMissing = usePyPackageStore((state) => state.autoInstallMissing);
+  const pyPackageCacheEnabled = usePyPackageStore((state) => state.pyPackageCacheEnabled);
+  const loadRegistry = usePyPackageStore((state) => state.loadRegistry);
+  const installPackage = usePyPackageStore((state) => state.installPackage);
+  const uninstallPackage = usePyPackageStore((state) => state.uninstallPackage);
+  const setAutoInstallMissing = usePyPackageStore((state) => state.setAutoInstallMissing);
+  const setPyPackageCacheEnabled = usePyPackageStore((state) => state.setPyPackageCacheEnabled);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});

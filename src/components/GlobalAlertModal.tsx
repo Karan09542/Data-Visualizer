@@ -4,7 +4,8 @@ import { X, TriangleAlert } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 export function GlobalAlertModal() {
-  const { globalAlert, setGlobalAlert } = useStore();
+  const globalAlert = useStore((state) => state.globalAlert);
+  const setGlobalAlert = useStore((state) => state.setGlobalAlert);
 
   if (!globalAlert) return null;
 

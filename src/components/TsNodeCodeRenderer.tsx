@@ -17,18 +17,16 @@ export function TsNodeCodeRenderer({
   width,
   height,
 }: TsNodeCodeRendererProps) {
-  const {
-    appTheme,
-    jsNodeLoading,
-    expandedJsNodeId,
-    setExpandedJsNodeId,
-    updateNodeValue,
-    setJsNodeCodeOverride,
-    jsNodeFocusLine,
-    setJsNodeFocusLine,
-    toggleJsNodeVisibility,
-    setCustomNodeSize,
-  } = useStore();
+  const appTheme = useStore((state) => state.appTheme);
+  const jsNodeLoading = useStore((state) => state.jsNodeLoading);
+  const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
+  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
+  const updateNodeValue = useStore((state) => state.updateNodeValue);
+  const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
+  const jsNodeFocusLine = useStore((state) => state.jsNodeFocusLine);
+  const setJsNodeFocusLine = useStore((state) => state.setJsNodeFocusLine);
+  const toggleJsNodeVisibility = useStore((state) => state.toggleJsNodeVisibility);
+  const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
   const [localCode, setLocalCode] = useState(code);
   const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
   const [goToLineValue, setGoToLineValue] = useState("");

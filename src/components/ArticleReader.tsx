@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { motion, AnimatePresence, useScroll, useSpring } from "motion/react";
-import { 
-  X, Bookmark, ExternalLink, Activity, Info, List as ListIcon,
+import {
+  X, Bookmark, Activity,
   ChevronLeft, ChevronRight, Home, Maximize2, ZoomIn, ZoomOut, RotateCcw,
-  Image as ImageIcon, MoreVertical, Share2, Download
+  Image as ImageIcon, Download
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { useNavigationStack } from "../hooks/useNavigationStack";
@@ -20,10 +20,10 @@ interface ArticleReaderProps {
 }
 
 // Memoized Article Content to prevent expensive re-renders during scroll
-const ArticleContent = React.memo(({ title, description, html, heroImage, onHeroClick }: { 
-  title: string, 
-  description?: string, 
-  html: string, 
+const ArticleContent = React.memo(({ title, description, html, heroImage, onHeroClick }: {
+  title: string,
+  description?: string,
+  html: string,
   heroImage?: any,
   onHeroClick: (src: string) => void
 }) => {
@@ -47,22 +47,22 @@ const ArticleContent = React.memo(({ title, description, html, heroImage, onHero
 
       {heroImage && !html.includes(heroImage.source) && (
         <figure className="mb-14 group">
-          <div 
+          <div
             className="rounded-3xl overflow-hidden shadow-2xl bg-slate-100 dark:bg-slate-900 aspect-video md:aspect-[16/10] cursor-zoom-in group-hover:scale-[1.01] transition-transform duration-500 border border-slate-100 dark:border-slate-800"
             onClick={() => onHeroClick(heroImage.source)}
           >
-            <img 
-              src={heroImage.source} 
-              className="w-full h-full object-cover" 
+            <img
+              src={heroImage.source}
+              className="w-full h-full object-cover"
               loading="lazy"
             />
           </div>
         </figure>
       )}
 
-      <div 
-        className="wikipedia-content-html content-renderer prose-slate dark:prose-invert" 
-        dangerouslySetInnerHTML={{ __html: processedHtml }} 
+      <div
+        className="wikipedia-content-html content-renderer prose-slate dark:prose-invert"
+        dangerouslySetInnerHTML={{ __html: processedHtml }}
       />
     </div>
   );
@@ -71,15 +71,15 @@ const ArticleContent = React.memo(({ title, description, html, heroImage, onHero
 ArticleContent.displayName = "ArticleContent";
 
 // Dedicated component to handle article scrolling and progress to avoid hydration errors and unnecessary re-renders
-function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, scrollRef }: { 
-  currentEntry: HistoryEntry, 
-  push: (e: any) => void, 
+function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, scrollRef }: {
+  currentEntry: HistoryEntry,
+  push: (e: any) => void,
   updateCurrent: (e: any) => void,
   navigateToArticle: (t: string) => Promise<void>,
   scrollRef: React.RefObject<HTMLDivElement | null>
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  
+
   // Local scroll tracking for progress bar
   const { scrollYProgress } = useScroll({ container: scrollRef });
   const scaleX = useSpring(scrollYProgress, {
@@ -102,13 +102,13 @@ function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, sc
 
   const handleLinkClick = async (e: MouseEvent) => {
     const target = e.target as HTMLElement;
-    
+
     // Check for images first
     const img = target.closest('img');
     if (img && currentEntry?.type === "article") {
       e.preventDefault();
       e.stopPropagation();
-      
+
       const src = img.getAttribute('src');
       if (src) {
         const allImgs = Array.from(contentRef.current?.querySelectorAll('img') || []);
@@ -119,8 +119,8 @@ function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, sc
           type: "image",
           id: src,
           title: "Image Preview",
-          data: { 
-            src, 
+          data: {
+            src,
             gallery: imgUrls,
             index: currentIndex
           },
@@ -146,7 +146,7 @@ function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, sc
           }
           title = mainTitle;
         }
-        
+
         if (title) {
           // Store scroll position before navigating
           if (scrollRef.current) {
@@ -174,20 +174,20 @@ function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, sc
     <div className="absolute inset-0 flex flex-col min-h-0 overflow-hidden">
       {/* Progress Bar */}
       <div className="absolute top-0 left-0 right-0 h-[3px] bg-slate-50 dark:bg-white/5 z-40">
-        <motion.div 
-          className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] origin-left" 
+        <motion.div
+          className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] origin-left"
           style={{ scaleX }}
         />
       </div>
 
-      <motion.div 
+      <motion.div
         key={currentEntry.id}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
-        className="flex-1 relative overflow-y-auto custom-scrollbar scroll-smooth" 
-        ref={scrollRef} 
+        className="flex-1 relative overflow-y-auto custom-scrollbar scroll-smooth"
+        ref={scrollRef}
       >
         <div ref={contentRef}>
           {currentEntry.data?.isLoading && !currentEntry.data?.html && (
@@ -208,7 +208,7 @@ function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, sc
           )}
 
           {currentEntry.data?.html && (
-            <ArticleContent 
+            <ArticleContent
               title={currentEntry.data.title}
               description={currentEntry.data.description}
               html={currentEntry.data.html}
@@ -233,7 +233,7 @@ function ArticleStage({ currentEntry, push, updateCurrent, navigateToArticle, sc
 export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, toggleSaveArticle, savedArticles, language }: ArticleReaderProps) {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  
+
   const {
     navState,
     currentEntry,
@@ -251,9 +251,9 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
   // On mount or when activeArticle changes from outside, initialize the stack
   useEffect(() => {
     if (activeArticle) {
-      const isNewArticle = navState.stack.length === 0 || 
-                          (currentEntry?.type === "article" && currentEntry.id !== activeArticle.title);
-      
+      const isNewArticle = navState.stack.length === 0 ||
+        (currentEntry?.type === "article" && currentEntry.id !== activeArticle.title);
+
       if (isNewArticle) {
         // If it's a completely new article from outside (e.g. search click)
         if (navState.stack.length === 0) {
@@ -308,15 +308,15 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
 
   return (
     <div className="absolute inset-0 z-50 flex justify-end overflow-hidden">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={() => { setActiveArticle(null); clear(); }}
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
       />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ x: "100%" }}
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
@@ -326,7 +326,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
         {/* Minimal Nav Header */}
         <div className="flex-none h-14 bg-white/80 dark:bg-[#0B1120]/80 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/50 px-4 flex items-center justify-between gap-4 z-50">
           <div className="flex items-center gap-0.5">
-            <button 
+            <button
               onClick={() => {
                 if (currentEntry?.type === "article" && scrollRef.current) {
                   updateCurrent({ scrollPosition: scrollRef.current.scrollTop });
@@ -339,7 +339,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
             >
               <ChevronLeft size={18} />
             </button>
-            <button 
+            <button
               onClick={() => {
                 if (currentEntry?.type === "article" && scrollRef.current) {
                   updateCurrent({ scrollPosition: scrollRef.current.scrollTop });
@@ -352,7 +352,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
             >
               <ChevronRight size={18} />
             </button>
-            <button 
+            <button
               onClick={goToHome}
               className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all text-slate-700 dark:text-slate-200 opacity-60 hover:opacity-100"
               title="Home"
@@ -362,41 +362,41 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
           </div>
 
           <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
-             <div className="flex items-center gap-1 text-[13px] font-medium text-slate-400 dark:text-slate-500 overflow-hidden whitespace-nowrap">
-                <span className="hidden sm:inline-block cursor-pointer hover:text-blue-500" onClick={goToHome}>Wikipedia</span>
-                {navState.stack.slice(Math.max(0, navState.currentIndex - 1), navState.currentIndex + 1).map((entry, idx, arr) => (
-                  <React.Fragment key={idx}>
-                    <span className="opacity-40">/</span>
-                    <span 
-                      className={`truncate max-w-[120px] md:max-w-[200px] cursor-pointer transition-colors ${idx === arr.length - 1 ? "text-slate-900 dark:text-white font-semibold" : "hover:text-blue-500"}`}
-                      onClick={() => {
-                        const actualIdx = navState.stack.findIndex(e => e === entry);
-                        if (actualIdx !== -1) {
-                           if (currentEntry?.type === "article" && scrollRef.current) {
-                             updateCurrent({ scrollPosition: scrollRef.current.scrollTop });
-                           }
-                           goToIndex(actualIdx);
+            <div className="flex items-center gap-1 text-[13px] font-medium text-slate-400 dark:text-slate-500 overflow-hidden whitespace-nowrap">
+              <span className="hidden sm:inline-block cursor-pointer hover:text-blue-500" onClick={goToHome}>Wikipedia</span>
+              {navState.stack.slice(Math.max(0, navState.currentIndex - 1), navState.currentIndex + 1).map((entry, idx, arr) => (
+                <React.Fragment key={idx}>
+                  <span className="opacity-40">/</span>
+                  <span
+                    className={`truncate max-w-[120px] md:max-w-[200px] cursor-pointer transition-colors ${idx === arr.length - 1 ? "text-slate-900 dark:text-white font-semibold" : "hover:text-blue-500"}`}
+                    onClick={() => {
+                      const actualIdx = navState.stack.findIndex(e => e === entry);
+                      if (actualIdx !== -1) {
+                        if (currentEntry?.type === "article" && scrollRef.current) {
+                          updateCurrent({ scrollPosition: scrollRef.current.scrollTop });
                         }
-                      }}
-                    >
-                      {entry.title}
-                    </span>
-                  </React.Fragment>
-                ))}
-             </div>
+                        goToIndex(actualIdx);
+                      }
+                    }}
+                  >
+                    {entry.title}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-1">
-             {currentEntry?.type === "article" && (
-               <button 
-                 onClick={() => toggleSaveArticle({ title: currentEntry.id, thumbnail: currentEntry.data?.thumbnail?.source })} 
-                 className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-all ${savedArticles.find(a => a.title === currentEntry.id) ? 'text-blue-500' : 'text-slate-400'}`}
-               >
-                 <Bookmark size={16} fill={savedArticles.find(a => a.title === currentEntry.id) ? "currentColor" : "none"} />
-               </button>
-             )}
-             <div className="w-px h-4 bg-slate-200 dark:bg-slate-800/50 mx-1" />
-             <button 
+            {currentEntry?.type === "article" && (
+              <button
+                onClick={() => toggleSaveArticle({ title: currentEntry.id, thumbnail: currentEntry.data?.thumbnail?.source })}
+                className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-all ${savedArticles.find(a => a.title === currentEntry.id) ? 'text-blue-500' : 'text-slate-400'}`}
+              >
+                <Bookmark size={16} fill={savedArticles.find(a => a.title === currentEntry.id) ? "currentColor" : "none"} />
+              </button>
+            )}
+            <div className="w-px h-4 bg-slate-200 dark:bg-slate-800/50 mx-1" />
+            <button
               onClick={handleClose}
               className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-full transition-all"
               title="Close"
@@ -410,7 +410,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
         <div className="flex-1 relative bg-white dark:bg-[#0B1120] min-h-0 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             {isLoading && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -424,7 +424,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
             )}
 
             {currentEntry?.type === "article" ? (
-              <ArticleStage 
+              <ArticleStage
                 key={currentEntry.id}
                 currentEntry={currentEntry}
                 push={push}
@@ -439,7 +439,8 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
         </div>
       </motion.div>
 
-      <style dangerouslySetInnerHTML={{__html:`
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { 
@@ -523,7 +524,7 @@ export function ArticleReader({ activeArticle, setActiveArticle, loadArticle, to
 }
 
 function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back: () => void, updateCurrent: (u: any) => void }) {
-  const { setNotification } = useStore();
+  const setNotification = useStore((state) => state.setNotification);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -534,7 +535,7 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
   const lastTap = useRef(0);
   const carouselRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // Robust gallery state: use the initial gallery from entry, but keep it stable
   const initialGallery = useRef(entry.data?.gallery || [entry.data?.src]);
   const gallery = initialGallery.current;
@@ -569,7 +570,7 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
         setIsPanning(true);
         lastTouch.current = { x: e.touches[0].pageX, y: e.touches[0].pageY };
       }
-      
+
       // Custom double tap detection using ref instead of window
       const now = Date.now();
       if (now - lastTap.current < 300) {
@@ -652,7 +653,7 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
   }, [currentIndex, gallery.length]);
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -661,23 +662,23 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
       {/* Overlay Toolbar - Ultra Clean & Responsive */}
       <div className="flex-none h-14 sm:h-20 bg-gradient-to-b from-black/80 to-transparent px-4 sm:px-8 flex items-center justify-between z-50">
         <div className="flex items-center gap-3">
-           <div className="p-2 sm:p-2.5 bg-blue-600 rounded-xl shrink-0 shadow-lg shadow-blue-500/20">
-             <ImageIcon size={16} className="text-white" />
-           </div>
-           <div className="flex flex-col min-w-0">
-             <span className="text-[10px] font-black text-white uppercase tracking-[0.2em] opacity-50 truncate">Media Explorer</span>
-             <span className="text-xs font-black text-white/90 tracking-widest">{currentIndex + 1} <span className="opacity-40">/</span> {gallery.length}</span>
-           </div>
+          <div className="p-2 sm:p-2.5 bg-blue-600 rounded-xl shrink-0 shadow-lg shadow-blue-500/20">
+            <ImageIcon size={16} className="text-white" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-[10px] font-black text-white uppercase tracking-[0.2em] opacity-50 truncate">Media Explorer</span>
+            <span className="text-xs font-black text-white/90 tracking-widest">{currentIndex + 1} <span className="opacity-40">/</span> {gallery.length}</span>
+          </div>
         </div>
-        
+
         {/* Controls Overlay */}
         <div className="flex items-center gap-1 sm:gap-2 bg-white/5 backdrop-blur-3xl p-1 sm:p-1.5 rounded-2xl border border-white/10 shadow-2xl">
-          <button 
+          <button
             onClick={() => {
               const nextZoom = Math.max(1, zoom - 0.5);
               setZoom(nextZoom);
               if (nextZoom <= 1.05) setPan({ x: 0, y: 0 });
-            }} 
+            }}
             className="p-1.5 sm:p-2 hover:bg-white/10 rounded-xl text-white/80 active:scale-90 transition-all shrink-0"
           >
             <ZoomOut size={18} />
@@ -693,8 +694,8 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
             <Maximize2 size={18} />
           </button>
           <div className="w-px h-5 bg-white/10 mx-0.5 sm:mx-1" />
-          <button 
-            onClick={() => handleDownloadInternal(src)} 
+          <button
+            onClick={() => handleDownloadInternal(src)}
             className="p-1.5 sm:p-2 hover:bg-white/10 rounded-xl text-white/80 active:scale-90 transition-all shrink-0"
             title="Download Image"
           >
@@ -708,7 +709,7 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
       </div>
 
       {/* Main Stage - Centered & Responsive */}
-      <div 
+      <div
         ref={containerRef}
         className="flex-1 relative overflow-hidden flex items-center justify-center p-2 sm:p-4 touch-none"
         onTouchStart={handleTouchStart}
@@ -716,65 +717,65 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
         onTouchEnd={handleTouchEnd}
         onDoubleClick={handleDoubleTap}
       >
-         <AnimatePresence mode="popLayout" initial={false}>
-            <motion.div
-              key={src}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ 
-                opacity: 1, 
-                scale: zoom, 
-                rotate: rotation,
-                x: pan.x,
-                y: pan.y
-              }}
-              exit={{ opacity: 0, scale: 1.1 }}
-              transition={{ 
-                opacity: { duration: 0.15 },
-                scale: { type: "spring", damping: 25, stiffness: 350, mass: 0.4 },
-                rotate: { type: "spring", damping: 25, stiffness: 200 },
-                x: { type: "tween", ease: "linear", duration: 0 },
-                y: { type: "tween", ease: "linear", duration: 0 }
-              }}
-              className="w-full h-full flex items-center justify-center pointer-events-none"
-            >
-              <img 
-                src={src}
-                crossOrigin="anonymous"
-                className="max-w-full max-h-full object-contain select-none shadow-[0_0_120px_rgba(0,0,0,0.6)]"
-                draggable={false}
-              />
-            </motion.div>
-         </AnimatePresence>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div
+            key={src}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{
+              opacity: 1,
+              scale: zoom,
+              rotate: rotation,
+              x: pan.x,
+              y: pan.y
+            }}
+            exit={{ opacity: 0, scale: 1.1 }}
+            transition={{
+              opacity: { duration: 0.15 },
+              scale: { type: "spring", damping: 25, stiffness: 350, mass: 0.4 },
+              rotate: { type: "spring", damping: 25, stiffness: 200 },
+              x: { type: "tween", ease: "linear", duration: 0 },
+              y: { type: "tween", ease: "linear", duration: 0 }
+            }}
+            className="w-full h-full flex items-center justify-center pointer-events-none"
+          >
+            <img
+              src={src}
+              crossOrigin="anonymous"
+              className="max-w-full max-h-full object-contain select-none shadow-[0_0_120px_rgba(0,0,0,0.6)]"
+              draggable={false}
+            />
+          </motion.div>
+        </AnimatePresence>
 
-         {/* Nav Buttons Container - Controlled visibility */}
-         <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 sm:px-6 pointer-events-none z-10 transition-opacity duration-300 ${zoom > 1.05 ? "opacity-0" : "opacity-100"}`}>
-            <button 
-              disabled={currentIndex === 0}
-              onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-              className={`w-10 sm:w-14 h-10 sm:h-14 flex items-center justify-center rounded-2xl bg-black/50 text-white border border-white/10 shadow-2xl backdrop-blur-xl transition-all pointer-events-auto ${currentIndex === 0 ? "opacity-0 scale-50 pointer-events-none" : "hover:bg-blue-600 hover:border-blue-500 hover:scale-110 active:scale-95"}`}
-            >
-               <ChevronLeft size={24} />
-            </button>
-            <button 
-              disabled={currentIndex === gallery.length - 1}
-              onClick={(e) => { e.stopPropagation(); handleNext(); }}
-              className={`w-10 sm:w-14 h-10 sm:h-14 flex items-center justify-center rounded-2xl bg-black/50 text-white border border-white/10 shadow-2xl backdrop-blur-xl transition-all pointer-events-auto ${currentIndex === gallery.length - 1 ? "opacity-0 scale-50 pointer-events-none" : "hover:bg-blue-600 hover:border-blue-500 hover:scale-110 active:scale-95"}`}
-            >
-               <ChevronRight size={24} />
-            </button>
-         </div>
+        {/* Nav Buttons Container - Controlled visibility */}
+        <div className={`absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 sm:px-6 pointer-events-none z-10 transition-opacity duration-300 ${zoom > 1.05 ? "opacity-0" : "opacity-100"}`}>
+          <button
+            disabled={currentIndex === 0}
+            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
+            className={`w-10 sm:w-14 h-10 sm:h-14 flex items-center justify-center rounded-2xl bg-black/50 text-white border border-white/10 shadow-2xl backdrop-blur-xl transition-all pointer-events-auto ${currentIndex === 0 ? "opacity-0 scale-50 pointer-events-none" : "hover:bg-blue-600 hover:border-blue-500 hover:scale-110 active:scale-95"}`}
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <button
+            disabled={currentIndex === gallery.length - 1}
+            onClick={(e) => { e.stopPropagation(); handleNext(); }}
+            className={`w-10 sm:w-14 h-10 sm:h-14 flex items-center justify-center rounded-2xl bg-black/50 text-white border border-white/10 shadow-2xl backdrop-blur-xl transition-all pointer-events-auto ${currentIndex === gallery.length - 1 ? "opacity-0 scale-50 pointer-events-none" : "hover:bg-blue-600 hover:border-blue-500 hover:scale-110 active:scale-95"}`}
+          >
+            <ChevronRight size={24} />
+          </button>
+        </div>
       </div>
 
       {/* Modern Thumbnail Strip - Sticky & Stable */}
       {gallery.length > 1 && (
         <div className="flex-none pb-4 sm:pb-8 pt-2 px-4 w-full z-50">
           <div className="max-w-4xl mx-auto h-16 sm:h-24 bg-white/5 backdrop-blur-3xl border border-white/10 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl">
-            <div 
+            <div
               ref={carouselRef}
               className="flex gap-2 sm:gap-3 overflow-x-auto no-scrollbar h-full items-center px-3 sm:px-6 snap-x snap-mandatory"
             >
               {gallery.map((img, idx) => (
-                <button 
+                <button
                   key={idx}
                   onClick={() => {
                     setCurrentIndex(idx);
@@ -786,9 +787,9 @@ function ImageViewer({ entry, back, updateCurrent }: { entry: HistoryEntry, back
                 >
                   <img src={img} crossOrigin="anonymous" className="w-full h-full object-cover" />
                   {idx === currentIndex && (
-                    <motion.div 
+                    <motion.div
                       layoutId="activeThumb"
-                      className="absolute inset-0 bg-blue-500/10" 
+                      className="absolute inset-0 bg-blue-500/10"
                     />
                   )}
                 </button>

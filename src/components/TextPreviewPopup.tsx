@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  X, Copy, Check, Type, Edit3, Save, FileText, Layout, Globe,
+  X, Copy, Check, Type, Edit3, FileText, Layout, Globe,
   Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
   ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft,
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
@@ -1396,8 +1396,8 @@ const TextPreviewPopup: React.FC = () => {
                         type="button"
                         onClick={() => setKeyboardLocked(!keyboardLocked)}
                         className={`p-1.5 rounded transition-colors shrink-0 flex items-center gap-1.5 ${keyboardLocked
-                            ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 border border-transparent'
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 border border-transparent'
                           }`}
                         title={keyboardLocked ? "Unlock Native Keyboard" : "Lock Native Keyboard (Use UI Only)"}
                       >

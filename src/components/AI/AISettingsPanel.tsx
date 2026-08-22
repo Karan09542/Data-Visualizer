@@ -38,22 +38,20 @@ export const ParameterSlider = ({ label, tooltip, min, max, step, ticks, value, 
         min={min} max={max} step={step}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        className={`w-20 p-2 text-xs font-mono text-center font-bold rounded-none border outline-none transition-colors ${
-          isDark 
-            ? 'bg-neutral-900 border-neutral-800 text-white focus:border-white' 
+        className={`w-20 p-2 text-xs font-mono text-center font-bold rounded-none border outline-none transition-colors ${isDark
+            ? 'bg-neutral-900 border-neutral-800 text-white focus:border-white'
             : 'bg-neutral-50 border-neutral-200 text-black focus:border-black'
-        }`}
+          }`}
       />
     </div>
   </div>
 );
 
 export const AISettingsPanel: React.FC = () => {
-  const {
-    activeProviderId, apiKeys, setApiKey, removeApiKey,
-    temperature, topP, maxTokens, reasoningEffort, seed,
-    streamingEnabled, updateSettings
-  } = useAIStore();
+  const activeProviderId = useAIStore((state) => state.activeProviderId);
+  const apiKeys = useAIStore((state) => state.apiKeys);
+  const setApiKey = useAIStore((state) => state.setApiKey);
+  const removeApiKey = useAIStore((state) => state.removeApiKey);
 
   const appTheme = useStore(state => state.appTheme);
   const isDark = appTheme === 'dark';
@@ -109,7 +107,7 @@ export const AISettingsPanel: React.FC = () => {
             </label>
             <span className={`text-[10px] font-mono ${isDark ? 'text-neutral-500' : 'text-neutral-500'}`}>Stored locally</span>
           </div>
-          
+
           <div className="flex gap-2">
             <div className="relative flex-1 flex items-center">
               <div className="absolute left-3 flex items-center justify-center">
@@ -117,55 +115,51 @@ export const AISettingsPanel: React.FC = () => {
               </div>
               <input
                 type={showKey ? "text" : "password"}
-                className={`w-full pl-10 pr-24 py-2 text-xs font-mono rounded-none outline-none transition-colors border ${
-                  isDark 
-                    ? 'bg-neutral-900 border-neutral-800 text-white focus:border-white' 
+                className={`w-full pl-10 pr-24 py-2 text-xs font-mono rounded-none outline-none transition-colors border ${isDark
+                    ? 'bg-neutral-900 border-neutral-800 text-white focus:border-white'
                     : 'bg-neutral-50 border-neutral-200 text-black focus:border-black'
-                }`}
+                  }`}
                 value={currentKey}
                 onChange={(e) => setApiKey(activeProviderId, e.target.value)}
                 placeholder={`Paste ${provider.name} API key...`}
               />
               <div className="absolute right-2 flex items-center gap-1">
-                <button 
-                  onClick={() => setShowKey(!showKey)} 
-                  className={`p-1 rounded-none transition-colors ${
-                    isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
-                  }`} 
+                <button
+                  onClick={() => setShowKey(!showKey)}
+                  className={`p-1 rounded-none transition-colors ${isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
+                    }`}
                   title="Toggle visibility"
                 >
                   {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
                 {currentKey ? (
                   <>
-                    <button 
-                      onClick={handleCopy} 
-                      className={`p-1 rounded-none transition-colors ${
-                        isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
-                      }`} 
+                    <button
+                      onClick={handleCopy}
+                      className={`p-1 rounded-none transition-colors ${isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
+                        }`}
                     >
                       <span title="Copy Key"><Copy size={14} /></span>
                     </button>
-                    <button 
-                      onClick={() => removeApiKey(activeProviderId)} 
-                      className="p-1 hover:bg-red-500/20 rounded-none text-red-500 transition-colors" 
+                    <button
+                      onClick={() => removeApiKey(activeProviderId)}
+                      className="p-1 hover:bg-red-500/20 rounded-none text-red-500 transition-colors"
                     >
                       <span title="Clear Key"><Trash2 size={14} /></span>
                     </button>
                   </>
                 ) : (
-                  <button 
-                    onClick={handlePaste} 
-                    className={`p-1 rounded-none transition-colors ${
-                      isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
-                    }`} 
+                  <button
+                    onClick={handlePaste}
+                    className={`p-1 rounded-none transition-colors ${isDark ? 'text-neutral-500 hover:text-white hover:bg-neutral-800' : 'text-neutral-500 hover:text-black hover:bg-neutral-200'
+                      }`}
                   >
                     <span title="Paste from clipboard"><ClipboardPaste size={14} /></span>
                   </button>
                 )}
               </div>
             </div>
-            
+
             <button
               onClick={handleTestConnection}
               disabled={testStatus === 'testing' || !currentKey}
@@ -183,16 +177,14 @@ export const AISettingsPanel: React.FC = () => {
           </div>
 
           {testStatus === 'success' && (
-            <div className={`flex items-center gap-2 p-2 rounded-none text-xs font-semibold border mt-2 ${
-              isDark ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-green-50 border-green-200 text-green-700'
-            }`}>
+            <div className={`flex items-center gap-2 p-2 rounded-none text-xs font-semibold border mt-2 ${isDark ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-green-50 border-green-200 text-green-700'
+              }`}>
               <CheckCircle2 size={15} /> API Key validated successfully!
             </div>
           )}
           {testStatus === 'error' && (
-            <div className={`flex items-center gap-2 p-2 rounded-none text-xs font-semibold border mt-2 ${
-              isDark ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
-            }`}>
+            <div className={`flex items-center gap-2 p-2 rounded-none text-xs font-semibold border mt-2 ${isDark ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+              }`}>
               <AlertCircle size={15} /> Connection failed. Please check your key.
             </div>
           )}
@@ -205,10 +197,13 @@ export const AISettingsPanel: React.FC = () => {
 };
 
 export const AIParameters: React.FC = () => {
-  const {
-    temperature, topP, maxTokens, reasoningEffort, seed,
-    streamingEnabled, updateSettings
-  } = useAIStore();
+  const temperature = useAIStore((state) => state.temperature);
+  const topP = useAIStore((state) => state.topP);
+  const maxTokens = useAIStore((state) => state.maxTokens);
+  const reasoningEffort = useAIStore((state) => state.reasoningEffort);
+  const seed = useAIStore((state) => state.seed);
+  const streamingEnabled = useAIStore((state) => state.streamingEnabled);
+  const updateSettings = useAIStore((state) => state.updateSettings);
 
   const appTheme = useStore(state => state.appTheme);
   const isDark = appTheme === 'dark';
@@ -225,9 +220,8 @@ export const AIParameters: React.FC = () => {
             onChange={(e) => updateSettings({ streamingEnabled: e.target.checked })}
             className="sr-only peer"
           />
-          <div className={`w-9 h-5 rounded-none peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-none after:h-4 after:w-4 after:transition-all peer-checked:bg-black dark:peer-checked:bg-white dark:peer-checked:after:bg-black dark:peer-checked:after:border-black ${
-            isDark ? 'bg-neutral-800 border-neutral-700' : 'bg-neutral-300 border-neutral-300'
-          }`}></div>
+          <div className={`w-9 h-5 rounded-none peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-none after:h-4 after:w-4 after:transition-all peer-checked:bg-black dark:peer-checked:bg-white dark:peer-checked:after:bg-black dark:peer-checked:after:border-black ${isDark ? 'bg-neutral-800 border-neutral-700' : 'bg-neutral-300 border-neutral-300'
+            }`}></div>
         </label>
         <span className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-black'}`}>
           Stream
@@ -251,18 +245,16 @@ export const AIParameters: React.FC = () => {
                 onClick={() => updateSettings({ reasoningEffort: effort })}
                 className="flex items-center gap-2 cursor-pointer group select-none outline-none focus:outline-none"
               >
-                <div className={`w-3.5 h-3.5 rounded-none border flex items-center justify-center transition-all ${
-                  isSelected 
+                <div className={`w-3.5 h-3.5 rounded-none border flex items-center justify-center transition-all ${isSelected
                     ? (isDark ? 'border-white bg-white' : 'border-black bg-black')
                     : (isDark ? 'border-neutral-600 group-hover:border-neutral-400 bg-neutral-900' : 'border-neutral-400 group-hover:border-neutral-600 bg-white')
-                }`}>
+                  }`}>
                   {isSelected && <div className={`w-1.5 h-1.5 rounded-none ${isDark ? 'bg-black' : 'bg-white'}`} />}
                 </div>
-                <span className={`text-xs font-semibold tracking-wide capitalize ${
-                  isSelected 
-                    ? (isDark ? 'text-white font-bold' : 'text-black font-bold') 
+                <span className={`text-xs font-semibold tracking-wide capitalize ${isSelected
+                    ? (isDark ? 'text-white font-bold' : 'text-black font-bold')
                     : (isDark ? 'text-neutral-500 group-hover:text-neutral-300' : 'text-neutral-500 group-hover:text-black')
-                }`}>
+                  }`}>
                   {effort}
                 </span>
               </button>
@@ -315,11 +307,10 @@ export const AIParameters: React.FC = () => {
           value={seed ?? ''}
           placeholder="42"
           onChange={(e) => updateSettings({ seed: e.target.value ? parseInt(e.target.value) : null })}
-          className={`w-full p-3 text-xs font-mono font-bold rounded-none border outline-none transition-colors ${
-            isDark 
-              ? 'bg-neutral-900 border-neutral-800 text-white placeholder-neutral-500 focus:border-white' 
+          className={`w-full p-3 text-xs font-mono font-bold rounded-none border outline-none transition-colors ${isDark
+              ? 'bg-neutral-900 border-neutral-800 text-white placeholder-neutral-500 focus:border-white'
               : 'bg-neutral-50 border-neutral-200 text-black placeholder-neutral-400 focus:border-black'
-          }`}
+            }`}
         />
       </div>
 

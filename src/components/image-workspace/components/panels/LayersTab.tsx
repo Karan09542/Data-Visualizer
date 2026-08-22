@@ -24,7 +24,7 @@ export const LayersTab: React.FC = () => {
    const { layers, selectedLayerId, selectLayer, moveLayerUp } = useLayers();
    const { deleteActiveObject } = useCanvas();
    const { artboards } = useWorkspaceUI();
-   const { setNotification } = useStore();
+   const setNotification = useStore((state) => state.setNotification);
    const [thumbSize, setThumbSize] = useState<ThumbSize>('standard');
    const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 

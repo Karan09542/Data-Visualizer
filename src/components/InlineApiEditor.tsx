@@ -16,7 +16,11 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
   const [isValid, setIsValid] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const originalUrlRef = useRef(initialUrl);
-  const { updateNodeValue, setInlineApiEditor, inlineApiEditor, apiNodeConfig, setApiNodeConfig } = useStore();
+  const updateNodeValue = useStore((state) => state.updateNodeValue);
+  const setInlineApiEditor = useStore((state) => state.setInlineApiEditor);
+  const inlineApiEditor = useStore((state) => state.inlineApiEditor);
+  const apiNodeConfig = useStore((state) => state.apiNodeConfig);
+  const setApiNodeConfig = useStore((state) => state.setApiNodeConfig);
 
   const currentConfig = apiNodeConfig[path] || { method: 'GET', responseType: 'auto', timeout: 5000 };
   const [method, setMethod] = useState(currentConfig.method);

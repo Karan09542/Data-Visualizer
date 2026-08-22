@@ -14,42 +14,64 @@ const nodeThemes: NodeTheme[] = ['vscode', 'github', 'glassmorphism', 'cyberpunk
 const edgeStyles: EdgeStyle[] = ['curved', 'bezier', 'straight', 'step', 'animated', 'dashed', 'neon', 'double', 'pipe', 'thin', 'orgChart', 'circuit', 'glow', 'zigzag', 'pulse', 'ludo', 'chess', 'octopus', 'nature2', 'hydrogen', 'seed', 'metro', 'angled-step'];
 
 export default function AdvancedPanel() {
-  const {
-    isAdvancedPanelOpen, setIsAdvancedPanelOpen,
-    showMediaPreview, setShowMediaPreview,
-    globalTextExpanded, setGlobalTextExpanded,
-    nodeSpread, setNodeSpread,
-    nodeSize, setNodeSize,
-    nodeTheme, setNodeTheme,
-    edgeStyle, setEdgeStyle,
-    nodeColor, setNodeColor,
-    nodeTextColor, setNodeTextColor,
-    nodeGradientColor1, setNodeGradientColor1,
-    nodeGradientColor2, setNodeGradientColor2,
-    useNodeGradient, setUseNodeGradient,
-    nodeGradientAngle, setNodeGradientAngle,
-    nodeGradientType, setNodeGradientType,
-    canvasTheme, setCanvasTheme,
-    canvasBackgroundColor, setCanvasBackgroundColor,
-    canvasPatternColor, setCanvasPatternColor,
-    canvasBackgroundImage, setCanvasBackgroundImage,
-    canvasBackgroundBlur, setCanvasBackgroundBlur,
-    resetAllSettings, setIsShortcutsOpen,
-    setIsMathHelpOpen,
-    stickyNotesEnabled, setStickyNotesEnabled,
-    setIsYoutubeSearchOpen,
-    setIsProxyModalOpen
-  } = useStore();
+  const isAdvancedPanelOpen = useStore((state) => state.isAdvancedPanelOpen);
+  const setIsAdvancedPanelOpen = useStore((state) => state.setIsAdvancedPanelOpen);
+  const showMediaPreview = useStore((state) => state.showMediaPreview);
+  const setShowMediaPreview = useStore((state) => state.setShowMediaPreview);
+  const globalTextExpanded = useStore((state) => state.globalTextExpanded);
+  const setGlobalTextExpanded = useStore((state) => state.setGlobalTextExpanded);
+  const nodeSpread = useStore((state) => state.nodeSpread);
+  const setNodeSpread = useStore((state) => state.setNodeSpread);
+  const nodeSize = useStore((state) => state.nodeSize);
+  const setNodeSize = useStore((state) => state.setNodeSize);
+  const nodeTheme = useStore((state) => state.nodeTheme);
+  const setNodeTheme = useStore((state) => state.setNodeTheme);
+  const edgeStyle = useStore((state) => state.edgeStyle);
+  const setEdgeStyle = useStore((state) => state.setEdgeStyle);
+  const nodeColor = useStore((state) => state.nodeColor);
+  const setNodeColor = useStore((state) => state.setNodeColor);
+  const nodeTextColor = useStore((state) => state.nodeTextColor);
+  const setNodeTextColor = useStore((state) => state.setNodeTextColor);
+  const nodeGradientColor1 = useStore((state) => state.nodeGradientColor1);
+  const setNodeGradientColor1 = useStore((state) => state.setNodeGradientColor1);
+  const nodeGradientColor2 = useStore((state) => state.nodeGradientColor2);
+  const setNodeGradientColor2 = useStore((state) => state.setNodeGradientColor2);
+  const useNodeGradient = useStore((state) => state.useNodeGradient);
+  const setUseNodeGradient = useStore((state) => state.setUseNodeGradient);
+  const nodeGradientAngle = useStore((state) => state.nodeGradientAngle);
+  const setNodeGradientAngle = useStore((state) => state.setNodeGradientAngle);
+  const nodeGradientType = useStore((state) => state.nodeGradientType);
+  const setNodeGradientType = useStore((state) => state.setNodeGradientType);
+  const canvasTheme = useStore((state) => state.canvasTheme);
+  const setCanvasTheme = useStore((state) => state.setCanvasTheme);
+  const canvasBackgroundColor = useStore((state) => state.canvasBackgroundColor);
+  const setCanvasBackgroundColor = useStore((state) => state.setCanvasBackgroundColor);
+  const canvasPatternColor = useStore((state) => state.canvasPatternColor);
+  const setCanvasPatternColor = useStore((state) => state.setCanvasPatternColor);
+  const canvasBackgroundImage = useStore((state) => state.canvasBackgroundImage);
+  const setCanvasBackgroundImage = useStore((state) => state.setCanvasBackgroundImage);
+  const canvasBackgroundBlur = useStore((state) => state.canvasBackgroundBlur);
+  const setCanvasBackgroundBlur = useStore((state) => state.setCanvasBackgroundBlur);
+  const resetAllSettings = useStore((state) => state.resetAllSettings);
+  const setIsShortcutsOpen = useStore((state) => state.setIsShortcutsOpen);
+  const setIsMathHelpOpen = useStore((state) => state.setIsMathHelpOpen);
+  const stickyNotesEnabled = useStore((state) => state.stickyNotesEnabled);
+  const setStickyNotesEnabled = useStore((state) => state.setStickyNotesEnabled);
+  const setIsYoutubeSearchOpen = useStore((state) => state.setIsYoutubeSearchOpen);
+  const setIsProxyModalOpen = useStore((state) => state.setIsProxyModalOpen);
 
-  const {
-    isToolbarVisible, setIsToolbarVisible,
-    toolbarOpacity, setToolbarOpacity,
-    toolbarOrientation, setToolbarOrientation,
-    toolbarScale, setToolbarScale,
-    resetPreferences
-  } = useAnnotationStore();
+  const isToolbarVisible = useAnnotationStore((state) => state.isToolbarVisible);
+  const setIsToolbarVisible = useAnnotationStore((state) => state.setIsToolbarVisible);
+  const toolbarOpacity = useAnnotationStore((state) => state.toolbarOpacity);
+  const setToolbarOpacity = useAnnotationStore((state) => state.setToolbarOpacity);
+  const toolbarOrientation = useAnnotationStore((state) => state.toolbarOrientation);
+  const setToolbarOrientation = useAnnotationStore((state) => state.setToolbarOrientation);
+  const toolbarScale = useAnnotationStore((state) => state.toolbarScale);
+  const setToolbarScale = useAnnotationStore((state) => state.setToolbarScale);
+  const resetPreferences = useAnnotationStore((state) => state.resetPreferences);
 
-  const { isVoiceEnabled, setIsVoiceEnabled } = useVoiceStore();
+  const isVoiceEnabled = useVoiceStore((state) => state.isVoiceEnabled);
+  const setIsVoiceEnabled = useVoiceStore((state) => state.setIsVoiceEnabled);
   const [isVoiceHelpOpen, setIsVoiceHelpOpen] = useState(false);
 
   const [panelWidth, setPanelWidth] = useState(320);

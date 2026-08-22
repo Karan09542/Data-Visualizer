@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, CopyPlus, Palette, Settings, Power, List, GripHorizontal } from 'lucide-react';
+import { Plus, Trash2, CopyPlus, Palette, Power, List, GripHorizontal } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import StickyNote from './StickyNote';
 import StickyNotesPanel from './StickyNotesPanel';
@@ -14,7 +14,8 @@ import StickyConfirmModal from './notes/StickyConfirmModal';
 const COLORS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff', '#fed7aa', '#fbcfe8'];
 
 export default function StickyNotesManager() {
-  const { stickyNotesEnabled, setStickyNotesEnabled } = useStore();
+  const stickyNotesEnabled = useStore((state) => state.stickyNotesEnabled);
+  const setStickyNotesEnabled = useStore((state) => state.setStickyNotesEnabled);
   const notes = useLiveQuery(() => db.stickyNotes.toArray()) || [];
   const [showPanel, setShowPanel] = useState(false);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function StickyNotesManager() {
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   useLayoutEffect(() => {
@@ -61,7 +62,7 @@ export default function StickyNotesManager() {
   // Update dock position based on selected note
   useEffect(() => {
     if (isDragging) return; // Don't auto-dock while user is dragging
-    
+
     if (manualPos) {
       setDockPos(manualPos);
       return;
@@ -82,10 +83,10 @@ export default function StickyNotesManager() {
         newX = selectedNote.x - 64;
       }
       if (newX < 10) newX = 10;
-      
+
       let newY = selectedNote.y;
       if (newY + 300 > window.innerHeight) {
-         newY = window.innerHeight - 320;
+        newY = window.innerHeight - 320;
       }
       if (newY < 10) newY = 10;
 
@@ -100,9 +101,9 @@ export default function StickyNotesManager() {
     const handleResize = () => {
       const isMobile = window.innerWidth < 640;
       if (!manualPos) {
-        setDockPos({ 
-          x: window.innerWidth - 70, 
-          y: isMobile ? window.innerHeight - 240 : window.innerHeight / 2 - 100 
+        setDockPos({
+          x: window.innerWidth - 70,
+          y: isMobile ? window.innerHeight - 240 : window.innerHeight / 2 - 100
         });
       } else {
         setManualPos(prev => {
@@ -273,7 +274,7 @@ export default function StickyNotesManager() {
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[19000] no-export" data-capture-exclude="true">
-      
+
       {/* Vertical Glassmorphic Toolbar Dock */}
       <motion.div
         initial={{ opacity: 0, scale: 0.8, x: dockPos.x, y: dockPos.y }}
@@ -287,7 +288,7 @@ export default function StickyNotesManager() {
           className="w-full flex justify-center pt-0.5 pb-1 opacity-40 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={handleToolbarGrabPointerDown}
         >
-           <GripHorizontal size={14} className="text-black/30 dark:text-white/30" />
+          <GripHorizontal size={14} className="text-black/30 dark:text-white/30" />
         </div>
 
         {/* 1. Add Note - Vibrant Yellow to look like a sticky note */}

@@ -4,7 +4,9 @@ import { AISettingsPanel } from './AISettingsPanel';
 import { useState, useRef, useEffect } from 'react';
 
 export default function AISettingsSidebar() {
-  const { isAISettingsPanelOpen, setIsAISettingsPanelOpen, appTheme } = useStore();
+  const isAISettingsPanelOpen = useStore((state) => state.isAISettingsPanelOpen);
+  const setIsAISettingsPanelOpen = useStore((state) => state.setIsAISettingsPanelOpen);
+  const appTheme = useStore((state) => state.appTheme);
   const isDark = appTheme === 'dark';
 
   const [panelWidth, setPanelWidth] = useState(420);

@@ -40,11 +40,9 @@ export function PyNodeTerminalRenderer({
   width,
   height,
 }: PyNodeTerminalRendererProps) {
-  const {
-    jsNodeErrors,
-    setJsNodeFocusLine,
-    setCustomNodeSize,
-  } = useStore();
+  const jsNodeErrors = useStore((state) => state.jsNodeErrors);
+  const setJsNodeFocusLine = useStore((state) => state.setJsNodeFocusLine);
+  const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
   
   const { logCount, getLog, clearLogs, startOffset } = useExecutionLogs(path);
   const containerRef = useRef<HTMLDivElement>(null);

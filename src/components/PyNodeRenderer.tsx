@@ -27,28 +27,23 @@ interface PyNodeRendererProps {
 }
 
 export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProps) {
-  const {
-    jsNodeResponses,
-    jsNodeErrors,
-    jsNodeLoading,
-    jsNodeLogs,
-    jsNodeVisibility,
-    jsNodeCodeOverrides,
-    jsNodeDurations,
-    jsNodeLastRuns,
-    toggleJsNodeVisibility,
-    expandedJsNodeId,
-    setExpandedJsNodeId,
-    setJsNodeCodeOverride,
-    updateNodeValue,
-    setCustomNodeSize,
-    appTheme,
-  } = useStore();
+  const jsNodeResponses = useStore((state) => state.jsNodeResponses);
+  const jsNodeErrors = useStore((state) => state.jsNodeErrors);
+  const jsNodeLoading = useStore((state) => state.jsNodeLoading);
+  const jsNodeVisibility = useStore((state) => state.jsNodeVisibility);
+  const jsNodeCodeOverrides = useStore((state) => state.jsNodeCodeOverrides);
+  const jsNodeDurations = useStore((state) => state.jsNodeDurations);
+  const jsNodeLastRuns = useStore((state) => state.jsNodeLastRuns);
+  const toggleJsNodeVisibility = useStore((state) => state.toggleJsNodeVisibility);
+  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
+  const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
+  const updateNodeValue = useStore((state) => state.updateNodeValue);
+  const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
+  const appTheme = useStore((state) => state.appTheme);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  const isExpanded = expandedJsNodeId === path;
   const isLoading = jsNodeLoading[path];
   const error = jsNodeErrors[path];
   const hasData = jsNodeResponses[path] !== undefined;

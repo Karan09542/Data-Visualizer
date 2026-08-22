@@ -17,7 +17,9 @@ import { useStore } from "../store/useStore";
 import { parseCsv, parseCsvArray } from "../utils/dataFormats";
 
 export function ImportModal() {
-  const { pendingImport, setPendingImport, parsedData } = useStore();
+  const pendingImport = useStore((state) => state.pendingImport);
+  const setPendingImport = useStore((state) => state.setPendingImport);
+  const parsedData = useStore((state) => state.parsedData);
 
   const [importMode, setImportMode] = useState<
     "raw" | "array" | "object" | "replace" | "media_node"

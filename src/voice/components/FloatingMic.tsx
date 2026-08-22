@@ -4,7 +4,10 @@ import { VoiceManager } from "../VoiceManager";
 import { useVoiceStore } from "../useVoiceStore";
 
 export const FloatingMic: React.FC = () => {
-  const { state, lastCommand, errorMessage, isVoiceEnabled } = useVoiceStore();
+  const state = useVoiceStore((state) => state.state);
+  const lastCommand = useVoiceStore((state) => state.lastCommand);
+  const errorMessage = useVoiceStore((state) => state.errorMessage);
+  const isVoiceEnabled = useVoiceStore((state) => state.isVoiceEnabled);
 
   if (!isVoiceEnabled) return null;
 

@@ -66,18 +66,16 @@ const getEndpointHost = (value: string) => {
 };
 
 export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: ApiNodeRendererProps) {
-  const {
-    apiNodeResponses,
-    apiNodeLoading,
-    apiNodeErrors,
-    setApiNodeResponse,
-    setApiNodeLoading,
-    setApiNodeError,
-    removeApiNode,
-    inlineApiEditor,
-    setInlineApiEditor,
-    apiNodeConfig
-  } = useStore();
+  const apiNodeResponses = useStore((state) => state.apiNodeResponses);
+  const apiNodeLoading = useStore((state) => state.apiNodeLoading);
+  const apiNodeErrors = useStore((state) => state.apiNodeErrors);
+  const setApiNodeResponse = useStore((state) => state.setApiNodeResponse);
+  const setApiNodeLoading = useStore((state) => state.setApiNodeLoading);
+  const setApiNodeError = useStore((state) => state.setApiNodeError);
+  const removeApiNode = useStore((state) => state.removeApiNode);
+  const inlineApiEditor = useStore((state) => state.inlineApiEditor);
+  const setInlineApiEditor = useStore((state) => state.setInlineApiEditor);
+  const apiNodeConfig = useStore((state) => state.apiNodeConfig);
 
   const [useProxy, setUseProxy] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);

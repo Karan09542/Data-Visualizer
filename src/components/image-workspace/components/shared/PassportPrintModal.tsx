@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  X, Printer, Download, Image as ImageIcon, Settings2, Grid2X2, 
-  Lock, Unlock, RotateCw, ZoomIn, ZoomOut, Maximize2, AlertCircle, Sliders, Eye,
+import {
+  X, Printer, Download, Image as ImageIcon, Settings2, Grid2X2,
+  Lock, Unlock, ZoomIn, ZoomOut, Maximize2, AlertCircle, Sliders, Eye,
   Sun, Moon, Scissors, Sparkles, Check, ChevronDown, Camera, Upload, RotateCcw, Wand2,
-  Globe, FileText, BadgeCheck, CreditCard, Wallet, Settings, Contact, UserCheck, ShieldCheck
+  Globe, FileText, BadgeCheck, CreditCard, Wallet, Settings, Contact, UserCheck
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { useStore } from '../../../../store/useStore';
@@ -216,19 +216,20 @@ export const DOCUMENT_PRESETS = {
 };
 
 export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose }) => {
-  const { appTheme, setAppTheme } = useStore();
+  const appTheme = useStore((state) => state.appTheme);
+  const setAppTheme = useStore((state) => state.setAppTheme);
   const isDark = appTheme === 'dark';
 
   const [paperSize, setPaperSize] = useState<keyof typeof PAPER_SIZES>('a4');
   const [docPreset, setDocPreset] = useState<keyof typeof DOCUMENT_PRESETS>('indian_passport');
-  
+
   // Custom Paper Dimensions (in MM, with display values according to paperUnit)
   const [paperUnit, setPaperUnit] = useState<PhotoUnit>('mm');
   const [customPaperWMM, setCustomPaperWMM] = useState(210);
   const [customPaperHMM, setCustomPaperHMM] = useState(297);
   const [displayPaperWVal, setDisplayPaperWVal] = useState<number>(210);
   const [displayPaperHVal, setDisplayPaperHVal] = useState<number>(297);
-  
+
   const [lockPaperRatio, setLockPaperRatio] = useState(false);
   const [paperRatio, setPaperRatio] = useState(210 / 297);
 
@@ -240,7 +241,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   const [photoHMM, setPhotoHMM] = useState(45);
   const [displayWVal, setDisplayWVal] = useState<number>(35);
   const [displayHVal, setDisplayHVal] = useState<number>(45);
-  
+
   const [lockPhotoRatio, setLockPhotoRatio] = useState(false);
   const [photoRatio, setPhotoRatio] = useState(35 / 45);
 
@@ -252,13 +253,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   const [marginLeft, setMarginLeft] = useState(10);
   const [spacing, setSpacing] = useState(5);
   const [drawCropMarks, setDrawCropMarks] = useState(true);
-  
+
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [imageObj, setImageObj] = useState<HTMLImageElement | null>(null);
 
   // Mobile View Toggle: 'preview' | 'settings'
   const [mobileTab, setMobileTab] = useState<'preview' | 'settings'>('preview');
-  
+
   // Preview Zoom Scale & 360-Degree Interactive Panning Offset State
   const [zoomLevel, setZoomLevel] = useState(100);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -304,8 +305,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     if (isMobile) {
       // Fit mobile screen width with container padding
       const maxMobileW = Math.max(260, windowWidth - 40);
-      return orientation === 'portrait' 
-        ? Math.min(340, maxMobileW) 
+      return orientation === 'portrait'
+        ? Math.min(340, maxMobileW)
         : Math.min(480, maxMobileW);
     }
     return orientation === 'portrait' ? 520 : 680;
@@ -492,11 +493,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         // Pinch center shift
         const currentMidX = (t1.clientX + t2.clientX) / 2;
         const currentMidY = (t1.clientY + t2.clientY) / 2;
-        const startMidX = touchStateRef.current.startTouch2 
-          ? (touchStateRef.current.startTouch1.x + touchStateRef.current.startTouch2.x) / 2 
+        const startMidX = touchStateRef.current.startTouch2
+          ? (touchStateRef.current.startTouch1.x + touchStateRef.current.startTouch2.x) / 2
           : touchStateRef.current.startTouch1.x;
-        const startMidY = touchStateRef.current.startTouch2 
-          ? (touchStateRef.current.startTouch1.y + touchStateRef.current.startTouch2.y) / 2 
+        const startMidY = touchStateRef.current.startTouch2
+          ? (touchStateRef.current.startTouch1.y + touchStateRef.current.startTouch2.y) / 2
           : touchStateRef.current.startTouch1.y;
 
         const dx = currentMidX - startMidX;
@@ -699,7 +700,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
     const pWidth = orientation === 'portrait' ? pWBase : pHBase;
     const pHeight = orientation === 'portrait' ? pHBase : pWBase;
-    
+
     const phWidth = docPreset === 'custom' ? (photoWMM || 35) : DOCUMENT_PRESETS[docPreset].widthMM;
     const phHeight = docPreset === 'custom' ? (photoHMM || 45) : DOCUMENT_PRESETS[docPreset].heightMM;
 
@@ -724,14 +725,14 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     // Center grid inside paper
     const consumedWidth = (maxCols * phWidth) + Math.max(0, maxCols - 1) * spacing;
     const consumedHeight = (maxRows * phHeight) + Math.max(0, maxRows - 1) * spacing;
-    
+
     const actualMarginLeft = marginLeft + Math.max(0, (availWidth - consumedWidth) / 2);
     const actualMarginTop = marginTop + Math.max(0, (availHeight - consumedHeight) / 2);
 
-    return { 
-      pWidth, pHeight, phWidth, phHeight, 
+    return {
+      pWidth, pHeight, phWidth, phHeight,
       cols: maxCols, rows: maxRows, maxCapacity, activePhotoCount,
-      actualMarginLeft, actualMarginTop 
+      actualMarginLeft, actualMarginTop
     };
   }, [paperSize, docPreset, marginTop, marginLeft, spacing, orientation, customPaperWMM, customPaperHMM, photoWMM, photoHMM, requestedPhotoCount]);
 
@@ -872,14 +873,14 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     setIsExportDropdownOpen(false);
     const canvas = await generatePrintCanvas();
     if (!canvas) return;
-    
+
     const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
     let dataUrl = canvas.toDataURL(mimeType, 0.95);
 
     // 100% Guaranteed Target File Size Compression (Scale + Dynamic Quality Tuning)
     if (maxFileKB > 0 && format !== 'png') {
       const head = mimeType === 'image/jpeg' ? 'data:image/jpeg;base64,' : 'data:image/webp;base64,';
-      
+
       let minScale = 0.05;
       let maxScale = 1.0;
       let bestUrl = '';
@@ -892,12 +893,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         scaledCanvas.width = Math.max(100, Math.round(canvas.width * midScale));
         scaledCanvas.height = Math.max(100, Math.round(canvas.height * midScale));
         const sCtx = scaledCanvas.getContext('2d');
-        
+
         if (sCtx) {
           sCtx.imageSmoothingEnabled = true;
           sCtx.imageSmoothingQuality = 'high';
           sCtx.drawImage(canvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
-          
+
           // Dynamically scale quality from 0.85 down to 0.40 based on midScale
           const q = Math.max(0.35, Math.min(0.92, midScale * 0.9));
           const testUrl = scaledCanvas.toDataURL(mimeType, q);
@@ -928,7 +929,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               fCtx.drawImage(canvas, 0, 0, fbCanvas.width, fbCanvas.height);
               const testUrl = fbCanvas.toDataURL(mimeType, q);
               const testSizeKB = Math.round(((testUrl.substring(head.length).length) * 3) / 4 / 1024);
-              
+
               if (testSizeKB <= maxFileKB) {
                 bestUrl = testUrl;
                 break;
@@ -966,7 +967,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     const canvas = await generatePrintCanvas();
     if (!canvas) return;
     const dataUrl = canvas.toDataURL('image/png', 1.0);
-    
+
     // Create an invisible iframe to print from
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -1041,15 +1042,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   }, [layout.rows, layout.cols, layout.activePhotoCount]);
 
   return createPortal(
-    <div className={`fixed inset-0 z-[99999] w-screen h-screen max-h-screen flex flex-col overflow-hidden font-sans select-none touch-manipulation animate-in fade-in duration-200 ${
-      isDark ? 'bg-[#0A0A0A] text-white' : 'bg-slate-50 text-slate-900'
-    }`}>
-      
-      {/* Studio Header Navigation */}
-      <header className={`h-14 sm:h-16 border-b px-2.5 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-40 relative shadow-sm ${
-        isDark ? 'border-[#222] bg-[#111111]' : 'border-slate-200 bg-white'
+    <div className={`fixed inset-0 z-[99999] w-screen h-screen max-h-screen flex flex-col overflow-hidden font-sans select-none touch-manipulation animate-in fade-in duration-200 ${isDark ? 'bg-[#0A0A0A] text-white' : 'bg-slate-50 text-slate-900'
       }`}>
-        
+
+      {/* Studio Header Navigation */}
+      <header className={`h-14 sm:h-16 border-b px-2.5 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-40 relative shadow-sm ${isDark ? 'border-[#222] bg-[#111111]' : 'border-slate-200 bg-white'
+        }`}>
+
         {/* Left: Passport Studio Branding */}
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
           <div className="p-1.5 sm:p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl text-white shadow-md shadow-blue-500/20 shrink-0">
@@ -1072,7 +1071,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
         {/* Right: Actions & Theme Toggle */}
         <div className="flex items-center gap-1 sm:gap-2.5 shrink-0 ml-auto">
-          
+
           {/* Hidden file input for Upload Photo */}
           <input
             ref={fileInputRef}
@@ -1084,37 +1083,33 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           />
 
           {/* Modern Camera & Upload Pill Group */}
-          <div className={`flex items-center rounded-xl border overflow-hidden shrink-0 ${
-            isDark ? 'border-[#333] bg-[#1C1C1C]' : 'border-slate-200 bg-white shadow-sm'
-          }`}>
+          <div className={`flex items-center rounded-xl border overflow-hidden shrink-0 ${isDark ? 'border-[#333] bg-[#1C1C1C]' : 'border-slate-200 bg-white shadow-sm'
+            }`}>
             {/* Camera Button */}
             <button
               onClick={() => setIsCameraOpen(true)}
               title="Snap new photo with camera"
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${
-                isDark
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${isDark
                   ? 'text-indigo-400 hover:bg-[#252525]'
                   : 'text-indigo-700 hover:bg-indigo-50'
-              }`}
+                }`}
             >
               <Camera size={15} className="shrink-0" />
               <span className="hidden sm:inline">Camera</span>
             </button>
 
             {/* Divider */}
-            <div className={`w-px h-4 sm:h-5 ${
-              isDark ? 'bg-[#333]' : 'bg-slate-200'
-            }`} />
+            <div className={`w-px h-4 sm:h-5 ${isDark ? 'bg-[#333]' : 'bg-slate-200'
+              }`} />
 
             {/* Upload Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               title="Upload photo from device"
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${
-                isDark
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${isDark
                   ? 'text-emerald-400 hover:bg-[#252525]'
                   : 'text-emerald-700 hover:bg-emerald-50'
-              }`}
+                }`}
             >
               <Upload size={15} className="shrink-0" />
               <span className="hidden sm:inline">Upload</span>
@@ -1125,11 +1120,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <button
             onClick={() => setAppTheme(isDark ? 'light' : 'dark')}
             title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
-            className={`p-1.5 sm:p-2 rounded-xl border transition-all shrink-0 ${
-              isDark 
-                ? 'bg-[#1C1C1C] border-[#333] text-amber-400 hover:bg-[#252525]' 
+            className={`p-1.5 sm:p-2 rounded-xl border transition-all shrink-0 ${isDark
+                ? 'bg-[#1C1C1C] border-[#333] text-amber-400 hover:bg-[#252525]'
                 : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-            }`}
+              }`}
           >
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -1140,11 +1134,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <div className="relative shrink-0" ref={exportDropdownRef}>
             <button
               onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-              className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 border ${
-                isDark 
-                  ? 'bg-[#1C1C1C] hover:bg-[#282828] border-[#333] text-white' 
+              className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 border ${isDark
+                  ? 'bg-[#1C1C1C] hover:bg-[#282828] border-[#333] text-white'
                   : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-sm'
-              }`}
+                }`}
             >
               <Download size={15} className="text-blue-500 shrink-0" />
               <span className="hidden sm:inline">Export</span>
@@ -1155,9 +1148,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             </button>
 
             {isExportDropdownOpen && (
-              <div className={`absolute right-0 top-full mt-2 w-60 rounded-2xl border shadow-xl p-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 ${
-                isDark ? 'bg-[#181818] border-[#333] text-white shadow-black/60' : 'bg-white border-slate-200 text-slate-900 shadow-slate-300/50'
-              }`}>
+              <div className={`absolute right-0 top-full mt-2 w-60 rounded-2xl border shadow-xl p-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 ${isDark ? 'bg-[#181818] border-[#333] text-white shadow-black/60' : 'bg-white border-slate-200 text-slate-900 shadow-slate-300/50'
+                }`}>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1.5">
                   Export Image Format
                 </div>
@@ -1170,11 +1162,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   <button
                     key={item.id}
                     onClick={() => handleExportImage(item.id)}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
-                      exportFormat === item.id 
-                        ? 'bg-blue-500/10 text-blue-500 font-bold' 
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${exportFormat === item.id
+                        ? 'bg-blue-500/10 text-blue-500 font-bold'
                         : isDark ? 'hover:bg-[#252525] text-slate-300' : 'hover:bg-slate-100 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <div>
                       <div className="text-xs font-semibold flex items-center gap-1.5">
@@ -1203,13 +1194,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             <span className="hidden sm:inline">Print / PDF</span>
           </button>
 
-          <button 
-            onClick={onClose} 
-            className={`p-1.5 sm:p-2 rounded-xl transition-all shrink-0 border ${
-              isDark 
-                ? 'bg-[#1C1C1C] border-[#333] text-slate-300 hover:text-white hover:bg-[#2A2A2A]' 
+          <button
+            onClick={onClose}
+            className={`p-1.5 sm:p-2 rounded-xl transition-all shrink-0 border ${isDark
+                ? 'bg-[#1C1C1C] border-[#333] text-slate-300 hover:text-white hover:bg-[#2A2A2A]'
                 : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-            }`}
+              }`}
             title="Close Passport Studio"
           >
             <X size={18} className="shrink-0" />
@@ -1218,31 +1208,27 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       </header>
 
       {/* Studio Subheader: Mobile Tabs & Modern Professional Zoom Controls in One Single Block */}
-      <div className={`h-12 border-b px-3 sm:px-5 flex items-center justify-between shrink-0 z-20 shadow-sm ${
-        isDark ? 'border-[#222] bg-[#141414]' : 'border-slate-200 bg-slate-100'
-      }`}>
-        
+      <div className={`h-12 border-b px-3 sm:px-5 flex items-center justify-between shrink-0 z-20 shadow-sm ${isDark ? 'border-[#222] bg-[#141414]' : 'border-slate-200 bg-slate-100'
+        }`}>
+
         {/* Left: Mobile Segmented Switcher / Desktop Workspace Title */}
         <div className="flex items-center gap-3">
           {/* Mobile Segmented Switcher (Preview / Controls) */}
-          <div className={`flex sm:hidden items-center p-0.5 rounded-xl border ${
-            isDark ? 'bg-[#1C1C1C] border-[#2A2A2A]' : 'bg-white border-slate-300 shadow-sm'
-          }`}>
+          <div className={`flex sm:hidden items-center p-0.5 rounded-xl border ${isDark ? 'bg-[#1C1C1C] border-[#2A2A2A]' : 'bg-white border-slate-300 shadow-sm'
+            }`}>
             <button
               type="button"
               onClick={() => setMobileTab('preview')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                mobileTab === 'preview' ? 'bg-blue-600 text-white shadow-md' : isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${mobileTab === 'preview' ? 'bg-blue-600 text-white shadow-md' : isDark ? 'text-slate-400' : 'text-slate-600'
+                }`}
             >
               <Eye size={13} /> Preview
             </button>
             <button
               type="button"
               onClick={() => setMobileTab('settings')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                mobileTab === 'settings' ? 'bg-blue-600 text-white shadow-md' : isDark ? 'text-slate-400' : 'text-slate-600'
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${mobileTab === 'settings' ? 'bg-blue-600 text-white shadow-md' : isDark ? 'text-slate-400' : 'text-slate-600'
+                }`}
             >
               <Sliders size={13} /> Controls
             </button>
@@ -1258,15 +1244,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
         {/* Right: Modern Professional Zoom Control Pill (Only visible when viewing preview) */}
         {mobileTab === 'preview' && (
-          <div className={`flex items-center p-0.5 rounded-xl border transition-all ${
-            isDark ? 'bg-[#1C1C1C] border-[#2A2A2A]' : 'bg-white border-slate-300 shadow-sm'
-          }`}>
-            <button 
+          <div className={`flex items-center p-0.5 rounded-xl border transition-all ${isDark ? 'bg-[#1C1C1C] border-[#2A2A2A]' : 'bg-white border-slate-300 shadow-sm'
+            }`}>
+            <button
               type="button"
               onClick={() => setZoomLevel(prev => Math.max(40, prev - 15))}
-              className={`p-1.5 rounded-lg transition-colors ${
-                isDark ? 'hover:bg-[#282828] text-slate-300 active:text-white' : 'hover:bg-slate-200 text-slate-700'
-              }`}
+              className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-[#282828] text-slate-300 active:text-white' : 'hover:bg-slate-200 text-slate-700'
+                }`}
               title="Zoom Out"
             >
               <ZoomOut size={14} />
@@ -1274,30 +1258,27 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             <button
               type="button"
               onClick={resetView}
-              className={`px-2 py-0.5 text-[11px] font-mono font-bold tracking-tight rounded-md transition-colors ${
-                isDark ? 'hover:bg-[#252525] text-blue-400' : 'hover:bg-slate-200 text-blue-600'
-              }`}
+              className={`px-2 py-0.5 text-[11px] font-mono font-bold tracking-tight rounded-md transition-colors ${isDark ? 'hover:bg-[#252525] text-blue-400' : 'hover:bg-slate-200 text-blue-600'
+                }`}
               title="Reset Zoom to 100% & Recenter"
             >
               {zoomLevel}%
             </button>
-            <button 
+            <button
               type="button"
               onClick={() => setZoomLevel(prev => Math.min(300, prev + 15))}
-              className={`p-1.5 rounded-lg transition-colors ${
-                isDark ? 'hover:bg-[#282828] text-slate-300 active:text-white' : 'hover:bg-slate-200 text-slate-700'
-              }`}
+              className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-[#282828] text-slate-300 active:text-white' : 'hover:bg-slate-200 text-slate-700'
+                }`}
               title="Zoom In"
             >
               <ZoomIn size={14} />
             </button>
             <div className={`w-px h-3.5 mx-0.5 ${isDark ? 'bg-[#333]' : 'bg-slate-300'}`} />
-            <button 
+            <button
               type="button"
               onClick={resetView}
-              className={`p-1.5 rounded-lg transition-colors ${
-                isDark ? 'hover:bg-[#282828] text-slate-300 hover:text-blue-400' : 'hover:bg-slate-200 text-slate-700 hover:text-blue-600'
-              }`}
+              className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-[#282828] text-slate-300 hover:text-blue-400' : 'hover:bg-slate-200 text-slate-700 hover:text-blue-600'
+                }`}
               title="Reset Zoom & Recenter to Fit"
             >
               <Maximize2 size={13} />
@@ -1311,17 +1292,15 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       <div className="flex-1 flex overflow-hidden relative">
 
         {/* Left Sidebar: Controls & Presets */}
-        <aside className={`w-full sm:w-80 md:w-96 border-r flex flex-col shrink-0 overflow-hidden transition-all z-10 ${
-          isDark ? 'border-[#222] bg-[#0F0F0F]' : 'border-slate-200 bg-white'
-        } ${mobileTab === 'settings' ? 'flex w-full h-full' : 'hidden sm:flex'}`}>
-          
+        <aside className={`w-full sm:w-80 md:w-96 border-r flex flex-col shrink-0 overflow-hidden transition-all z-10 ${isDark ? 'border-[#222] bg-[#0F0F0F]' : 'border-slate-200 bg-white'
+          } ${mobileTab === 'settings' ? 'flex w-full h-full' : 'hidden sm:flex'}`}>
+
           {/* Photos Fit & Count Capacity Banner */}
           <div className={`p-4 border-b ${isDark ? 'border-[#222] bg-[#141414]' : 'border-slate-200 bg-slate-50'}`}>
-            <div className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all ${
-              layout.maxCapacity > 0 
-                ? isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+            <div className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all ${layout.maxCapacity > 0
+                ? isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : isDark ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-200 text-rose-800'
-            }`}>
+              }`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2.5 rounded-xl ${layout.maxCapacity > 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
                   <Grid2X2 size={20} />
@@ -1353,13 +1332,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
           {/* Scrollable Settings Form */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5 custom-scrollbar">
-            
+
             {/* 1. Document Preset Selector */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                }`}>
+                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                   <ImageIcon size={13} /> Photo Size by Document Type
                 </h2>
               </div>
@@ -1373,13 +1351,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       key={preset.id}
                       type="button"
                       onClick={() => handleSelectDocPreset(preset.id as any)}
-                      className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
-                        isSelected 
-                          ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/50' 
-                          : isDark 
-                            ? 'border-[#262626] bg-[#161616] hover:bg-[#1F1F1F] text-slate-300' 
+                      className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${isSelected
+                          ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/50'
+                          : isDark
+                            ? 'border-[#262626] bg-[#161616] hover:bg-[#1F1F1F] text-slate-300'
                             : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between w-full">
                         <div className="p-1 rounded-lg bg-slate-100 dark:bg-[#222]">
@@ -1402,26 +1379,23 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
               {/* Custom Photo Size Input with Multi-Unit Support */}
               {docPreset === 'custom' && (
-                <div className={`p-3.5 border rounded-2xl space-y-3 animate-in slide-in-from-top-2 duration-150 ${
-                  isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
-                }`}>
+                <div className={`p-3.5 border rounded-2xl space-y-3 animate-in slide-in-from-top-2 duration-150 ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
+                  }`}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold">Custom Photo Dimensions</span>
-                    
+
                     {/* Unit Switcher: mm | cm | inch | px */}
-                    <div className={`flex items-center p-0.5 rounded-lg border text-[10px] font-bold ${
-                      isDark ? 'bg-[#222] border-[#333]' : 'bg-white border-slate-300'
-                    }`}>
+                    <div className={`flex items-center p-0.5 rounded-lg border text-[10px] font-bold ${isDark ? 'bg-[#222] border-[#333]' : 'bg-white border-slate-300'
+                      }`}>
                       {(['mm', 'cm', 'inch', 'px'] as PhotoUnit[]).map((u) => (
                         <button
                           key={u}
                           type="button"
                           onClick={() => handlePhotoUnitChange(u)}
-                          className={`px-2 py-0.5 rounded-md uppercase transition-all ${
-                            photoUnit === u 
-                              ? 'bg-blue-600 text-white shadow-sm' 
+                          className={`px-2 py-0.5 rounded-md uppercase transition-all ${photoUnit === u
+                              ? 'bg-blue-600 text-white shadow-sm'
                               : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                          }`}
+                            }`}
                         >
                           {u}
                         </button>
@@ -1432,37 +1406,34 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   <div className="flex items-center gap-2">
                     <div className="flex-1 space-y-1">
                       <label className="text-[10px] font-bold text-slate-500 uppercase">Width ({photoUnit})</label>
-                      <input 
-                        type="number" step={photoUnit === 'inch' ? '0.1' : '1'} min="0.1" max="1000" 
-                        value={displayWVal} 
-                        onChange={e => handleDisplayWChange(parseFloat(e.target.value) || 0)} 
-                        className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                          isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
-                        }`}
+                      <input
+                        type="number" step={photoUnit === 'inch' ? '0.1' : '1'} min="0.1" max="1000"
+                        value={displayWVal}
+                        onChange={e => handleDisplayWChange(parseFloat(e.target.value) || 0)}
+                        className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
+                          }`}
                       />
                     </div>
-                    
-                    <button 
-                      onClick={togglePhotoLock} 
-                      title={lockPhotoRatio ? 'Unlock Aspect Ratio' : 'Lock Aspect Ratio'} 
-                      className={`p-2 mt-4 rounded-xl border transition-all ${
-                        lockPhotoRatio 
-                          ? 'bg-blue-500/20 border-blue-500/40 text-blue-500' 
+
+                    <button
+                      onClick={togglePhotoLock}
+                      title={lockPhotoRatio ? 'Unlock Aspect Ratio' : 'Lock Aspect Ratio'}
+                      className={`p-2 mt-4 rounded-xl border transition-all ${lockPhotoRatio
+                          ? 'bg-blue-500/20 border-blue-500/40 text-blue-500'
                           : isDark ? 'bg-[#202020] border-[#333] text-slate-400' : 'bg-white border-slate-300 text-slate-500'
-                      }`}
+                        }`}
                     >
                       {lockPhotoRatio ? <Lock size={14} /> : <Unlock size={14} />}
                     </button>
 
                     <div className="flex-1 space-y-1">
                       <label className="text-[10px] font-bold text-slate-500 uppercase">Height ({photoUnit})</label>
-                      <input 
-                        type="number" step={photoUnit === 'inch' ? '0.1' : '1'} min="0.1" max="1000" 
-                        value={displayHVal} 
-                        onChange={e => handleDisplayHChange(parseFloat(e.target.value) || 0)} 
-                        className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                          isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
-                        }`}
+                      <input
+                        type="number" step={photoUnit === 'inch' ? '0.1' : '1'} min="0.1" max="1000"
+                        value={displayHVal}
+                        onChange={e => handleDisplayHChange(parseFloat(e.target.value) || 0)}
+                        className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
+                          }`}
                       />
                     </div>
                   </div>
@@ -1478,9 +1449,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             {/* 2. Photo Count Limit Specification */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                }`}>
+                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                   <Grid2X2 size={13} /> Photo Quantity
                 </h2>
                 <span className="text-[11px] font-mono text-blue-500 font-semibold">
@@ -1505,13 +1475,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       key={item.label}
                       type="button"
                       onClick={() => setRequestedPhotoCount(item.val as any)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
-                        isActive 
-                          ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm' 
-                          : isDark 
-                            ? 'bg-[#161616] border-[#262626] text-slate-300 hover:bg-[#202020]' 
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${isActive
+                          ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
+                          : isDark
+                            ? 'bg-[#161616] border-[#262626] text-slate-300 hover:bg-[#202020]'
                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {item.label}
                     </button>
@@ -1520,21 +1489,19 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               </div>
 
               {/* Custom Quantity Input Box */}
-              <div className={`p-3 border rounded-xl flex items-center justify-between gap-3 ${
-                isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-3 border rounded-xl flex items-center justify-between gap-3 ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div className="text-xs font-semibold">Custom Quantity</div>
                 <div className="flex items-center gap-2">
-                  <input 
-                    type="number" min="1" max={Math.max(1, layout.maxCapacity)} 
+                  <input
+                    type="number" min="1" max={Math.max(1, layout.maxCapacity)}
                     value={typeof requestedPhotoCount === 'number' ? requestedPhotoCount : 1}
                     onChange={e => {
                       const val = Math.max(1, parseInt(e.target.value) || 1);
                       setRequestedPhotoCount(val);
                     }}
-                    className={`w-20 border rounded-lg px-2.5 py-1 text-xs font-mono text-center outline-none focus:border-blue-500 transition-colors ${
-                      isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
-                    }`}
+                    className={`w-20 border rounded-lg px-2.5 py-1 text-xs font-mono text-center outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
+                      }`}
                   />
                   <span className="text-[10px] text-slate-400 font-mono">/ {layout.maxCapacity} max</span>
                 </div>
@@ -1545,16 +1512,14 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
             {/* 3. Photo Zoom & Target File Compression */}
             <section className="space-y-3">
-              <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}>
+              <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}>
                 <Sliders size={13} /> Photo Zoom & Lossless Compression
               </h2>
 
               {/* Modern Custom Photo Scale Slider */}
-              <div className={`p-3.5 border rounded-2xl space-y-3 ${
-                isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-3.5 border rounded-2xl space-y-3 ${isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-bold">
                     <Maximize2 size={13} className="text-blue-500" />
@@ -1570,16 +1535,15 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   <button
                     type="button"
                     onClick={() => setPhotoScale(prev => Math.max(70, prev - 5))}
-                    className={`w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs transition-all active:scale-95 ${
-                      isDark ? 'bg-[#1F1F1F] border-[#333] text-slate-300 hover:bg-[#282828]' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                    }`}
+                    className={`w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs transition-all active:scale-95 ${isDark ? 'bg-[#1F1F1F] border-[#333] text-slate-300 hover:bg-[#282828]' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                      }`}
                     title="Shrink Photo Scale"
                   >
                     -
                   </button>
 
                   <div className="relative flex-1 flex items-center">
-                    <input 
+                    <input
                       type="range" min="70" max="130" step="1"
                       value={photoScale}
                       onChange={e => setPhotoScale(Number(e.target.value))}
@@ -1590,9 +1554,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   <button
                     type="button"
                     onClick={() => setPhotoScale(prev => Math.min(130, prev + 5))}
-                    className={`w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs transition-all active:scale-95 ${
-                      isDark ? 'bg-[#1F1F1F] border-[#333] text-slate-300 hover:bg-[#282828]' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                    }`}
+                    className={`w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs transition-all active:scale-95 ${isDark ? 'bg-[#1F1F1F] border-[#333] text-slate-300 hover:bg-[#282828]' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                      }`}
                     title="Enlarge Photo Scale"
                   >
                     +
@@ -1610,13 +1573,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       key={preset.val}
                       type="button"
                       onClick={() => setPhotoScale(preset.val)}
-                      className={`flex-1 py-1 rounded-lg border text-[10px] font-semibold transition-all ${
-                        photoScale === preset.val
+                      className={`flex-1 py-1 rounded-lg border text-[10px] font-semibold transition-all ${photoScale === preset.val
                           ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
                           : isDark
                             ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {preset.label}
                     </button>
@@ -1636,18 +1598,16 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                         key={mode.id}
                         type="button"
                         onClick={() => setImageFit(mode.id)}
-                        className={`py-1.5 rounded-lg border text-center transition-all ${
-                          imageFit === mode.id
+                        className={`py-1.5 rounded-lg border text-center transition-all ${imageFit === mode.id
                             ? 'bg-violet-600 border-violet-600 text-white font-bold shadow-sm'
                             : isDark
                               ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
                               : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                        }`}
+                          }`}
                       >
                         <div className="text-[11px] font-semibold">{mode.label}</div>
-                        <div className={`text-[9px] ${
-                          imageFit === mode.id ? 'text-violet-200' : 'text-slate-400'
-                        }`}>{mode.desc}</div>
+                        <div className={`text-[9px] ${imageFit === mode.id ? 'text-violet-200' : 'text-slate-400'
+                          }`}>{mode.desc}</div>
                       </button>
                     ))}
                   </div>
@@ -1662,9 +1622,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                         {imagePosition.replace(' ', ' / ')}
                       </div>
                     </div>
-                    <div className={`p-2.5 border rounded-xl flex items-center gap-4 ${
-                      isDark ? 'bg-[#1A1A1A] border-[#2A2A2A]' : 'bg-white border-slate-200 shadow-sm'
-                    }`}>
+                    <div className={`p-2.5 border rounded-xl flex items-center gap-4 ${isDark ? 'bg-[#1A1A1A] border-[#2A2A2A]' : 'bg-white border-slate-200 shadow-sm'
+                      }`}>
                       {/* 3x3 Visual Dot Grid */}
                       <div className="grid grid-cols-3 gap-[3px] shrink-0">
                         {([
@@ -1677,13 +1636,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                             type="button"
                             onClick={() => setImagePosition(pos)}
                             title={pos}
-                            className={`w-5 h-5 rounded-[4px] border transition-all active:scale-90 ${
-                              imagePosition === pos
+                            className={`w-5 h-5 rounded-[4px] border transition-all active:scale-90 ${imagePosition === pos
                                 ? 'bg-violet-500 border-violet-500 shadow-md shadow-violet-500/30 scale-110'
                                 : isDark
                                   ? 'bg-[#252525] border-[#333] hover:bg-[#333] hover:border-violet-500/50'
                                   : 'bg-slate-100 border-slate-300 hover:bg-violet-100 hover:border-violet-400'
-                            }`}
+                              }`}
                           >
                             {imagePosition === pos && (
                               <div className="w-1.5 h-1.5 bg-white rounded-full mx-auto" />
@@ -1709,11 +1667,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                               key={item.pos}
                               type="button"
                               onClick={() => setImagePosition(item.pos)}
-                              className={`text-[9px] font-bold py-0.5 rounded transition-colors ${
-                                imagePosition === item.pos
+                              className={`text-[9px] font-bold py-0.5 rounded transition-colors ${imagePosition === item.pos
                                   ? 'text-violet-500'
                                   : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                              }`}
+                                }`}
                             >
                               {item.label}
                             </button>
@@ -1726,9 +1683,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               </div>
 
               {/* Image Enhancements & Color Filters Section */}
-              <div className={`p-3.5 border rounded-2xl space-y-3.5 ${
-                isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-3.5 border rounded-2xl space-y-3.5 ${isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-bold">
                     <Wand2 size={13} className="text-amber-500" />
@@ -1757,13 +1713,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       key={preset.id}
                       type="button"
                       onClick={() => applyFilterPreset(preset.id)}
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${
-                        activeFilterPreset === preset.id
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${activeFilterPreset === preset.id
                           ? 'bg-amber-600 border-amber-600 text-white font-bold shadow-sm'
                           : isDark
                             ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {preset.label}
                     </button>
@@ -1845,9 +1800,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               </div>
 
               {/* Target File Size Limit (KB) */}
-              <div className={`p-3.5 border rounded-2xl space-y-3 ${
-                isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-3.5 border rounded-2xl space-y-3 ${isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
+                }`}>
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span>Target Export File Size</span>
                   <span className="text-[10px] font-mono text-emerald-500 font-bold">
@@ -1868,13 +1822,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       key={item.label}
                       type="button"
                       onClick={() => setMaxFileKB(item.kb)}
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${
-                        maxFileKB === item.kb
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${maxFileKB === item.kb
                           ? 'bg-emerald-600 border-emerald-600 text-white font-bold shadow-sm'
                           : isDark
                             ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-300 hover:bg-[#252525]'
                             : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {item.label}
                     </button>
@@ -1882,12 +1835,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                 </div>
 
                 {/* Custom KB Input Box */}
-                <div className={`p-2.5 border rounded-xl flex items-center justify-between gap-2 ${
-                  isDark ? 'bg-[#1A1A1A] border-[#2E2E2E]' : 'bg-white border-slate-300 shadow-sm'
-                }`}>
+                <div className={`p-2.5 border rounded-xl flex items-center justify-between gap-2 ${isDark ? 'bg-[#1A1A1A] border-[#2E2E2E]' : 'bg-white border-slate-300 shadow-sm'
+                  }`}>
                   <span className="text-xs font-semibold text-slate-400">Custom Size Limit</span>
                   <div className="flex items-center gap-1.5">
-                    <input 
+                    <input
                       type="number" min="5" max="10000" step="5"
                       placeholder="e.g. 35"
                       value={maxFileKB > 0 ? maxFileKB : ''}
@@ -1895,9 +1847,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                         const val = Math.max(0, parseInt(e.target.value) || 0);
                         setMaxFileKB(val);
                       }}
-                      className={`w-20 border rounded-lg px-2 py-1 text-xs font-mono text-center outline-none focus:border-emerald-500 transition-colors ${
-                        isDark ? 'bg-[#242424] border-[#383838] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                      }`}
+                      className={`w-20 border rounded-lg px-2 py-1 text-xs font-mono text-center outline-none focus:border-emerald-500 transition-colors ${isDark ? 'bg-[#242424] border-[#383838] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                        }`}
                     />
                     <span className="text-xs font-mono font-bold text-slate-500">KB</span>
                     {maxFileKB > 0 && (
@@ -1924,9 +1875,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             {/* 4. Print Resolution (DPI) Settings */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                }`}>
+                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                   <Printer size={13} /> Print Resolution (DPI)
                 </h2>
                 <span className="text-[11px] font-mono text-indigo-500 font-bold">
@@ -1934,9 +1884,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                 </span>
               </div>
 
-              <div className={`p-3.5 border rounded-2xl space-y-3 ${
-                isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <div className={`p-3.5 border rounded-2xl space-y-3 ${isDark ? 'bg-[#141414] border-[#262626]' : 'bg-slate-50 border-slate-200'
+                }`}>
                 {/* DPI Preset Pills */}
                 <div className="flex flex-wrap gap-1.5">
                   {[
@@ -1950,13 +1899,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       key={item.dpi}
                       type="button"
                       onClick={() => setPrintDPI(item.dpi)}
-                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${
-                        printDPI === item.dpi
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${printDPI === item.dpi
                           ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-sm'
                           : isDark
                             ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-300 hover:bg-[#252525]'
                             : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {item.label}
                     </button>
@@ -1964,12 +1912,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                 </div>
 
                 {/* Custom DPI Input Box */}
-                <div className={`p-2.5 border rounded-xl flex items-center justify-between gap-2 ${
-                  isDark ? 'bg-[#1A1A1A] border-[#2E2E2E]' : 'bg-white border-slate-300 shadow-sm'
-                }`}>
+                <div className={`p-2.5 border rounded-xl flex items-center justify-between gap-2 ${isDark ? 'bg-[#1A1A1A] border-[#2E2E2E]' : 'bg-white border-slate-300 shadow-sm'
+                  }`}>
                   <span className="text-xs font-semibold text-slate-400">Custom DPI Resolution</span>
                   <div className="flex items-center gap-1.5">
-                    <input 
+                    <input
                       type="number" min="72" max="1200" step="10"
                       placeholder="300"
                       value={printDPI}
@@ -1977,9 +1924,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                         const val = Math.max(72, parseInt(e.target.value) || 300);
                         setPrintDPI(val);
                       }}
-                      className={`w-20 border rounded-lg px-2 py-1 text-xs font-mono text-center outline-none focus:border-indigo-500 transition-colors ${
-                        isDark ? 'bg-[#242424] border-[#383838] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
-                      }`}
+                      className={`w-20 border rounded-lg px-2 py-1 text-xs font-mono text-center outline-none focus:border-indigo-500 transition-colors ${isDark ? 'bg-[#242424] border-[#383838] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                        }`}
                     />
                     <span className="text-xs font-mono font-bold text-slate-500">DPI</span>
                   </div>
@@ -1996,9 +1942,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             {/* 3. Paper Format Settings */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                  isDark ? 'text-slate-400' : 'text-slate-500'
-                }`}>
+                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                   <Settings2 size={13} /> Paper Sheet Format
                 </h2>
                 <span className="text-[11px] font-mono text-slate-400">
@@ -2007,33 +1952,30 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               </div>
 
               <div className="space-y-2">
-                <CustomSelect 
-                  value={paperSize} 
-                  onChange={handleSelectPaperSize} 
-                  options={Object.entries(PAPER_SIZES).map(([k, v]) => ({ value: k, label: v.name }))} 
+                <CustomSelect
+                  value={paperSize}
+                  onChange={handleSelectPaperSize}
+                  options={Object.entries(PAPER_SIZES).map(([k, v]) => ({ value: k, label: v.name }))}
                 />
 
                 {paperSize === 'custom' && (
-                  <div className={`p-3.5 border rounded-2xl space-y-3 animate-in slide-in-from-top-2 duration-150 ${
-                    isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
-                  }`}>
+                  <div className={`p-3.5 border rounded-2xl space-y-3 animate-in slide-in-from-top-2 duration-150 ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
+                    }`}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold">Custom Paper Dimensions</span>
-                      
+
                       {/* Unit Switcher: mm | cm | inch | px */}
-                      <div className={`flex items-center p-0.5 rounded-lg border text-[10px] font-bold ${
-                        isDark ? 'bg-[#222] border-[#333]' : 'bg-white border-slate-300'
-                      }`}>
+                      <div className={`flex items-center p-0.5 rounded-lg border text-[10px] font-bold ${isDark ? 'bg-[#222] border-[#333]' : 'bg-white border-slate-300'
+                        }`}>
                         {(['mm', 'cm', 'inch', 'px'] as PhotoUnit[]).map((u) => (
                           <button
                             key={u}
                             type="button"
                             onClick={() => handlePaperUnitChange(u)}
-                            className={`px-2 py-0.5 rounded-md uppercase transition-all ${
-                              paperUnit === u 
-                                ? 'bg-blue-600 text-white shadow-sm' 
+                            className={`px-2 py-0.5 rounded-md uppercase transition-all ${paperUnit === u
+                                ? 'bg-blue-600 text-white shadow-sm'
                                 : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                              }`}
                           >
                             {u}
                           </button>
@@ -2044,37 +1986,34 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                     <div className="flex items-center gap-2">
                       <div className="flex-1 space-y-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Width ({paperUnit})</label>
-                        <input 
-                          type="number" step={paperUnit === 'inch' ? '0.1' : '1'} min="0.1" max="5000" 
-                          value={displayPaperWVal} 
-                          onChange={e => handleDisplayPaperWChange(parseFloat(e.target.value) || 0)} 
-                          className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                            isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
-                          }`}
+                        <input
+                          type="number" step={paperUnit === 'inch' ? '0.1' : '1'} min="0.1" max="5000"
+                          value={displayPaperWVal}
+                          onChange={e => handleDisplayPaperWChange(parseFloat(e.target.value) || 0)}
+                          className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
+                            }`}
                         />
                       </div>
-                      
-                      <button 
-                        onClick={togglePaperLock} 
-                        title={lockPaperRatio ? 'Unlock Aspect Ratio' : 'Lock Aspect Ratio'} 
-                        className={`p-2 mt-4 rounded-xl border transition-all ${
-                          lockPaperRatio 
-                            ? 'bg-blue-500/20 border-blue-500/40 text-blue-500' 
+
+                      <button
+                        onClick={togglePaperLock}
+                        title={lockPaperRatio ? 'Unlock Aspect Ratio' : 'Lock Aspect Ratio'}
+                        className={`p-2 mt-4 rounded-xl border transition-all ${lockPaperRatio
+                            ? 'bg-blue-500/20 border-blue-500/40 text-blue-500'
                             : isDark ? 'bg-[#202020] border-[#333] text-slate-400' : 'bg-white border-slate-300 text-slate-500'
-                        }`}
+                          }`}
                       >
                         {lockPaperRatio ? <Lock size={14} /> : <Unlock size={14} />}
                       </button>
 
                       <div className="flex-1 space-y-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase">Height ({paperUnit})</label>
-                        <input 
-                          type="number" step={paperUnit === 'inch' ? '0.1' : '1'} min="0.1" max="5000" 
-                          value={displayPaperHVal} 
-                          onChange={e => handleDisplayPaperHChange(parseFloat(e.target.value) || 0)} 
-                          className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                            isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
-                          }`}
+                        <input
+                          type="number" step={paperUnit === 'inch' ? '0.1' : '1'} min="0.1" max="5000"
+                          value={displayPaperHVal}
+                          onChange={e => handleDisplayPaperHChange(parseFloat(e.target.value) || 0)}
+                          className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
+                            }`}
                         />
                       </div>
                     </div>
@@ -2088,22 +2027,20 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={() => setOrientation('portrait')}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
-                      orientation === 'portrait' 
-                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold' 
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${orientation === 'portrait'
+                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold'
                         : isDark ? 'bg-[#161616] border-[#262626] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-                    }`}
+                      }`}
                   >
                     <div className="w-3 h-4 border-2 border-current rounded-sm" />
                     Portrait
                   </button>
                   <button
                     onClick={() => setOrientation('landscape')}
-                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
-                      orientation === 'landscape' 
-                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold' 
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${orientation === 'landscape'
+                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold'
                         : isDark ? 'bg-[#161616] border-[#262626] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-                    }`}
+                      }`}
                   >
                     <div className="w-4 h-3 border-2 border-current rounded-sm" />
                     Landscape
@@ -2116,53 +2053,48 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
             {/* 4. Spacing & Cut Guidelines */}
             <section className="space-y-3">
-              <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}>
+              <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}>
                 <Scissors size={13} /> Spacing & Cut Guidelines
               </h2>
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-slate-400">Gap (mm)</label>
-                  <input 
-                    type="number" min="0" max="50" 
-                    value={spacing} 
+                  <input
+                    type="number" min="0" max="50"
+                    value={spacing}
                     onChange={e => setSpacing(Math.max(0, Number(e.target.value)))}
-                    className={`w-full border rounded-xl px-2.5 py-2 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                      isDark ? 'bg-[#161616] border-[#2B2B2B] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}
+                    className={`w-full border rounded-xl px-2.5 py-2 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#161616] border-[#2B2B2B] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-slate-400">Top Margin</label>
-                  <input 
-                    type="number" min="0" max="100" 
-                    value={marginTop} 
+                  <input
+                    type="number" min="0" max="100"
+                    value={marginTop}
                     onChange={e => setMarginTop(Math.max(0, Number(e.target.value)))}
-                    className={`w-full border rounded-xl px-2.5 py-2 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                      isDark ? 'bg-[#161616] border-[#2B2B2B] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}
+                    className={`w-full border rounded-xl px-2.5 py-2 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#161616] border-[#2B2B2B] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-slate-400">Side Margin</label>
-                  <input 
-                    type="number" min="0" max="100" 
-                    value={marginLeft} 
+                  <input
+                    type="number" min="0" max="100"
+                    value={marginLeft}
                     onChange={e => setMarginLeft(Math.max(0, Number(e.target.value)))}
-                    className={`w-full border rounded-xl px-2.5 py-2 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${
-                      isDark ? 'bg-[#161616] border-[#2B2B2B] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}
+                    className={`w-full border rounded-xl px-2.5 py-2 text-xs font-mono outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#161616] border-[#2B2B2B] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      }`}
                   />
                 </div>
               </div>
 
               {/* Scissor Cut Guidelines Toggle */}
-              <div 
-                className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
-                  isDark ? 'bg-[#161616] border-[#2B2B2B] hover:bg-[#1F1F1F]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                }`}
+              <div
+                className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${isDark ? 'bg-[#161616] border-[#2B2B2B] hover:bg-[#1F1F1F]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                  }`}
                 onClick={() => setDrawCropMarks(!drawCropMarks)}
               >
                 <div className="flex items-center gap-2">
@@ -2179,27 +2111,24 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         </aside>
 
         {/* Right Canvas Area: Live Interactive Preview */}
-        <main className={`flex-1 flex-col relative overflow-hidden ${
-          isDark ? 'bg-[#090909]' : 'bg-slate-100'
-        } ${mobileTab === 'preview' ? 'flex' : 'hidden sm:flex'}`}>
+        <main className={`flex-1 flex-col relative overflow-hidden ${isDark ? 'bg-[#090909]' : 'bg-slate-100'
+          } ${mobileTab === 'preview' ? 'flex' : 'hidden sm:flex'}`}>
 
           {/* Canvas Viewport Area */}
-          <div 
+          <div
             ref={canvasViewportRef}
             onWheel={handleWheelZoom}
             onMouseDown={handleMouseDown}
             onDoubleClick={handleDoubleClickViewport}
-            className={`flex-1 relative overflow-hidden select-none touch-none flex items-center justify-center ${
-              isDragging ? 'cursor-grabbing' : 'cursor-grab'
-            }`}
+            className={`flex-1 relative overflow-hidden select-none touch-none flex items-center justify-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'
+              }`}
           >
             {/* Floating Paper Dimension & Recenter Badge */}
             <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-auto">
-              <div className={`px-2.5 py-1 rounded-xl border backdrop-blur-md shadow-md text-[10px] font-mono font-bold flex items-center gap-1.5 ${
-                isDark 
-                  ? 'bg-[#121212]/85 border-[#2A2A2A] text-slate-300' 
+              <div className={`px-2.5 py-1 rounded-xl border backdrop-blur-md shadow-md text-[10px] font-mono font-bold flex items-center gap-1.5 ${isDark
+                  ? 'bg-[#121212]/85 border-[#2A2A2A] text-slate-300'
                   : 'bg-white/85 border-slate-200 text-slate-700'
-              }`}>
+                }`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 {layout.pWidth} × {layout.pHeight} mm ({orientation} • {printDPI} DPI)
               </div>
@@ -2217,27 +2146,27 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             </div>
 
             {/* Background grid dot pattern */}
-            <div 
-              className="absolute inset-0 pointer-events-none opacity-[0.15] min-w-full min-h-full" 
-              style={{ 
-                backgroundImage: isDark ? 'radial-gradient(#555 1px, transparent 1px)' : 'radial-gradient(#000 1px, transparent 1px)', 
-                backgroundSize: '24px 24px' 
-              }} 
+            <div
+              className="absolute inset-0 pointer-events-none opacity-[0.15] min-w-full min-h-full"
+              style={{
+                backgroundImage: isDark ? 'radial-gradient(#555 1px, transparent 1px)' : 'radial-gradient(#000 1px, transparent 1px)',
+                backgroundSize: '24px 24px'
+              }}
             />
 
             {/* Interactive Transform Container (Always Centered + Smooth Pan Offset + Center Zoom) */}
-            <div 
+            <div
               className="absolute flex items-center justify-center will-change-transform"
-              style={{ 
+              style={{
                 transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0px) scale(${zoomLevel / 100})`,
                 transformOrigin: 'center center',
                 transition: isDragging ? 'none' : 'transform 75ms cubic-bezier(0.1, 0.9, 0.2, 1.0)',
               }}
             >
               {/* Paper Sheet Rendering Container */}
-              <div 
+              <div
                 className="relative bg-white shadow-2xl shrink-0"
-                style={{ 
+                style={{
                   width: `${basePaperWidthPx}px`,
                   height: `${(basePaperWidthPx * layout.pHeight) / layout.pWidth}px`,
                   boxShadow: isDark ? '0 25px 60px -12px rgba(0, 0, 0, 0.95)' : '0 25px 60px -12px rgba(0, 0, 0, 0.3)'
@@ -2249,7 +2178,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   const left = layout.actualMarginLeft + c * (layout.phWidth + spacing);
                   const top = layout.actualMarginTop + r * (layout.phHeight + spacing);
                   return (
-                    <div 
+                    <div
                       key={`${r}-${c}`}
                       className="absolute transition-all duration-150 overflow-visible"
                       style={{
@@ -2260,14 +2189,14 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       }}
                     >
                       {/* Photo Image Box with Inner Scale Control */}
-                      <div 
+                      <div
                         className="w-full h-full relative overflow-hidden flex items-center justify-center bg-white"
                         style={{
                           border: drawCropMarks ? '1px dashed #94A3B8' : 'none',
                           boxShadow: '0 1px 3px rgba(0,0,0,0.12)'
                         }}
                       >
-                        <div 
+                        <div
                           className="w-full h-full transition-transform duration-100"
                           style={{
                             backgroundImage: imageObj ? `url(${imageObj.src})` : 'none',
@@ -2288,7 +2217,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
                       {/* Scissor cut guideline icon badge */}
                       {drawCropMarks && (c === 0 || r === 0 || spacing >= 2) && (
-                        <div 
+                        <div
                           className="absolute -top-2.5 -left-2.5 z-10 text-slate-500 select-none pointer-events-none transform -rotate-45"
                           style={{ fontSize: '10px' }}
                         >
@@ -2305,9 +2234,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           </div>
 
           {/* Footer Metadata: Mobile Safe Area Padding */}
-          <footer className={`min-h-[36px] border-t px-3 sm:px-4 py-1.5 flex items-center justify-between text-[10px] sm:text-[11px] shrink-0 font-mono pb-[max(0.5rem,env(safe-area-inset-bottom))] ${
-            isDark ? 'border-[#1F1F1F] bg-[#0D0D0D] text-slate-400' : 'border-slate-200 bg-white text-slate-600'
-          }`}>
+          <footer className={`min-h-[36px] border-t px-3 sm:px-4 py-1.5 flex items-center justify-between text-[10px] sm:text-[11px] shrink-0 font-mono pb-[max(0.5rem,env(safe-area-inset-bottom))] ${isDark ? 'border-[#1F1F1F] bg-[#0D0D0D] text-slate-400' : 'border-slate-200 bg-white text-slate-600'
+            }`}>
             <div className="truncate pr-1">
               <span className="hidden sm:inline">Grid Capacity: {layout.cols} × {layout.rows} ({layout.maxCapacity} max) | </span>
               Rendering {layout.activePhotoCount} {layout.activePhotoCount === 1 ? 'photo' : 'photos'}

@@ -639,7 +639,8 @@ const CustomDateInput = forwardRef<HTMLDivElement, any>(({ value, onClick, class
 export default function ProductivityLayer() {
   const parsedData = useStore((s) => s.parsedData);
   const activeExplorerFile = useStore((s) => s.activeExplorerFile);
-  const { openWorkspaceTab, setExpandedJsNodeId } = useStore();
+  const openWorkspaceTab = useStore((state) => state.openWorkspaceTab);
+  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
 
   // Dialog opened states
   const [isTodoOpen, setIsTodoOpen] = useState(false);

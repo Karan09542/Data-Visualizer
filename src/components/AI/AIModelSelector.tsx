@@ -67,7 +67,11 @@ export const getModelIcon = (modelId: string, providerId: string, isDark: boolea
 };
 
 export const AIModelSelector: React.FC = () => {
-  const { activeProviderId, activeModelId, setActiveProvider, setActiveModel, apiKeys } = useAIStore();
+  const activeProviderId = useAIStore((state) => state.activeProviderId);
+  const activeModelId = useAIStore((state) => state.activeModelId);
+  const setActiveProvider = useAIStore((state) => state.setActiveProvider);
+  const setActiveModel = useAIStore((state) => state.setActiveModel);
+  const apiKeys = useAIStore((state) => state.apiKeys);
   const appTheme = useStore(state => state.appTheme);
   const isDark = appTheme === 'dark';
 

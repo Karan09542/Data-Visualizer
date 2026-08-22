@@ -10,7 +10,6 @@ import jsQR from "jsqr";
 import LZString from "lz-string";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { InteractiveZoomImage } from "./InteractiveZoomImage";
-import JSZip from "jszip";
 
 const makeCRCTable = () => {
   let c;
@@ -452,8 +451,11 @@ export const TransferNodeRenderer: React.FC<{
   node: HierarchyPointNode<TreeNode>;
   isSelected?: boolean;
 }> = ({ node, isSelected }) => {
-  const { parsedData, setCode, appTheme, setNotification, codeFormat } =
-    useStore();
+  const parsedData = useStore((state) => state.parsedData);
+  const setCode = useStore((state) => state.setCode);
+  const appTheme = useStore((state) => state.appTheme);
+  const setNotification = useStore((state) => state.setNotification);
+  const codeFormat = useStore((state) => state.codeFormat);
   const nodeKey = node.data.path.split(".").pop() || "transfer";
   const [connectionState, setConnectionState] = useState<
     | "waiting"
@@ -2504,8 +2506,7 @@ export const TransferNodeRenderer: React.FC<{
         <div className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
           {connectionState !== "connected" && connectionState !== "messaging" && (
             <div
-              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  connectionState === "transferring"
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${connectionState === "transferring"
                   ? "bg-blue-500/10 text-blue-500"
                   : connectionState === "failed"
                     ? "bg-red-500/10 text-red-500"
@@ -2526,12 +2527,11 @@ export const TransferNodeRenderer: React.FC<{
                   ? "Ready To Pair"
                   : (
                     <span className="flex items-center gap-1.5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${
-                        connectionState === "transferring"
-                        ? "bg-blue-500 animate-pulse"
-                        : connectionState === "failed"
-                          ? "bg-red-500"
-                          : "bg-slate-400"
+                      <div className={`w-1.5 h-1.5 rounded-full ${connectionState === "transferring"
+                          ? "bg-blue-500 animate-pulse"
+                          : connectionState === "failed"
+                            ? "bg-red-500"
+                            : "bg-slate-400"
                         }`} />
                       {connectionState}
                     </span>
@@ -2576,7 +2576,7 @@ export const TransferNodeRenderer: React.FC<{
           >
             <Settings className="w-4 h-4" />
           </button>
-          
+
           <NodeOptionsMenu path={node.data.path} iconSize={16} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-white/5 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'}`} />
 
           <AnimatePresence>
@@ -3755,9 +3755,9 @@ export const TransferNodeRenderer: React.FC<{
                                               {visuals.length > 0 && (
                                                 <div className={`grid gap-1 ${visuals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                                   {visuals.map((att, i) => (
-                                                    <div 
-                                                      key={i} 
-                                                      className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`} 
+                                                    <div
+                                                      key={i}
+                                                      className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`}
                                                       onClick={() => setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
                                                       onContextMenu={(e) => {
                                                         e.preventDefault();
@@ -3779,9 +3779,9 @@ export const TransferNodeRenderer: React.FC<{
                                               {others.length > 0 && (
                                                 <div className="flex flex-col gap-1">
                                                   {others.map((att, i) => (
-                                                    <div 
-                                                      key={i} 
-                                                      className="cursor-pointer" 
+                                                    <div
+                                                      key={i}
+                                                      className="cursor-pointer"
                                                       onClick={() => setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
                                                       onContextMenu={(e) => {
                                                         e.preventDefault();
@@ -3908,8 +3908,8 @@ export const TransferNodeRenderer: React.FC<{
                                                 transition={{ duration: 0.1 }}
                                               />
                                             </div>
-                                            </div>
-                                          )}
+                                          </div>
+                                        )}
 
                                         {msg.streamState === "paused" && (
                                           <div className="flex flex-col gap-1 w-full mt-1 px-1">
@@ -4034,7 +4034,7 @@ export const TransferNodeRenderer: React.FC<{
                                             </button>
                                           </div>
                                         )}
-                                        
+
                                         {msg.fileType === "3d_model" && (
                                           <div className="relative rounded-2xl overflow-hidden bg-[#1e293b] group/model w-full min-w-[200px] sm:min-w-[280px] aspect-square max-h-[240px]">
                                             <SafeModelViewer
@@ -4854,7 +4854,7 @@ export const TransferNodeRenderer: React.FC<{
                                   // For backwards compatibility: if a file was sent before 3d_model support, 
                                   // it might have fileType "file" but actually be a 3D model based on its name.
                                   const effectiveFileType = media.fileType === "file" && media.fileName ? getFileType(media.fileName) : media.fileType;
-                                  
+
                                   return (
                                     <>
                                       {effectiveFileType === "image" && (

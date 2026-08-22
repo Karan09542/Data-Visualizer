@@ -77,7 +77,10 @@ function App() {
   const focusNodePath = searchParams.get('focusNode');
   const forceWorkspace = searchParams.get('forceWorkspace');
 
-  const { setExpandedJsNodeId, setCode, isAIPaletteOpen, setIsAIPaletteOpen } = useStore();
+  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
+  const setCode = useStore((state) => state.setCode);
+  const isAIPaletteOpen = useStore((state) => state.isAIPaletteOpen);
+  const setIsAIPaletteOpen = useStore((state) => state.setIsAIPaletteOpen);
 
   const handleApplyAIPatch = useCallback(async (patch: any, mode: 'merge' | 'replace' = 'merge') => {
     try {

@@ -61,26 +61,23 @@ interface FileExplorerPanelProps {
 export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps = {}) {
   const resolvedRootPath = rootPath || "root";
 
-  const {
-    parsedData,
-    codeFormat,
-    setCode,
-    expandedJsNodeId,
-    setExpandedJsNodeId,
-    setSelectedNodeId,
-    explorerExpandedPaths,
-    setExplorerExpandedPath,
-    setAllExplorerExpandedPaths,
-    activeExplorerFile,
-    setActiveExplorerFile,
-    explorerSearchQuery,
-    setExplorerSearchQuery,
-    openWorkspaceTab,
-    closeWorkspaceTabs,
-    updateWorkspaceTabPath,
-    selectedExplorerFiles,
-    setSelectedExplorerFiles,
-  } = useStore();
+  const parsedData = useStore((state) => state.parsedData);
+  const codeFormat = useStore((state) => state.codeFormat);
+  const setCode = useStore((state) => state.setCode);
+  const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
+  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
+  const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
+  const explorerExpandedPaths = useStore((state) => state.explorerExpandedPaths);
+  const setExplorerExpandedPath = useStore((state) => state.setExplorerExpandedPath);
+  const setAllExplorerExpandedPaths = useStore((state) => state.setAllExplorerExpandedPaths);
+  const activeExplorerFile = useStore((state) => state.activeExplorerFile);
+  const explorerSearchQuery = useStore((state) => state.explorerSearchQuery);
+  const setExplorerSearchQuery = useStore((state) => state.setExplorerSearchQuery);
+  const openWorkspaceTab = useStore((state) => state.openWorkspaceTab);
+  const closeWorkspaceTabs = useStore((state) => state.closeWorkspaceTabs);
+  const updateWorkspaceTabPath = useStore((state) => state.updateWorkspaceTabPath);
+  const selectedExplorerFiles = useStore((state) => state.selectedExplorerFiles);
+  const setSelectedExplorerFiles = useStore((state) => state.setSelectedExplorerFiles);
 
   const [searchQuery, setSearchQuery] = useState(explorerSearchQuery);
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -88,7 +85,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
   const [creatingInPath, setCreatingInPath] = useState<string | null>(null);
   const [creatingType, setCreatingType] = useState<"js_node" | "ts_node" | "py_node" | "api_node" | "todo_node" | "image_node" | "folder" | "primitive" | null>(null);
   const [creatingValue, setCreatingValue] = useState("");
-  
+
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -153,25 +150,25 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
     return () => window.removeEventListener("click", handleClickOutside);
   }, [contextMenu]);
 
-function isFileSystemMeaningful(value: any): boolean {
-  if (typeof value === "string") return true;
-  if (value && typeof value === "object") {
-    if (Array.isArray(value)) {
-      if (value.length === 0) return false;
-      return value.some((item) => {
-        if (typeof item === "string") return true;
-        if (item && typeof item === "object") return true;
-        return false;
-      });
+  function isFileSystemMeaningful(value: any): boolean {
+    if (typeof value === "string") return true;
+    if (value && typeof value === "object") {
+      if (Array.isArray(value)) {
+        if (value.length === 0) return false;
+        return value.some((item) => {
+          if (typeof item === "string") return true;
+          if (item && typeof item === "object") return true;
+          return false;
+        });
+      }
+      return true;
     }
-    return true;
+    return false;
   }
-  return false;
-}
 
-// Recursively map parsedData keys or properties into Explorer items
+  // Recursively map parsedData keys or properties into Explorer items
   const maskedParsedData = useMemo(() => maskParsedData(parsedData), [parsedData]);
-  
+
   const fullExplorerTree = useMemo(() => {
     function parseNode(data: any, path: string = resolvedRootPath): ExplorerItem[] {
       if (!data || typeof data !== "object") return [];
@@ -631,11 +628,11 @@ function isFileSystemMeaningful(value: any): boolean {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Look at selectedExplorerFiles instead of activeExplorerFile (which is just the opened tab)
       const targetRenameId = selectedExplorerFiles && selectedExplorerFiles.length > 0 ? selectedExplorerFiles[0] : activeExplorerFile;
-      
+
       if (e.key === "F2" && targetRenameId && !editingPath) {
         // Prevent default browser behavior for F2 (though usually safe)
         e.preventDefault();
-        
+
         // Find the node
         function findNode(nodes: ExplorerItem[], id: string): ExplorerItem | null {
           for (const n of nodes) {
@@ -647,14 +644,14 @@ function isFileSystemMeaningful(value: any): boolean {
           }
           return null;
         }
-        
+
         const activeNode = findNode(fullExplorerTree, targetRenameId);
         if (activeNode) {
           handleRenamePrompt(activeNode);
         }
       }
     };
-    
+
     // Only bind if we're not globally focused in some other input?
     // We'll rely on whether activeExplorerFile is focused or they just press F2.
     // If they are in Monaco editor, Monaco might consume the event, which is fine or maybe not.
@@ -742,7 +739,7 @@ function isFileSystemMeaningful(value: any): boolean {
 
     const updated = renameKeyAtPath(parsedData, parentPath, oldKey, finalNewKey);
     const newPath = parentPath === "root" ? `root.${finalNewKey}` : `${parentPath}.${finalNewKey}`;
-    
+
     let finalUpdated = updated;
     if (oldVfsPath) {
       const newVfsPath = getVirtualPath(newPath, updated);
@@ -755,7 +752,7 @@ function isFileSystemMeaningful(value: any): boolean {
 
     // If it was the active file or tab, update
     updateWorkspaceTabPath(editingPath, newPath);
-    
+
     setEditingPath(null);
     setEditingValue("");
   };
@@ -785,7 +782,7 @@ function isFileSystemMeaningful(value: any): boolean {
       const rect = containerRef.current.getBoundingClientRect();
       const menuWidth = 192; // Assuming w-48
       const menuHeight = 280; // approximate menu height
-      
+
       let x = e.clientX - rect.left;
       let y = e.clientY - rect.top;
 
@@ -852,12 +849,12 @@ function isFileSystemMeaningful(value: any): boolean {
       if (!lastSelectedId) return [item.id];
       const startIdx = visibleItems.indexOf(lastSelectedId);
       const endIdx = visibleItems.indexOf(item.id);
-      
+
       if (startIdx !== -1 && endIdx !== -1) {
         const minIdx = Math.min(startIdx, endIdx);
         const maxIdx = Math.max(startIdx, endIdx);
         const newSelectionRange = visibleItems.slice(minIdx, maxIdx + 1);
-        
+
         // Return existing excluding visible, plus new range
         // Or simply replace the entire selection with the new range to match VS Code purely
         return newSelectionRange;
@@ -874,7 +871,7 @@ function isFileSystemMeaningful(value: any): boolean {
 
     if (e.ctrlKey || e.metaKey) {
       // Toggle selection in multi-select
-      setSelectedExplorerFiles((prev) => 
+      setSelectedExplorerFiles((prev) =>
         prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]
       );
       if (isFolder) toggleFolder(item.id);
@@ -952,13 +949,11 @@ function isFileSystemMeaningful(value: any): boolean {
               }
             }}
             style={{ paddingLeft: indentPadding }}
-            className={`group flex items-center justify-start py-1.5 cursor-pointer transition-colors text-xs border-l-2 select-none relative w-max min-w-full ${
-              isFolder ? "pr-20" : "pr-8"
-            } ${
-              isSelected
+            className={`group flex items-center justify-start py-1.5 cursor-pointer transition-colors text-xs border-l-2 select-none relative w-max min-w-full ${isFolder ? "pr-20" : "pr-8"
+              } ${isSelected
                 ? "bg-blue-500/10 dark:bg-blue-500/15 border-l-blue-600 dark:border-l-blue-500 text-blue-800 dark:text-blue-300 font-normal"
                 : "border-l-transparent text-slate-700 hover:text-slate-900 dark:text-slate-350 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-            } ${dragOverFolderId === item.id ? "bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500 border-dashed rounded" : ""}`}
+              } ${dragOverFolderId === item.id ? "bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500 border-dashed rounded" : ""}`}
           >
             <div className="flex items-center gap-2 pr-2 whitespace-nowrap">
               {isFolder ? (
@@ -993,7 +988,7 @@ function isFileSystemMeaningful(value: any): boolean {
               )}
             </div>
 
-             {/* Quick Action icon triggers */}
+            {/* Quick Action icon triggers */}
             <div className="hidden group-hover:flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 rounded border border-slate-200/60 dark:border-slate-800 bg-slate-100/95 dark:bg-[#151c24]/95 shadow-sm animate-in fade-in duration-100 z-10 absolute right-1.5 top-1/2 -translate-y-1/2">
               {isFolder && (
                 <>
@@ -1027,7 +1022,7 @@ function isFileSystemMeaningful(value: any): boolean {
                     const rect = containerRef.current.getBoundingClientRect();
                     const menuWidth = 192;
                     const menuHeight = 280;
-                    
+
                     let x = targetRect.left - rect.left - 120;
                     let y = targetRect.top - rect.top + 20;
 
@@ -1138,7 +1133,7 @@ function isFileSystemMeaningful(value: any): boolean {
       ref={containerRef}
       onKeyDown={(e) => {
         if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
-            return;
+          return;
         }
         if ((e.key === "Delete" || e.key === "Backspace") && selectedExplorerFiles.length > 0) {
           setDeleteItemsConfirm(selectedExplorerFiles);
@@ -1234,8 +1229,8 @@ function isFileSystemMeaningful(value: any): boolean {
       )}
 
       {/* CORE TREE CANVAS AREA */}
-      <div 
-        className="flex-1 overflow-auto custom-scrollbar p-1.5 space-y-[1px]" 
+      <div
+        className="flex-1 overflow-auto custom-scrollbar p-1.5 space-y-[1px]"
         onClick={() => setSelectedExplorerFiles([])}
         onDoubleClick={(e) => {
           if (e.target === e.currentTarget) {
@@ -1497,7 +1492,7 @@ function isFileSystemMeaningful(value: any): boolean {
                     setDeleteItemsConfirm(null);
                     let currentData = parsedData;
                     for (const id of ids) {
-                       currentData = deleteValueAtPath(currentData, id);
+                      currentData = deleteValueAtPath(currentData, id);
                     }
                     await handleSave(currentData);
 
@@ -1582,7 +1577,7 @@ function isFileSystemMeaningful(value: any): boolean {
                   <X size={16} />
                 </button>
               </div>
-              
+
               <div className="px-4 py-6 flex gap-4 bg-white dark:bg-[#252526]">
                 <div className="flex-shrink-0 mt-0.5">
                   <div className="w-10 h-10 rounded-full bg-[#1e88e5] text-white flex items-center justify-center">
@@ -1593,7 +1588,7 @@ function isFileSystemMeaningful(value: any): boolean {
                   Are you sure you want to move '{moveConfirm.sourceId.split(".").pop()}' into '{moveConfirm.targetFolderId.split(".").pop()}'?
                 </div>
               </div>
-              
+
               <div className="px-4 pb-4 pt-1 flex items-center justify-between bg-white dark:bg-[#252526]">
                 <label className="flex items-center gap-2 cursor-pointer text-[13px] text-slate-700 dark:text-slate-300">
                   <input type="checkbox" id="skip_move_confirm" className="rounded border-slate-400 dark:border-slate-500 bg-transparent w-3.5 h-3.5 cursor-pointer" />

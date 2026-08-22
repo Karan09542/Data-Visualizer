@@ -1,10 +1,11 @@
-import { X, Keyboard, Command, MousePointer2, Move, Type, Layers } from 'lucide-react';
+import { X, Keyboard, Command, Move, Type } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 
 export default function ShortcutsPopup() {
-  const { isShortcutsOpen, setIsShortcutsOpen } = useStore();
+  const isShortcutsOpen = useStore((state) => state.isShortcutsOpen);
+  const setIsShortcutsOpen = useStore((state) => state.setIsShortcutsOpen);
 
   const categories = [
     {
@@ -45,11 +46,11 @@ export default function ShortcutsPopup() {
   return createPortal(
     <AnimatePresence>
       {isShortcutsOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-[10000] flex items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-sm"
           onClick={() => setIsShortcutsOpen(false)}
         >
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.98, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 10 }}
@@ -67,14 +68,14 @@ export default function ShortcutsPopup() {
                   <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Keyboard & Gestures</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsShortcutsOpen(false)} 
+              <button
+                onClick={() => setIsShortcutsOpen(false)}
                 className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            
+
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-8 bg-slate-950 custom-scrollbar">
               {categories.map((cat, i) => (
@@ -85,8 +86,8 @@ export default function ShortcutsPopup() {
                   </div>
                   <div className="space-y-2">
                     {cat.items.map((item, j) => (
-                      <div 
-                        key={j} 
+                      <div
+                        key={j}
                         className="flex items-center justify-between gap-4 p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/50 group hover:border-slate-700 transition-colors"
                       >
                         <span className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors font-medium">
@@ -94,8 +95,8 @@ export default function ShortcutsPopup() {
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
                           {item.keys.map((k, l) => (
-                            <kbd 
-                              key={l} 
+                            <kbd
+                              key={l}
                               className="px-2 py-1 bg-slate-950 border border-slate-800 rounded text-[10px] font-mono text-indigo-400 min-w-[24px] text-center shadow-sm"
                             >
                               {k}
@@ -111,7 +112,7 @@ export default function ShortcutsPopup() {
 
             {/* Footer */}
             <div className="px-6 py-3 bg-slate-900 border-t border-slate-800 shrink-0 flex justify-center">
-              <button 
+              <button
                 onClick={() => setIsShortcutsOpen(false)}
                 className="w-full sm:w-auto px-8 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 border border-slate-700"
               >

@@ -196,7 +196,9 @@ const getPatternStyle = (pattern: 'flat' | 'grid' | 'dots' | 'plus' | 'squares')
 
 export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    // console.log('[ImageWorkspace] Component rendering, path:', path);
-   const { parsedData, updateNodeValue, setNotification } = useStore();
+   const parsedData = useStore((state) => state.parsedData);
+   const updateNodeValue = useStore((state) => state.updateNodeValue);
+   const setNotification = useStore((state) => state.setNotification);
    const canvasRef = useRef<HTMLCanvasElement>(null);
    const fabricRef = useRef<fabric.Canvas | null>(null);
    const containerRef = useRef<HTMLDivElement>(null);

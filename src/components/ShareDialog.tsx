@@ -13,19 +13,17 @@ interface ShareDialogProps {
 }
 
 export default function ShareDialog({ isOpen, onClose }: ShareDialogProps) {
-  const { 
-    code,
-    codeFormat,
-    layoutMode,
-    nodeTheme,
-    edgeStyle,
-    nodeShape,
-    appTheme,
-    canvasBackgroundColor,
-    canvasPatternColor
-  } = useStore();
+  const code = useStore((state) => state.code);
+  const codeFormat = useStore((state) => state.codeFormat);
+  const layoutMode = useStore((state) => state.layoutMode);
+  const nodeTheme = useStore((state) => state.nodeTheme);
+  const edgeStyle = useStore((state) => state.edgeStyle);
+  const nodeShape = useStore((state) => state.nodeShape);
+  const appTheme = useStore((state) => state.appTheme);
+  const canvasBackgroundColor = useStore((state) => state.canvasBackgroundColor);
+  const canvasPatternColor = useStore((state) => state.canvasPatternColor);
 
-  const { annotations } = useAnnotationStore();
+  const annotations = useAnnotationStore((state) => state.annotations);
   
   const [useOptimized, setUseOptimized] = useState(false);
   const [copied, setCopied] = useState(false);

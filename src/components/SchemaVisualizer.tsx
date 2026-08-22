@@ -678,7 +678,7 @@ const FieldRow = ({ field, searchQuery, layoutMode = 'vertical' }: { field: Sche
 export type CustomNode = Node<SchemaNodeData, 'schemaNode'>;
 
 const CustomSchemaNode = ({ data, selected, id }: NodeProps<CustomNode>) => {
-  const { searchQuery } = useStore();
+  const searchQuery = useStore((state) => state.searchQuery);
   const searchMatches = useStore(state => state.searchMatches);
   const activeMatchId = useStore(state => state.activeMatchId);
   const { fitView } = useReactFlow();
@@ -940,7 +940,8 @@ function SchemaVisualizerInner() {
     };
   }, [nodes, fitView]);
 
-  const { isToolbarVisible, activeTool } = useAnnotationStore();
+  const isToolbarVisible = useAnnotationStore((state) => state.isToolbarVisible);
+  const activeTool = useAnnotationStore((state) => state.activeTool);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { x, y, zoom } = useViewport();
   const viewportRef = useRef({ x, y, zoom });

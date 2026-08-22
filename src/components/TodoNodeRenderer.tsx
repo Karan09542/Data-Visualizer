@@ -17,16 +17,13 @@ import {
   RefreshCw,
   Copy,
   Check,
-  ChevronDown,
   ChevronRight,
   ArrowUp,
   ArrowDown,
   CornerDownRight,
   CornerLeftUp,
   PlusCircle,
-  Image as ImageIcon,
-  ExternalLink,
-  GripVertical
+  ExternalLink
 } from "lucide-react";
 import { setValueAtPath } from "../utils/pathUtils";
 import { TaskImagePreview } from "./TaskImagePreview";
@@ -66,17 +63,23 @@ interface TodoNodeProps {
 }
 
 export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNodeProps) {
-  const { parsedData, setCode, codeFormat, setExpandedJsNodeId, setCustomNodeSize, nodeSizes, setSelectedNodeId, setNotification } = useStore();
+  const parsedData = useStore((state) => state.parsedData);
+  const setCode = useStore((state) => state.setCode);
+  const codeFormat = useStore((state) => state.codeFormat);
+  const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
+  const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
+  const nodeSizes = useStore((state) => state.nodeSizes);
+  const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
+  const setNotification = useStore((state) => state.setNotification);
   const customSize = nodeSizes[nodeId];
   const [todoData, setTodoData] = useState<TodoNodeData>({ title: "Tasks", tasks: [] });
-  
+
   // Compact state internally toggles Tree vs Flat view in this node
   const [nodeIsFlat, setNodeIsFlat] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [newTaskText, setNewTaskText] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
-  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
   const [activeMenuTaskId, setActiveMenuTaskId] = useState<string | null>(null);
   const [isTitleFocused, setIsTitleFocused] = useState(false);
@@ -96,7 +99,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       if (top + menuRect.height > window.innerHeight) {
         top = rect.top - menuRect.height - 4;
       }
-      
+
       setMenuStyle({
         position: 'fixed',
         top: `${top}px`,
@@ -290,9 +293,9 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const handleAddNewTask = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newTaskText.trim()) return;
-    const newTask: TodoTask = { 
-      id: Math.random().toString(36).substr(2, 9), 
-      text: newTaskText.trim(), 
+    const newTask: TodoTask = {
+      id: Math.random().toString(36).substr(2, 9),
+      text: newTaskText.trim(),
       completed: false,
       priority: "Low",
       status: "Todo"
@@ -354,11 +357,11 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
 
   const addSampleTasks = () => {
     const samples: TodoTask[] = [
-      { 
-        id: "s1", 
-        text: "Database Layer Setup", 
-        completed: false, 
-        status: "Todo", 
+      {
+        id: "s1",
+        text: "Database Layer Setup",
+        completed: false,
+        status: "Todo",
         priority: "High",
         tasks: [
           { id: "s1-1", text: "Setup Redis Server", completed: true, status: "Completed", priority: "Low" },
@@ -366,11 +369,11 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           { id: "s1-3", text: "Optimize database queries", completed: false, status: "Todo", priority: "High" }
         ]
       },
-      { 
-        id: "s2", 
-        text: "Backend Security Protection", 
-        completed: false, 
-        status: "Todo", 
+      {
+        id: "s2",
+        text: "Backend Security Protection",
+        completed: false,
+        status: "Todo",
         priority: "Medium",
         tasks: [
           { id: "s2-1", text: "Implement rate limiting", completed: false, status: "Todo", priority: "Medium" },
@@ -557,30 +560,30 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     }
     return result;
   };
-  
+
   const flatTasks = flattenTasks(todoData.tasks);
-  
+
   // Auto handle resizing based on number of preview tasks in Tree/Flat list views
   useEffect(() => {
     const taskCount = flatTasks.length;
     const targetWidth = 385;
     // Cap at 8 items for a neat compact flow, standard item h=39
     const itemsCount = Math.min(taskCount, 8);
-    const calculatedHeight = isExpanded 
-      ? Math.max(260, 56 + 54 + (itemsCount === 0 ? 80 : itemsCount * 39) + 40) 
+    const calculatedHeight = isExpanded
+      ? Math.max(260, 56 + 54 + (itemsCount === 0 ? 80 : itemsCount * 39) + 40)
       : 130;
-    
+
     if (!customSize || customSize.width !== targetWidth || customSize.height !== calculatedHeight) {
       setCustomNodeSize(nodeId, targetWidth, calculatedHeight);
     }
-    
+
     if (onResize) {
       onResize(targetWidth, calculatedHeight);
     }
   }, [isExpanded, total, nodeId, nodeIsFlat, todoData.tasks, customSize, setCustomNodeSize, onResize, flatTasks.length]);
 
   // Choose sequence of tasks to display based on isFlatList setting
-  const tasksToRender = nodeIsFlat 
+  const tasksToRender = nodeIsFlat
     ? flatTasks.map(item => ({ ...item, depth: 0 }))
     : flatTasks;
 
@@ -621,7 +624,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   };
 
   return (
-    <div 
+    <div
       className="w-[360px] sm:w-[380px] select-none pointer-events-auto cursor-default overflow-hidden bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border border-slate-200 dark:border-[#1e293b] rounded-[20px] shadow-2xl transition-all nodrag"
       onClick={(e) => {
         e.stopPropagation();
@@ -634,7 +637,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
       }}
     >
       {/* Header Panel */}
-      <div 
+      <div
         className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-[#1b2230] bg-slate-50/60 dark:bg-[#111625]/60 shrink-0 drag-handle cursor-move"
         onClick={(e) => {
           e.stopPropagation();
@@ -720,7 +723,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           </button>
 
           {isMenuOpen && createPortal(
-            <div 
+            <div
               ref={dropdownRef}
               style={menuStyle}
               className="w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 overflow-hidden pointer-events-auto"
@@ -728,10 +731,10 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             >
               <button
                 onClick={() => {
-                   setIsMenuOpen(false);
-                   const url = new URL(window.location.href);
-                   url.searchParams.set('focusNode', nodeId);
-                   window.open(url.toString(), '_blank');
+                  setIsMenuOpen(false);
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('focusNode', nodeId);
+                  window.open(url.toString(), '_blank');
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
               >
@@ -793,8 +796,8 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">{completed} done • {remaining} remaining</span>
         </div>
         <div className="w-full h-1.5 bg-slate-200 dark:bg-[#1b2230] rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.5)]" 
+          <div
+            className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.5)]"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -812,9 +815,9 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
             const isDone = task.completed || task.status === "Completed";
             const hasIncompleteChildren = !nodeIsFlat && checkHasIncompleteChildren(task.tasks);
             const meta = priorityMeta(task);
-            
+
             return (
-              <div 
+              <div
                 key={`${task.id}-${idx}`}
                 className="flex items-center gap-3 py-2 px-4 hover:bg-slate-800/10 group transition-all duration-150"
                 style={{ paddingLeft: !nodeIsFlat ? `${depth * 1.1 + 1}rem` : "1rem" }}
@@ -828,13 +831,12 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                     }
                     toggleTaskComplete(task.id);
                   }}
-                  className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full transition-colors outline-none ${
-                    !isDone && hasIncompleteChildren 
+                  className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full transition-colors outline-none ${!isDone && hasIncompleteChildren
                       ? 'cursor-not-allowed opacity-50 text-slate-600 border border-slate-700'
-                      : isDone 
-                        ? 'text-emerald-500 hover:text-emerald-400' 
+                      : isDone
+                        ? 'text-emerald-500 hover:text-emerald-400'
                         : 'text-slate-600 hover:text-blue-400 border border-slate-700 hover:border-blue-400/55'
-                  }`}
+                    }`}
                   title={!isDone && hasIncompleteChildren ? "Complete subtasks first" : isDone ? "Mark Pending" : "Mark Completed"}
                 >
                   {isDone ? (
@@ -904,12 +906,11 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                       </span>
                     </div>
                   ) : (
-                    <span 
-                      className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${
-                        isDone 
-                          ? 'text-slate-500 line-through' 
+                    <span
+                      className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${isDone
+                          ? 'text-slate-500 line-through'
                           : 'text-slate-800 dark:text-slate-100 hover:text-slate-900 dark:hover:text-white transition-colors'
-                      }`}
+                        }`}
                       onClick={() => startEditingTask(task.id, task.text)}
                       title="Click to edit"
                     >
@@ -924,7 +925,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                 </div>
 
                 {/* Clickable Priority/Done Pill Badge (cycles priority on click!) */}
-                <button 
+                <button
                   onClick={() => cyclePriority(task.id)}
                   className={meta.badgeStyle}
                   title="Click to cycle priority"
@@ -945,11 +946,10 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                         startEditingTask(task.id, task.text);
                       }
                     }}
-                    className={`p-1 rounded cursor-pointer transition-colors ${
-                      editingTaskId === task.id
+                    className={`p-1 rounded cursor-pointer transition-colors ${editingTaskId === task.id
                         ? "text-emerald-400 hover:bg-emerald-950/20"
                         : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
-                    }`}
+                      }`}
                     title={editingTaskId === task.id ? "Save name" : "Edit Name"}
                   >
                     {editingTaskId === task.id ? (
@@ -980,9 +980,9 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           })
         )}
       </div>
-      
+
       {/* Footer input to Add Task directly inside Node */}
-      <form 
+      <form
         onSubmit={handleAddNewTask}
         className="px-4 py-2 border-t border-slate-200 dark:border-[#1b2230] bg-slate-50/40 dark:bg-[#111625]/40 flex items-center gap-2 hover:bg-slate-100/70 dark:hover:bg-[#111625]/70 transition-colors"
       >
@@ -995,7 +995,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           <Plus size={12} />
         </button>
         <div className="relative flex-1 flex items-center min-w-0">
-          <input 
+          <input
             type="text"
             maxLength={100}
             placeholder="Add new task..."
@@ -1051,7 +1051,7 @@ const TaskMenuPortal = ({
     if (isOpen && buttonRef.current && menuRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       const menuRect = menuRef.current.getBoundingClientRect();
-      
+
       let top = rect.bottom + 4;
       let left = rect.right - menuRect.width;
 
@@ -1061,7 +1061,7 @@ const TaskMenuPortal = ({
       if (left < 0) {
         left = 0;
       }
-      
+
       setStyle({
         position: 'fixed',
         top: `${top}px`,
@@ -1081,12 +1081,12 @@ const TaskMenuPortal = ({
           setActiveMenuTaskId(null);
         }
       };
-      
+
       const timeoutId = setTimeout(() => {
         document.addEventListener('mousedown', handleClickOutside, true);
         document.addEventListener('touchstart', handleClickOutside, true);
       }, 0);
-      
+
       return () => {
         clearTimeout(timeoutId);
         document.removeEventListener('mousedown', handleClickOutside, true);
@@ -1108,9 +1108,8 @@ const TaskMenuPortal = ({
           e.stopPropagation();
           setActiveMenuTaskId(isOpen ? null : task.id);
         }}
-        className={`p-1 rounded cursor-pointer transition-colors ${
-          isOpen ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
-        }`}
+        className={`p-1 rounded cursor-pointer transition-colors ${isOpen ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
+          }`}
       >
         <MoreVertical size={13} />
       </button>

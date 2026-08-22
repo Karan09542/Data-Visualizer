@@ -1,7 +1,6 @@
 import { formatFileSize } from "../lib/formatFileSize";
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
   useMemo,
   useState,
@@ -13,33 +12,18 @@ import { useStore } from "../store/useStore";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { computeLayout, getEdgePath } from "../utils/layout";
 import { TreeNode } from "../utils/transformer";
-import NodeRenderer, { getMediaType } from "./NodeRenderer";
+import NodeRenderer from "./NodeRenderer";
 import EdgeRenderer from "./EdgeRenderer";
 import AnnotationRenderer from "./AnnotationRenderer";
-import { mediaCache } from "./SmartMediaRenderer";
 import { useDrawingSystem } from "../hooks/useDrawingSystem";
 import {
-  Copy,
-  Edit2,
-  Trash2,
   X,
-  Eye,
-  Network,
   TableProperties,
-  Database,
-  FileText,
   Info,
-  Type,
 } from "lucide-react";
-import { getDynamicActions } from "../utils/contextActions";
 import { InlineApiEditor } from "./InlineApiEditor";
-import {
-  isProbableCsv,
-  parseCsv,
-  generateSchemaFromData,
-} from "../utils/dataFormats";
+
 import { TableView } from "./TableView";
-import { safeStringify } from "../utils/safeStringify";
 
 import NodeQueryEngine from "./NodeQueryEngine";
 import { NodeContextMenu } from "./NodeContextMenu";
@@ -70,14 +54,8 @@ export default function GraphVisualizer() {
   const canvasBackgroundImage = useStore((s) => s.canvasBackgroundImage);
   const canvasBackgroundBlur = useStore((s) => s.canvasBackgroundBlur);
   const appTheme = useStore((s) => s.appTheme);
-  const setActivePreviewText = useStore((s) => s.setActivePreviewText);
-  const setActivePreviewMedia = useStore((s) => s.setActivePreviewMedia);
   const inlineApiEditor = useStore((s) => s.inlineApiEditor);
   const setInlineApiEditor = useStore((s) => s.setInlineApiEditor);
-  const manuallyRenderedNodes = useStore((s) => s.manuallyRenderedNodes);
-  const toggleManualMediaRender = useStore((s) => s.toggleManualMediaRender);
-  const showMediaPreview = useStore((s) => s.showMediaPreview);
-  const knownDataUrls = useStore((s) => s.knownDataUrls);
   const autoOrganizeTrigger = useStore((s) => s.autoOrganizeTrigger);
 
   const collapsedNodes = useDeferredValue(rawCollapsedNodes);
@@ -896,7 +874,8 @@ export default function GraphVisualizer() {
       );
   }, [activeMatchIndex, activeMatchId, searchQuery, nodes]);
 
-  const { isToolbarVisible, activeTool } = useAnnotationStore();
+  const isToolbarVisible = useAnnotationStore((state) => state.isToolbarVisible);
+  const activeTool = useAnnotationStore((state) => state.activeTool);
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
 
   useEffect(() => {
@@ -1442,7 +1421,7 @@ export default function GraphVisualizer() {
           setMediaInfoModal={setMediaInfoModal}
         />
       )}
-      
+
       {/* Table View Modal */}
       {tableViewData &&
         createPortal(

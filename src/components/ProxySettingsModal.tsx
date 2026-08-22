@@ -4,14 +4,12 @@ import { X, Plus, Trash2, Check, ArrowUp, ArrowDown, Shield } from 'lucide-react
 import { createPortal } from 'react-dom';
 
 export function ProxySettingsModal() {
-  const { 
-    isProxyModalOpen, 
-    setIsProxyModalOpen, 
-    proxyServers, 
-    setProxyServers,
-    useDefaultProxy,
-    setUseDefaultProxy
-  } = useStore();
+  const isProxyModalOpen = useStore((state) => state.isProxyModalOpen);
+  const setIsProxyModalOpen = useStore((state) => state.setIsProxyModalOpen);
+  const proxyServers = useStore((state) => state.proxyServers);
+  const setProxyServers = useStore((state) => state.setProxyServers);
+  const useDefaultProxy = useStore((state) => state.useDefaultProxy);
+  const setUseDefaultProxy = useStore((state) => state.setUseDefaultProxy);
   const [newUrl, setNewUrl] = useState("");
   
   if (!isProxyModalOpen) return null;

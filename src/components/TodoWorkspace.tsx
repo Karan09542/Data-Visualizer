@@ -529,7 +529,9 @@ export function doesTaskMatchSearch(
 }
 
 export function TodoWorkspace({ path }: { path: string }) {
-  const { parsedData, setCode, codeFormat } = useStore();
+  const parsedData = useStore((state) => state.parsedData);
+  const setCode = useStore((state) => state.setCode);
+  const codeFormat = useStore((state) => state.codeFormat);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<
     "all" | "active" | "completed" | "high" | "outdated"

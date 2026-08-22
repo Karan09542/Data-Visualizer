@@ -44,7 +44,11 @@ interface LeafField {
 }
 
 export default function GuiEditorPanel() {
-  const { codeFormat, code, setCode, parsedData, appTheme, setSelectedNodeId } = useStore();
+  const codeFormat = useStore((state) => state.codeFormat);
+  const code = useStore((state) => state.code);
+  const setCode = useStore((state) => state.setCode);
+  const parsedData = useStore((state) => state.parsedData);
+  const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -127,10 +131,10 @@ export default function GuiEditorPanel() {
   const handleAddObjectProperty = (objectPath: string) => {
     const input = newArrayElementInputs[objectPath] || { value: "", type: "string", key: "" };
     if (!input.key || input.key.trim() === "") {
-        triggerToast("Please provide a valid key name", "error");
-        return;
+      triggerToast("Please provide a valid key name", "error");
+      return;
     }
-    
+
     let finalVal: any = input.value;
     if (input.type === "number") finalVal = Number(input.value) || 0;
     if (input.type === "boolean") finalVal = input.value === "true" || input.value === "True";
@@ -149,8 +153,8 @@ export default function GuiEditorPanel() {
 
     if (target && typeof target === "object" && !Array.isArray(target)) {
       if (input.key in target) {
-          triggerToast(`Key "${input.key}" already exists`, "error");
-          return;
+        triggerToast(`Key "${input.key}" already exists`, "error");
+        return;
       }
       snapshotHistory();
       target[input.key] = finalVal;
@@ -860,13 +864,12 @@ export default function GuiEditorPanel() {
             className="absolute top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#131b2e] border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl max-w-sm pointer-events-auto"
           >
             <div
-              className={`w-2 h-2 rounded-full ${
-                toastNotification.type === "success"
+              className={`w-2 h-2 rounded-full ${toastNotification.type === "success"
                   ? "bg-emerald-500"
                   : toastNotification.type === "error"
                     ? "bg-red-500"
                     : "bg-blue-400"
-              }`}
+                }`}
             />
             <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
               {toastNotification.message}
@@ -1001,11 +1004,10 @@ export default function GuiEditorPanel() {
                           key={item.type}
                           type="button"
                           onClick={() => setNewKeyType(item.type as any)}
-                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-md border text-[10px] gap-1.5 transition-all ${
-                            isSelected
+                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-md border text-[10px] gap-1.5 transition-all ${isSelected
                               ? "bg-blue-600/10 text-blue-500 dark:text-blue-400 border-blue-500 shadow-lg shadow-blue-500/5 scale-102"
                               : "border-slate-200 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/30 text-slate-500 dark:text-slate-400"
-                          }`}
+                            }`}
                           title={`Select as ${item.label}`}
                         >
                           <Icon
@@ -1043,11 +1045,10 @@ export default function GuiEditorPanel() {
                           key={item.type}
                           type="button"
                           onClick={() => setNewKeyType(item.type as any)}
-                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-md border text-[10px] gap-1.5 transition-all ${
-                            isSelected
+                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-md border text-[10px] gap-1.5 transition-all ${isSelected
                               ? "bg-blue-600/10 text-blue-500 dark:text-blue-400 border-blue-500 shadow-lg shadow-blue-500/5 scale-102"
                               : "border-slate-200 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/30 text-slate-500 dark:text-slate-400"
-                          }`}
+                            }`}
                           title={`Select as ${item.label}`}
                         >
                           <Icon
@@ -1105,22 +1106,20 @@ export default function GuiEditorPanel() {
                         <button
                           type="button"
                           onClick={() => setBooleanValue(true)}
-                          className={`flex-1 text-center py-1.5 rounded-md text-[11.5px] font-bold transition-all ${
-                            booleanValue === true
+                          className={`flex-1 text-center py-1.5 rounded-md text-[11.5px] font-bold transition-all ${booleanValue === true
                               ? "bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm"
                               : "text-slate-500 dark:text-slate-400 hover:text-slate-750 dark:hover:text-slate-200 border border-transparent"
-                          }`}
+                            }`}
                         >
                           True
                         </button>
                         <button
                           type="button"
                           onClick={() => setBooleanValue(false)}
-                          className={`flex-1 text-center py-1.5 rounded-md text-[11.5px] font-bold transition-all ${
-                            booleanValue === false
+                          className={`flex-1 text-center py-1.5 rounded-md text-[11.5px] font-bold transition-all ${booleanValue === false
                               ? "bg-rose-600/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shadow-sm"
                               : "text-slate-500 dark:text-slate-400 hover:text-slate-750 dark:hover:text-slate-200 border border-transparent"
-                          }`}
+                            }`}
                         >
                           False
                         </button>
@@ -1249,11 +1248,10 @@ export default function GuiEditorPanel() {
                       <button
                         key={item.type}
                         onClick={() => setNewKeyType(item.type as any)}
-                        className={`flex flex-col items-center justify-center p-2 rounded-md border text-[10px] gap-1 ${
-                          newKeyType === item.type
+                        className={`flex flex-col items-center justify-center p-2 rounded-md border text-[10px] gap-1 ${newKeyType === item.type
                             ? "bg-blue-600/20 text-blue-400 border-blue-500"
                             : "bg-[#121824] border-slate-800 text-slate-400"
-                        }`}
+                          }`}
                       >
                         <item.icon size={13} />
                         <span>{item.label}</span>
@@ -1278,11 +1276,10 @@ export default function GuiEditorPanel() {
                       <button
                         key={item.type}
                         onClick={() => setNewKeyType(item.type as any)}
-                        className={`flex flex-col items-center justify-center p-2 rounded-md border text-[10px] gap-1 ${
-                          newKeyType === item.type
+                        className={`flex flex-col items-center justify-center p-2 rounded-md border text-[10px] gap-1 ${newKeyType === item.type
                             ? "bg-blue-600/20 text-blue-400 border-blue-500"
                             : "bg-[#121824] border-slate-800 text-slate-400"
-                        }`}
+                          }`}
                       >
                         <item.icon size={13} />
                         <span>{item.label}</span>
@@ -1314,22 +1311,20 @@ export default function GuiEditorPanel() {
                       <button
                         type="button"
                         onClick={() => setBooleanValue(true)}
-                        className={`flex-1 text-center py-1 rounded-md text-[11px] font-bold transition-all ${
-                          booleanValue === true
+                        className={`flex-1 text-center py-1 rounded-md text-[11px] font-bold transition-all ${booleanValue === true
                             ? "bg-emerald-600/10 text-emerald-400 border border-emerald-500/20"
                             : "text-slate-400 hover:text-slate-200"
-                        }`}
+                          }`}
                       >
                         True
                       </button>
                       <button
                         type="button"
                         onClick={() => setBooleanValue(false)}
-                        className={`flex-1 text-center py-1 rounded-md text-[11px] font-bold transition-all ${
-                          booleanValue === false
+                        className={`flex-1 text-center py-1 rounded-md text-[11px] font-bold transition-all ${booleanValue === false
                             ? "bg-rose-600/10 text-rose-400 border border-rose-500/20"
                             : "text-slate-400 hover:text-slate-200"
-                        }`}
+                          }`}
                       >
                         False
                       </button>
@@ -1393,22 +1388,20 @@ export default function GuiEditorPanel() {
             <div className="flex items-center bg-slate-200/60 dark:bg-[#121824] border border-slate-300 dark:border-slate-800 rounded-md p-0.5">
               <button
                 onClick={() => setViewMode("tree")}
-                className={`px-2 sm:px-2.5 py-1 text-[10px] font-bold rounded-sm transition-all ${
-                  viewMode === "tree"
+                className={`px-2 sm:px-2.5 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === "tree"
                     ? "bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent"
-                }`}
+                  }`}
                 title="Tree View with Expand/Collapse hierarchies"
               >
                 Tree<span className="hidden sm:inline"> Mode</span>
               </button>
               <button
                 onClick={() => setViewMode("flat")}
-                className={`px-2 sm:px-2.5 py-1 text-[10px] font-bold rounded-sm transition-all ${
-                  viewMode === "flat"
+                className={`px-2 sm:px-2.5 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === "flat"
                     ? "bg-blue-600/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent"
-                }`}
+                  }`}
                 title="Flat Table configuration"
               >
                 Flat<span className="hidden sm:inline"> List</span>
@@ -1538,11 +1531,10 @@ export default function GuiEditorPanel() {
                   <div
                     key={field.path}
                     style={{ marginLeft: `${depth * (isMobile ? 6 : 14)}px` }}
-                    className={`relative group flex flex-col p-2 sm:p-3.5 bg-[#fafbfc] dark:bg-[#0d1220]/75 hover:bg-slate-100/50 dark:hover:bg-[#111728]/80 border ${
-                      isEditing
+                    className={`relative group flex flex-col p-2 sm:p-3.5 bg-[#fafbfc] dark:bg-[#0d1220]/75 hover:bg-slate-100/50 dark:hover:bg-[#111728]/80 border ${isEditing
                         ? "border-blue-500/70 shadow-lg bg-blue-50/15 dark:bg-[#111624]/60"
                         : "border-slate-205 dark:border-slate-800/75"
-                    } rounded-lg transition-all text-slate-800 dark:text-slate-100 duration-150`}
+                      } rounded-lg transition-all text-slate-800 dark:text-slate-100 duration-150`}
                   >
                     {/* Visual tree indentation guide rails */}
                     {viewMode === "tree" && depth > 0 && (
@@ -1598,7 +1590,7 @@ export default function GuiEditorPanel() {
                                     handleRenameKey(
                                       field.path,
                                       newKeyRenameValue,
-                                      );
+                                    );
                                   if (e.key === "Escape") setRenamingPath(null);
                                 }}
                               />
@@ -1639,8 +1631,7 @@ export default function GuiEditorPanel() {
 
                           {/* Field type badges */}
                           <span
-                            className={`text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${
-                              field.type === "string"
+                            className={`text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${field.type === "string"
                                 ? "text-amber-700 dark:text-amber-400 bg-amber-500/5 border-amber-500/20"
                                 : field.type === "number"
                                   ? "text-cyan-750 dark:text-cyan-400 bg-cyan-500/5 border-cyan-500/20"
@@ -1649,7 +1640,7 @@ export default function GuiEditorPanel() {
                                     : field.type === "array"
                                       ? "text-purple-700 dark:text-purple-400 bg-purple-500/5 border-purple-500/20"
                                       : "text-indigo-700 dark:text-indigo-400 bg-indigo-500/5 border-indigo-500/20"
-                            }`}
+                              }`}
                           >
                             {field.type}
                           </span>
@@ -1735,28 +1726,26 @@ export default function GuiEditorPanel() {
                                     <button
                                       type="button"
                                       onClick={() => setEditingBoolValue(true)}
-                                      className={`flex-1 text-center py-1 rounded-md text-[10px] font-bold transition-all ${
-                                        editingBoolValue === true
+                                      className={`flex-1 text-center py-1 rounded-md text-[10px] font-bold transition-all ${editingBoolValue === true
                                           ? "bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
                                           : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                                      }`}
+                                        }`}
                                     >
                                       True
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setEditingBoolValue(false)}
-                                      className={`flex-1 text-center py-1 rounded-md text-[10px] font-bold transition-all ${
-                                        editingBoolValue === false
+                                      className={`flex-1 text-center py-1 rounded-md text-[10px] font-bold transition-all ${editingBoolValue === false
                                           ? "bg-rose-600/10 text-rose-700 dark:text-rose-400 border border-rose-500/20"
                                           : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                                      }`}
+                                        }`}
                                     >
                                       False
                                     </button>
                                   </div>
                                 )}
- 
+
                                 <div className="flex items-center gap-1">
                                   <button
                                     onClick={() => {
@@ -1777,7 +1766,7 @@ export default function GuiEditorPanel() {
                                     Cancel
                                   </button>
                                 </div>
- 
+
                                 <span className="text-[9px] text-slate-500 italic hidden lg:inline mx-1">
                                   [Enter to Save, Tab to cycle]
                                 </span>
@@ -1792,11 +1781,10 @@ export default function GuiEditorPanel() {
                                   startEditing(field);
                                 }
                               }}
-                              className={`font-mono text-[11px] leading-relaxed transition-all ${
-                                isContainer
+                              className={`font-mono text-[11px] leading-relaxed transition-all ${isContainer
                                   ? "text-slate-500 dark:text-slate-400 italic cursor-pointer hover:bg-slate-205/60 dark:hover:bg-slate-800/30 px-1.5 py-0.5 rounded flex items-center gap-1.5 select-none"
                                   : "text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white cursor-pointer hover:bg-slate-205/65 dark:hover:bg-slate-800/40 px-1.5 py-0.5 rounded"
-                              }`}
+                                }`}
                               title={
                                 isContainer
                                   ? "Click to expand/collapse container items"
@@ -1819,11 +1807,10 @@ export default function GuiEditorPanel() {
                                 </div>
                               ) : field.type === "boolean" ? (
                                 <span
-                                  className={`font-bold uppercase tracking-wider rounded-sm px-1.5 py-0.5 text-[9px] ${
-                                    field.value
+                                  className={`font-bold uppercase tracking-wider rounded-sm px-1.5 py-0.5 text-[9px] ${field.value
                                       ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
                                       : "text-rose-700 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20"
-                                  }`}
+                                    }`}
                                 >
                                   {String(field.value)}
                                 </span>
@@ -2019,8 +2006,8 @@ export default function GuiEditorPanel() {
 
                     {/* Inline Add Property block for objects */}
                     {field.type === "object" && !isCollapsed && (
-                      <div 
-                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full" 
+                      <div
+                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex flex-wrap items-center gap-2">
@@ -2056,11 +2043,10 @@ export default function GuiEditorPanel() {
                                     },
                                   }));
                                 }}
-                                className={`px-2 py-0.5 text-[8.5px] font-extrabold uppercase rounded-sm transition-all whitespace-nowrap ${
-                                  (newArrayElementInputs[field.path]?.type || "string") === t
+                                className={`px-2 py-0.5 text-[8.5px] font-extrabold uppercase rounded-sm transition-all whitespace-nowrap ${(newArrayElementInputs[field.path]?.type || "string") === t
                                     ? "bg-blue-600 dark:bg-blue-500/20 text-white dark:text-blue-400 border border-blue-500/20 shadow-sm"
                                     : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-                                }`}
+                                  }`}
                               >
                                 {t === "string" ? "str" : t === "number" ? "num" : t === "boolean" ? "bool" : t}
                               </button>
@@ -2069,7 +2055,7 @@ export default function GuiEditorPanel() {
 
                           {(newArrayElementInputs[field.path]?.type === "object" || newArrayElementInputs[field.path]?.type === "array" || newArrayElementInputs[field.path]?.type === "null") ? (
                             <div className="flex-1 text-[11px] px-2.5 py-1 text-slate-500 italic">
-                                {newArrayElementInputs[field.path]?.type === "object" ? "Adds empty object {}" : newArrayElementInputs[field.path]?.type === "array" ? "Adds empty array []" : "Adds null"}
+                              {newArrayElementInputs[field.path]?.type === "object" ? "Adds empty object {}" : newArrayElementInputs[field.path]?.type === "array" ? "Adds empty array []" : "Adds null"}
                             </div>
                           ) : (
                             <input
@@ -2144,8 +2130,8 @@ export default function GuiEditorPanel() {
 
                     {/* Dedicated List elements block for visual array editing */}
                     {field.type === "array" && !isCollapsed && (
-                      <div 
-                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full" 
+                      <div
+                        className="mt-3.5 p-3.5 bg-slate-100/50 dark:bg-[#0a0e17] border border-slate-205 dark:border-slate-800/80 rounded-lg flex flex-col gap-2.5 w-full"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex flex-wrap items-center gap-2">
@@ -2163,11 +2149,10 @@ export default function GuiEditorPanel() {
                                     },
                                   }));
                                 }}
-                                className={`px-2 py-0.5 text-[8.5px] font-extrabold uppercase rounded-sm transition-all ${
-                                  (newArrayElementInputs[field.path]?.type || "string") === t
+                                className={`px-2 py-0.5 text-[8.5px] font-extrabold uppercase rounded-sm transition-all ${(newArrayElementInputs[field.path]?.type || "string") === t
                                     ? "bg-purple-605 dark:bg-purple-600/10 text-white dark:text-purple-400 border border-purple-500/20 shadow-sm"
                                     : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-                                }`}
+                                  }`}
                               >
                                 {t === "string" ? "str" : t === "number" ? "num" : t === "boolean" ? "bool" : t}
                               </button>
@@ -2176,7 +2161,7 @@ export default function GuiEditorPanel() {
 
                           {(newArrayElementInputs[field.path]?.type === "object" || newArrayElementInputs[field.path]?.type === "array" || newArrayElementInputs[field.path]?.type === "null") ? (
                             <div className="flex-1 text-[11px] px-2.5 py-1 text-slate-500 italic">
-                                {newArrayElementInputs[field.path]?.type === "object" ? "Adds empty object {}" : newArrayElementInputs[field.path]?.type === "array" ? "Adds empty array []" : "Adds null"}
+                              {newArrayElementInputs[field.path]?.type === "object" ? "Adds empty object {}" : newArrayElementInputs[field.path]?.type === "array" ? "Adds empty array []" : "Adds null"}
                             </div>
                           ) : (
                             <input

@@ -15,7 +15,10 @@ interface SearchResult {
 }
 
 export default function YoutubeSearchPanel() {
-  const { isYoutubeSearchOpen, setIsYoutubeSearchOpen, parsedData, setCode } = useStore();
+  const isYoutubeSearchOpen = useStore((state) => state.isYoutubeSearchOpen);
+  const setIsYoutubeSearchOpen = useStore((state) => state.setIsYoutubeSearchOpen);
+  const parsedData = useStore((state) => state.parsedData);
+  const setCode = useStore((state) => state.setCode);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);

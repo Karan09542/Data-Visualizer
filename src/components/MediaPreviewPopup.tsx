@@ -2,11 +2,9 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import {
   Box,
-  Check,
   Copy,
   Download,
   ExternalLink,
-  FileText,
   Globe,
   Image as ImageIcon,
   Loader2,
@@ -66,12 +64,10 @@ const getBlobForClipboard = async (url: string) => {
 };
 
 const MediaPreviewPopup: React.FC = () => {
-  const {
-    activePreviewMedia,
-    setActivePreviewMedia,
-    setNotification,
-    uploadedMediaMetadata,
-  } = useStore();
+  const activePreviewMedia = useStore((state) => state.activePreviewMedia);
+  const setActivePreviewMedia = useStore((state) => state.setActivePreviewMedia);
+  const setNotification = useStore((state) => state.setNotification);
+  const uploadedMediaMetadata = useStore((state) => state.uploadedMediaMetadata);
 
   const [resolvedAssetUrl, setResolvedAssetUrl] = React.useState<string | null>(null);
   const [isCopyingImage, setIsCopyingImage] = React.useState(false);
@@ -425,7 +421,7 @@ const MediaPreviewPopup: React.FC = () => {
                         </button>
                       </div>
                     )}
-                    
+
                     {activePreviewMedia.type !== 'pdf' && activePreviewMedia.type !== 'image' && (
                       <button
                         onClick={copySource}

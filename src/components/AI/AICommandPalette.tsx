@@ -120,19 +120,17 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const {
-    activeProviderId,
-    activeModelId,
-    setActiveProvider,
-    setActiveModel,
-    apiKeys,
-    setApiKey,
-    temperature,
-    maxTokens,
-    topP,
-    streamingEnabled,
-    systemPrompt,
-  } = useAIStore();
+  const activeProviderId = useAIStore((state) => state.activeProviderId);
+  const activeModelId = useAIStore((state) => state.activeModelId);
+  const setActiveProvider = useAIStore((state) => state.setActiveProvider);
+  const setActiveModel = useAIStore((state) => state.setActiveModel);
+  const apiKeys = useAIStore((state) => state.apiKeys);
+  const setApiKey = useAIStore((state) => state.setApiKey);
+  const temperature = useAIStore((state) => state.temperature);
+  const maxTokens = useAIStore((state) => state.maxTokens);
+  const topP = useAIStore((state) => state.topP);
+  const streamingEnabled = useAIStore((state) => state.streamingEnabled);
+  const systemPrompt = useAIStore((state) => state.systemPrompt);
 
   const appTheme = useStore((state) => state.appTheme);
   const isDark = appTheme === 'dark';

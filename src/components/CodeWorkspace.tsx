@@ -131,40 +131,38 @@ const defaultWorkspaceSettings: WorkspaceSettings = {
 };
 
 export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
-  const {
-    appTheme,
-    jsNodeFocusLine,
-    setJsNodeFocusLine,
-    autoClearLogs,
-    setAutoClearLogs,
-    activeExplorerFile,
-    setActiveExplorerFile,
-    jsNodeCodeOverrides,
-    setJsNodeCodeOverride,
-    updateNodeValue,
-    parsedData,
-    jsNodeLoading,
-    jsNodeErrors,
-    setJsNodeError,
-    jsNodeResponses,
-    setApiNodeLoading,
-    setApiNodeError,
-    setApiNodeResponse,
-    apiNodeResponses,
-    apiNodeLoading,
-    apiNodeErrors,
-    workspaceTabs,
-    openWorkspaceTab,
-    closeWorkspaceTab,
-    markWorkspaceTabDirty,
-    setWorkspaceTabs,
-    activePrompts,
-    setActivePrompt,
-    setAppTheme,
-    uploadedMediaMetadata,
-    setIsProxyModalOpen,
-    setGlobalAlert,
-  } = useStore();
+  const appTheme = useStore((state) => state.appTheme);
+  const jsNodeFocusLine = useStore((state) => state.jsNodeFocusLine);
+  const setJsNodeFocusLine = useStore((state) => state.setJsNodeFocusLine);
+  const autoClearLogs = useStore((state) => state.autoClearLogs);
+  const setAutoClearLogs = useStore((state) => state.setAutoClearLogs);
+  const activeExplorerFile = useStore((state) => state.activeExplorerFile);
+  const setActiveExplorerFile = useStore((state) => state.setActiveExplorerFile);
+  const jsNodeCodeOverrides = useStore((state) => state.jsNodeCodeOverrides);
+  const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
+  const updateNodeValue = useStore((state) => state.updateNodeValue);
+  const parsedData = useStore((state) => state.parsedData);
+  const jsNodeLoading = useStore((state) => state.jsNodeLoading);
+  const jsNodeErrors = useStore((state) => state.jsNodeErrors);
+  const setJsNodeError = useStore((state) => state.setJsNodeError);
+  const jsNodeResponses = useStore((state) => state.jsNodeResponses);
+  const setApiNodeLoading = useStore((state) => state.setApiNodeLoading);
+  const setApiNodeError = useStore((state) => state.setApiNodeError);
+  const setApiNodeResponse = useStore((state) => state.setApiNodeResponse);
+  const apiNodeResponses = useStore((state) => state.apiNodeResponses);
+  const apiNodeLoading = useStore((state) => state.apiNodeLoading);
+  const apiNodeErrors = useStore((state) => state.apiNodeErrors);
+  const workspaceTabs = useStore((state) => state.workspaceTabs);
+  const openWorkspaceTab = useStore((state) => state.openWorkspaceTab);
+  const closeWorkspaceTab = useStore((state) => state.closeWorkspaceTab);
+  const markWorkspaceTabDirty = useStore((state) => state.markWorkspaceTabDirty);
+  const setWorkspaceTabs = useStore((state) => state.setWorkspaceTabs);
+  const activePrompts = useStore((state) => state.activePrompts);
+  const setActivePrompt = useStore((state) => state.setActivePrompt);
+  const setAppTheme = useStore((state) => state.setAppTheme);
+  const uploadedMediaMetadata = useStore((state) => state.uploadedMediaMetadata);
+  const setIsProxyModalOpen = useStore((state) => state.setIsProxyModalOpen);
+  const setGlobalAlert = useStore((state) => state.setGlobalAlert);
   const isAssistantEnabled = useAssistantStore((s) => s.isEnabled);
   const setIsAssistantEnabled = useAssistantStore((s) => s.setIsEnabled);
   const [copied, setCopied] = useState(false);

@@ -10,7 +10,7 @@ interface NodeHelpModalProps {
 }
 
 const NodeHelpModal: React.FC<NodeHelpModalProps> = ({ isOpen, onClose }) => {
-  const { appTheme } = useStore();
+  const appTheme = useStore((state) => state.appTheme);
   const [activeTab, setActiveTab] = useState<'api' | 'js' | 'ts' | 'py' | 'math' | 'todo' | 'image' | 'search' | 'transfer'>('api');
 
   const handleInsertExample = async () => {

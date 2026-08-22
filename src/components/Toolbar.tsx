@@ -1,7 +1,6 @@
 import * as snapdom from "@zumer/snapdom";
 import {
   useStore,
-  LayoutMode,
   NodeTheme,
   EdgeStyle,
   NodeShape,
@@ -52,54 +51,49 @@ import { PromptModal } from "./PromptModal";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
-  const {
-    layoutMode,
-    setLayoutMode,
-    nodeTheme,
-    setNodeTheme,
-    edgeStyle,
-    setEdgeStyle,
-    edgeWidth = 1.0,
-    setEdgeWidth,
-    nodeShape,
-    setNodeShape,
-    searchQuery,
-    setSearchQuery,
-    treeData,
-    setCollapsedNodes,
-    isEditorPanelOpen,
-    setIsEditorPanelOpen,
-    isMobileMenuOpen,
-    setIsMobileMenuOpen,
-    appTheme,
-    setAppTheme,
-    setCanvasBackgroundColor,
-    setCanvasPatternColor,
-    canvasBackgroundColor,
-    canvasPatternColor,
-    undo,
-    redo,
-    undoStack,
-    redoStack,
-    code,
-    setIsSavedDocsOpen,
-    globalTextExpanded,
-    setGlobalTextExpanded,
-    isAutosaveEnabled,
-    setIsAutosaveEnabled,
-    visualizerMode,
-    setVisualizerMode,
-    codeFormat,
-    convertFormat,
-    activeDocumentId,
-    activeDocumentName,
-    isDirty,
-    setIsDirty,
-    setLastSavedCode,
-    setNotification,
-  } = useStore();
+  const layoutMode = useStore((state) => state.layoutMode);
+  const setLayoutMode = useStore((state) => state.setLayoutMode);
+  const nodeTheme = useStore((state) => state.nodeTheme);
+  const setNodeTheme = useStore((state) => state.setNodeTheme);
+  const edgeStyle = useStore((state) => state.edgeStyle);
+  const setEdgeStyle = useStore((state) => state.setEdgeStyle);
+  const edgeWidth = useStore((state) => state.edgeWidth = 1.0);
+  const setEdgeWidth = useStore((state) => state.setEdgeWidth);
+  const nodeShape = useStore((state) => state.nodeShape);
+  const setNodeShape = useStore((state) => state.setNodeShape);
+  const treeData = useStore((state) => state.treeData);
+  const setCollapsedNodes = useStore((state) => state.setCollapsedNodes);
+  const isEditorPanelOpen = useStore((state) => state.isEditorPanelOpen);
+  const setIsEditorPanelOpen = useStore((state) => state.setIsEditorPanelOpen);
+  const isMobileMenuOpen = useStore((state) => state.isMobileMenuOpen);
+  const setIsMobileMenuOpen = useStore((state) => state.setIsMobileMenuOpen);
+  const appTheme = useStore((state) => state.appTheme);
+  const setAppTheme = useStore((state) => state.setAppTheme);
+  const setCanvasBackgroundColor = useStore((state) => state.setCanvasBackgroundColor);
+  const setCanvasPatternColor = useStore((state) => state.setCanvasPatternColor);
+  const canvasBackgroundColor = useStore((state) => state.canvasBackgroundColor);
+  const canvasPatternColor = useStore((state) => state.canvasPatternColor);
+  const undo = useStore((state) => state.undo);
+  const redo = useStore((state) => state.redo);
+  const undoStack = useStore((state) => state.undoStack);
+  const redoStack = useStore((state) => state.redoStack);
+  const code = useStore((state) => state.code);
+  const setIsSavedDocsOpen = useStore((state) => state.setIsSavedDocsOpen);
+  const setGlobalTextExpanded = useStore((state) => state.setGlobalTextExpanded);
+  const isAutosaveEnabled = useStore((state) => state.isAutosaveEnabled);
+  const setIsAutosaveEnabled = useStore((state) => state.setIsAutosaveEnabled);
+  const visualizerMode = useStore((state) => state.visualizerMode);
+  const setVisualizerMode = useStore((state) => state.setVisualizerMode);
+  const codeFormat = useStore((state) => state.codeFormat);
+  const convertFormat = useStore((state) => state.convertFormat);
+  const activeDocumentId = useStore((state) => state.activeDocumentId);
+  const activeDocumentName = useStore((state) => state.activeDocumentName);
+  const isDirty = useStore((state) => state.isDirty);
+  const setIsDirty = useStore((state) => state.setIsDirty);
+  const setLastSavedCode = useStore((state) => state.setLastSavedCode);
+  const setNotification = useStore((state) => state.setNotification);
 
-  const { annotations } = useAnnotationStore();
+  const annotations = useAnnotationStore((state) => state.annotations);
 
   const shareSizeInfo = useMemo(() => {
     return estimateShareSize(
@@ -154,7 +148,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const processCameraCapture = async (file: File, userInput: string) => {
     const defaultKey = `capture_${Date.now()}`;
     const keyName = userInput ? userInput.trim() : defaultKey;
-    
+
     try {
       const { importFile } = await import("../utils/assetManager");
       const { assetId } = await importFile(file);
@@ -167,7 +161,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         const newData = { _previousData: currentData, [keyName]: assetId };
         useStore.getState().setCode(JSON.stringify(newData, null, 2));
       }
-      
+
       useStore.getState().setSelectedNodeId(`root.${keyName}`);
       setNotification({ message: `Successfully embedded under key '${keyName}'`, type: "success" });
     } catch (err) {
@@ -200,7 +194,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   };
 
   const exportHDImageRef = useRef<((type?: string) => Promise<void>) | null>(null);
-  
+
   useEffect(() => {
     const handleVoiceExport = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -217,10 +211,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     if (typeof window !== "undefined") {
       const warmUp = () => {
         Promise.resolve(snapdom).then(({ preCache }) => {
-            preCache(document, { embedFonts: true }).catch((e) =>
-              console.warn("SnapDOM precache failed:", e),
-            );
-          })
+          preCache(document, { embedFonts: true }).catch((e) =>
+            console.warn("SnapDOM precache failed:", e),
+          );
+        })
           .catch((err) => console.warn("Failed to load SnapDOM module:", err));
       };
       if ("requestIdleCallback" in window) {
@@ -523,15 +517,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           quality: 1,
           backgroundColor:
             type === "jpeg" &&
-            (useStore.getState().canvasBackgroundColor === "transparent" ||
-              !useStore.getState().canvasBackgroundColor)
+              (useStore.getState().canvasBackgroundColor === "transparent" ||
+                !useStore.getState().canvasBackgroundColor)
               ? "#ffffff"
               : isTransparent
                 ? "transparent"
                 : useStore.getState().canvasBackgroundColor ||
-                  (useStore.getState().appTheme === "dark"
-                    ? "#07090e"
-                    : "#f8fafc"),
+                (useStore.getState().appTheme === "dark"
+                  ? "#07090e"
+                  : "#f8fafc"),
           width: fullWidth,
           height: fullHeight,
           format: type === "jpeg" ? "jpg" : type,
@@ -705,15 +699,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         quality: 1,
         backgroundColor:
           type === "jpeg" &&
-          (useStore.getState().canvasBackgroundColor === "transparent" ||
-            !useStore.getState().canvasBackgroundColor)
+            (useStore.getState().canvasBackgroundColor === "transparent" ||
+              !useStore.getState().canvasBackgroundColor)
             ? "#ffffff"
             : isTransparent
               ? "transparent"
               : useStore.getState().canvasBackgroundColor ||
-                (useStore.getState().appTheme === "dark"
-                  ? "#0d1117"
-                  : "#ffffff"),
+              (useStore.getState().appTheme === "dark"
+                ? "#0d1117"
+                : "#ffffff"),
         width: fullWidth,
         height: fullHeight,
         format: type === "jpeg" ? "jpg" : type,
@@ -954,11 +948,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${
-                   undoStack.length > 0 
-                     ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
-                     : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
-                }`}
+                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${undoStack.length > 0
+                    ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
+                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  }`}
                 title="Undo (Ctrl+Z)"
               >
                 <Undo2 size={16} />
@@ -966,11 +959,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${
-                   redoStack.length > 0 
-                     ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm" 
-                     : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
-                }`}
+                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${redoStack.length > 0
+                    ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
+                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  }`}
                 title="Redo (Ctrl+Y)"
               >
                 <Redo2 size={16} />
@@ -1031,14 +1023,14 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </button>
               )}
               {(!activeDocumentId && isDirty) && (
-                 <button
-                 onClick={() => setIsSavedDocsOpen(true)}
-                 className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors border border-transparent shadow-sm"
-                 title="Save as new document"
-               >
-                 <Save size={14} />
-                 <span className="text-xs font-semibold">Save New</span>
-               </button>
+                <button
+                  onClick={() => setIsSavedDocsOpen(true)}
+                  className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors border border-transparent shadow-sm"
+                  title="Save as new document"
+                >
+                  <Save size={14} />
+                  <span className="text-xs font-semibold">Save New</span>
+                </button>
               )}
 
               <label
@@ -1309,19 +1301,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <div className="grid grid-cols-2 gap-2.5">
                   <button
                     onClick={() => setIsAutosaveEnabled(!isAutosaveEnabled)}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${
-                      isAutosaveEnabled
+                    className={`flex items-center justify-between p-3 rounded-xl border text-xs font-semibold transition-all ${isAutosaveEnabled
                         ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
                         : "bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       {isAutosaveEnabled ? <Cloud size={16} className="text-blue-500" /> : <CloudOff size={16} />}
                       <span>Autosave</span>
                     </div>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                      isAutosaveEnabled ? "bg-blue-500 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"
-                    }`}>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isAutosaveEnabled ? "bg-blue-500 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                      }`}>
                       {isAutosaveEnabled ? "ON" : "OFF"}
                     </span>
                   </button>
@@ -1587,7 +1577,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">High quality raster</span>
                 </div>
               </button>
-              
+
               <button onClick={() => { exportHDImage("png-transparent"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
                 <div className="flex items-center justify-center w-7 h-7 rounded-md bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
                   <div className="relative flex items-center justify-center">
@@ -1602,7 +1592,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">No background</span>
                 </div>
               </button>
-              
+
               <button onClick={() => { exportHDImage("jpeg"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
                 <div className="flex items-center justify-center w-7 h-7 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform">
                   <FileImage size={14} />
@@ -1622,9 +1612,9 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">Optimized for web</span>
                 </div>
               </button>
-              
+
               <div className="h-px bg-slate-200 dark:bg-slate-800/60 my-0.5 mx-2"></div>
-              
+
               <button onClick={() => { exportHDImage("svg"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
                 <div className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform">
                   <FileType size={14} />
@@ -1634,7 +1624,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">Scalable graphics</span>
                 </div>
               </button>
-              
+
               <button onClick={() => { exportHDImage("svg-transparent"); setShowExportPopover(false); }} className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded-lg text-left group transition-all">
                 <div className="flex items-center justify-center w-7 h-7 rounded-md bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 group-hover:scale-105 transition-transform">
                   <div className="relative flex items-center justify-center">

@@ -27,29 +27,27 @@ import { applyPatchSmart, mergeJSON } from "../utils/patchUtils";
 import { maskCodeString, unmaskCodeString, SHOW_MORE_MARKERS, markAsExpanded, markAsCollapsed } from "../utils/masker";
 
 export default function EditorPanel() {
-  const {
-    code,
-    setCode,
-    clearCode,
-    error,
-    parsedData,
-    appTheme,
-    codeFormat,
-    apiMethod,
-    setApiMethod,
-    apiUrl,
-    setApiUrl,
-    apiHeaders,
-    setApiHeaders,
-    apiBody,
-    setApiBody,
-    activeTab,
-    setActiveTab,
-    resetApiConfig,
-    setIsEditorPanelOpen,
-    isAIPaletteOpen,
-    setIsAIPaletteOpen,
-  } = useStore();
+  const code = useStore((state) => state.code);
+  const setCode = useStore((state) => state.setCode);
+  const clearCode = useStore((state) => state.clearCode);
+  const error = useStore((state) => state.error);
+  const parsedData = useStore((state) => state.parsedData);
+  const appTheme = useStore((state) => state.appTheme);
+  const codeFormat = useStore((state) => state.codeFormat);
+  const apiMethod = useStore((state) => state.apiMethod);
+  const setApiMethod = useStore((state) => state.setApiMethod);
+  const apiUrl = useStore((state) => state.apiUrl);
+  const setApiUrl = useStore((state) => state.setApiUrl);
+  const apiHeaders = useStore((state) => state.apiHeaders);
+  const setApiHeaders = useStore((state) => state.setApiHeaders);
+  const apiBody = useStore((state) => state.apiBody);
+  const setApiBody = useStore((state) => state.setApiBody);
+  const activeTab = useStore((state) => state.activeTab);
+  const setActiveTab = useStore((state) => state.setActiveTab);
+  const resetApiConfig = useStore((state) => state.resetApiConfig);
+  const setIsEditorPanelOpen = useStore((state) => state.setIsEditorPanelOpen);
+  const isAIPaletteOpen = useStore((state) => state.isAIPaletteOpen);
+  const setIsAIPaletteOpen = useStore((state) => state.setIsAIPaletteOpen);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const showMoreWidgetsRef = useRef<any[]>([]);
