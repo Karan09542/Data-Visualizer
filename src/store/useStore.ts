@@ -328,6 +328,8 @@ export interface StoreState {
     overrides: Record<string, { x: number; y: number } | null>,
   ) => void;
   clearDragOverrides: () => void;
+  activeNodes: string[];
+  bringNodeToFront: (id: string) => void;
   autoOrganizeTrigger: number;
   triggerAutoOrganize: () => void;
 
@@ -573,6 +575,7 @@ export const useStore = create<StoreState>()(
 
         explorerSearchQuery: "",
         dragOverrides: {},
+        activeNodes: [],
         undoStack: [],
         redoStack: [],
         inlineApiEditor: null,
@@ -1208,6 +1211,17 @@ export const useStore = create<StoreState>()(
         clearDragOverrides: () => {
           set({ dragOverrides: {} });
           import('./dexieSync').then(m => m.clearPositionsInDexie());
+        },
+        bringNodeToFront: (id: string) => {
+          set((state) => {
+            const newActiveNodes = state.activeNodes.filter((nodeId) => nodeId !== id);
+            newActiveNodes.push(id);
+            // keep max 50 items to avoid memory leak
+            if (newActiveNodes.length > 50) {
+              newActiveNodes.shift();
+            }
+            return { activeNodes: newActiveNodes };
+          });
         },
         autoOrganizeTrigger: 0,
         triggerAutoOrganize: () => set(state => ({ autoOrganizeTrigger: state.autoOrganizeTrigger + 1 })),

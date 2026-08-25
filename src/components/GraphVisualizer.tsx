@@ -45,6 +45,7 @@ export default function GraphVisualizer() {
   const isolatedNodeId = useStore((s) => s.isolatedNodeId);
   const setIsolatedNodeId = useStore((s) => s.setIsolatedNodeId);
   const dragOverrides = useStore((s) => s.dragOverrides);
+  const activeNodes = useStore((s) => s.activeNodes);
   const nodeShape = useStore((s) => s.nodeShape);
   const nodeSpread = useStore((s) => s.nodeSpread);
   const nodeSize = useStore((s) => s.nodeSize);
@@ -1279,86 +1280,91 @@ export default function GraphVisualizer() {
             />
           )}
 
-          <g className="edges-layer" style={{ zIndex: 0 }}>
-            {links
-              .filter((link) => {
-                if (!link || !link.source?.data?.id || !link.target?.data?.id) return false;
-                return !selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
-              })
-              .map((link) => {
-                const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
-                const isSelectedEdge = false;
-                const isDimmedPath = !!searchQuery && !isMatchPath;
-
-                const d = getEdgePath(link.source as any, link.target as any, edgeStyle, layoutMode);
-                return (
-                  <EdgeRenderer
-                    key={`link-${link.source.data.id}-${link.target.data.id}`}
-                    d={d}
-                    style={edgeStyle}
-                    nodeTheme={nodeTheme}
-                    isHighlighted={isMatchPath}
-                    isDimmed={isDimmedPath}
-                    isSelected={isSelectedEdge}
-                    source={link.source as any}
-                    target={link.target as any}
-                    layoutMode={layoutMode}
-                    targetData={link.target.data}
-                  />
-                );
-              })}
-          </g>
-
-          <g className="selected-edges-layer" style={{ zIndex: 15 }}>
-            {links
-              .filter((link) => {
-                if (!link || !link.source?.data?.id || !link.target?.data?.id) return false;
-                return selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
-              })
-              .map((link) => {
-                const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
-                const isSelectedEdge = true;
-                const isDimmedPath = !!searchQuery && !isMatchPath;
-
-                const d = getEdgePath(link.source as any, link.target as any, edgeStyle, layoutMode);
-                return (
-                  <EdgeRenderer
-                    key={`link-selected-${link.source.data.id}-${link.target.data.id}`}
-                    d={d}
-                    style={edgeStyle}
-                    nodeTheme={nodeTheme}
-                    isHighlighted={isMatchPath}
-                    isDimmed={isDimmedPath}
-                    isSelected={isSelectedEdge}
-                    source={link.source as any}
-                    target={link.target as any}
-                    layoutMode={layoutMode}
-                    targetData={link.target.data}
-                  />
-                );
-              })}
-          </g>
-
           <g className="nodes-layer" style={{ zIndex: 20 }}>
-            {nodes.map((node) => {
-              const isSelectedPath = selectedPathNodes.has(node.data.id);
-              const isSelected = selectedNodeId === node.data.id;
-              return (
-                <NodeRenderer
-                  key={`node-${node.data.id}`}
-                  node={node}
-                  layoutMode={layoutMode}
-                  isSelectedPath={isSelectedPath}
-                  isSelected={isSelected}
-                  isIsolatedMode={isolatedNodeId !== null}
-                  onContextMenu={(e, treeNode) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
-                  }}
-                />
-              );
-            })}
+            {(() => {
+              const elements: any[] = [];
+              const nodeMaxEdgeZ = new Map<string, number>();
+              
+              links.forEach((link) => {
+                if (!link || !link.source?.data?.id || !link.target?.data?.id) return;
+                const isSelectedPath = selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
+                const sourceActive = activeNodes.indexOf(link.source.data.id);
+                const targetActive = activeNodes.indexOf(link.target.data.id);
+                const maxActive = Math.max(sourceActive, targetActive);
+                
+                let z = 0;
+                if (maxActive !== -1) z = 10000 + maxActive * 10 - 2;
+                else if (isSelectedPath) z = 1000 - 2;
+                else z = -2;
+
+                const currentSourceZ = nodeMaxEdgeZ.get(link.source.data.id) ?? -Infinity;
+                if (z > currentSourceZ) nodeMaxEdgeZ.set(link.source.data.id, z);
+
+                const currentTargetZ = nodeMaxEdgeZ.get(link.target.data.id) ?? -Infinity;
+                if (z > currentTargetZ) nodeMaxEdgeZ.set(link.target.data.id, z);
+
+                elements.push({ type: 'link', data: link, isSelectedPath, z });
+              });
+
+              nodes.forEach((node) => {
+                const isSelectedPath = selectedPathNodes.has(node.data.id);
+                const activeIndex = activeNodes.indexOf(node.data.id);
+                
+                let intrinsicZ = 0;
+                if (activeIndex !== -1) intrinsicZ = 10000 + activeIndex * 10;
+                else if (isSelectedPath) intrinsicZ = 1000;
+                else intrinsicZ = 0;
+
+                const maxEdgeZ = nodeMaxEdgeZ.get(node.data.id) ?? -Infinity;
+                const finalZ = Math.max(intrinsicZ, maxEdgeZ + 1);
+
+                elements.push({ type: 'node', data: node, isSelectedPath, z: finalZ });
+              });
+
+              elements.sort((a, b) => a.z - b.z);
+
+              return elements.map((el) => {
+                if (el.type === 'link') {
+                  const link = el.data;
+                  const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
+                  const isDimmedPath = !!searchQuery && !isMatchPath;
+                  const d = getEdgePath(link.source as any, link.target as any, edgeStyle, layoutMode);
+                  return (
+                    <EdgeRenderer
+                      key={`link-${link.source.data.id}-${link.target.data.id}`}
+                      d={d}
+                      style={edgeStyle}
+                      nodeTheme={nodeTheme}
+                      isHighlighted={isMatchPath}
+                      isDimmed={isDimmedPath}
+                      isSelected={el.isSelectedPath}
+                      source={link.source as any}
+                      target={link.target as any}
+                      layoutMode={layoutMode}
+                      targetData={link.target.data}
+                    />
+                  );
+                } else {
+                  const node = el.data;
+                  const isSelected = selectedNodeId === node.data.id;
+                  return (
+                    <NodeRenderer
+                      key={`node-${node.data.id}`}
+                      node={node}
+                      layoutMode={layoutMode}
+                      isSelectedPath={el.isSelectedPath}
+                      isSelected={isSelected}
+                      isIsolatedMode={isolatedNodeId !== null}
+                      onContextMenu={(e, treeNode) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextMenu({ x: e.clientX, y: e.clientY, node: treeNode });
+                      }}
+                    />
+                  );
+                }
+              });
+            })()}
           </g>
           <g className="annotations-layer">
             <AnnotationRenderer />

@@ -204,7 +204,7 @@ function NodeRenderer({
       })
       .on("start", function (event) {
         event.sourceEvent?.stopPropagation();
-        d3.select(this).raise();
+        useStore.getState().bringNodeToFront(nodeRef.current.data.id);
         setIsDraggingLocally(true);
 
         const store = useStore.getState();
@@ -272,6 +272,9 @@ function NodeRenderer({
   }, []);
 
   const [smartMediaFailed, setSmartMediaFailed] = React.useState(false);
+  const handleSmartMediaFailed = React.useCallback(() => {
+    setSmartMediaFailed(true);
+  }, []);
   const [isExpanded, setIsExpanded] = React.useState(globalTextExpanded);
 
   // Synchronize local state with global master toggle
@@ -2150,7 +2153,7 @@ function NodeRenderer({
                     <SmartMediaRenderer
                       key={mediaSrc}
                       url={mediaSrc}
-                      onMediaFailed={() => setSmartMediaFailed(true)}
+                      onMediaFailed={handleSmartMediaFailed}
                     />
                   )}
                 </div>
