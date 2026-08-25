@@ -400,7 +400,7 @@ const MediaPreviewPopup: React.FC = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[20000] flex flex-col bg-slate-100/90 dark:bg-slate-950 text-slate-900 dark:text-slate-100 backdrop-blur-xl"
+          className="fixed inset-0 z-[20000] flex flex-col bg-slate-100/95 dark:bg-[#07090e] text-slate-900 dark:text-slate-100 backdrop-blur-xl"
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
@@ -441,7 +441,7 @@ const MediaPreviewPopup: React.FC = () => {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="z-50 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 shadow-sm overflow-hidden"
+                className="z-50 shrink-0 border-b border-slate-200 dark:border-slate-800/80 bg-white/95 dark:bg-[#0b0f17]/95 shadow-sm overflow-hidden"
               >
                 <div className="flex min-h-[48px] sm:min-h-[56px] items-center justify-between gap-2.5 px-3 py-1.5 sm:px-5 sm:py-2">
                   <div className="flex min-w-0 items-center gap-2.5">
@@ -534,7 +534,7 @@ const MediaPreviewPopup: React.FC = () => {
             )}
           </AnimatePresence>
 
-          <motion.div className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'p-0 sm:p-0 bg-slate-100 dark:bg-slate-950' : 'bg-slate-100/60 dark:bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.42),transparent_46%)] px-3 py-4 sm:px-6 sm:py-6'}`}>
+          <motion.div className={`relative flex min-h-0 flex-1 items-center justify-center overflow-hidden transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'p-0 sm:p-0 bg-slate-100 dark:bg-[#07090e]' : 'bg-slate-100/80 dark:bg-[#07090e] px-3 py-4 sm:px-6 sm:py-6'}`}>
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -542,7 +542,7 @@ const MediaPreviewPopup: React.FC = () => {
               className={`flex h-full w-full items-center justify-center transition-all duration-300 ${isUIHidden || activePreviewMedia.type === 'pdf' ? 'max-w-full' : isDocumentPreview ? 'max-w-[min(1480px,100%)]' : 'max-w-[min(1280px,100%)]'}`}
             >
               <div
-                className={`h-full w-full overflow-hidden transition-all duration-300 ${isAudioPreview ? 'bg-transparent' : isUIHidden || activePreviewMedia.type === 'pdf' ? 'bg-slate-100 dark:bg-slate-950 border-0 rounded-none shadow-none' : 'rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-950/80 shadow-2xl shadow-slate-200/50 dark:shadow-black/30'}`}
+                className={`h-full w-full overflow-hidden transition-all duration-300 ${isAudioPreview ? 'bg-transparent' : isUIHidden || activePreviewMedia.type === 'pdf' ? 'bg-slate-100 dark:bg-[#07090e] border-0 rounded-none shadow-none' : 'rounded-2xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#0c1017] shadow-2xl shadow-slate-200/50 dark:shadow-black/60'}`}
               >
                 {isResolvingAsset ? (
                   <div className="flex h-full w-full items-center justify-center gap-3 text-sm text-slate-400">

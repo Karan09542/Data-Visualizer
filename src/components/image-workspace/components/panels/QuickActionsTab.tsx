@@ -3,6 +3,7 @@ import {
    Activity, Sparkles, Eye, Palette, Settings2, ImageIcon, FileText, Instagram, ShoppingBag, ArrowRight
 } from 'lucide-react';
 import { PRESET_REGISTRY } from '../../../../lib/imagePresets';
+import { ColorPickerTrigger } from '../shared/ColorPickers';
 
 interface QuickActionsTabProps {
    selectionType: string | null;
@@ -13,6 +14,8 @@ interface QuickActionsTabProps {
    applyFrame: (type: string) => void;
    frameBorderWidth: number;
    updateFrameBorderWidth: (w: number) => void;
+   frameColor: string;
+   updateFrameColor: (color: string) => void;
    createArtboardFromPreset: (id: string) => void;
 }
 
@@ -27,6 +30,8 @@ export const QuickActionsTab: React.FC<QuickActionsTabProps> = ({
    applyFrame,
    frameBorderWidth,
    updateFrameBorderWidth,
+   frameColor,
+   updateFrameColor,
    createArtboardFromPreset
 }) => {
    const [formatCategory, setFormatCategory] = useState<'all' | 'document' | 'social' | 'ecommerce'>('all');
@@ -195,7 +200,15 @@ export const QuickActionsTab: React.FC<QuickActionsTabProps> = ({
          </div>
 
          {selectionType === 'frameGroup' && (
-            <div className="space-y-2 mt-3 p-3 bg-white dark:bg-[#161616] rounded-xl border border-slate-200 dark:border-[#2C2C2C]">
+            <div className="space-y-3 mt-3 p-3 bg-white dark:bg-[#161616] rounded-xl border border-slate-200 dark:border-[#2C2C2C]">
+               <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0] font-semibold">
+                  <span>Frame Color</span>
+                  <ColorPickerTrigger
+                     color={frameColor}
+                     onChange={updateFrameColor}
+                     label="Frame Color"
+                  />
+               </div>
                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-[#A0A0A0] font-semibold">
                   <span>Border Width</span>
                   <span className="bg-slate-100 dark:bg-[#1C1C1C] px-1.5 py-0.5 rounded border border-slate-200 dark:border-[#3A3A3A] text-[10px] text-slate-900 dark:text-white font-mono">{frameBorderWidth}px</span>

@@ -182,7 +182,7 @@ export function InteractiveZoomImage({ src, alt, className = "", rotation = 0 }:
   return (
     <div 
       ref={containerRef}
-      className={`relative w-full h-full overflow-hidden select-none bg-slate-100 dark:bg-black/20 rounded-2xl flex items-center justify-center
+      className={`relative w-full h-full overflow-hidden select-none bg-slate-100 dark:bg-transparent rounded-2xl flex items-center justify-center
         ${scale > 1 ? (isDragging ? "cursor-grabbing" : "cursor-grab") : "cursor-zoom-in"}
       `}
       onMouseDown={handleMouseDown}

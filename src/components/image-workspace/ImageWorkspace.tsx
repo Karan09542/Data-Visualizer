@@ -13,6 +13,15 @@ import { SelectionProvider } from './contexts/SelectionContext';
 import { AIProvider } from './contexts/AIContext';
 import { AIProgressModal } from './components/shared/AIProgressModal';
 
+const hexToRgbaString = (hex: string, alpha = 1): string => {
+   let c = hex.replace('#', '');
+   if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+   const r = parseInt(c.substring(0, 2), 16) || 0;
+   const g = parseInt(c.substring(2, 4), 16) || 0;
+   const b = parseInt(c.substring(4, 6), 16) || 0;
+   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 const ExportLiveComparisonViewer = React.lazy(() => import('../export/ExportLiveComparisonViewer').then(m => ({ default: m.ExportLiveComparisonViewer })));
 const PropertiesTab = React.lazy(() => import('./components/panels/PropertiesTab').then(m => ({ default: m.PropertiesTab })));
 const ArtboardsTab = React.lazy(() => import('./components/panels/ArtboardsTab').then(m => ({ default: m.ArtboardsTab })));
@@ -1454,6 +1463,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       flipY: false,
    });
    const [frameBorderWidth, setFrameBorderWidth] = useState(20);
+   const [frameColor, setFrameColor] = useState('rgba(255, 255, 255, 1)');
 
    const textStartValueRef = useRef<string>("");
 
@@ -1666,13 +1676,17 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                const rectObj = items.find((i: any) => i.type === 'rect');
                if (rectObj) {
                   if (frameType === 'polaroid') {
-                     const contentObj = items.find((i: any) => i.type === 'image');
-                     if (contentObj) {
-                        setFrameBorderWidth(Math.round(rectObj.top - contentObj.getCenterPoint().y));
-                     }
-                  } else {
-                     setFrameBorderWidth(Math.round(rectObj.strokeWidth || 20));
-                  }
+                      const contentObj = items.find((i: any) => i.type === 'image');
+                      if (contentObj) {
+                         setFrameBorderWidth(Math.round(rectObj.top - contentObj.getCenterPoint().y));
+                      }
+                      const rawFill = (rectObj.fill as string) || '#F9F9F9';
+                      setFrameColor(rawFill.startsWith('#') ? hexToRgbaString(rawFill) : rawFill);
+                   } else {
+                      setFrameBorderWidth(Math.round(rectObj.strokeWidth || 20));
+                      const rawStroke = (rectObj.stroke as string) || '#FFFFFF';
+                      setFrameColor(rawStroke.startsWith('#') ? hexToRgbaString(rawStroke) : rawStroke);
+                   }
                }
 
                imgObj = items.find((i: any) => i.type === 'image') || imgObj;
@@ -5034,6 +5048,32 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
    };
 
+   const updateFrameColor = (color: string) => {
+      setFrameColor(color);
+      if (!fabricRef.current) return;
+      const canvas = fabricRef.current;
+      const activeObj = canvas.getActiveObject();
+
+      if (activeObj && activeObj.get('isFrameGroup')) {
+         const frameType = activeObj.get('frameType');
+         const group = activeObj as fabric.Group;
+         const items = group.getObjects();
+         const rectObj = items.find((i: any) => i.type === 'rect');
+
+         if (rectObj) {
+            if (frameType === 'polaroid') {
+               rectObj.set('fill', color);
+            } else {
+               rectObj.set('stroke', color);
+            }
+
+            (group as any).setDirty?.();
+            group.fire('modified');
+            canvas.requestRenderAll();
+         }
+      }
+   };
+
    const updateFrameBorderWidth = (width: number) => {
       setFrameBorderWidth(width);
       if (!fabricRef.current) return;
@@ -6528,6 +6568,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                          applyFrame={applyFrame}
                                                          frameBorderWidth={frameBorderWidth}
                                                          updateFrameBorderWidth={updateFrameBorderWidth}
+                                                         frameColor={frameColor}
+                                                         updateFrameColor={updateFrameColor}
                                                          createArtboardFromPreset={createArtboardFromPreset}
                                                       />
                                                    )}

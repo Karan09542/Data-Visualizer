@@ -1,13 +1,67 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { RgbaStringColorPicker } from "react-colorful";
 import { Pipette } from "lucide-react";
+
+/**
+ * Normalizes any CSS color (hex, rgb, rgba, named) to an rgba() string
+ * so that RgbaStringColorPicker always gets a format it can parse.
+ */
+const normalizeToRgba = (color: string): string => {
+   if (!color || typeof color !== 'string') return 'rgba(0, 0, 0, 1)';
+
+   const trimmed = color.trim();
+
+   // Already rgba
+   if (trimmed.toLowerCase().startsWith('rgba(')) return trimmed;
+
+   // rgb() → rgba()
+   if (trimmed.toLowerCase().startsWith('rgb(')) {
+      const match = trimmed.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+      if (match) return `rgba(${match[1]}, ${match[2]}, ${match[3]}, 1)`;
+   }
+
+   // Hex (#RGB, #RRGGBB, #RRGGBBAA)
+   if (trimmed.startsWith('#')) {
+      let c = trimmed.slice(1);
+      let alpha = 1;
+      if (c.length === 3) {
+         c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+      } else if (c.length === 4) {
+         alpha = parseInt(c[3] + c[3], 16) / 255;
+         c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+      } else if (c.length === 8) {
+         alpha = parseInt(c.substring(6, 8), 16) / 255;
+         c = c.substring(0, 6);
+      }
+      const r = parseInt(c.substring(0, 2), 16) || 0;
+      const g = parseInt(c.substring(2, 4), 16) || 0;
+      const b = parseInt(c.substring(4, 6), 16) || 0;
+      return `rgba(${r}, ${g}, ${b}, ${parseFloat(alpha.toFixed(2))})`;
+   }
+
+   // Named CSS colors — use a temporary canvas context to resolve
+   try {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (ctx) {
+         ctx.fillStyle = trimmed;
+         const resolved = ctx.fillStyle; // browser normalizes to hex or rgb
+         if (resolved.startsWith('#')) return normalizeToRgba(resolved);
+         if (resolved.startsWith('rgb')) return normalizeToRgba(resolved);
+      }
+   } catch { /* fall through */ }
+
+   return trimmed;
+};
 
 export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) => {
    const popoverRef = useRef<HTMLDivElement>(null);
    const [coords, setCoords] = useState({ top: 0, left: 0 });
    const [isPositioned, setIsPositioned] = useState(false);
    const [isEyeDropperSupported, setIsEyeDropperSupported] = useState(false);
+
+   // Normalize incoming color to rgba so RgbaStringColorPicker can parse it
+   const normalizedColor = useMemo(() => normalizeToRgba(color), [color]);
 
    useEffect(() => {
       setIsEyeDropperSupported('EyeDropper' in window);
@@ -117,9 +171,9 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
             visibility: isPositioned ? 'visible' : 'hidden'
          }}
       >
-         <RgbaStringColorPicker color={color} onChange={onChange} />
+         <RgbaStringColorPicker color={normalizedColor} onChange={onChange} />
          <div className="flex items-center gap-2 mt-0.5">
-            <div className="w-7 h-7 rounded-md shadow-inner border border-white/10 shrink-0" style={{ backgroundColor: color }}></div>
+            <div className="w-7 h-7 rounded-md shadow-inner border border-white/10 shrink-0" style={{ backgroundColor: normalizedColor }}></div>
             <div className="flex-1 relative">
                <input 
                   type="text" 
