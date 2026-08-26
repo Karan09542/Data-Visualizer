@@ -17,16 +17,16 @@ const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").the
 
 const TABS = [
   { id: "passport", label: "Passport Studio", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },
-  { id: "img2pdf", label: "Image to PDF", icon: FileImage, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "" },
+  { id: "img2pdf", label: "Image to PDF", icon: FileImage, activeClass: "bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 shadow-sm border border-sky-200/50 dark:border-sky-800/30", iconClass: "text-sky-500" },
   { id: "imgslicer", label: "Image Slicer", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
   { id: "wavedisp", label: "Wave Studio", icon: Waves, activeClass: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 shadow-sm border border-cyan-200/50 dark:border-cyan-800/30 font-bold", iconClass: "text-cyan-500" },
-  { id: "folder2zip", label: "Folder to ZIP", icon: FolderArchive, activeClass: "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 shadow-sm border border-purple-200/50 dark:border-purple-800/30", iconClass: "" },
-  { id: "colorthief", label: "Color Thief", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "" },
-  { id: "base64", label: "Base64", icon: Binary, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "" },
-  { id: "hash", label: "Hash Generator", icon: Hash, activeClass: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 shadow-sm border border-red-200/50 dark:border-red-800/30", iconClass: "" },
-  { id: "color", label: "Color Converter", icon: Palette, activeClass: "bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 shadow-sm border border-pink-200/50 dark:border-pink-800/30", iconClass: "" },
-  { id: "csv2json", label: "CSV to JSON", icon: FileSpreadsheet, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "" },
-  { id: "jwt", label: "JWT Decoder", icon: Key, activeClass: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200/50 dark:border-amber-800/30", iconClass: "" },
+  { id: "folder2zip", label: "Folder to ZIP", icon: FolderArchive, activeClass: "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 shadow-sm border border-purple-200/50 dark:border-purple-800/30", iconClass: "text-purple-500" },
+  { id: "colorthief", label: "Color Thief", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "text-fuchsia-500" },
+  { id: "base64", label: "Base64", icon: Binary, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "text-emerald-500" },
+  { id: "hash", label: "Hash Generator", icon: Hash, activeClass: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 shadow-sm border border-red-200/50 dark:border-red-800/30", iconClass: "text-red-500" },
+  { id: "color", label: "Color Converter", icon: Palette, activeClass: "bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 shadow-sm border border-pink-200/50 dark:border-pink-800/30", iconClass: "text-pink-500" },
+  { id: "csv2json", label: "CSV to JSON", icon: FileSpreadsheet, activeClass: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-800/30", iconClass: "text-indigo-500" },
+  { id: "jwt", label: "JWT Decoder", icon: Key, activeClass: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200/50 dark:border-amber-800/30", iconClass: "text-amber-500" },
 ] as const;
 
 interface QuickUtilsModalProps {

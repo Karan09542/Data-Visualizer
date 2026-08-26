@@ -122,7 +122,6 @@ export default function CustomSelect({
             }`
           }
           ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
-          ${className || ""}
         `}
       >
         <div className="flex items-center gap-1.5 truncate">

@@ -1,13 +1,17 @@
 import React, { useState, useRef } from "react";
-import { FileImage, Download, Trash2, GripVertical, AlertCircle } from "lucide-react";
+import { FileImage, Download, Trash2, GripVertical, AlertCircle, Eye } from "lucide-react";
 import { PDFDocument, PageSizes } from "pdf-lib";
 import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
+  DragOverlay,
+  DragStartEvent,
+  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -17,6 +21,8 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import MediaCarousel from "../MediaCarousel";
+import { InteractiveZoomImage } from "../InteractiveZoomImage";
 
 interface ImageItem {
   id: string;
@@ -24,12 +30,99 @@ interface ImageItem {
   previewUrl: string;
 }
 
+interface ImageItemCardProps {
+  item: ImageItem;
+  onRemove?: (id: string) => void;
+  onPreview?: () => void;
+  dragHandleProps?: any;
+  isDragging?: boolean;
+  isOverlay?: boolean;
+}
+
+const ImageItemCard: React.FC<ImageItemCardProps> = ({
+  item,
+  onRemove,
+  onPreview,
+  dragHandleProps,
+  isDragging,
+  isOverlay,
+}) => {
+  return (
+    <div
+      className={`flex items-center justify-between p-3 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-xl transition-all ${
+        isOverlay
+          ? "shadow-2xl ring-2 ring-blue-500 scale-[1.02] cursor-grabbing z-50"
+          : isDragging
+          ? "opacity-30 border-dashed border-blue-400 dark:border-blue-500"
+          : "shadow-sm hover:border-slate-300 dark:hover:border-slate-700"
+      }`}
+    >
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div
+          {...dragHandleProps}
+          style={{ touchAction: "none" }}
+          className="p-2 -ml-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-lg cursor-grab active:cursor-grabbing touch-none select-none transition-colors shrink-0"
+          title="Drag to reorder"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical size={18} />
+        </div>
+        
+        <button
+          type="button"
+          onClick={onPreview}
+          className="relative group/thumb w-12 h-12 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 shrink-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          title="Click to view image preview"
+        >
+          <img
+            src={item.previewUrl}
+            alt={item.file.name}
+            className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform duration-200 select-none"
+            draggable={false}
+          />
+          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center text-white pointer-events-none">
+            <Eye size={16} />
+          </div>
+        </button>
+
+        <div 
+          className="flex flex-col min-w-0 flex-1 cursor-pointer group/info"
+          onClick={onPreview}
+        >
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate group-hover/info:text-blue-600 dark:group-hover/info:text-blue-400 transition-colors" title={item.file.name}>
+            {item.file.name}
+          </span>
+          <span className="text-xs text-slate-400">
+            {(item.file.size / 1024 / 1024).toFixed(2)} MB
+          </span>
+        </div>
+      </div>
+      
+      {onRemove && !isOverlay && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(item.id);
+          }}
+          className="p-2 ml-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
+          title="Remove image"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+    </div>
+  );
+};
+
 const SortableImageItem = ({
   item,
   onRemove,
+  onPreview,
 }: {
   item: ImageItem;
   onRemove: (id: string) => void;
+  onPreview: () => void;
 }) => {
   const {
     attributes,
@@ -40,48 +133,21 @@ const SortableImageItem = ({
     isDragging,
   } = useSortable({ id: item.id });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 1,
+    transition: isDragging ? undefined : transition,
+    zIndex: isDragging ? 50 : 1,
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center justify-between p-3 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm ${
-        isDragging ? "opacity-50 ring-2 ring-blue-500" : ""
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          {...attributes}
-          {...listeners}
-          className="cursor-grab hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded"
-        >
-          <GripVertical size={16} className="text-slate-400" />
-        </div>
-        <img
-          src={item.previewUrl}
-          alt={item.file.name}
-          className="w-12 h-12 object-cover rounded bg-slate-100 dark:bg-slate-800"
-        />
-        <div className="flex flex-col min-w-0">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]">
-            {item.file.name}
-          </span>
-          <span className="text-xs text-slate-400">
-            {(item.file.size / 1024 / 1024).toFixed(2)} MB
-          </span>
-        </div>
-      </div>
-      <button
-        onClick={() => onRemove(item.id)}
-        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-      >
-        <Trash2 size={16} />
-      </button>
+    <div ref={setNodeRef} style={style}>
+      <ImageItemCard
+        item={item}
+        onRemove={onRemove}
+        onPreview={onPreview}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        isDragging={isDragging}
+      />
     </div>
   );
 };
@@ -91,10 +157,22 @@ export const ImageToPdfConverter = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [pdfName, setPdfName] = useState("converted-images");
   const [error, setError] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 100,
+        tolerance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -113,7 +191,11 @@ export const ImageToPdfConverter = () => {
     }
   };
 
-  const handleDragEnd = (event: any) => {
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (active && over && active.id !== over.id) {
       setImages((items) => {
@@ -122,6 +204,7 @@ export const ImageToPdfConverter = () => {
         return arrayMove(items, oldIndex, newIndex);
       });
     }
+    setActiveId(null);
   };
 
   const removeImage = (id: string) => {
@@ -260,7 +343,11 @@ export const ImageToPdfConverter = () => {
               {images.length} Image{images.length !== 1 ? "s" : ""} selected
             </h3>
             <button
-              onClick={() => setImages([])}
+              onClick={() => {
+                images.forEach((img) => URL.revokeObjectURL(img.previewUrl));
+                setImages([]);
+                setCarouselIndex(null);
+              }}
               className="text-xs text-red-500 hover:text-red-600 font-medium"
             >
               Clear All
@@ -270,22 +357,33 @@ export const ImageToPdfConverter = () => {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveId(null)}
           >
             <SortableContext
               items={images.map((i) => i.id)}
               strategy={verticalListSortingStrategy}
             >
               <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin">
-                {images.map((item) => (
+                {images.map((item, index) => (
                   <SortableImageItem
                     key={item.id}
                     item={item}
                     onRemove={removeImage}
+                    onPreview={() => setCarouselIndex(index)}
                   />
                 ))}
               </div>
             </SortableContext>
+            <DragOverlay dropAnimation={{ duration: 150, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
+              {activeId ? (
+                <ImageItemCard
+                  item={images.find((i) => i.id === activeId)!}
+                  isOverlay
+                />
+              ) : null}
+            </DragOverlay>
           </DndContext>
 
           <div className="mt-2">
@@ -320,6 +418,66 @@ export const ImageToPdfConverter = () => {
         </div>
       )}
       </div>
+      
+      <MediaCarousel
+        isOpen={carouselIndex !== null}
+        onClose={() => setCarouselIndex(null)}
+        items={images}
+        selectedIndex={carouselIndex ?? 0}
+        onIndexChange={setCarouselIndex}
+        keepMounted={false}
+        renderHeaderMiddle={(item, index, total) => (
+          <>
+            <p className="text-sm sm:text-base font-bold mb-0.5 truncate w-full px-4 text-center">
+              {item.file.name}
+            </p>
+            <div className="flex items-center justify-center gap-2 opacity-80 text-[10px] sm:text-xs font-medium uppercase tracking-wider">
+              <span>{(item.file.size / 1024 / 1024).toFixed(2)} MB</span>
+              <span className="w-1 h-1 rounded-full bg-white/50 shrink-0" />
+              <span>
+                {index + 1} / {total}
+              </span>
+            </div>
+          </>
+        )}
+        renderHeaderRight={(item, index) => (
+          <div className="flex items-center gap-2">
+            <a
+              href={item.previewUrl}
+              download={item.file.name}
+              onClick={(e) => e.stopPropagation()}
+              className="p-2 sm:p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md flex items-center justify-center"
+              title="Download Image"
+            >
+              <Download className="w-4 h-4" />
+            </a>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                removeImage(item.id);
+                if (images.length <= 1) {
+                  setCarouselIndex(null);
+                } else if (index >= images.length - 1) {
+                  setCarouselIndex(images.length - 2);
+                }
+              }}
+              className="p-2 sm:p-3 bg-red-600/80 hover:bg-red-600 text-white rounded-full transition-all backdrop-blur-md flex items-center justify-center"
+              title="Remove from PDF list"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        renderItem={(item) => (
+          <div className="w-full h-full flex items-center justify-center p-2 sm:p-6 pointer-events-auto">
+            <InteractiveZoomImage
+              src={item.previewUrl}
+              alt={item.file.name}
+              className="rounded-xl shadow-2xl bg-slate-900/50"
+            />
+          </div>
+        )}
+      />
     </div>
   );
 };
