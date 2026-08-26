@@ -5,7 +5,7 @@ import {
   Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
   ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft,
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
-  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2
+  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2, MoreVertical, Tag
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import { Highlight, themes } from 'prism-react-renderer';
 import mermaid from 'mermaid';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
@@ -32,14 +33,26 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
     mermaid.initialize({
       startOnLoad: false,
       theme: isDark ? 'dark' : 'default',
-      fontFamily: 'Inter, system-ui, Avenir, Helvetica, Arial, sans-serif'
+      fontFamily: 'Inter, system-ui, Avenir, Helvetica, Arial, sans-serif',
+      suppressErrorRendering: true
     });
+
+    // Mermaid might leave orphaned elements in the DOM on error
+    const cleanupErrorNodes = () => {
+      const el1 = document.getElementById(id);
+      const el2 = document.getElementById(`d${id}`);
+      if (el1) el1.remove();
+      if (el2) el2.remove();
+    };
+
     mermaid.render(id, code).then((result) => {
       setSvg(result.svg);
       setHasError(false);
+      cleanupErrorNodes();
     }).catch(e => {
       console.error('Mermaid render error:', e);
       setHasError(true);
+      cleanupErrorNodes();
     });
   }, [code, id]);
 
@@ -739,6 +752,12 @@ const TextPreviewPopup: React.FC = () => {
     h4: (props: any) => <HeadingRenderer level={4} onHeadingClick={handleHeadingClick} {...props} />,
     h5: (props: any) => <HeadingRenderer level={5} onHeadingClick={handleHeadingClick} {...props} />,
     h6: (props: any) => <HeadingRenderer level={6} onHeadingClick={handleHeadingClick} {...props} />,
+    kbd: (props: any) => (
+      <kbd
+        className="!inline-flex !items-center !justify-center !bg-indigo-500/10 !text-indigo-400 !px-2.5 !py-0.5 !mx-1 !rounded-full !text-[10px] !tracking-widest !font-sans !font-bold !border !border-indigo-500/30 !shadow-none !whitespace-nowrap uppercase !leading-none align-baseline transform -translate-y-[1px]"
+        {...props}
+      />
+    ),
     a: ({ node, href, children, ...props }: any) => {
       if (href && href.startsWith('#')) {
         const targetId = href.substring(1);
@@ -1107,42 +1126,32 @@ const TextPreviewPopup: React.FC = () => {
                   transition={{ duration: 0.2 }}
                   className="shrink-0 relative z-10 overflow-hidden bg-slate-900 border-b border-slate-800"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pl-4 pr-3 sm:pr-2 py-3 sm:py-2.5">
-                    <div className="flex items-center gap-3 min-w-0 w-full sm:flex-1">
-                      <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-md shrink-0">
-                        <Type size={16} />
+                  <div className="flex flex-row items-center justify-between gap-2 pl-3 pr-2 py-2 w-full">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="p-1.5 sm:p-2 bg-indigo-500/10 text-indigo-400 rounded-lg shrink-0">
+                        <Type size={18} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold text-white tracking-tight truncate">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <h3 className="text-xs sm:text-sm font-semibold text-white tracking-tight truncate">
                             {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown' : (viewMode === 'html' ? 'HTML' : 'Raw View'))}
                           </h3>
-                          <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700 font-mono uppercase shrink-0">
+                          <span className="text-[8px] sm:text-[9px] bg-slate-800 text-slate-400 px-1 py-0.5 rounded border border-slate-700 font-mono uppercase shrink-0">
                             {activePreviewPath?.split('.').pop()}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-500 font-mono truncate max-w-[150px] sm:max-w-xs" title={activePreviewPath || ''}>
+                        <p className="text-[9px] sm:text-[10px] text-slate-500 font-mono truncate max-w-[120px] sm:max-w-xs" title={activePreviewPath || ''}>
                           {activePreviewPath}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
-                      {/* Mobile Outline Toggle */}
-                      {viewMode === 'markdown' && headings.length > 0 && (
-                        <button
-                          onClick={() => setShowOutline(!showOutline)}
-                          className="sm:hidden p-1.5 rounded-md transition-all text-slate-400 hover:text-white"
-                        >
-                          <Menu size={18} />
-                        </button>
-                      )}
-
-                      {/* Mode Toggles */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Desktop Appearance Settings */}
                       {viewMode === 'markdown' && (
                         <button
                           onClick={() => setShowSettings(!showSettings)}
-                          className="p-1.5 rounded-md transition-all text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800"
+                          className="hidden sm:block p-1.5 rounded-md transition-all text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800"
                           title="Appearance Settings"
                         >
                           <Settings size={18} />
@@ -1184,11 +1193,32 @@ const TextPreviewPopup: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={handleCopy}
-                          className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors border border-slate-700 flex items-center gap-2"
+                          className="hidden sm:flex p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors border border-slate-700 items-center gap-2"
                         >
                           {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                           <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
                         </button>
+
+                        {/* Mobile Options Dropdown */}
+                        <div className="sm:hidden flex items-center">
+                          <CustomSelect
+                            value=""
+                            placeholder=""
+                            options={[
+                              ...(viewMode === 'markdown' && headings.length > 0 ? [{ label: 'Outline', value: 'outline', icon: <Menu size={14} /> }] : []),
+                              ...(viewMode === 'markdown' ? [{ label: 'Appearance', value: 'settings', icon: <Settings size={14} /> }] : []),
+                              { label: copied ? 'Copied' : 'Copy Content', value: 'copy', icon: copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} /> }
+                            ]}
+                            onChange={(val) => {
+                              if (val === 'outline') setShowOutline(!showOutline);
+                              if (val === 'settings') setShowSettings(!showSettings);
+                              if (val === 'copy') handleCopy();
+                            }}
+                            icon={<MoreVertical size={16} />}
+                            variant="toolbar"
+                            className="[&>button]:!p-1.5 [&>button]:w-8 [&>button]:h-8 [&>button]:!bg-transparent [&>button]:!border-transparent hover:[&>button]:!bg-slate-800 hover:[&>button]:!text-white [&>button]:text-slate-400 [&_span.truncate]:hidden [&>button>svg:last-child]:hidden [&>button>div]:w-full [&>button>div]:justify-center"
+                          />
+                        </div>
 
                         <button
                           onClick={() => setActivePreviewText(null)}
@@ -1485,6 +1515,88 @@ const TextPreviewPopup: React.FC = () => {
                       </button>
                     </div>
 
+                    {/* Group 2B: Extra Nav */}
+                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => moveCursorToLineStart()}
+                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Start of Line (Home)"
+                      >
+                        <ArrowLeftToLine size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => moveCursorToLineEnd()}
+                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="End of Line (End)"
+                      >
+                        <ArrowRightToLine size={15} />
+                      </button>
+                    </div>
+
+                    {/* Group 4: Typing Actions */}
+                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleBackspace}
+                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Backspace"
+                      >
+                        <Delete size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleDelete}
+                        className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Delete"
+                      >
+                        DEL
+                      </button>
+                      <div className="w-px h-3 bg-slate-800/80 mx-0.5 shrink-0" />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('  ')}
+                        className="px-2 py-1 text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Tab"
+                      >
+                        Tab
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('\n')}
+                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Enter"
+                      >
+                        <CornerDownLeft size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor(' ')}
+                        className="px-4 py-1 text-[10px] uppercase font-bold tracking-widest text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
+                        title="Space"
+                      >
+                        Space
+                      </button>
+                      <div className="w-px h-3 bg-slate-800/80 mx-0.5 shrink-0" />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertTextAtCursor('<kbd>', '</kbd>')}
+                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0 flex items-center gap-1"
+                        title="Insert Chip/Label (<kbd>)"
+                      >
+                        <Tag size={14} />
+                      </button>
+                    </div>
+
                     {/* Group 2: Blocks & Extra Nav */}
                     <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
                       <div className="flex items-center rounded transition-colors bg-slate-900 border border-slate-700/60 shrink-0 overflow-hidden">
@@ -1574,28 +1686,6 @@ const TextPreviewPopup: React.FC = () => {
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => moveCursorToLineStart()}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Start of Line (Home)"
-                      >
-                        <ArrowLeftToLine size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => moveCursorToLineEnd()}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="End of Line (End)"
-                      >
-                        <ArrowRightToLine size={15} />
-                      </button>
-                    </div>
-
-                    {/* Group 3: Navigation & Typing */}
-                    <div className="flex items-center gap-0.5 shrink-0 bg-slate-950/60 p-0.5 rounded-md border border-slate-800/80">
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => moveCursorLeft()}
                         className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
                         title="Move Left (←)"
@@ -1647,53 +1737,6 @@ const TextPreviewPopup: React.FC = () => {
                       >
                         <ArrowRight size={15} />
                       </button>
-                      <div className="w-px h-3 bg-slate-800/80 mx-0.5 shrink-0" />
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={handleBackspace}
-                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Backspace"
-                      >
-                        <Delete size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={handleDelete}
-                        className="px-2 py-1 text-[10px] font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Delete"
-                      >
-                        DEL
-                      </button>
-                      <div className="w-px h-3 bg-slate-800/80 mx-0.5 shrink-0" />
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('  ')}
-                        className="px-2 py-1 text-xs font-medium text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Tab"
-                      >
-                        Tab
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor('\n')}
-                        className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Enter"
-                      >
-                        <CornerDownLeft size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => insertTextAtCursor(' ')}
-                        className="px-4 py-1 text-[10px] uppercase font-bold tracking-widest text-slate-400 hover:text-indigo-400 hover:bg-slate-800 active:bg-slate-700 rounded transition-colors shrink-0"
-                        title="Space"
-                      >
-                        Space
-                      </button>
                     </div>
                   </div>
                   <textarea
@@ -1731,7 +1774,7 @@ const TextPreviewPopup: React.FC = () => {
                   >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex, customRehypeSlug]}
+                      rehypePlugins={[rehypeRaw, rehypeKatex, customRehypeSlug]}
                       components={markdownComponents}
                     >
                       {editText}
@@ -1755,21 +1798,34 @@ const TextPreviewPopup: React.FC = () => {
                 </div>
               )}
 
-              {/* Floating Quick Edit Button when Header is Hidden */}
+              {/* Floating Action Buttons when Header is Hidden */}
               <AnimatePresence>
                 {!showHeader && viewMode !== 'edit' && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.85, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.85, y: 10 }}
-                    transition={{ duration: 0.15 }}
-                    onClick={() => setViewMode('edit')}
-                    className="absolute bottom-4 right-4 z-40 flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full shadow-xl shadow-indigo-950/60 border border-indigo-400/40 text-xs font-semibold backdrop-blur transition-all active:scale-95"
-                    title="Switch to Editor"
-                  >
-                    <Edit3 size={14} />
-                    <span>Edit</span>
-                  </motion.button>
+                  <>
+                    <motion.button
+                      initial={{ opacity: 0, scale: 0.85, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.85, y: 10 }}
+                      transition={{ duration: 0.15 }}
+                      onClick={() => setViewMode('edit')}
+                      className="absolute bottom-4 right-4 z-40 flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full shadow-xl shadow-indigo-950/60 border border-indigo-400/40 text-xs font-semibold backdrop-blur transition-all active:scale-95"
+                      title="Switch to Editor"
+                    >
+                      <Edit3 size={14} />
+                      <span>Edit</span>
+                    </motion.button>
+                    <motion.button
+                      initial={{ opacity: 0, scale: 0.85, y: -10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.85, y: -10 }}
+                      transition={{ duration: 0.15 }}
+                      onClick={() => setActivePreviewText(null)}
+                      className="absolute top-4 right-4 z-40 flex items-center justify-center p-2 bg-slate-800/80 hover:bg-slate-700 active:bg-slate-900 text-slate-300 hover:text-white rounded-full shadow-xl shadow-indigo-950/60 border border-slate-700/80 backdrop-blur transition-all active:scale-95 opacity-50 hover:opacity-100"
+                      title="Close Preview"
+                    >
+                      <X size={16} />
+                    </motion.button>
+                  </>
                 )}
               </AnimatePresence>
             </div>
