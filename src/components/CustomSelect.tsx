@@ -82,7 +82,8 @@ export default function CustomSelect({
     const handleClickOutside = (event: MouseEvent) => {
       if (
         containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
+        !containerRef.current.contains(event.target as Node) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(event.target as Node))
       ) {
         setIsOpen(false);
         if (searchable) setSearchQuery("");
@@ -121,6 +122,7 @@ export default function CustomSelect({
             }`
           }
           ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+          ${className || ""}
         `}
       >
         <div className="flex items-center gap-1.5 truncate">
@@ -180,7 +182,7 @@ export default function CustomSelect({
                             onChange(option.value);
                             setIsOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-left transition-colors
                           ${value === option.value
                               ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                               : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -188,10 +190,10 @@ export default function CustomSelect({
                         `}
                         >
                           <div className="flex items-center gap-2">
-                            {option.icon}
+                            {option.icon && <span className="opacity-80 flex-shrink-0">{option.icon}</span>}
                             <span>{option.label}</span>
                           </div>
-                          {value === option.value && <Check size={12} />}
+                          {value === option.value && <Check size={14} className="flex-shrink-0" />}
                         </button>
                       ))
                     ) : (

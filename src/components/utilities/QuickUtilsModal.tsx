@@ -11,6 +11,7 @@ import { JwtDecoder } from "./JwtDecoder";
 import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
 import { ImageSlicerUtil } from "./ImageSlicerUtil";
+import CustomSelect from "../CustomSelect";
 
 const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
 
@@ -107,12 +108,13 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                 </div>
               </div>
 
-              <div className="flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto p-3 gap-2 scrollbar-none">
+              {/* Desktop Tabs */}
+              <div className="hidden md:flex flex-col overflow-y-auto p-3 gap-2 scrollbar-none">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
-                    className={`flex-1 md:flex-none flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === tab.id
+                    className={`flex items-center justify-start gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === tab.id
                       ? tab.activeClass
                       : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 border border-transparent"
                       }`}
@@ -121,6 +123,29 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                     <span>{tab.label}</span>
                   </button>
                 ))}
+              </div>
+
+              {/* Mobile Dropdown */}
+              <div className="md:hidden p-3 bg-slate-100/50 dark:bg-[#0a0d14]/50 border-b border-slate-200 dark:border-slate-800/50">
+                <CustomSelect
+                  value={activeTab}
+                  onChange={(val) => setActiveTab(val as any)}
+                  options={TABS.map(t => ({
+                    label: t.label,
+                    value: t.id,
+                    icon: <t.icon size={14} className={t.iconClass} />
+                  }))}
+                  icon={
+                    TABS.find(t => t.id === activeTab) ? (
+                      (() => {
+                        const TabIcon = TABS.find(t => t.id === activeTab)!.icon;
+                        const iconClass = TABS.find(t => t.id === activeTab)!.iconClass;
+                        return <TabIcon size={16} className={iconClass} />;
+                      })()
+                    ) : undefined
+                  }
+                  className="w-full font-semibold shadow-sm text-sm"
+                />
               </div>
             </div>
 

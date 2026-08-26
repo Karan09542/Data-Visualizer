@@ -10,6 +10,7 @@ import jsQR from "jsqr";
 import LZString from "lz-string";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { InteractiveZoomImage } from "./InteractiveZoomImage";
+import MediaCarousel from "./MediaCarousel";
 
 const makeCRCTable = () => {
   let c;
@@ -4695,230 +4696,131 @@ export const TransferNodeRenderer: React.FC<{
                   </AnimatePresence>
                 </div>
 
-                {createPortal(
-                  <AnimatePresence>
-                    {selectedMedia && (
-                      <div
-                        className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/98 backdrop-blur-3xl nodrag nowheel"
-                        onKeyDown={(e) => e.stopPropagation()}
-                        onKeyUp={(e) => e.stopPropagation()}
-                        onWheel={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onPointerUp={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onMouseUp={(e) => e.stopPropagation()}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          handlePointerMoveChrome();
-                          handleMediaTouchStart(e);
-                        }}
-                        onTouchMove={(e) => e.stopPropagation()}
-                        onTouchEnd={(e) => {
-                          e.stopPropagation();
-                          handleMediaTouchEnd(e);
-                        }}
-                        onPointerMove={(e) => {
-                          e.stopPropagation();
-                          handlePointerMoveChrome();
-                        }}
+                <MediaCarousel
+                  isOpen={!!selectedMedia}
+                  onClose={() => setSelectedMedia(null)}
+                  items={mediaMsgs}
+                  selectedIndex={selectedMediaIdx}
+                  onIndexChange={(idx) => setSelectedMedia(mediaMsgs[idx])}
+                  keepMounted={true}
+                  renderHeaderMiddle={(item, index, total) => (
+                    <>
+                      <p className="text-sm sm:text-base font-black mb-0.5 truncate w-full px-4">
+                        {item.fileName}
+                      </p>
+                      <div className="flex items-center gap-2 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
+                        <span className="hidden sm:inline">
+                          {formatFileSize(item.fileSize || 0)}
+                        </span>
+                        <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                        <span className="truncate hidden sm:inline">
+                          {new Date(item.timestamp).toLocaleString()}
+                        </span>
+                        <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                        <span>
+                          {index + 1} / {total}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  renderHeaderRight={(item) => (
+                    <>
+                      {item.fileType === "image" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setImageRotation((r) => (r + 90) % 360);
+                          }}
+                          className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md flex items-center justify-center"
+                          title="Rotate"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handlePointerMoveChrome();
+                          handleMediaCopy(item);
                         }}
+                        className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === item.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                        title="Copy"
                       >
-                        <AnimatePresence>
-                          {showChrome && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -20 }}
-                              transition={{ duration: 0.2 }}
-                              className="absolute top-0 inset-x-0 z-[12010] flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
-                            >
-                              <div className="flex items-center gap-3 w-1/3">
-                                <button
-                                  onClick={() => setSelectedMedia(null)}
-                                  className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md"
-                                >
-                                  <ChevronLeft className="w-5 h-5 sm:hidden" />
-                                  <X className="w-5 h-5 hidden sm:block" />
-                                </button>
-                              </div>
+                        {copyStatus?.id === item.id && copyStatus.status === "success" ? (
+                          <Check className="w-4 h-4" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                      <a
+                        onClick={(e) => e.stopPropagation()}
+                        href={item.content}
+                        download={item.fileName || "download"}
+                        className="p-3 bg-indigo-600 rounded-full hover:bg-indigo-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
+                        title="Download"
+                      >
+                        <Download className="w-4 h-4" />
+                      </a>
+                    </>
+                  )}
+                  renderItem={(item, isSelected) => {
+                    const effectiveFileType = item.fileType === "file" && item.fileName ? getFileType(item.fileName) : item.fileType;
 
-                              <div className="flex flex-col items-center justify-center text-white max-w-[calc(100%-100px)] w-1/3 text-center">
-                                <p className="text-sm sm:text-base font-black mb-0.5 truncate w-full px-4">
-                                  {selectedMedia.fileName}
-                                </p>
-                                <div className="flex items-center gap-2 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
-                                  <span className="hidden sm:inline">
-                                    {formatFileSize(selectedMedia.fileSize || 0)}
-                                  </span>
-                                  <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
-                                  <span className="truncate hidden sm:inline">
-                                    {new Date(selectedMedia.timestamp).toLocaleString()}
-                                  </span>
-                                  <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
-                                  <span>
-                                    {selectedMediaIdx + 1} / {mediaMsgs.length}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-end gap-2 w-1/3">
-                                {selectedMedia.fileType === "image" && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setImageRotation((r) => (r + 90) % 360);
-                                    }}
-                                    className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md flex items-center justify-center"
-                                    title="Rotate"
-                                  >
-                                    <RotateCw className="w-4 h-4" />
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleMediaCopy(selectedMedia)}
-                                  className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === selectedMedia.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
-                                  title="Copy"
-                                >
-                                  {copyStatus?.id === selectedMedia.id && copyStatus.status === "success" ? (
-                                    <Check className="w-4 h-4" />
-                                  ) : (
-                                    <Copy className="w-4 h-4" />
-                                  )}
-                                </button>
-                                <a
-                                  href={selectedMedia.content}
-                                  download={selectedMedia.fileName || "download"}
-                                  className="p-3 bg-indigo-600 rounded-full hover:bg-indigo-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
-                                  title="Download"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </a>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        <AnimatePresence>
-                          {showChrome && hasPrevMedia && (
-                            <motion.button
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: -10 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedMedia(mediaMsgs[selectedMediaIdx - 1]);
-                              }}
-                              className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 p-2 sm:p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md pointer-events-auto"
-                            >
-                              <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
-                            </motion.button>
-                          )}
-                        </AnimatePresence>
-
-                        <AnimatePresence>
-                          {showChrome && hasNextMedia && (
-                            <motion.button
-                              initial={{ opacity: 0, x: 10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: 10 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedMedia(mediaMsgs[selectedMediaIdx + 1]);
-                              }}
-                              className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 p-2 sm:p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md pointer-events-auto"
-                            >
-                              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
-                            </motion.button>
-                          )}
-                        </AnimatePresence>
-
-                        <div className="w-full h-full flex items-center justify-center p-0 sm:p-0 z-[12005]">
-                          {mediaMsgs.map((media) => {
-                            if (!viewedMediaIds.has(media.id)) return null;
-                            const isSelected = media.id === selectedMedia.id;
-
-                            return (
-                              <motion.div
-                                key={media.id}
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: isSelected ? 1 : 0, scale: isSelected ? 1 : 0.95, pointerEvents: isSelected ? "auto" : "none" }}
-                                exit={{ opacity: 0, scale: 1.05 }}
-                                transition={{ duration: 0.2, ease: "easeOut" }}
-                                className="w-full h-full absolute inset-0 flex items-center justify-center p-0 sm:p-0"
-                                style={{ display: isSelected ? "flex" : "none" }}
-                              >
-                                {(() => {
-                                  // For backwards compatibility: if a file was sent before 3d_model support, 
-                                  // it might have fileType "file" but actually be a 3D model based on its name.
-                                  const effectiveFileType = media.fileType === "file" && media.fileName ? getFileType(media.fileName) : media.fileType;
-
-                                  return (
-                                    <>
-                                      {effectiveFileType === "image" && (
-                                        <div className="w-full h-full relative flex items-center justify-center pointer-events-auto">
-                                          <InteractiveZoomImage
-                                            src={media.content}
-                                            alt={media.fileName || "Preview"}
-                                            rotation={imageRotation}
-                                            className="rounded-xl shadow-2xl"
-                                          />
-                                        </div>
-                                      )}
-                                      {effectiveFileType === "video" && (
-                                        <VideoPlayer media={media} isSelected={isSelected} />
-                                      )}
-                                      {effectiveFileType === "audio" && (
-                                        <AudioPlayer media={media} isSelected={isSelected} />
-                                      )}
-                                      {effectiveFileType === "pdf" && (
-                                        <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
-                                          <PdfViewer url={media.content} />
-                                        </div>
-                                      )}
-                                      {effectiveFileType === "text_file" && (
-                                        <div className="w-[90%] h-[90%] max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-[12005]">
-                                          <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
-                                            <TextFileViewer url={media.content} />
-                                          </div>
-                                        </div>
-                                      )}
-                                      {effectiveFileType === "3d_model" && (
-                                        <div className="w-full h-full relative flex items-center justify-center pointer-events-auto bg-[#0d1017]">
-                                          <SafeModelViewer
-                                            src={media.content}
-                                            alt={media.fileName}
-                                            autoRotate={true}
-                                            cameraControls={true}
-                                            showControls={true}
-                                          />
-                                        </div>
-                                      )}
-                                      {effectiveFileType === "file" && (
-                                        <div className="max-w-sm w-full bg-[#161f30] rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center p-8 border border-white/5 text-center pointer-events-auto">
-                                          <FileIcon className="w-20 h-20 text-indigo-500 mb-6" />
-                                          <h3 className="text-lg font-bold text-white mb-2 break-all line-clamp-3">{media.fileName}</h3>
-                                          <p className="text-slate-400 text-[10px] mb-8 uppercase tracking-widest font-bold">{media.fileSize ? formatFileSize(media.fileSize) : "Unknown Size"}</p>
-                                          <a href={media.content} download={media.fileName} className="px-6 py-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2">
-                                            <Download className="w-4 h-4" />
-                                            Download File
-                                          </a>
-                                        </div>
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </AnimatePresence>,
-                  document.body
-                )}
+                    return (
+                      <>
+                        {effectiveFileType === "image" && (
+                          <div className="w-full h-full relative flex items-center justify-center pointer-events-auto">
+                            <InteractiveZoomImage
+                              src={item.content}
+                              alt={item.fileName || "Preview"}
+                              rotation={imageRotation}
+                              className="rounded-xl shadow-2xl"
+                            />
+                          </div>
+                        )}
+                        {effectiveFileType === "video" && (
+                          <VideoPlayer media={item} isSelected={isSelected} />
+                        )}
+                        {effectiveFileType === "audio" && (
+                          <AudioPlayer media={item} isSelected={isSelected} />
+                        )}
+                        {effectiveFileType === "pdf" && (
+                          <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none pointer-events-auto">
+                            <PdfViewer url={item.content} />
+                          </div>
+                        )}
+                        {effectiveFileType === "text_file" && (
+                          <div className="w-[90%] h-[90%] max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-[12005] pointer-events-auto">
+                            <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
+                              <TextFileViewer url={item.content} />
+                            </div>
+                          </div>
+                        )}
+                        {effectiveFileType === "3d_model" && (
+                          <div className="w-full h-full relative flex items-center justify-center pointer-events-auto bg-[#0d1017]">
+                            <SafeModelViewer
+                              src={item.content}
+                              alt={item.fileName}
+                              autoRotate={true}
+                              cameraControls={true}
+                              showControls={true}
+                            />
+                          </div>
+                        )}
+                        {effectiveFileType === "file" && (
+                          <div className="max-w-sm w-full bg-[#161f30] rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center p-8 border border-white/5 text-center pointer-events-auto">
+                            <FileIcon className="w-20 h-20 text-indigo-500 mb-6" />
+                            <h3 className="text-lg font-bold text-white mb-2 break-all line-clamp-3">{item.fileName}</h3>
+                            <p className="text-slate-400 text-[10px] mb-8 uppercase tracking-widest font-bold">{item.fileSize ? formatFileSize(item.fileSize) : "Unknown Size"}</p>
+                            <a href={item.content} download={item.fileName} className="px-6 py-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 pointer-events-auto">
+                              <Download className="w-4 h-4" />
+                              Download File
+                            </a>
+                          </div>
+                        )}
+                      </>
+                    );
+                  }}
+                />
               </div>
             );
 
