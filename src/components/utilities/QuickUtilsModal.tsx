@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2 } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -10,12 +10,14 @@ import { CsvToJsonConverter } from "./CsvToJsonConverter";
 import { JwtDecoder } from "./JwtDecoder";
 import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
+import { ImageSlicerUtil } from "./ImageSlicerUtil";
 
 const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
 
 const TABS = [
   { id: "passport", label: "Passport Studio", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },
   { id: "img2pdf", label: "Image to PDF", icon: FileImage, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "" },
+  { id: "imgslicer", label: "Image Slicer", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
   { id: "wavedisp", label: "Wave Studio", icon: Waves, activeClass: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 shadow-sm border border-cyan-200/50 dark:border-cyan-800/30 font-bold", iconClass: "text-cyan-500" },
   { id: "folder2zip", label: "Folder to ZIP", icon: FolderArchive, activeClass: "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 shadow-sm border border-purple-200/50 dark:border-purple-800/30", iconClass: "" },
   { id: "colorthief", label: "Color Thief", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "" },
@@ -32,7 +34,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
+  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   // Close on Escape key
@@ -131,6 +133,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               </div>
               {activeTab === "passport" && <PassportStudioUtil />}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
+              {activeTab === "imgslicer" && <ImageSlicerUtil />}
               {activeTab === "folder2zip" && <FolderToZipConverter />}
               {activeTab === "base64" && <Base64Converter />}
               {activeTab === "hash" && <HashGenerator />}
