@@ -58,7 +58,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const setNodeTheme = useStore((state) => state.setNodeTheme);
   const edgeStyle = useStore((state) => state.edgeStyle);
   const setEdgeStyle = useStore((state) => state.setEdgeStyle);
-  const edgeWidth = useStore((state) => state.edgeWidth = 1.0);
+  const edgeWidth = useStore((state) => state.edgeWidth ?? 1.0);
   const setEdgeWidth = useStore((state) => state.setEdgeWidth);
   const nodeShape = useStore((state) => state.nodeShape);
   const setNodeShape = useStore((state) => state.setNodeShape);

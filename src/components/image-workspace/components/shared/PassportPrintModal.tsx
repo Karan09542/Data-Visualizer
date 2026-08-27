@@ -4,11 +4,94 @@ import {
   X, Printer, Download, Image as ImageIcon, Settings2, Grid2X2,
   Lock, Unlock, ZoomIn, ZoomOut, Maximize2, AlertCircle, Sliders, Eye,
   Sun, Moon, Scissors, Sparkles, Check, ChevronDown, Camera, Upload, RotateCcw, Wand2,
-  Globe, FileText, BadgeCheck, CreditCard, Wallet, Settings, Contact, UserCheck
+  Globe, FileText, BadgeCheck, CreditCard, Wallet, Settings, Contact, UserCheck, GripVertical
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { useStore } from '../../../../store/useStore';
 import { CameraCaptureModal } from '../../../CameraCaptureModal';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+export type PhotoQueueItem = {
+  id: string;
+  src: string;
+  quantity: number;
+};
+
+function SortablePhotoItem({ id, item, idx, isDark, setPhotoQueue }: { id: string, item: PhotoQueueItem, idx: number, isDark: boolean, setPhotoQueue: any }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+    position: 'relative' as const,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={`flex items-center gap-3 p-2 border rounded-xl transition-all ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'} ${isDragging ? 'shadow-lg opacity-80' : ''}`}>
+      <button 
+        {...attributes} 
+        {...listeners} 
+        className="cursor-grab active:cursor-grabbing touch-none p-1 text-slate-400 hover:text-slate-600 transition-colors"
+      >
+        <GripVertical size={16} />
+      </button>
+      <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-800 relative shadow-sm">
+        <img src={item.src} className="absolute inset-0 w-full h-full object-cover" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-bold truncate">Photo {idx + 1}</div>
+        <div className="text-[10px] text-slate-500 font-mono mt-0.5">Quantity: {item.quantity}</div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <input
+          type="number"
+          min="1"
+          max="1000"
+          value={item.quantity}
+          onChange={(e) => {
+            const val = Math.max(1, parseInt(e.target.value) || 1);
+            setPhotoQueue((prev: PhotoQueueItem[]) => prev.map(p => p.id === item.id ? { ...p, quantity: val } : p));
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`w-14 border rounded-lg px-1.5 py-1.5 text-xs font-mono text-center outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'}`}
+          title="Print Quantity"
+        />
+        <button 
+          onClick={() => setPhotoQueue((prev: PhotoQueueItem[]) => prev.filter(p => p.id !== item.id))}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors"
+          title="Remove Photo"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface PassportPrintModalProps {
   sourceImage: string; // Data URL of the generated passport photo
@@ -245,8 +328,39 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   const [lockPhotoRatio, setLockPhotoRatio] = useState(false);
   const [photoRatio, setPhotoRatio] = useState(35 / 45);
 
-  // Photo count specification
-  const [requestedPhotoCount, setRequestedPhotoCount] = useState<number | 'max'>('max');
+  // Photo Queue & Cell Overrides
+  const [photoQueue, setPhotoQueue] = useState<PhotoQueueItem[]>([]);
+  const [cellOverrides, setCellOverrides] = useState<Record<number, string>>({});
+  const [loadedImages, setLoadedImages] = useState<Record<string, HTMLImageElement>>({});
+  const [overrideTargetCell, setOverrideTargetCell] = useState<number | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (active.id !== over?.id && over?.id) {
+      setPhotoQueue((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const getCellImageSrc = useCallback((index: number): string | null => {
+    if (cellOverrides[index]) return cellOverrides[index];
+    let currentIndex = 0;
+    for (const item of photoQueue) {
+      if (index < currentIndex + item.quantity) {
+        return item.src;
+      }
+      currentIndex += item.quantity;
+    }
+    return null;
+  }, [cellOverrides, photoQueue]);
 
   // Spacing & Guidelines
   const [marginTop, setMarginTop] = useState(10);
@@ -655,9 +769,30 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     setLockPhotoRatio(!lockPhotoRatio);
   };
 
-  const [activeImageSrc, setActiveImageSrc] = useState<string>(sourceImage);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load unique images for rendering
+  useEffect(() => {
+    const uniqueSrcs = new Set<string>();
+    photoQueue.forEach(p => uniqueSrcs.add(p.src));
+    Object.values(cellOverrides).forEach(src => uniqueSrcs.add(src));
+
+    uniqueSrcs.forEach(src => {
+      if (!loadedImages[src]) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => setLoadedImages(prev => ({ ...prev, [src]: img }));
+        img.src = src;
+      }
+    });
+  }, [photoQueue, cellOverrides, loadedImages]);
+
+  // Initialize initial photoQueue on mount/sourceImage change
+  useEffect(() => {
+    setPhotoQueue([{ id: 'initial-' + Date.now(), src: sourceImage, quantity: 20 }]); // maxCapacity handles clipping
+    setCellOverrides({});
+  }, [sourceImage]);
 
   // Handle file upload from device
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -667,25 +802,18 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setActiveImageSrc(reader.result);
+        const newSrc = reader.result;
+        if (overrideTargetCell !== null) {
+          setCellOverrides(prev => ({ ...prev, [overrideTargetCell]: newSrc }));
+          setOverrideTargetCell(null);
+        } else {
+          setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, quantity: 1 }]);
+        }
       }
     };
     reader.readAsDataURL(file);
-    // Reset input so same file can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, []);
-
-  useEffect(() => {
-    setActiveImageSrc(sourceImage);
-  }, [sourceImage]);
-
-  // Load the active image
-  useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => setImageObj(img);
-    img.src = activeImageSrc;
-  }, [activeImageSrc]);
+  }, [overrideTargetCell]);
 
   // Prevent background scrolling
   useEffect(() => {
@@ -717,10 +845,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     const maxCapacity = maxCols * maxRows;
 
     // Active rendered photo count limited by user setting
-    let activePhotoCount = maxCapacity;
-    if (requestedPhotoCount !== 'max' && typeof requestedPhotoCount === 'number') {
-      activePhotoCount = Math.min(maxCapacity, Math.max(1, requestedPhotoCount));
-    }
+    const queueTotal = photoQueue.reduce((acc, item) => acc + item.quantity, 0);
+    const maxOverrideIndex = Object.keys(cellOverrides).length > 0 
+      ? Math.max(...Object.keys(cellOverrides).map(Number)) 
+      : -1;
+    const activePhotoCount = Math.min(maxCapacity, Math.max(queueTotal, maxOverrideIndex + 1));
 
     // Center grid inside paper
     const consumedWidth = (maxCols * phWidth) + Math.max(0, maxCols - 1) * spacing;
@@ -734,11 +863,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       cols: maxCols, rows: maxRows, maxCapacity, activePhotoCount,
       actualMarginLeft, actualMarginTop
     };
-  }, [paperSize, docPreset, marginTop, marginLeft, spacing, orientation, customPaperWMM, customPaperHMM, photoWMM, photoHMM, requestedPhotoCount]);
+  }, [paperSize, docPreset, marginTop, marginLeft, spacing, orientation, customPaperWMM, customPaperHMM, photoWMM, photoHMM, photoQueue, cellOverrides]);
 
   // High-Resolution Print Canvas Generation (Dynamic DPI)
   const generatePrintCanvas = async (): Promise<HTMLCanvasElement | null> => {
-    if (!imageObj || layout.cols === 0 || layout.rows === 0) return null;
+    if (layout.cols === 0 || layout.rows === 0) return null;
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -777,66 +906,71 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         ctx.rect(x, y, pW, pH);
         ctx.clip();
 
-        const imgW = imageObj.naturalWidth;
-        const imgH = imageObj.naturalHeight;
-        const cellAspect = pW / pH;
-        const imgAspect = imgW / imgH;
+        const cellSrc = getCellImageSrc(photosDrawn);
+        const cellImg = cellSrc ? loadedImages[cellSrc] : null;
 
-        let drawW: number, drawH: number;
+        if (cellImg) {
+          const imgW = cellImg.naturalWidth;
+          const imgH = cellImg.naturalHeight;
+          const cellAspect = pW / pH;
+          const imgAspect = imgW / imgH;
 
-        if (imageFit === 'cover') {
-          // Cover: fill cell, crop overflow
-          if (imgAspect > cellAspect) {
-            drawH = pH;
-            drawW = pH * imgAspect;
+          let drawW: number, drawH: number;
+
+          if (imageFit === 'cover') {
+            // Cover: fill cell, crop overflow
+            if (imgAspect > cellAspect) {
+              drawH = pH;
+              drawW = pH * imgAspect;
+            } else {
+              drawW = pW;
+              drawH = pW / imgAspect;
+            }
+          } else if (imageFit === 'contain') {
+            // Contain: fit entire image, letterbox
+            if (imgAspect > cellAspect) {
+              drawW = pW;
+              drawH = pW / imgAspect;
+            } else {
+              drawH = pH;
+              drawW = pH * imgAspect;
+            }
           } else {
+            // Fill: stretch to fill cell exactly
             drawW = pW;
-            drawH = pW / imgAspect;
-          }
-        } else if (imageFit === 'contain') {
-          // Contain: fit entire image, letterbox
-          if (imgAspect > cellAspect) {
-            drawW = pW;
-            drawH = pW / imgAspect;
-          } else {
             drawH = pH;
-            drawW = pH * imgAspect;
           }
-        } else {
-          // Fill: stretch to fill cell exactly
-          drawW = pW;
-          drawH = pH;
+
+          // Apply photoScale on top of fit
+          const scaledW = drawW * (photoScale / 100);
+          const scaledH = drawH * (photoScale / 100);
+
+          // Position-aware offset calculation (9-point anchor)
+          const [posV, posH] = imagePosition.split(' ') as [string, string];
+          let offsetX: number, offsetY: number;
+
+          // Horizontal position
+          if (posH === 'left') {
+            offsetX = x;
+          } else if (posH === 'right') {
+            offsetX = x + (pW - scaledW);
+          } else {
+            offsetX = x + (pW - scaledW) / 2;
+          }
+
+          // Vertical position
+          if (posV === 'top') {
+            offsetY = y;
+          } else if (posV === 'bottom') {
+            offsetY = y + (pH - scaledH);
+          } else {
+            offsetY = y + (pH - scaledH) / 2;
+          }
+
+          // Apply CSS filters (brightness, contrast, saturation, etc.) to canvas
+          ctx.filter = filterCss;
+          ctx.drawImage(cellImg, offsetX, offsetY, scaledW, scaledH);
         }
-
-        // Apply photoScale on top of fit
-        const scaledW = drawW * (photoScale / 100);
-        const scaledH = drawH * (photoScale / 100);
-
-        // Position-aware offset calculation (9-point anchor)
-        const [posV, posH] = imagePosition.split(' ') as [string, string];
-        let offsetX: number, offsetY: number;
-
-        // Horizontal position
-        if (posH === 'left') {
-          offsetX = x;
-        } else if (posH === 'right') {
-          offsetX = x + (pW - scaledW);
-        } else {
-          offsetX = x + (pW - scaledW) / 2;
-        }
-
-        // Vertical position
-        if (posV === 'top') {
-          offsetY = y;
-        } else if (posV === 'bottom') {
-          offsetY = y + (pH - scaledH);
-        } else {
-          offsetY = y + (pH - scaledH) / 2;
-        }
-
-        // Apply CSS filters (brightness, contrast, saturation, etc.) to canvas
-        ctx.filter = filterCss;
-        ctx.drawImage(imageObj, offsetX, offsetY, scaledW, scaledH);
         ctx.restore();
 
         // Draw cut guidelines (dashed borders & scissor marks) if requested
@@ -1446,66 +1580,114 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
             <div className={`w-full h-px ${isDark ? 'bg-[#222]' : 'bg-slate-200'}`} />
 
-            {/* 2. Photo Count Limit Specification */}
+            {/* 2. Photo Queue / Quantity Specification */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
                   }`}>
-                  <Grid2X2 size={13} /> Photo Quantity
+                  <Grid2X2 size={13} /> {photoQueue.length === 1 ? 'Photo Quantity' : 'Photo Queue'}
                 </h2>
-                <span className="text-[11px] font-mono text-blue-500 font-semibold">
-                  {requestedPhotoCount === 'max' ? `Max Fit (${layout.maxCapacity})` : `${requestedPhotoCount} photos`}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: 'Max Fill', val: 'max' as const },
-                  { label: '1', val: 1 },
-                  { label: '2', val: 2 },
-                  { label: '4', val: 4 },
-                  { label: '6', val: 6 },
-                  { label: '8', val: 8 },
-                  { label: '12', val: 12 },
-                  { label: '16', val: 16 },
-                ].map((item) => {
-                  const isActive = requestedPhotoCount === item.val;
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => setRequestedPhotoCount(item.val as any)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${isActive
-                          ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
-                          : isDark
-                            ? 'bg-[#161616] border-[#262626] text-slate-300 hover:bg-[#202020]'
-                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Quantity Input Box */}
-              <div className={`p-3 border rounded-xl flex items-center justify-between gap-3 ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
-                }`}>
-                <div className="text-xs font-semibold">Custom Quantity</div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number" min="1" max={Math.max(1, layout.maxCapacity)}
-                    value={typeof requestedPhotoCount === 'number' ? requestedPhotoCount : 1}
-                    onChange={e => {
-                      const val = Math.max(1, parseInt(e.target.value) || 1);
-                      setRequestedPhotoCount(val);
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setPhotoQueue([]); setCellOverrides({}); }}
+                    className="text-[10px] text-rose-500 hover:text-rose-600 font-semibold transition-colors"
+                  >
+                    Clear All
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOverrideTargetCell(null);
+                      fileInputRef.current?.click();
                     }}
-                    className={`w-20 border rounded-lg px-2.5 py-1 text-xs font-mono text-center outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
-                      }`}
-                  />
-                  <span className="text-[10px] text-slate-400 font-mono">/ {layout.maxCapacity} max</span>
+                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold transition-colors flex items-center gap-0.5"
+                  >
+                    <Upload size={10} /> Add Photo
+                  </button>
                 </div>
               </div>
+
+              {photoQueue.length === 1 ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: 'Max Fill', val: layout.maxCapacity },
+                      { label: '1', val: 1 },
+                      { label: '2', val: 2 },
+                      { label: '4', val: 4 },
+                      { label: '6', val: 6 },
+                      { label: '8', val: 8 },
+                      { label: '12', val: 12 },
+                      { label: '16', val: 16 },
+                    ].map((item) => {
+                      const isActive = photoQueue[0].quantity === item.val;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setPhotoQueue([{ ...photoQueue[0], quantity: item.val }]);
+                          }}
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${isActive
+                              ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
+                              : isDark
+                                ? 'bg-[#161616] border-[#262626] text-slate-300 hover:bg-[#202020]'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className={`p-3 border rounded-xl flex items-center justify-between gap-3 ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                    <div className="text-xs font-semibold">Custom Quantity</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="1" max={Math.max(1, layout.maxCapacity)}
+                        value={photoQueue[0].quantity}
+                        onChange={e => {
+                          const val = Math.max(1, parseInt(e.target.value) || 1);
+                          setPhotoQueue([{ ...photoQueue[0], quantity: val }]);
+                        }}
+                        className={`w-20 border rounded-lg px-2.5 py-1 text-xs font-mono text-center outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'
+                          }`}
+                      />
+                      <span className="text-[10px] text-slate-400 font-mono">/ {layout.maxCapacity} max</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {photoQueue.length === 0 && (
+                    <div className="text-center py-4 text-xs text-slate-400 font-medium">
+                      Queue is empty. Add a photo to start.
+                    </div>
+                  )}
+                  <DndContext 
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext 
+                      items={photoQueue.map(p => p.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {photoQueue.map((item, idx) => (
+                        <SortablePhotoItem 
+                          key={item.id} 
+                          id={item.id} 
+                          item={item} 
+                          idx={idx} 
+                          isDark={isDark} 
+                          setPhotoQueue={setPhotoQueue} 
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              )}
             </section>
 
             <div className={`w-full h-px ${isDark ? 'bg-[#222]' : 'bg-slate-200'}`} />
@@ -2175,18 +2357,26 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
                 {/* Photos rendering */}
                 {photoIndices.map(({ r, c }) => {
+                  const cellIndex = r * layout.cols + c;
+                  const cellSrc = getCellImageSrc(cellIndex);
+                  
                   const left = layout.actualMarginLeft + c * (layout.phWidth + spacing);
                   const top = layout.actualMarginTop + r * (layout.phHeight + spacing);
                   return (
                     <div
                       key={`${r}-${c}`}
-                      className="absolute transition-all duration-150 overflow-visible"
+                      onDoubleClick={() => {
+                        setOverrideTargetCell(cellIndex);
+                        fileInputRef.current?.click();
+                      }}
+                      className="absolute transition-all duration-150 overflow-visible cursor-pointer hover:ring-2 hover:ring-blue-500 hover:z-20 group"
                       style={{
                         left: `${(left / layout.pWidth) * 100}%`,
                         top: `${(top / layout.pHeight) * 100}%`,
                         width: `${(layout.phWidth / layout.pWidth) * 100}%`,
                         height: `${(layout.phHeight / layout.pHeight) * 100}%`,
                       }}
+                      title="Double click to replace this specific photo block"
                     >
                       {/* Photo Image Box with Inner Scale Control */}
                       <div
@@ -2196,23 +2386,31 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                           boxShadow: '0 1px 3px rgba(0,0,0,0.12)'
                         }}
                       >
-                        <div
-                          className="w-full h-full transition-transform duration-100"
-                          style={{
-                            backgroundImage: imageObj ? `url(${imageObj.src})` : 'none',
-                            backgroundSize: imageFit === 'fill' ? '100% 100%' : imageFit,
-                            backgroundPosition: imagePosition,
-                            backgroundRepeat: 'no-repeat',
-                            transform: `scale(${photoScale / 100})`,
-                            transformOrigin: 'center center',
-                            filter: filterCss,
-                          }}
-                        />
-                        {!imageObj && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-300">
-                            <ImageIcon size={20} />
+                        {cellSrc ? (
+                          <div
+                            className="w-full h-full transition-transform duration-100"
+                            style={{
+                              backgroundImage: `url(${cellSrc})`,
+                              backgroundSize: imageFit === 'fill' ? '100% 100%' : imageFit,
+                              backgroundPosition: imagePosition,
+                              backgroundRepeat: 'no-repeat',
+                              transform: `scale(${photoScale / 100})`,
+                              transformOrigin: 'center center',
+                              filter: filterCss,
+                            }}
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center bg-slate-50 dark:bg-[#1A1A1A] text-slate-300 dark:text-[#333]">
+                            <ImageIcon size={24} />
                           </div>
                         )}
+                        
+                        {/* Hover Overlay Hint */}
+                        <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none flex items-center justify-center backdrop-blur-[1px]">
+                          <div className="bg-blue-600 text-white text-[9px] font-bold px-2 py-1 rounded shadow-md uppercase tracking-wider">
+                            Replace
+                          </div>
+                        </div>
                       </div>
 
                       {/* Scissor cut guideline icon badge */}
@@ -2256,7 +2454,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             const reader = new FileReader();
             reader.onload = () => {
               if (typeof reader.result === 'string') {
-                setActiveImageSrc(reader.result);
+                const newSrc = reader.result;
+                if (overrideTargetCell !== null) {
+                  setCellOverrides(prev => ({ ...prev, [overrideTargetCell]: newSrc }));
+                  setOverrideTargetCell(null);
+                } else {
+                  setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, quantity: 1 }]);
+                }
               }
               setIsCameraOpen(false);
             };
