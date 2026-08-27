@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Camera, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopCircle } from 'lucide-react';
+import { X, Camera, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopCircle, Zap, ZapOff } from 'lucide-react';
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,10 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
   const imgRef = useRef<HTMLImageElement>(null);
 
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Torch state
+  const [torchEnabled, setTorchEnabled] = useState(false);
+  const [isTorchSupported, setIsTorchSupported] = useState(false);
 
   // Cropper state
   const [crop, setCrop] = useState<Crop>({ unit: '%', width: 100, height: 100, x: 0, y: 0 });
@@ -64,6 +68,16 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
           s.getTracks().forEach(track => track.stop());
           return;
         }
+
+        const track = s.getVideoTracks()[0];
+        if (track && track.getCapabilities) {
+          const capabilities = track.getCapabilities();
+          setIsTorchSupported(!!(capabilities as any).torch);
+        } else {
+          setIsTorchSupported(false);
+        }
+        setTorchEnabled(false);
+
         setStream(s);
         setErrorMsg("");
         if (videoRef.current) {
@@ -93,6 +107,22 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
       if (stream) stream.getTracks().forEach(t => t.stop());
     };
   }, [stream]);
+
+  const toggleTorch = async () => {
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      try {
+        const newTorchState = !torchEnabled;
+        await track.applyConstraints({
+          advanced: [{ torch: newTorchState } as any]
+        });
+        setTorchEnabled(newTorchState);
+      } catch (err) {
+        console.error("Failed to toggle torch", err);
+      }
+    }
+  };
 
   const switchCamera = () => {
     setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
@@ -417,11 +447,18 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
               <span className="text-xs">{isProcessing ? 'Saving...' : 'Save'}</span>
             </button>
           ) : (
-            hasMultipleCameras ? (
-              <button onClick={switchCamera} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
-                <RefreshCcw size={20} />
-              </button>
-            ) : <div className="w-10"></div>
+            <div className="flex items-center gap-2">
+              {isTorchSupported && (
+                <button onClick={toggleTorch} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
+                  {torchEnabled ? <Zap size={20} className="fill-current text-yellow-400" /> : <ZapOff size={20} />}
+                </button>
+              )}
+              {hasMultipleCameras ? (
+                <button onClick={switchCamera} className="p-2 text-white/80 hover:text-white rounded-full bg-black/20 backdrop-blur">
+                  <RefreshCcw size={20} />
+                </button>
+              ) : <div className="w-10"></div>}
+            </div>
           )}
         </div>
       )}
