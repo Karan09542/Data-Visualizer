@@ -1,11 +1,12 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download, RotateCw, RotateCcw } from "lucide-react";
+import { useDebounce } from "use-debounce";
 import * as pdfjsLib from "pdfjs-dist";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 
 
 export type ExportImageFormat = 'png' | 'jpeg' | 'webp';
@@ -393,14 +394,16 @@ interface PdfPageCanvasProps {
   pdfDoc: any;
   pageNum: number;
   scale: number;
+  rotation?: number;
   onVisible?: (pageNum: number) => void;
 }
 
-const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, onVisible }) => {
+const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, rotation = 0, onVisible }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const renderTaskRef = useRef<any>(null);
+  const [debouncedScale] = useDebounce(scale, 300);
 
   useEffect(() => {
     if (!pdfDoc) return;
@@ -423,7 +426,9 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, o
 
     pdfDoc.getPage(pageNum).then((page: any) => {
       if (!active) return;
-      const baseViewport = page.getViewport({ scale: 1.0 });
+      const baseRotation = page.rotate || 0;
+      const finalRotation = (baseRotation + rotation) % 360;
+      const baseViewport = page.getViewport({ scale: 1.0, rotation: finalRotation });
       setViewportSize({ width: baseViewport.width, height: baseViewport.height });
 
       const canvas = canvasRef.current;
@@ -436,9 +441,9 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, o
       const context = canvas.getContext('2d');
       if (!context) return;
 
-      // Dynamic crisp render resolution based on current zoom scale
-      const renderScale = Math.max(scale * 2.0, 2.0);
-      const viewport = page.getViewport({ scale: renderScale });
+      // Dynamic crisp render resolution based on debounced zoom scale
+      const renderScale = Math.max(debouncedScale * 2.0, 2.0);
+      const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
@@ -460,13 +465,13 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, o
         renderTaskRef.current.cancel();
       }
     };
-  }, [pdfDoc, pageNum, scale]);
+  }, [pdfDoc, pageNum, debouncedScale, rotation]);
 
   return (
     <div
       id={`pdf-page-${pageNum}`}
       ref={containerRef}
-      className="shadow-md border border-slate-700/30 bg-white overflow-hidden relative flex-shrink-0 mx-auto transition-all rounded-sm"
+      className="shadow-md border border-slate-700/30 bg-white overflow-hidden relative flex-shrink-0 mx-auto transition-shadow rounded-sm"
       style={{
         width: viewportSize.width ? `${viewportSize.width * scale}px` : 'auto',
         height: viewportSize.height ? `${viewportSize.height * scale}px` : 'auto',
@@ -517,7 +522,7 @@ const PdfPlaceholderCanvas: React.FC<PdfPlaceholderCanvasProps> = ({ pageNum, wi
     <div
       id={`pdf-page-${pageNum}`}
       ref={containerRef}
-      className="shadow-sm border border-slate-800/40 bg-slate-950/40 rounded-sm flex items-center justify-center flex-shrink-0 mx-auto transition-all relative select-none"
+      className="shadow-sm border border-slate-800/40 bg-slate-950/40 rounded-sm flex items-center justify-center flex-shrink-0 mx-auto transition-colors relative select-none"
       style={{
         width: width ? `${width}px` : '100%',
         height: height ? `${height}px` : '600px',
@@ -579,6 +584,22 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const [orderedPages, setOrderedPages] = useState<number[]>([]);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [selectionMode, setSelectionMode] = useState<boolean>(false);
+  const [rotations, setRotations] = useState<{ [page: number]: number }>({});
+
+  const handleRotateCw = () => {
+    setRotations(prev => ({
+      ...prev,
+      [currentPage]: ((prev[currentPage] || 0) + 90) % 360
+    }));
+  };
+
+  const handleRotateCcw = () => {
+    setRotations(prev => ({
+      ...prev,
+      [currentPage]: ((prev[currentPage] || 0) - 90 + 360) % 360
+    }));
+  };
+
   const [activeId, setActiveId] = useState<number | null>(null);
   const [zipMenuOpen, setZipMenuOpen] = useState<boolean>(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
@@ -597,7 +618,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
     try {
       const page = await pdfDoc.getPage(pageNum);
       const renderScale = 3.0;
-      const viewport = page.getViewport({ scale: renderScale });
+
+      const baseRotation = page.rotate || 0;
+      const currentRotation = rotations[pageNum] || 0;
+      const finalRotation = (baseRotation + currentRotation) % 360;
+
+      const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
 
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
@@ -947,11 +973,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       const context = canvas.getContext("2d");
       if (!context) return;
 
+      const currentRotation = rotations[currentPage] || 0;
+      const baseRotation = page.rotate || 0;
+      const finalRotation = (baseRotation + currentRotation) % 360;
+
       // Render at a high fixed scale for crispness
       const renderScale = 2.5;
-      const viewport = page.getViewport({ scale: renderScale });
+      const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
 
-      const baseViewport = page.getViewport({ scale: 1.0 });
+      const baseViewport = page.getViewport({ scale: 1.0, rotation: finalRotation });
       setBaseViewportWidth(baseViewport.width);
       setBaseViewportHeight(baseViewport.height);
       setCurrentViewport(baseViewport);
@@ -989,7 +1019,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         renderTaskRef.current.cancel();
       }
     };
-  }, [pdfDoc, currentPage, viewMode]);
+  }, [pdfDoc, currentPage, viewMode, rotations]);
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -1180,7 +1210,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       // Copy selected pages (pdf-lib uses 0-based page indices)
       const pageIndices = pages.map(p => p - 1);
       const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
-      copiedPages.forEach(page => newDoc.addPage(page));
+      copiedPages.forEach((page, index) => {
+        const originalPageNum = pages[index];
+        const rot = rotations[originalPageNum] || 0;
+        if (rot) {
+          const currentRot = page.getRotation().angle;
+          page.setRotation(degrees((currentRot + rot) % 360));
+        }
+        newDoc.addPage(page);
+      });
 
       const pdfBytes = await newDoc.save();
       const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
@@ -1224,7 +1262,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           const pageNum = pages[i];
           const page = await pdfDoc.getPage(pageNum);
           const renderScale = 3.0;
-          const viewport = page.getViewport({ scale: renderScale });
+
+          const baseRotation = page.rotate || 0;
+          const currentRotation = rotations[pageNum] || 0;
+          const finalRotation = (baseRotation + currentRotation) % 360;
+
+          const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
 
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
@@ -1246,7 +1289,15 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
 
         const pageIndices = pages.map(p => p - 1);
         const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
-        copiedPages.forEach(page => newDoc.addPage(page));
+        copiedPages.forEach((page, index) => {
+          const originalPageNum = pages[index];
+          const rot = rotations[originalPageNum] || 0;
+          if (rot) {
+            const currentRot = page.getRotation().angle;
+            page.setRotation(degrees((currentRot + rot) % 360));
+          }
+          newDoc.addPage(page);
+        });
 
         const pdfBytes = await newDoc.save();
         const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
@@ -1708,6 +1759,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                     pdfDoc={pdfDoc}
                     pageNum={pageNum}
                     scale={scale}
+                    rotation={rotations[pageNum] || 0}
                     onVisible={(p) => {
                       if (!isProgrammaticScrollRef.current) {
                         setCurrentPage(p);
@@ -1718,12 +1770,16 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                 );
               }
 
+              const isRotated = (rotations[pageNum] || 0) % 180 !== 0;
+              const pWidth = isRotated ? baseViewportHeight : baseViewportWidth;
+              const pHeight = isRotated ? baseViewportWidth : baseViewportHeight;
+
               return (
                 <PdfPlaceholderCanvas
                   key={pageNum}
                   pageNum={pageNum}
-                  width={baseViewportWidth ? baseViewportWidth * scale : 0}
-                  height={baseViewportHeight ? baseViewportHeight * scale : 600}
+                  width={pWidth ? pWidth * scale : 0}
+                  height={pHeight ? pHeight * scale : 600}
                   onVisible={(p) => {
                     if (!isProgrammaticScrollRef.current) {
                       setCurrentPage(p);
@@ -1833,6 +1889,22 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
         <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            onClick={handleRotateCcw}
+            disabled={viewMode === 'single' && rendering}
+            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            title="Rotate Counter-Clockwise"
+          >
+            <RotateCcw size={14} />
+          </button>
+          <button
+            onClick={handleRotateCw}
+            disabled={viewMode === 'single' && rendering}
+            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            title="Rotate Clockwise"
+          >
+            <RotateCw size={14} />
+          </button>
           <button
             onClick={handleZoomOut}
             disabled={scale <= 0.4 || (viewMode === 'single' && rendering)}
