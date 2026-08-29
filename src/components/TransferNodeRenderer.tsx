@@ -2801,7 +2801,7 @@ export const TransferNodeRenderer: React.FC<{
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center gap-6 py-2 w-full"
+            className="flex flex-col items-center gap-4 py-2 w-full"
           >
             <div
               className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}
@@ -2930,7 +2930,7 @@ export const TransferNodeRenderer: React.FC<{
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center min-h-[300px] min-w-[300px] w-full max-w-[340px]">
+                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center aspect-square w-full max-w-[240px]">
                     {broadcastFrames.length > 0 && (
                       <div className="absolute top-2 left-2 z-[10]">
                         <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
@@ -2938,15 +2938,15 @@ export const TransferNodeRenderer: React.FC<{
                         </div>
                       </div>
                     )}
-                    <button
-                      onClick={() => setShowDiagnostics(true)}
-                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
-                      title="Diagnostics"
-                    >
-                      <Activity className="w-3.5 h-3.5 text-slate-500" />
-                    </button>
-                    {(broadcastFrames.length > 0 || offerQR || answerQR) && (
+                    {(broadcastFrames.length > 0 || offerQR || answerQR) ? (
                       <>
+                        <button
+                          onClick={() => setShowDiagnostics(true)}
+                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                          title="Diagnostics"
+                        >
+                          <Activity className="w-3.5 h-3.5 text-slate-500" />
+                        </button>
                         <button
                           onClick={() => setIsFullscreenQR(true)}
                           className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
@@ -2956,22 +2956,41 @@ export const TransferNodeRenderer: React.FC<{
                         </button>
                         <QRCodeSVG
                           value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
-                          size={260}
+                          size={200}
                           level={qrDensity}
                           marginSize={2}
-                          className="w-full h-auto max-w-[280px]"
+                          className="w-full h-auto max-w-[200px]"
                         />
                       </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center w-full h-full text-center">
+                        {isHosting ? (
+                          <button
+                            onClick={generateOffer}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-indigo-500/20"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Generate Offer
+                          </button>
+                        ) : (
+                          <p className="text-[10px] font-medium italic text-slate-400">
+                            Waiting for remote offer...
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
 
                 <div className="text-center space-y-1">
                   <p className="text-sm font-bold text-white">
-                    {isHosting ? "Offer Generated" : "Answer Generated"}
+                    {(broadcastFrames.length > 0 || offerQR || answerQR)
+                      ? isHosting ? "Offer Generated" : "Answer Generated"
+                      : isHosting ? "Ready to Generate" : "Waiting for Offer"}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {isHosting ? "Scan this code on the joining device" : "Scan this code back on the host device"}
+                    {(broadcastFrames.length > 0 || offerQR || answerQR)
+                      ? isHosting ? "Scan this code on the joining device" : "Scan this code back on the host device"
+                      : isHosting ? "Click Generate Offer to begin" : "Scan the host's QR code"}
                   </p>
                   {notificationPermission === "default" && (
                     <button
