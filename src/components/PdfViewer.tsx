@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download, RotateCw, RotateCcw } from "lucide-react";
 import { useDebounce } from "use-debounce";
@@ -382,6 +382,149 @@ const SortableThumbnail: React.FC<SortableThumbnailProps> = React.memo(({
   );
 });
 
+interface VirtualizedThumbnailSlotProps {
+  pageNum: number;
+  thumbnailUrl: string | null;
+  currentPage: number;
+  selectionMode: boolean;
+  isSelected: boolean;
+  defaultFormat: ExportImageFormat;
+  isDownloadingThisPage?: boolean;
+  isFormatMenuOpen?: boolean;
+  onRequestThumbnail: (pageNum: number) => void;
+  onSelect: (pageNum: number) => void;
+  onGoToPage: (pageNum: number) => void;
+  onLongPress: (pageNum: number) => void;
+  onDownloadPage: (pageNum: number, format: ExportImageFormat) => void;
+  onOpenFormatMenu: (pageNum: number) => void;
+  onCloseFormatMenu: () => void;
+}
+
+/**
+ * Virtualized thumbnail slot that uses IntersectionObserver to lazily request
+ * thumbnail generation only when the placeholder enters the visible viewport.
+ * This prevents rendering all thumbnails at once for large PDFs.
+ */
+const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.memo(({
+  pageNum,
+  thumbnailUrl,
+  currentPage,
+  selectionMode,
+  isSelected,
+  defaultFormat,
+  isDownloadingThisPage,
+  isFormatMenuOpen,
+  onRequestThumbnail,
+  onSelect,
+  onGoToPage,
+  onLongPress,
+  onDownloadPage,
+  onOpenFormatMenu,
+  onCloseFormatMenu,
+}) => {
+  const observerElRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const hasRequestedRef = useRef(false);
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pageNum.toString() });
+
+  // Merge the sortable ref with our observer ref
+  const mergedRef = useCallback((node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    observerElRef.current = node;
+  }, [setNodeRef]);
+
+  useEffect(() => {
+    const el = observerElRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            // Request thumbnail generation if not already loaded or requested
+            if (!thumbnailUrl && !hasRequestedRef.current) {
+              hasRequestedRef.current = true;
+              onRequestThumbnail(pageNum);
+            }
+          } else {
+            setIsVisible(false);
+          }
+        }
+      },
+      {
+        // Use a generous rootMargin to pre-load thumbnails slightly before they enter viewport
+        rootMargin: '200px 0px 200px 0px',
+        threshold: 0,
+      }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pageNum, thumbnailUrl, onRequestThumbnail]);
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? undefined : transition,
+    opacity: isDragging ? 0.25 : 1,
+    touchAction: 'none',
+    willChange: 'transform',
+  };
+
+  // If the thumbnail URL is available, render the full card with sortable wrapper
+  if (thumbnailUrl) {
+    return (
+      <div ref={mergedRef} style={sortableStyle} {...attributes} {...listeners}>
+        <ThumbnailCard
+          pageNum={pageNum}
+          url={thumbnailUrl}
+          currentPage={currentPage}
+          selectionMode={selectionMode}
+          isSelected={isSelected}
+          defaultFormat={defaultFormat}
+          isDownloadingThisPage={isDownloadingThisPage}
+          isFormatMenuOpen={isFormatMenuOpen}
+          onSelect={onSelect}
+          onGoToPage={onGoToPage}
+          onLongPress={onLongPress}
+          onDownloadPage={onDownloadPage}
+          onOpenFormatMenu={onOpenFormatMenu}
+          onCloseFormatMenu={onCloseFormatMenu}
+        />
+      </div>
+    );
+  }
+
+  // Placeholder for thumbnails that haven't loaded yet (also sortable)
+  return (
+    <div
+      ref={mergedRef}
+      style={sortableStyle}
+      {...attributes}
+      {...listeners}
+      className="relative flex flex-col gap-1.5 select-none"
+    >
+      <div className="rounded-xl overflow-hidden aspect-[1/1.4] bg-slate-950 relative border border-slate-800/80 shadow-md flex items-center justify-center">
+        {isVisible ? (
+          <div className="flex flex-col items-center gap-1.5 text-slate-500">
+            <Loader2 size={16} className="animate-spin text-indigo-500/70" />
+            <span className="text-[9px] font-mono font-medium tracking-wide">Loading...</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 text-slate-600">
+            <LayoutGrid size={14} className="text-slate-700" />
+            <span className="text-[9px] font-mono font-medium tracking-wide">Page {pageNum}</span>
+          </div>
+        )}
+      </div>
+      <span className="text-[11px] text-center font-medium tracking-tight select-none text-slate-500">
+        Page {pageNum}
+      </span>
+    </div>
+  );
+});
+
 // Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
@@ -569,6 +712,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
   const [thumbnailsGenerating, setThumbnailsGenerating] = useState(false);
   const [thumbnailsGenerated, setThumbnailsGenerated] = useState(false);
+  const [thumbnailsRequested, setThumbnailsRequested] = useState<Set<number>>(new Set());
+  const [thumbnailsReady, setThumbnailsReady] = useState(false); // true once PDF buffer is loaded & worker is initialized
+  const thumbnailGridRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -843,6 +989,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
     setError(null);
     setUseIframeFallback(false);
     setThumbnails({});
+    setThumbnailsReady(false);
+    setThumbnailsRequested(new Set());
     setSearchResults([]);
     pdfBufferRef.current = null;
 
@@ -1091,6 +1239,26 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       payload: { data: pdfBufferRef.current, password: pdfPasswordRef.current }
     });
   };
+
+  // Initialize the worker with the PDF buffer so it's ready for on-demand thumbnail requests
+  // (No separate init needed; requestThumbnail sends the PDF data with each request)
+
+  // Request a single thumbnail on-demand (called by IntersectionObserver when a placeholder scrolls into view)
+  const requestThumbnail = useCallback((pageNum: number) => {
+    if (!workerRef.current || !pdfBufferRef.current) return;
+    if (thumbnails[pageNum] || thumbnailsRequested.has(pageNum)) return;
+
+    setThumbnailsRequested(prev => {
+      const next = new Set(prev);
+      next.add(pageNum);
+      return next;
+    });
+
+    workerRef.current.postMessage({
+      action: 'GENERATE_THUMBNAIL_SINGLE',
+      payload: { data: pdfBufferRef.current, password: pdfPasswordRef.current, pageNumber: pageNum }
+    });
+  }, [thumbnails, thumbnailsRequested]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1507,7 +1675,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 relative">
               {sidebarTab === 'thumbnails' && (
                 <div className="flex flex-col gap-3">
-                  {Object.keys(thumbnails).length > 0 && (
+                  {(thumbnailsReady || Object.keys(thumbnails).length > 0) && (
                     <div className="flex items-center justify-between px-1 pb-2 border-b border-slate-800/60">
                       <span className="text-xs font-medium text-slate-400">
                         {orderedPages.length} Pages {selectionMode ? `(${selectedPages.size} selected)` : ''}
@@ -1532,14 +1700,16 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                     </div>
                   )}
 
-                  {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && (
+                  {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && !thumbnailsReady && (
                     <div className="flex flex-col items-center justify-center p-6 text-center h-52 border border-slate-800/80 rounded-2xl bg-slate-950/40 backdrop-blur-sm">
                       <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3">
                         <LayoutGrid size={22} />
                       </div>
                       <p className="text-xs font-medium text-slate-400 mb-4 max-w-xs">Generate page thumbnails for visual navigation, reordering, and multi-page export.</p>
                       <button
-                        onClick={startThumbnailGeneration}
+                        onClick={() => {
+                          setThumbnailsReady(true);
+                        }}
                         className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/25 flex items-center gap-2 transition-all active:scale-95"
                       >
                         <Play size={14} /> Generate Thumbnails
@@ -1562,18 +1732,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                     onDragCancel={() => setActiveId(null)}
                   >
                     <SortableContext items={orderedPages.map(String)} strategy={rectSortingStrategy}>
-                      <div className={`grid gap-2.5 sm:gap-3.5 pb-4 ${isSidebarExpanded ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : 'grid-cols-2'}`}>
-                        {orderedPages.filter(p => thumbnails[p]).map((pageNum) => (
-                          <SortableThumbnail
+                      <div ref={thumbnailGridRef} className={`grid gap-2.5 sm:gap-3.5 pb-4 ${isSidebarExpanded ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : 'grid-cols-2'}`}>
+                        {thumbnailsReady && orderedPages.map((pageNum) => (
+                          <VirtualizedThumbnailSlot
                             key={pageNum}
                             pageNum={pageNum}
-                            url={thumbnails[pageNum]}
+                            thumbnailUrl={thumbnails[pageNum] || null}
                             currentPage={currentPage}
                             selectionMode={selectionMode}
                             isSelected={selectedPages.has(pageNum)}
                             defaultFormat={defaultDownloadFormat}
                             isDownloadingThisPage={downloadingPageNum === pageNum}
                             isFormatMenuOpen={formatMenuPageNum === pageNum}
+                            onRequestThumbnail={requestThumbnail}
                             onSelect={(p) => {
                               setSelectedPages(prev => {
                                 const newSet = new Set(prev);
@@ -1659,7 +1830,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
             </div>
 
             {/* Pinned Bottom Action Bar */}
-            {(selectionMode || orderedPages.some((p, i) => p !== i + 1)) && Object.keys(thumbnails).length > 0 && sidebarTab === 'thumbnails' && (
+            {(selectionMode || orderedPages.some((p, i) => p !== i + 1)) && (thumbnailsReady || Object.keys(thumbnails).length > 0) && sidebarTab === 'thumbnails' && (
               <div className="flex-none p-3.5 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/90 flex flex-col gap-2.5 z-20 shadow-2xl">
                 {selectionMode && (
                   <div className="flex justify-between items-center px-0.5">

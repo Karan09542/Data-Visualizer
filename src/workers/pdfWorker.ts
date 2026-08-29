@@ -126,6 +126,39 @@ self.onmessage = async (e: MessageEvent) => {
       }
       self.postMessage({ action: "THUMBNAILS_COMPLETE", msgId });
 
+    } else if (action === "GENERATE_THUMBNAIL_SINGLE") {
+      // On-demand single page thumbnail generation
+      await ensureDoc(payload);
+
+      const pageNum = payload.pageNumber;
+      if (!pageNum || pageNum < 1 || pageNum > pdfDoc.numPages) {
+        self.postMessage({ action: "ERROR", msgId, payload: `Invalid page number: ${pageNum}` });
+        return;
+      }
+
+      const page = await pdfDoc.getPage(pageNum);
+      const baseViewport = page.getViewport({ scale: 1.0 });
+
+      // Target width ~150px for thumbnails
+      const scale = 150 / baseViewport.width;
+      const viewport = page.getViewport({ scale });
+
+      const canvas = new OffscreenCanvas(
+        Math.floor(viewport.width),
+        Math.floor(viewport.height)
+      );
+      const context = canvas.getContext("2d")!;
+
+      await page.render({ canvasContext: context, viewport }).promise;
+
+      const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.6 });
+      const buffer = await blob.arrayBuffer();
+
+      (self as any).postMessage(
+        { action: "THUMBNAIL_GENERATED", payload: { pageNumber: pageNum, buffer } },
+        [buffer]
+      );
+
     } else if (action === "SEARCH_TEXT") {
       await ensureDoc(payload);
 
