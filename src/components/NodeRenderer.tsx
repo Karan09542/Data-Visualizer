@@ -171,6 +171,7 @@ function NodeRenderer({
   nodeRef.current = node;
 
   const [isDraggingLocally, setIsDraggingLocally] = React.useState(false);
+  const isBeingDragged = useStore((state) => state.draggingNodeIds.has(node.data.id));
 
   useEffect(() => {
     if (!foreignRef.current) return;
@@ -240,6 +241,9 @@ function NodeRenderer({
 
         dragPosUpdates[currentId] = { x: event.x, y: event.y };
         useStore.getState().setMultipleDragOverrides(dragPosUpdates);
+
+        // Track all dragged node IDs so their transitions are disabled
+        useStore.getState().setDraggingNodeIds(new Set(startPositions.map(sp => sp.id)));
       })
       .on("drag", function (event) {
         const headNode = startPositions[0];
@@ -265,6 +269,7 @@ function NodeRenderer({
           dragPosUpdates[sp.id] = { x: sp.startX + dx, y: sp.startY + dy };
         }
         useStore.getState().setMultipleDragOverrides(dragPosUpdates);
+        useStore.getState().setDraggingNodeIds(new Set());
         setIsDraggingLocally(false);
       });
 
@@ -1348,7 +1353,7 @@ function NodeRenderer({
         overflow: "visible",
         touchAction: "none",
         pointerEvents: "none",
-        transition: isDraggingLocally ? "none" : "opacity 500ms ease-out, filter 500ms ease-out, transform 500ms ease-out",
+        transition: (isDraggingLocally || isBeingDragged) ? "none" : "opacity 500ms ease-out, filter 500ms ease-out, transform 500ms ease-out",
       }}
     >
       <div className="w-full h-full flex items-center justify-center">

@@ -259,6 +259,8 @@ export interface StoreState {
   apiBody: string;
   activeTab: "raw" | "gui" | "api" | "explorer";
   dragOverrides: Record<string, { x: number; y: number }>;
+  draggingNodeIds: Set<string>;
+  setDraggingNodeIds: (ids: Set<string>) => void;
   undoStack: { code: string; format: CodeFormat }[];
   redoStack: { code: string; format: CodeFormat }[];
 
@@ -575,6 +577,8 @@ export const useStore = create<StoreState>()(
 
         explorerSearchQuery: "",
         dragOverrides: {},
+        draggingNodeIds: new Set<string>(),
+        setDraggingNodeIds: (ids) => set({ draggingNodeIds: ids }),
         activeNodes: [],
         undoStack: [],
         redoStack: [],
