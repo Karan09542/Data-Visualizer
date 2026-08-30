@@ -2028,7 +2028,7 @@ function NodeRenderer({
                   />
                 )}
                 {isTransferNode && (
-                  <MemoTransferNodeRenderer node={node} isSelected={isSelected} />
+                  <MemoTransferNodeRenderer node={node} />
                 )}
                 {isMathNode && (
                   <MemoMathNodeRenderer
@@ -2090,8 +2090,8 @@ function NodeRenderer({
               >
                 <div
                   className={`w-full rounded overflow-hidden border relative ${mediaType === "smart" ? "flex flex-1 items-stretch" : "p-1 flex justify-center items-center"} ${isDarkBase
-                      ? "bg-black/20 border-white/5"
-                      : "bg-slate-100 border-slate-200"
+                    ? "bg-black/20 border-white/5"
+                    : "bg-slate-100 border-slate-200"
                     }`}
                   style={{ pointerEvents: isDraggingLocally ? "none" : "auto" }}
                 >
@@ -2212,7 +2212,7 @@ function NodeRenderer({
                         cleanUrl.split("/").pop() ||
                         "Audio Track";
                       const finalSource = mediaSrc || url;
-                      
+
                       import("../lib/db").then(({ db }) => {
                         db.audio_tracks.get(url).then((existingTrack) => {
                           const track: any = existingTrack || {

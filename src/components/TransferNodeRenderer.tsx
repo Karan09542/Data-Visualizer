@@ -71,41 +71,31 @@ async function getFilesFromEntry(entry: any, path = ""): Promise<{ file: File, p
 import {
   Copy,
   Plus,
-  Video,
   Image as ImageIcon,
   Send,
   MessageSquare,
   X,
   RefreshCw,
-  UploadCloud,
   Download,
   Check,
   File as FileIcon,
-  Globe,
   Share2,
   Laptop,
   Smartphone,
-  Terminal,
-  History,
-  ChevronLeft,
   ChevronRight,
   Activity,
   Maximize,
   Minimize,
-  MoreVertical,
   Trash2,
   Edit2,
-  ExternalLink,
   Play,
   Pause,
   Volume2,
   FileText,
-  Search,
   Clock,
   Eye,
   ClipboardPaste,
   Clipboard,
-  ClipboardCheck,
   QrCode,
   LogIn,
   Scan,
@@ -117,7 +107,6 @@ import {
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
-import { db } from "../lib/db";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { SafeModelViewer } from "./SafeModelViewer";
 
@@ -450,13 +439,10 @@ const VideoPlayer = ({ media, isSelected }: { media: Message; isSelected: boolea
 
 export const TransferNodeRenderer: React.FC<{
   node: HierarchyPointNode<TreeNode>;
-  isSelected?: boolean;
-}> = ({ node, isSelected }) => {
-  const parsedData = useStore((state) => state.parsedData);
+}> = ({ node }) => {
   const setCode = useStore((state) => state.setCode);
   const appTheme = useStore((state) => state.appTheme);
   const setNotification = useStore((state) => state.setNotification);
-  const codeFormat = useStore((state) => state.codeFormat);
   const nodeKey = node.data.path.split(".").pop() || "transfer";
   const [connectionState, setConnectionState] = useState<
     | "waiting"
@@ -569,7 +555,6 @@ export const TransferNodeRenderer: React.FC<{
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollPosRef = useRef<number>(0);
-  const lastMessageRef = useRef<HTMLDivElement>(null);
 
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermission>("default");
@@ -818,7 +803,6 @@ export const TransferNodeRenderer: React.FC<{
   }, [viewMode, isAtBottom]);
 
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
-  const [viewedMediaIds, setViewedMediaIds] = useState<Set<string>>(new Set());
   const [showChrome, setShowChrome] = useState(true);
   const [copyStatus, setCopyStatus] = useState<{ id: string, status: "copying" | "success" } | null>(null);
 
@@ -1016,14 +1000,9 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const handlePointerMoveChrome = () => {
-    setShowChrome(true);
-  };
-
   useEffect(() => {
     if (selectedMedia) {
       document.body.style.overflow = "hidden";
-      setViewedMediaIds((prev) => new Set(prev).add(selectedMedia.id));
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
           setSelectedMedia(null);
@@ -1059,7 +1038,6 @@ export const TransferNodeRenderer: React.FC<{
       };
     } else {
       document.body.style.overflow = "";
-      setViewedMediaIds(new Set());
     }
     return () => {
       document.body.style.overflow = "";
@@ -2263,19 +2241,6 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const sendWorkspace = () => {
-    if (!dcRef.current || dcRef.current.readyState !== "open") return;
-    const wsStr = JSON.stringify(parsedData);
-    setConnectionState("transferring");
-    sendLargeMessage("workspace", wsStr).then(() =>
-      setConnectionState("connected"),
-    );
-    setNotification({
-      message: "Workspace synced to remote device",
-      type: "info",
-    });
-  };
-
   const resetState = () => {
     if (pcRef.current) pcRef.current.close();
     setConnectionState("waiting");
@@ -2327,24 +2292,7 @@ export const TransferNodeRenderer: React.FC<{
     return acc;
   }, []);
   const selectedMediaIdx = selectedMedia ? mediaMsgs.findIndex((m) => m.id === selectedMedia.id) : -1;
-  const hasPrevMedia = selectedMediaIdx > 0;
-  const hasNextMedia = selectedMediaIdx !== -1 && selectedMediaIdx < mediaMsgs.length - 1;
 
-  const touchStartXRef = useRef<number>(0);
-  const touchEndXRef = useRef<number>(0);
-
-  const handleMediaTouchStart = (e: React.TouchEvent) => {
-    touchStartXRef.current = e.changedTouches[0].screenX;
-  };
-
-  const handleMediaTouchEnd = (e: React.TouchEvent) => {
-    touchEndXRef.current = e.changedTouches[0].screenX;
-    if (touchEndXRef.current < touchStartXRef.current - 50 && hasNextMedia) {
-      setSelectedMedia(mediaMsgs[selectedMediaIdx + 1]);
-    } else if (touchEndXRef.current > touchStartXRef.current + 50 && hasPrevMedia) {
-      setSelectedMedia(mediaMsgs[selectedMediaIdx - 1]);
-    }
-  };
 
   return (
     <div
@@ -2508,12 +2456,12 @@ export const TransferNodeRenderer: React.FC<{
           {connectionState !== "connected" && connectionState !== "messaging" && (
             <div
               className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${connectionState === "transferring"
-                  ? "bg-blue-500/10 text-blue-500"
-                  : connectionState === "failed"
-                    ? "bg-red-500/10 text-red-500"
-                    : isDark
-                      ? "bg-white/5 text-slate-500"
-                      : "bg-slate-100 text-slate-500"
+                ? "bg-blue-500/10 text-blue-500"
+                : connectionState === "failed"
+                  ? "bg-red-500/10 text-red-500"
+                  : isDark
+                    ? "bg-white/5 text-slate-500"
+                    : "bg-slate-100 text-slate-500"
                 }`}
             >
               {connectionState === "pairing"
@@ -2529,10 +2477,10 @@ export const TransferNodeRenderer: React.FC<{
                   : (
                     <span className="flex items-center gap-1.5">
                       <div className={`w-1.5 h-1.5 rounded-full ${connectionState === "transferring"
-                          ? "bg-blue-500 animate-pulse"
-                          : connectionState === "failed"
-                            ? "bg-red-500"
-                            : "bg-slate-400"
+                        ? "bg-blue-500 animate-pulse"
+                        : connectionState === "failed"
+                          ? "bg-red-500"
+                          : "bg-slate-400"
                         }`} />
                       {connectionState}
                     </span>

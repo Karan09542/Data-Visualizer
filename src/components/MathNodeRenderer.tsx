@@ -12,7 +12,6 @@ import {
   Minimize2,
   Play,
   Pause,
-  SkipBack,
   Layers,
   Plus,
   Trash2,
@@ -20,23 +19,18 @@ import {
   Crosshair,
   HelpCircle,
   X,
-  Search,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
-  Edit2,
   Copy,
   CopyPlus,
   RotateCcw,
   GripVertical,
-  Folder,
   Menu,
   MoreVertical,
   Bookmark,
   Save,
   Check,
   Eye,
-  Heart,
   Sparkles,
   Type,
   List,
@@ -63,7 +57,6 @@ import katex from "katex";
 import * as mathjs from "mathjs";
 import { useStore } from "../store/useStore";
 import { useMathWorker } from "../hooks/useMathWorker";
-import { liveQuery } from "dexie";
 import { db } from "../lib/db";
 import MathHelpPopup from "./MathHelpPopup";
 
@@ -72,7 +65,6 @@ import {
   MathVariable,
   VariableGroup,
   COLORS,
-  getVarColor,
   getHexWithAlpha,
   getStrokeDasharray,
   formatMathError,
@@ -99,7 +91,6 @@ import {
   TraceOverlay,
   VariableManager,
   Timeline,
-  MathNodeRendererProps
 } from "./math-node";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
@@ -111,7 +102,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   width,
   height,
 }) => {
-  const { compileFunctions, expressionToLatexWithEval, batchEvaluate, evaluateCompiled } = useMathWorker();
+  const { compileFunctions } = useMathWorker();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(true);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
@@ -301,7 +292,6 @@ export const MathNodeRenderer: React.FC<any> = ({
     ];
   });
 
-  const [searchQuery, setSearchQuery] = useState("");
   const [hoveredVar, setHoveredVar] = useState<string | null>(null);
   const [editingVar, setEditingVar] = useState<MathVariable | null>(null);
   const [showVarEditor, setShowVarEditor] = useState(false);
