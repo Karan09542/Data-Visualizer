@@ -18,7 +18,7 @@ export function NotificationToast() {
   if (!notification) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 md:bottom-6 md:right-6 md:left-auto z-[9999] flex justify-center md:justify-end pointer-events-none animate-in slide-in-from-bottom-5 fade-in duration-300">
+    <div className="fixed bottom-4 left-4 right-4 md:bottom-6 md:right-6 md:left-auto z-[9999999] flex justify-center md:justify-end pointer-events-none animate-in slide-in-from-bottom-5 fade-in duration-300">
       <div className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-2xl border w-full max-w-sm
         ${notification.type === 'error' ? 'bg-white dark:bg-slate-900 border-red-200 dark:border-red-900 text-slate-800 dark:text-slate-200' : ''}
         ${notification.type === 'warning' ? 'bg-white dark:bg-slate-900 border-yellow-400/50 dark:border-yellow-600/50 text-slate-800 dark:text-slate-200' : ''}
