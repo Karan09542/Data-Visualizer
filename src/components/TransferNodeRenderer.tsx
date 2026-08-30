@@ -104,10 +104,16 @@ import {
   RotateCw,
   Settings,
   Box,
+  Server,
+  Star,
+  Radio,
+  RotateCcw,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
+import { useAuthStore } from "../store/useAuthStore";
+import { io, Socket } from "socket.io-client";
 import { SafeModelViewer } from "./SafeModelViewer";
 
 export interface Attachment {
@@ -460,6 +466,25 @@ export const TransferNodeRenderer: React.FC<{
 
   const [chatInputFocused, setChatInputFocused] = useState(false);
 
+  // Auth & Signaling State
+  const { user, token, getIsLoggedIn } = useAuthStore();
+  const isLoggedIn = getIsLoggedIn();
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
+  const [lastConnectedEmail, setLastConnectedEmail] = useState<string | null>(() => {
+    return localStorage.getItem("transfer-last-connected") || null;
+  });
+  const [connectionHistory, setConnectionHistory] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("transfer-history") || "[]");
+    } catch { return []; }
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [onlinePresence, setOnlinePresence] = useState<Record<string, boolean>>({});
+  const signalingSocketRef = useRef<Socket | null>(null);
+  const [targetRemoteEmail, setTargetRemoteEmail] = useState<string | null>(null);
+
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
 
@@ -502,6 +527,50 @@ export const TransferNodeRenderer: React.FC<{
       zipWorkerRef.current?.terminate();
     };
   }, []);
+
+  // Socket.io Signaling
+  useEffect(() => {
+    if (!isLoggedIn || !token) return;
+
+    const serverUrl = import.meta.env.DEV ? window.location.origin : "https://datavisualizer-signalling-server.onrender.com";
+    const socket = io(serverUrl, {
+      auth: { token },
+      transports: ["websocket"],
+    });
+
+    signalingSocketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("Signaling connected as", user?.email);
+      // Auto-connect to default target if available and enabled
+      if (user?.defaultTargetEmail) {
+        setTimeout(() => {
+          handleAutoConnect(user.defaultTargetEmail!);
+        }, 1000);
+      }
+    });
+
+    socket.on("webrtc-offer", async (data: { from: string; offer: RTCSessionDescriptionInit }) => {
+      await handleServerOffer(data);
+    });
+
+    socket.on("webrtc-answer", async (data: { from: string; answer: RTCSessionDescriptionInit }) => {
+      await handleServerAnswer(data);
+    });
+
+    socket.on("webrtc-ice-candidate", async (data: { from: string; candidate: RTCIceCandidateInit }) => {
+      await handleServerIceCandidate(data);
+    });
+
+    socket.on("user-profile-updated", (userData: any) => {
+      const { updateUser } = useAuthStore.getState();
+      updateUser(userData);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isLoggedIn, token, user]);
   const [copyPasteOffer, setCopyPasteOffer] = useState("");
   const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
 
@@ -1053,7 +1122,7 @@ export const TransferNodeRenderer: React.FC<{
   const [pairingMode, setPairingMode] = useState<"local" | "universal">(
     "local",
   );
-  const [pairingWorkflow, setPairingWorkflow] = useState<"qr" | "manual">("qr");
+  const [pairingWorkflow, setPairingWorkflow] = useState<"qr" | "manual" | "signaling">("qr");
   const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<
     string | null
   >(null);
@@ -1062,6 +1131,43 @@ export const TransferNodeRenderer: React.FC<{
   const [isFullscreenQR, setIsFullscreenQR] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [copiedSDP, setCopiedSDP] = useState(false);
+
+  useEffect(() => {
+    if (!signalingSocketRef.current || !isLoggedIn || !user || pairingWorkflow !== "signaling" || connectionState !== "waiting") return;
+    const socket = signalingSocketRef.current;
+
+    const checkPresence = () => {
+      if (!socket.connected) return;
+      const emailsToCheck = [user.email];
+      if (user.defaultTargetEmail) emailsToCheck.push(user.defaultTargetEmail);
+      if (lastConnectedEmail) emailsToCheck.push(lastConnectedEmail);
+      socket.emit('check-presence', emailsToCheck);
+    };
+
+    socket.on('presence-result', (presence: Record<string, boolean>) => {
+      setOnlinePresence(presence);
+    });
+
+    checkPresence();
+    const interval = setInterval(checkPresence, 5000);
+
+    return () => {
+      socket.off('presence-result');
+      clearInterval(interval);
+    };
+  }, [isLoggedIn, user, lastConnectedEmail, pairingWorkflow, connectionState]);
+
+  useEffect(() => {
+    // Auto-connect on load if enabled and target is online
+    if (user?.autoConnectEnabled && user?.defaultTargetEmail && !autoConnectAttempted) {
+      if (onlinePresence[user.defaultTargetEmail] !== undefined) {
+        setAutoConnectAttempted(true);
+        if (onlinePresence[user.defaultTargetEmail] === true) {
+          initiateServerConnection(user.defaultTargetEmail);
+        }
+      }
+    }
+  }, [user?.autoConnectEnabled, user?.defaultTargetEmail, autoConnectAttempted, onlinePresence]);
 
   useEffect(() => {
     const payload = offerQR || answerQR;
@@ -1559,17 +1665,14 @@ export const TransferNodeRenderer: React.FC<{
   const initPeer = () => {
     if (pcRef.current) pcRef.current.close();
 
-    const config: RTCConfiguration =
-      pairingMode === "universal"
-        ? {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun.services.mozilla.com" }
-          ]
-        }
-        : { iceServers: [] };
+    const config: RTCConfiguration = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun.services.mozilla.com" }
+      ]
+    };
 
     const pc = new RTCPeerConnection(config);
 
@@ -1944,6 +2047,166 @@ export const TransferNodeRenderer: React.FC<{
         console.error("DataChannel error", err);
       }
     };
+  };
+
+  const initiateServerConnection = async (targetEmail: string) => {
+    if (!signalingSocketRef.current || !signalingSocketRef.current.connected) {
+      setNotification({ message: "Signaling server disconnected", type: "error" });
+      return;
+    }
+
+    setPairingWorkflow("signaling");
+    setConnectionState("pairing");
+    setTargetRemoteEmail(targetEmail);
+    setIsHosting(true);
+
+    const pc = initPeer();
+    const dc = pc.createDataChannel("transfer");
+    handleDataChannel(dc);
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        signalingSocketRef.current?.emit("webrtc-ice-candidate", { targetEmail, candidate: e.candidate });
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    signalingSocketRef.current.emit("webrtc-offer", { targetEmail, offer });
+  };
+
+  const handleAutoConnect = (targetEmail: string) => {
+    initiateServerConnection(targetEmail);
+  };
+
+  const reconnectLastUser = () => {
+    if (lastConnectedEmail) {
+      initiateServerConnection(lastConnectedEmail);
+    }
+  };
+
+  const searchUsers = async () => {
+    if (!searchQuery) return;
+    setIsSearching(true);
+    try {
+      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
+      const res = await fetch(`${baseUrl}/api/users/search?email=${encodeURIComponent(searchQuery)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Search failed');
+      setSearchResults(data);
+    } catch (err: any) {
+      setNotification({ message: err.message, type: 'error' });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const updateDefaultTarget = async (newEmail?: string, toggleAutoConnect?: boolean) => {
+    if (!token) return;
+    try {
+      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
+      const body: any = {};
+      if (newEmail !== undefined) body.defaultTargetEmail = newEmail.trim().toLowerCase();
+      if (toggleAutoConnect !== undefined) body.autoConnectEnabled = toggleAutoConnect;
+
+      const res = await fetch(`${baseUrl}/api/users/me/default-target`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed');
+
+      const { updateUser } = useAuthStore.getState();
+      updateUser(data);
+
+      if (signalingSocketRef.current?.connected) {
+        signalingSocketRef.current.emit("user-profile-updated", data);
+      }
+
+      setNotification({ message: 'Settings saved', type: 'success' });
+    } catch (err: any) {
+      setNotification({ message: err.message, type: 'error' });
+    }
+  };
+
+  const handleServerOffer = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; offer: RTCSessionDescriptionInit }) => {
+    const remoteEmail = data.senderEmail || data.from || "Remote Peer";
+
+    try {
+      if (pcRef.current && pcRef.current.iceConnectionState === "connected") {
+        console.log("[WebRTC] Already connected, ignoring incoming offer");
+        return;
+      }
+
+      setPairingWorkflow("signaling");
+      setConnectionState("pairing");
+      setTargetRemoteEmail(remoteEmail);
+      setIsHosting(false);
+
+      const pc = initPeer();
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          signalingSocketRef.current?.emit("webrtc-ice-candidate", {
+            targetSocketId: data.senderSocketId,
+            targetEmail: remoteEmail,
+            candidate: e.candidate
+          });
+        }
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      signalingSocketRef.current?.emit("webrtc-answer", {
+        targetSocketId: data.senderSocketId,
+        targetEmail: remoteEmail,
+        answer
+      });
+    } catch (err) {
+      console.warn("[WebRTC] Error handling incoming offer:", err);
+    }
+  };
+
+  const handleServerAnswer = async (data: { senderEmail?: string; from?: string; answer: RTCSessionDescriptionInit }) => {
+    const remoteEmail = data.senderEmail || data.from || targetRemoteEmail || "Remote Peer";
+    if (pcRef.current) {
+      if (pcRef.current.signalingState !== "have-local-offer") {
+        console.warn(`[WebRTC] Ignoring remote answer: connection is in '${pcRef.current.signalingState}' state, expected 'have-local-offer'`);
+        return;
+      }
+      try {
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+        setLastConnectedEmail(remoteEmail);
+        localStorage.setItem("transfer-last-connected", remoteEmail);
+        setConnectionHistory(prev => {
+          const next = [remoteEmail, ...prev.filter(e => e !== remoteEmail)].slice(0, 5);
+          localStorage.setItem("transfer-history", JSON.stringify(next));
+          return next;
+        });
+      } catch (err) {
+        console.warn("[WebRTC] Failed to set remote answer:", err);
+      }
+    }
+  };
+
+  const handleServerIceCandidate = async (data: { senderEmail?: string; from?: string; candidate: RTCIceCandidateInit }) => {
+    if (pcRef.current && pcRef.current.remoteDescription) {
+      try {
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+      } catch (e) {
+        console.warn("[WebRTC] Error adding received ice candidate:", e);
+      }
+    }
   };
 
   const generateOffer = async () => {
@@ -2689,25 +2952,218 @@ export const TransferNodeRenderer: React.FC<{
               className={`h-[1px] w-full ${isDark ? "bg-white/5" : "bg-slate-100"}`}
             />
 
-            <p className="text-sm leading-relaxed text-slate-400">
-              Transfer nodes, documents, or your entire workspace instantly
-              between devices using WebRTC. No accounts required.
-            </p>
+            {!isLoggedIn ? (
+              <p className="text-sm leading-relaxed text-slate-400">
+                Transfer nodes, documents, or your entire workspace instantly
+                between devices using WebRTC. No accounts required.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2.5 w-full">
+                {/* 1. Connect to My Devices */}
+                <button
+                  onClick={() => initiateServerConnection(user?.email || "")}
+                  className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"}`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${onlinePresence[user?.email || ""] ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                    <div className="flex flex-col text-left truncate">
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 leading-tight">
+                        Connect to My Devices
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                        Link other devices logged in as {user?.email}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (user?.defaultTargetEmail === user?.email) {
+                          updateDefaultTarget("", false);
+                        } else {
+                          updateDefaultTarget(user?.email || "", true);
+                        }
+                      }}
+                      className={`p-1.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${user?.defaultTargetEmail === user?.email ? "text-amber-400 bg-amber-400/10" : "text-emerald-500/50 hover:text-amber-400 hover:bg-emerald-500/10"}`}
+                      title={user?.defaultTargetEmail === user?.email ? "Default Target Device" : "Set as Default Target Device"}
+                    >
+                      <Star size={14} className={user?.defaultTargetEmail === user?.email ? "fill-amber-400" : ""} />
+                    </button>
+                    <Laptop className="w-4 h-4 text-emerald-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                  </div>
+                </button>
+
+                {/* 2. Connect to Default Target (if configured) */}
+                {user?.defaultTargetEmail && user.defaultTargetEmail !== user.email && (
+                  <button
+                    onClick={() => initiateServerConnection(user.defaultTargetEmail!)}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 hover:bg-blue-100"}`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${onlinePresence[user.defaultTargetEmail] ? "bg-blue-500 animate-pulse" : "bg-slate-400"}`} />
+                      <div className="flex flex-col text-left truncate">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-blue-600 dark:text-blue-400 leading-tight">
+                            Default Target Device
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateDefaultTarget("", false);
+                            }}
+                            className="hover:scale-110 transition-transform cursor-pointer focus:outline-none"
+                            title="Remove Default Target"
+                          >
+                            <Star size={11} className="text-amber-400 fill-amber-400 drop-shadow-sm" />
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                          Connect: {user.defaultTargetEmail}
+                        </span>
+                      </div>
+                    </div>
+                    <Radio className="w-4 h-4 text-blue-500 flex-shrink-0 group-hover:scale-110 transition-transform animate-pulse" />
+                  </button>
+                )}
+
+                {/* 3. Reconnect Last Connected Device */}
+                {lastConnectedEmail && lastConnectedEmail !== user?.email && lastConnectedEmail !== user?.defaultTargetEmail && (
+                  <button
+                    onClick={reconnectLastUser}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition-all ${isDark ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20" : "bg-indigo-50 border-indigo-200 hover:bg-indigo-100"}`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${onlinePresence[lastConnectedEmail] ? "bg-indigo-500 animate-pulse" : "bg-slate-400"}`} />
+                      <div className="flex flex-col text-left truncate">
+                        <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
+                          Recent Connection
+                        </span>
+                        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 truncate">
+                          {lastConnectedEmail}
+                        </span>
+                      </div>
+                    </div>
+                    <RotateCcw className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                  </button>
+                )}
+
+
+
+                {/* 4. Auto-Connect Toggle */}
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-white/10 transition-colors">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Auto-Connect Default Target</span>
+                  </div>
+                  <button
+                    onClick={() => updateDefaultTarget(user?.defaultTargetEmail || "", !(user?.autoConnectEnabled ?? false))}
+                    className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${user?.autoConnectEnabled ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"}`}
+                  >
+                    <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${user?.autoConnectEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                  </button>
+                </div>
+
+                {/* 5. Search by Email */}
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search device by email..."
+                    className={`flex-1 px-3 py-2.5 text-xs rounded-xl border outline-none ${isDark ? "bg-white/5 border-white/10 text-white focus:border-indigo-500/50" : "bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500"}`}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') searchUsers();
+                    }}
+                  />
+                  <button
+                    onClick={searchUsers}
+                    disabled={isSearching || !searchQuery}
+                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
+                  >
+                    {isSearching ? "Searching..." : "Search"}
+                  </button>
+                </div>
+
+                {/* 5. Search Results with Connect & Set Default */}
+                {searchResults.filter(u => u.isOnline).length > 0 && (
+                  <div className={`flex flex-col gap-1.5 max-h-44 overflow-y-auto rounded-xl border p-1.5 ${isDark ? "border-white/10 bg-black/20" : "border-slate-200 bg-slate-50"}`}>
+                    <div className="px-1.5 py-0.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <span>Found Online Devices</span>
+                      <span>{searchResults.filter(u => u.isOnline).length}</span>
+                    </div>
+                    {searchResults.filter(u => u.isOnline).map((searchUser: any) => (
+                      <div
+                        key={searchUser._id || searchUser.id}
+                        className={`p-2 rounded-lg flex items-center justify-between transition-colors ${isDark ? "bg-white/5 hover:bg-white/10 text-slate-200" : "bg-white hover:bg-slate-100 text-slate-800 border border-slate-200/60"}`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-blue-500/20 text-blue-500 font-bold text-xs flex items-center justify-center flex-shrink-0 relative">
+                            {searchUser.photoUrl ? (
+                              <img src={searchUser.photoUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                            ) : searchUser.username ? (
+                              searchUser.username.charAt(0).toUpperCase()
+                            ) : (
+                              "U"
+                            )}
+                            {searchUser.isOnline && (
+                              <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-slate-50 dark:border-black"></span>
+                            )}
+                          </div>
+                          <div className="truncate">
+                            <p className="text-xs font-bold truncate leading-tight">{searchUser.username}</p>
+                            <p className="text-[10px] text-slate-400 truncate leading-tight">{searchUser.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => {
+                              if (user?.defaultTargetEmail === searchUser.email) {
+                                updateDefaultTarget("", false);
+                              } else {
+                                updateDefaultTarget(searchUser.email, true);
+                              }
+                            }}
+                            className={`p-1.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${user?.defaultTargetEmail === searchUser.email ? "text-amber-400 bg-amber-400/10" : "text-slate-400 hover:text-amber-400 hover:bg-white/5"}`}
+                            title={user?.defaultTargetEmail === searchUser.email ? "Default Target Device" : "Set as Default Target Device"}
+                          >
+                            <Star size={14} className={user?.defaultTargetEmail === searchUser.email ? "fill-amber-400" : ""} />
+                          </button>
+                          <button
+                            onClick={() => initiateServerConnection(searchUser.email)}
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-lg text-[11px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                          >
+                            <Radio size={11} className="animate-pulse" />
+                            <span>Connect</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-[1px] flex-1 bg-slate-200 dark:bg-white/10" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Or use manual pairing</span>
+              <div className="h-[1px] flex-1 bg-slate-200 dark:bg-white/10" />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={generateOffer}
-                className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-all group ${isDark
-                  ? "border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/5"
-                  : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50"
+                className={`p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 transition-all group ${isDark
+                  ? "border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/5 bg-white/5"
+                  : "border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 bg-slate-50"
                   }`}
               >
                 <div
-                  className={`p-3 rounded-full transition-colors ${isDark ? "bg-white/5 group-hover:bg-indigo-500/20" : "bg-slate-100 group-hover:bg-indigo-100"}`}
+                  className={`p-2.5 rounded-full transition-colors ${isDark ? "bg-white/5 group-hover:bg-indigo-500/20" : "bg-white group-hover:bg-indigo-100"}`}
                 >
-                  <Laptop className="w-6 h-6" />
+                  <Laptop className="w-5 h-5" />
                 </div>
-                <span className="text-xs font-bold tracking-tight">
+                <span className="text-[11px] font-bold tracking-tight">
                   Host Transfer
                 </span>
               </button>
@@ -2751,602 +3207,663 @@ export const TransferNodeRenderer: React.FC<{
             animate={{ opacity: 1 }}
             className="flex flex-col items-center gap-4 py-2 w-full"
           >
-            <div
-              className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}
-            >
-              <button
-                onClick={() => setPairingWorkflow("qr")}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "qr"
-                  ? isDark
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                    : "bg-white text-indigo-600 shadow-sm"
-                  : "text-slate-500 hover:text-slate-300"
-                  }`}
-              >
-                <QrCode className="w-3.5 h-3.5" />
-                QR Scan
-              </button>
-              <button
-                onClick={() => setPairingWorkflow("manual")}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "manual"
-                  ? isDark
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                    : "bg-white text-indigo-600 shadow-sm"
-                  : "text-slate-500 hover:text-slate-300"
-                  }`}
-              >
-                <ClipboardPaste className="w-3.5 h-3.5" />
-                Manual SDP
-              </button>
-            </div>
+            {pairingWorkflow === "signaling" ? (
+              <div className="w-full flex flex-col items-center justify-center p-4 text-center">
+                <div className="relative my-4 flex items-center justify-center">
+                  <div className="absolute w-24 h-24 rounded-full bg-blue-500/15 animate-ping opacity-60 pointer-events-none" />
+                  <div className="absolute w-20 h-20 rounded-full bg-indigo-500/20 animate-pulse pointer-events-none" />
+                  <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xl shadow-blue-500/30 border border-white/20">
+                    <Laptop className="w-7 h-7 animate-pulse" />
+                  </div>
+                </div>
 
-            {pairingWorkflow === "qr" ? (
-              <>
-                {showDiagnostics ? (
-                  <div
-                    className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-1">
+                  Connecting via Signaling
+                </h3>
+                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-4 font-mono bg-blue-50 dark:bg-blue-500/10 px-3 py-1 rounded-full border border-blue-200 dark:border-blue-500/20 max-w-full truncate">
+                  {targetRemoteEmail || "Awaiting Peer..."}
+                </p>
+
+                <div className="w-full bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-3.5 mb-5 flex flex-col gap-2.5 text-left">
+                  <div className="flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                    <span>Signaling offer dispatched</span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+                    <span>Negotiating WebRTC ICE candidates</span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-xs text-slate-400 dark:text-slate-500">
+                    <div className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
+                    <span>Establishing direct P2P data stream</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 w-full">
+                  <button
+                    onClick={() => {
+                      if (targetRemoteEmail) {
+                        initiateServerConnection(targetRemoteEmail);
+                      }
+                    }}
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
                   >
-                    <div className="flex items-center justify-between pb-2 border-b border-gray-500/20">
-                      <span className="text-[10px] font-black uppercase text-indigo-400">
-                        Diagnostics
-                      </span>
-                      <button
-                        onClick={() => setShowDiagnostics(false)}
-                        className="text-slate-400 hover:text-white"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-mono mt-2">
-                      <div className="text-slate-500">Original SDP:</div>
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Retry</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      resetState();
+                      setPairingWorkflow("qr");
+                    }}
+                    className="flex-1 py-2.5 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold rounded-xl text-xs transition-colors border border-rose-200 dark:border-rose-500/20 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={`p-1.5 flex w-full rounded-2xl border ${isDark ? "bg-white/5 border-white/5" : "bg-slate-100 border-slate-200"}`}
+                >
+                  <button
+                    onClick={() => setPairingWorkflow("qr")}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "qr"
+                      ? isDark
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                        : "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-300"
+                      }`}
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    QR Scan
+                  </button>
+                  <button
+                    onClick={() => setPairingWorkflow("manual")}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${pairingWorkflow === "manual"
+                      ? isDark
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                        : "bg-white text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-300"
+                      }`}
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    Manual SDP
+                  </button>
+                </div>
+
+                {pairingWorkflow === "qr" ? (
+                  <>
+                    {showDiagnostics ? (
                       <div
-                        className={isDark ? "text-slate-300" : "text-slate-700"}
+                        className={`w-full p-4 rounded-3xl shrink-0 ${isDark ? "bg-[#0d1017] border border-white/10" : "bg-slate-50 border border-slate-200"} space-y-2`}
                       >
-                        {diagnostics.originalSdpSize} B
-                      </div>
-                      <div className="text-slate-500">Filtered SDP:</div>
-                      <div
-                        className={isDark ? "text-slate-300" : "text-slate-700"}
-                      >
-                        {diagnostics.filteredSdpSize} B
-                      </div>
-                      <div className="text-slate-500">ICE Candidates:</div>
-                      <div className={isDark ? "text-white" : "text-slate-900"}>
-                        {diagnostics.candidateCount}
-                      </div>
-                      <div className="text-slate-500">Compressed:</div>
-                      <div
-                        className={
-                          isDark ? "text-emerald-400" : "text-emerald-600"
-                        }
-                      >
-                        {diagnostics.compressedSize} B (
-                        {diagnostics.compressionRatio}%)
-                      </div>
-                      <div className="text-slate-500">Gen Time:</div>
-                      <div
-                        className={isDark ? "text-slate-300" : "text-slate-700"}
-                      >
-                        {diagnostics.genTime.toFixed(1)} ms
-                      </div>
-                      {broadcastFrames.length > 0 && (
-                        <>
-                          <div className="text-slate-500">QR Speed Pres:</div>
-                          <div className={isDark ? "text-slate-300" : "text-slate-700"}>
-                            {qrSpeed}
+                        <div className="flex items-center justify-between pb-2 border-b border-gray-500/20">
+                          <span className="text-[10px] font-black uppercase text-indigo-400">
+                            Diagnostics
+                          </span>
+                          <button
+                            onClick={() => setShowDiagnostics(false)}
+                            className="text-slate-400 hover:text-white"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-mono mt-2">
+                          <div className="text-slate-500">Original SDP:</div>
+                          <div
+                            className={isDark ? "text-slate-300" : "text-slate-700"}
+                          >
+                            {diagnostics.originalSdpSize} B
                           </div>
-                          <div className="text-slate-500">Total Frames:</div>
-                          <div className={isDark ? "text-slate-300" : "text-slate-700"}>
-                            {broadcastFrames.length}
+                          <div className="text-slate-500">Filtered SDP:</div>
+                          <div
+                            className={isDark ? "text-slate-300" : "text-slate-700"}
+                          >
+                            {diagnostics.filteredSdpSize} B
                           </div>
-                          <div className="text-slate-500">Current Frame:</div>
-                          <div className={isDark ? "text-emerald-400" : "text-emerald-600"}>
-                            {currentFrameIndex + 1}
+                          <div className="text-slate-500">ICE Candidates:</div>
+                          <div className={isDark ? "text-white" : "text-slate-900"}>
+                            {diagnostics.candidateCount}
                           </div>
-                        </>
-                      )}
-                      {diagnostics.scanTime > 0 && (
-                        <>
-                          <div className="text-slate-500">Scan Time:</div>
+                          <div className="text-slate-500">Compressed:</div>
                           <div
                             className={
-                              isDark ? "text-slate-300" : "text-slate-700"
+                              isDark ? "text-emerald-400" : "text-emerald-600"
                             }
                           >
-                            {diagnostics.scanTime.toFixed(1)} ms
+                            {diagnostics.compressedSize} B (
+                            {diagnostics.compressionRatio}%)
                           </div>
-                        </>
-                      )}
-                      {diagnostics.transferSpeed > 0 && (
-                        <>
-                          <div className="text-slate-500">TX Speed:</div>
-                          <div className="text-blue-400">
-                            {formatFileSize(diagnostics.transferSpeed)}/s
+                          <div className="text-slate-500">Gen Time:</div>
+                          <div
+                            className={isDark ? "text-slate-300" : "text-slate-700"}
+                          >
+                            {diagnostics.genTime.toFixed(1)} ms
                           </div>
-                        </>
-                      )}
-                      <div className="text-slate-500">Buffer:</div>
-                      <div
-                        className={
-                          diagnostics.bufferedAmount > 1024 * 512
-                            ? "text-amber-400"
-                            : "text-slate-400"
-                        }
-                      >
-                        {formatFileSize(diagnostics.bufferedAmount)}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center aspect-square w-full max-w-[240px]">
-                    {broadcastFrames.length > 0 && (
-                      <div className="absolute top-2 left-2 z-[10]">
-                        <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
-                          {currentFrameIndex + 1} / {broadcastFrames.length}
+                          {broadcastFrames.length > 0 && (
+                            <>
+                              <div className="text-slate-500">QR Speed Pres:</div>
+                              <div className={isDark ? "text-slate-300" : "text-slate-700"}>
+                                {qrSpeed}
+                              </div>
+                              <div className="text-slate-500">Total Frames:</div>
+                              <div className={isDark ? "text-slate-300" : "text-slate-700"}>
+                                {broadcastFrames.length}
+                              </div>
+                              <div className="text-slate-500">Current Frame:</div>
+                              <div className={isDark ? "text-emerald-400" : "text-emerald-600"}>
+                                {currentFrameIndex + 1}
+                              </div>
+                            </>
+                          )}
+                          {diagnostics.scanTime > 0 && (
+                            <>
+                              <div className="text-slate-500">Scan Time:</div>
+                              <div
+                                className={
+                                  isDark ? "text-slate-300" : "text-slate-700"
+                                }
+                              >
+                                {diagnostics.scanTime.toFixed(1)} ms
+                              </div>
+                            </>
+                          )}
+                          {diagnostics.transferSpeed > 0 && (
+                            <>
+                              <div className="text-slate-500">TX Speed:</div>
+                              <div className="text-blue-400">
+                                {formatFileSize(diagnostics.transferSpeed)}/s
+                              </div>
+                            </>
+                          )}
+                          <div className="text-slate-500">Buffer:</div>
+                          <div
+                            className={
+                              diagnostics.bufferedAmount > 1024 * 512
+                                ? "text-amber-400"
+                                : "text-slate-400"
+                            }
+                          >
+                            {formatFileSize(diagnostics.bufferedAmount)}
+                          </div>
                         </div>
                       </div>
-                    )}
-                    {(broadcastFrames.length > 0 || offerQR || answerQR) ? (
-                      <>
-                        <button
-                          onClick={() => setShowDiagnostics(true)}
-                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
-                          title="Diagnostics"
-                        >
-                          <Activity className="w-3.5 h-3.5 text-slate-500" />
-                        </button>
-                        <button
-                          onClick={() => setIsFullscreenQR(true)}
-                          className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
-                          title="Fullscreen QR"
-                        >
-                          <Maximize className="w-3.5 h-3.5 text-slate-500" />
-                        </button>
-                        <QRCodeSVG
-                          value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
-                          size={200}
-                          level={qrDensity}
-                          marginSize={2}
-                          className="w-full h-auto max-w-[200px]"
-                        />
-                      </>
                     ) : (
-                      <div className="flex flex-col items-center justify-center w-full h-full text-center">
-                        {isHosting ? (
-                          <button
-                            onClick={generateOffer}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-indigo-500/20"
-                          >
-                            <Plus className="w-3.5 h-3.5" /> Generate Offer
-                          </button>
+                      <div className="p-4 bg-white rounded-3xl shadow-xl shrink-0 relative group flex items-center justify-center aspect-square w-full max-w-[240px]">
+                        {broadcastFrames.length > 0 && (
+                          <div className="absolute top-2 left-2 z-[10]">
+                            <div className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100/80 text-slate-500 backdrop-blur-sm shadow-sm ring-1 ring-slate-200">
+                              {currentFrameIndex + 1} / {broadcastFrames.length}
+                            </div>
+                          </div>
+                        )}
+                        {(broadcastFrames.length > 0 || offerQR || answerQR) ? (
+                          <>
+                            <button
+                              onClick={() => setShowDiagnostics(true)}
+                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                              title="Diagnostics"
+                            >
+                              <Activity className="w-3.5 h-3.5 text-slate-500" />
+                            </button>
+                            <button
+                              onClick={() => setIsFullscreenQR(true)}
+                              className="absolute top-10 right-2 p-1.5 rounded-lg bg-slate-100/80 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity hover:bg-slate-200/80 z-[10] backdrop-blur-sm shadow-sm ring-1 ring-slate-200"
+                              title="Fullscreen QR"
+                            >
+                              <Maximize className="w-3.5 h-3.5 text-slate-500" />
+                            </button>
+                            <QRCodeSVG
+                              value={broadcastFrames.length > 0 ? broadcastFrames[currentFrameIndex] : (offerQR || answerQR)}
+                              size={200}
+                              level={qrDensity}
+                              marginSize={2}
+                              className="w-full h-auto max-w-[200px]"
+                            />
+                          </>
                         ) : (
-                          <p className="text-[10px] font-medium italic text-slate-400">
-                            Waiting for remote offer...
-                          </p>
+                          <div className="flex flex-col items-center justify-center w-full h-full text-center">
+                            {isHosting ? (
+                              <button
+                                onClick={generateOffer}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-indigo-500/20"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Generate Offer
+                              </button>
+                            ) : (
+                              <p className="text-[10px] font-medium italic text-slate-400">
+                                Waiting for remote offer...
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
-                  </div>
-                )}
 
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-bold text-white">
-                    {(broadcastFrames.length > 0 || offerQR || answerQR)
-                      ? isHosting ? "Offer Generated" : "Answer Generated"
-                      : isHosting ? "Ready to Generate" : "Waiting for Offer"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {(broadcastFrames.length > 0 || offerQR || answerQR)
-                      ? isHosting ? "Scan this code on the joining device" : "Scan this code back on the host device"
-                      : isHosting ? "Click Generate Offer to begin" : "Scan the host's QR code"}
-                  </p>
-                  {notificationPermission === "default" && (
-                    <button
-                      onClick={requestNotificationPermission}
-                      className="mt-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
-                    >
-                      Enable Browser Notifications
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2 w-full max-w-[250px]">
-                  <button
-                    onClick={() => setScanMode(isHosting ? "answer" : "offer")}
-                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap shadow-sm active:scale-95 ${isDark
-                      ? "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 shadow-indigo-500/10"
-                      : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
-                      }`}
-                  >
-                    <Scan className="w-3.5 h-3.5" /> Open Scanner
-                  </button>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(offerQR || answerQR);
-                      setCopiedSDP(true);
-                      setTimeout(() => setCopiedSDP(false), 2000);
-                      setNotification({
-                        message: `${isHosting ? "Offer" : "Answer"} Copied to Clipboard`,
-                        type: "success",
-                      });
-                    }}
-                    disabled={!(offerQR || answerQR)}
-                    className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${isDark
-                      ? copiedSDP
-                        ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
-                        : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
-                      : copiedSDP
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
-                      } disabled:opacity-50 disabled:pointer-events-none`}
-                  >
-                    {copiedSDP ? (
-                      <Check className="w-3 h-3" />
-                    ) : (
-                      <Copy className="w-3 h-3" />
-                    )}{" "}
-                    {copiedSDP ? "Copied" : (isHosting ? "Copy Offer" : "Copy Answer")}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="w-full space-y-3">
-                <div
-                  className={`p-1 flex rounded-xl ${isDark ? "bg-white/5" : "bg-slate-100"}`}
-                >
-                  <button
-                    onClick={() => {
-                      if (!isHosting) {
-                        setOfferQR("");
-                        setAnswerQR("");
-                        setCopyPasteAnswer("");
-                        setIsHosting(true);
-                      }
-                    }}
-                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${isHosting
-                      ? isDark
-                        ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30"
-                        : "bg-indigo-50 text-indigo-600 border border-indigo-200"
-                      : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
-                      }`}
-                  >
-                    <span>Initiator</span>
-                    <span className="text-[7px] tracking-tight opacity-70">
-                      Create Offer
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (isHosting) {
-                        setOfferQR("");
-                        setAnswerQR("");
-                        setCopyPasteOffer("");
-                        setIsHosting(false);
-                      }
-                    }}
-                    className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${!isHosting
-                      ? isDark
-                        ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
-                        : "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                      : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
-                      }`}
-                  >
-                    <span>Responder</span>
-                    <span className="text-[7px] tracking-tight opacity-70">
-                      Reply to Offer
-                    </span>
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  {(() => {
-                    const yourSdpSection = (
-                      <div
-                        className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${isDark
-                          ? "bg-white/5 border-white/10 hover:border-indigo-500/30"
-                          : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-bold text-white">
+                        {(broadcastFrames.length > 0 || offerQR || answerQR)
+                          ? isHosting ? "Offer Generated" : "Answer Generated"
+                          : isHosting ? "Ready to Generate" : "Waiting for Offer"}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {(broadcastFrames.length > 0 || offerQR || answerQR)
+                          ? isHosting ? "Scan this code on the joining device" : "Scan this code back on the host device"
+                          : isHosting ? "Click Generate Offer to begin" : "Scan the host's QR code"}
+                      </p>
+                      {notificationPermission === "default" && (
+                        <button
+                          onClick={requestNotificationPermission}
+                          className="mt-2 text-[9px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
+                        >
+                          Enable Browser Notifications
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-2 w-full max-w-[250px]">
+                      <button
+                        onClick={() => setScanMode(isHosting ? "answer" : "offer")}
+                        className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap shadow-sm active:scale-95 ${isDark
+                          ? "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 shadow-indigo-500/10"
+                          : "border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 shadow-indigo-500/5"
                           }`}
                       >
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`p-1 rounded-lg ${isDark ? "bg-indigo-500/10" : "bg-indigo-50"}`}
-                            >
-                              <Share2
-                                className={`w-3.5 h-3.5 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}
-                              />
-                            </div>
-                            <p
-                              className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                            >
-                              {isHosting ? "1" : "2"}. Your{" "}
-                              {isHosting ? "Offer" : "Answer"} SDP
-                            </p>
-                          </div>
-                          {offerQR || answerQR ? (
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${isDark
-                                ? "bg-emerald-500/10 text-emerald-400"
-                                : "bg-emerald-50 text-emerald-600"
-                                }`}
-                            >
-                              Generated
-                            </span>
-                          ) : null}
-                        </div>
+                        <Scan className="w-3.5 h-3.5" /> Open Scanner
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(offerQR || answerQR);
+                          setCopiedSDP(true);
+                          setTimeout(() => setCopiedSDP(false), 2000);
+                          setNotification({
+                            message: `${isHosting ? "Offer" : "Answer"} Copied to Clipboard`,
+                            type: "success",
+                          });
+                        }}
+                        disabled={!(offerQR || answerQR)}
+                        className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase transition-all whitespace-nowrap active:scale-95 ${isDark
+                          ? copiedSDP
+                            ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
+                            : "border-white/5 bg-white/5 hover:bg-white/10 text-white"
+                          : copiedSDP
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300"
+                          } disabled:opacity-50 disabled:pointer-events-none`}
+                      >
+                        {copiedSDP ? (
+                          <Check className="w-3 h-3" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}{" "}
+                        {copiedSDP ? "Copied" : (isHosting ? "Copy Offer" : "Copy Answer")}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full space-y-3">
+                    <div
+                      className={`p-1 flex rounded-xl ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                    >
+                      <button
+                        onClick={() => {
+                          if (!isHosting) {
+                            setOfferQR("");
+                            setAnswerQR("");
+                            setCopyPasteAnswer("");
+                            setIsHosting(true);
+                          }
+                        }}
+                        className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${isHosting
+                          ? isDark
+                            ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30"
+                            : "bg-indigo-50 text-indigo-600 border border-indigo-200"
+                          : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
+                          }`}
+                      >
+                        <span>Initiator</span>
+                        <span className="text-[7px] tracking-tight opacity-70">
+                          Create Offer
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (isHosting) {
+                            setOfferQR("");
+                            setAnswerQR("");
+                            setCopyPasteOffer("");
+                            setIsHosting(false);
+                          }
+                        }}
+                        className={`flex-[1.5] py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-lg flex flex-col items-center justify-center gap-0.5 ${!isHosting
+                          ? isDark
+                            ? "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                          : "text-slate-400 border border-transparent hover:text-slate-600 dark:hover:text-slate-300"
+                          }`}
+                      >
+                        <span>Responder</span>
+                        <span className="text-[7px] tracking-tight opacity-70">
+                          Reply to Offer
+                        </span>
+                      </button>
+                    </div>
 
-                        <div className="flex gap-3 items-stretch">
-                          <div className="flex-1 min-w-0">
-                            {offerQR || answerQR ? (
-                              <div
-                                className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${isDark
-                                  ? "bg-black/40 border border-white/5"
-                                  : "bg-slate-50 border border-slate-100"
-                                  }`}
-                              >
-                                <div
-                                  className={`text-[11px] font-mono truncate leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}
-                                >
-                                  {offerQR || answerQR}
-                                </div>
-                                <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5 shrink-0">
-                                  <Activity className="w-2.5 h-2.5 text-slate-500" />
-                                  <span className="text-[9px] font-medium text-slate-500">
-                                    Payload: {(offerQR || answerQR).length}{" "}
-                                    bytes
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div
-                                className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-3 text-center ${isDark
-                                  ? "border-white/5 bg-black/20"
-                                  : "border-slate-100 bg-slate-50/50"
-                                  }`}
-                              >
-                                {isHosting ? (
-                                  <button
-                                    onClick={generateOffer}
-                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-2 transition-colors"
-                                  >
-                                    <Plus className="w-3 h-3" /> Generate Offer
-                                  </button>
-                                ) : (
-                                  <p
-                                    className={`text-[9px] font-medium italic ${isDark ? "text-slate-600" : "text-slate-400"}`}
-                                  >
-                                    Waiting for remote{" "}
-                                    {isHosting ? "connection" : "offer"}...
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(
-                                offerQR || answerQR,
-                              );
-                              setCopiedSDP(true);
-                              setTimeout(() => setCopiedSDP(false), 2000);
-                              setNotification({
-                                message: "SDP Copied to Clipboard",
-                                type: "success",
-                              });
-                            }}
-                            disabled={!(offerQR || answerQR)}
-                            className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${copiedSDP
-                              ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white"
-                              : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
+                    <div className="flex flex-col gap-3">
+                      {(() => {
+                        const yourSdpSection = (
+                          <div
+                            className={`group relative p-4 rounded-[24px] border transition-all duration-300 ${isDark
+                              ? "bg-white/5 border-white/10 hover:border-indigo-500/30"
+                              : "bg-white border-slate-200 hover:border-indigo-200 shadow-sm"
                               }`}
                           >
-                            {copiedSDP ? (
-                              <Check className="w-4 h-4" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                            <span className="text-[9px] font-black uppercase tracking-widest">
-                              {copiedSDP ? "Copied" : "Copy"}
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-
-                    const remoteSdpSection = (
-                      <div
-                        className={`p-4 rounded-[24px] border relative transition-all duration-300 ${isDark
-                          ? "bg-white/5 border-white/10"
-                          : "bg-white border-slate-200 shadow-sm"
-                          }`}
-                      >
-                        <div className="flex items-center gap-2 mb-3">
-                          <div
-                            className={`p-1 rounded-lg ${isDark ? "bg-emerald-500/10" : "bg-emerald-50"}`}
-                          >
-                            <LogIn
-                              className={`w-3.5 h-3.5 ${isDark ? "text-emerald-400" : "text-emerald-600"}`}
-                            />
-                          </div>
-                          <p
-                            className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}
-                          >
-                            {isHosting ? "2" : "1"}. Remote{" "}
-                            {isHosting ? "Answer" : "Offer"} SDP
-                          </p>
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="relative">
-                            <textarea
-                              placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
-                              className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${isDark
-                                ? "bg-black/40 text-white placeholder-slate-600 border border-white/5"
-                                : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
-                                }`}
-                              value={
-                                isHosting ? copyPasteAnswer : copyPasteOffer
-                              }
-                              onChange={(e) =>
-                                isHosting
-                                  ? setCopyPasteAnswer(e.target.value)
-                                  : setCopyPasteOffer(e.target.value)
-                              }
-                              onWheelCapture={(e) => e.stopPropagation()}
-                            />
-                            {(isHosting ? copyPasteAnswer : copyPasteOffer) && (
-                              <button
-                                onClick={() =>
-                                  isHosting
-                                    ? setCopyPasteAnswer("")
-                                    : setCopyPasteOffer("")
-                                }
-                                className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${isDark
-                                  ? "text-slate-400 hover:text-white hover:bg-white/10"
-                                  : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
-                                  }`}
-                                title="Clear input"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const text =
-                                    await navigator.clipboard.readText();
-                                  if (text && text.trim().length > 50) {
-                                    isHosting
-                                      ? setCopyPasteAnswer(text.trim())
-                                      : setCopyPasteOffer(text.trim());
-                                    setNotification({
-                                      message: "SDP Pasted from Clipboard",
-                                      type: "success",
-                                    });
-                                    setClipboardDetectedSdp(null);
-                                  } else {
-                                    setNotification({
-                                      message:
-                                        "No valid SDP payload in clipboard",
-                                      type: "error",
-                                    });
-                                  }
-                                } catch (err) {
-                                  setNotification({
-                                    message:
-                                      "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.",
-                                    type: "error",
-                                  });
-                                }
-                              }}
-                              className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${isDark
-                                ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400"
-                                : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
-                                }`}
-                            >
-                              <ClipboardPaste className="w-3.5 h-3.5" />
-                              <span className="text-[9px] font-bold uppercase tracking-wider">
-                                Paste
-                              </span>
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                handleScan(
-                                  isHosting ? copyPasteAnswer : copyPasteOffer,
-                                )
-                              }
-                              disabled={
-                                isHosting
-                                  ? !copyPasteAnswer.trim()
-                                  : !copyPasteOffer.trim()
-                              }
-                              className="flex-[2] py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:opacity-30 disabled:grayscale text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              {isHosting ? "Establish" : "Verify & Generate"}
-                            </button>
-                          </div>
-
-                          <AnimatePresence>
-                            {clipboardDetectedSdp && (
-                              <motion.div
-                                initial={{
-                                  opacity: 0,
-                                  height: 0,
-                                  marginTop: 0,
-                                }}
-                                animate={{
-                                  opacity: 1,
-                                  height: "auto",
-                                  marginTop: 8,
-                                }}
-                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                                className={`overflow-hidden rounded-xl border ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-100"}`}
-                              >
-                                <div className="p-2 flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Activity
-                                      className={`w-3 h-3 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}
-                                    />
-                                    <span
-                                      className={`text-[9px] font-black uppercase tracking-wider ${isDark ? "text-indigo-300" : "text-indigo-700"}`}
-                                    >
-                                      Detected
-                                    </span>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      isHosting
-                                        ? setCopyPasteAnswer(
-                                          clipboardDetectedSdp,
-                                        )
-                                        : setCopyPasteOffer(
-                                          clipboardDetectedSdp,
-                                        );
-                                      setClipboardDetectedSdp(null);
-                                    }}
-                                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.1em] transition-all"
-                                  >
-                                    Import
-                                  </button>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`p-1 rounded-lg ${isDark ? "bg-indigo-500/10" : "bg-indigo-50"}`}
+                                >
+                                  <Share2
+                                    className={`w-3.5 h-3.5 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}
+                                  />
                                 </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    );
+                                <p
+                                  className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                                >
+                                  {isHosting ? "1" : "2"}. Your{" "}
+                                  {isHosting ? "Offer" : "Answer"} SDP
+                                </p>
+                              </div>
+                              {offerQR || answerQR ? (
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-tighter ${isDark
+                                    ? "bg-emerald-500/10 text-emerald-400"
+                                    : "bg-emerald-50 text-emerald-600"
+                                    }`}
+                                >
+                                  Generated
+                                </span>
+                              ) : null}
+                            </div>
 
-                    return isHosting ? (
-                      <>
-                        {yourSdpSection}
-                        {remoteSdpSection}
-                      </>
-                    ) : (
-                      <>
-                        {remoteSdpSection}
-                        {yourSdpSection}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
+                            <div className="flex gap-3 items-stretch">
+                              <div className="flex-1 min-w-0">
+                                {offerQR || answerQR ? (
+                                  <div
+                                    className={`h-full min-h-[52px] p-2.5 rounded-xl flex flex-col justify-between transition-colors overflow-hidden ${isDark
+                                      ? "bg-black/40 border border-white/5"
+                                      : "bg-slate-50 border border-slate-100"
+                                      }`}
+                                  >
+                                    <div
+                                      className={`text-[11px] font-mono truncate leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}
+                                    >
+                                      {offerQR || answerQR}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-white/5 shrink-0">
+                                      <Activity className="w-2.5 h-2.5 text-slate-500" />
+                                      <span className="text-[9px] font-medium text-slate-500">
+                                        Payload: {(offerQR || answerQR).length}{" "}
+                                        bytes
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div
+                                    className={`h-full min-h-[52px] border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-3 text-center ${isDark
+                                      ? "border-white/5 bg-black/20"
+                                      : "border-slate-100 bg-slate-50/50"
+                                      }`}
+                                  >
+                                    {isHosting ? (
+                                      <button
+                                        onClick={generateOffer}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-2 transition-colors"
+                                      >
+                                        <Plus className="w-3 h-3" /> Generate Offer
+                                      </button>
+                                    ) : (
+                                      <p
+                                        className={`text-[9px] font-medium italic ${isDark ? "text-slate-600" : "text-slate-400"}`}
+                                      >
+                                        Waiting for remote{" "}
+                                        {isHosting ? "connection" : "offer"}...
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(
+                                    offerQR || answerQR,
+                                  );
+                                  setCopiedSDP(true);
+                                  setTimeout(() => setCopiedSDP(false), 2000);
+                                  setNotification({
+                                    message: "SDP Copied to Clipboard",
+                                    type: "success",
+                                  });
+                                }}
+                                disabled={!(offerQR || answerQR)}
+                                className={`px-4 rounded-xl active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all flex flex-col items-center justify-center gap-1.5 shadow-lg ${copiedSDP
+                                  ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20 text-white"
+                                  : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white"
+                                  }`}
+                              >
+                                {copiedSDP ? (
+                                  <Check className="w-4 h-4" />
+                                ) : (
+                                  <Copy className="w-4 h-4" />
+                                )}
+                                <span className="text-[9px] font-black uppercase tracking-widest">
+                                  {copiedSDP ? "Copied" : "Copy"}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+
+                        const remoteSdpSection = (
+                          <div
+                            className={`p-4 rounded-[24px] border relative transition-all duration-300 ${isDark
+                              ? "bg-white/5 border-white/10"
+                              : "bg-white border-slate-200 shadow-sm"
+                              }`}
+                          >
+                            <div className="flex items-center gap-2 mb-3">
+                              <div
+                                className={`p-1 rounded-lg ${isDark ? "bg-emerald-500/10" : "bg-emerald-50"}`}
+                              >
+                                <LogIn
+                                  className={`w-3.5 h-3.5 ${isDark ? "text-emerald-400" : "text-emerald-600"}`}
+                                />
+                              </div>
+                              <p
+                                className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}
+                              >
+                                {isHosting ? "2" : "1"}. Remote{" "}
+                                {isHosting ? "Answer" : "Offer"} SDP
+                              </p>
+                            </div>
+
+                            <div className="space-y-3">
+                              <div className="relative">
+                                <textarea
+                                  placeholder={`Paste remote ${isHosting ? "answer" : "offer"} here...`}
+                                  className={`w-full h-24 p-3 pr-10 text-[11px] font-mono rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none leading-relaxed ${isDark
+                                    ? "bg-black/40 text-white placeholder-slate-600 border border-white/5"
+                                    : "bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-100"
+                                    }`}
+                                  value={
+                                    isHosting ? copyPasteAnswer : copyPasteOffer
+                                  }
+                                  onChange={(e) =>
+                                    isHosting
+                                      ? setCopyPasteAnswer(e.target.value)
+                                      : setCopyPasteOffer(e.target.value)
+                                  }
+                                  onWheelCapture={(e) => e.stopPropagation()}
+                                />
+                                {(isHosting ? copyPasteAnswer : copyPasteOffer) && (
+                                  <button
+                                    onClick={() =>
+                                      isHosting
+                                        ? setCopyPasteAnswer("")
+                                        : setCopyPasteOffer("")
+                                    }
+                                    className={`absolute top-2 right-2 p-1.5 rounded-lg transition-colors ${isDark
+                                      ? "text-slate-400 hover:text-white hover:bg-white/10"
+                                      : "text-slate-400 hover:text-slate-900 hover:bg-slate-200"
+                                      }`}
+                                    title="Clear input"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const text =
+                                        await navigator.clipboard.readText();
+                                      if (text && text.trim().length > 50) {
+                                        isHosting
+                                          ? setCopyPasteAnswer(text.trim())
+                                          : setCopyPasteOffer(text.trim());
+                                        setNotification({
+                                          message: "SDP Pasted from Clipboard",
+                                          type: "success",
+                                        });
+                                        setClipboardDetectedSdp(null);
+                                      } else {
+                                        setNotification({
+                                          message:
+                                            "No valid SDP payload in clipboard",
+                                          type: "error",
+                                        });
+                                      }
+                                    } catch (err) {
+                                      setNotification({
+                                        message:
+                                          "Clipboard locked. Please use Ctrl+V / Cmd+V to paste.",
+                                        type: "error",
+                                      });
+                                    }
+                                  }}
+                                  className={`flex-1 py-2.5 rounded-xl border flex items-center justify-center gap-2 transition-all ${isDark
+                                    ? "border-white/5 hover:border-indigo-500/30 bg-white/5 text-slate-500 hover:text-indigo-400"
+                                    : "border-slate-200 hover:border-indigo-200 bg-white text-slate-400 hover:text-indigo-600"
+                                    }`}
+                                >
+                                  <ClipboardPaste className="w-3.5 h-3.5" />
+                                  <span className="text-[9px] font-bold uppercase tracking-wider">
+                                    Paste
+                                  </span>
+                                </button>
+
+                                <button
+                                  onClick={() =>
+                                    handleScan(
+                                      isHosting ? copyPasteAnswer : copyPasteOffer,
+                                    )
+                                  }
+                                  disabled={
+                                    isHosting
+                                      ? !copyPasteAnswer.trim()
+                                      : !copyPasteOffer.trim()
+                                  }
+                                  className="flex-[2] py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:opacity-30 disabled:grayscale text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  {isHosting ? "Establish" : "Verify & Generate"}
+                                </button>
+                              </div>
+
+                              <AnimatePresence>
+                                {clipboardDetectedSdp && (
+                                  <motion.div
+                                    initial={{
+                                      opacity: 0,
+                                      height: 0,
+                                      marginTop: 0,
+                                    }}
+                                    animate={{
+                                      opacity: 1,
+                                      height: "auto",
+                                      marginTop: 8,
+                                    }}
+                                    exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                    className={`overflow-hidden rounded-xl border ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-100"}`}
+                                  >
+                                    <div className="p-2 flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <Activity
+                                          className={`w-3 h-3 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}
+                                        />
+                                        <span
+                                          className={`text-[9px] font-black uppercase tracking-wider ${isDark ? "text-indigo-300" : "text-indigo-700"}`}
+                                        >
+                                          Detected
+                                        </span>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          isHosting
+                                            ? setCopyPasteAnswer(
+                                              clipboardDetectedSdp,
+                                            )
+                                            : setCopyPasteOffer(
+                                              clipboardDetectedSdp,
+                                            );
+                                          setClipboardDetectedSdp(null);
+                                        }}
+                                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.1em] transition-all"
+                                      >
+                                        Import
+                                      </button>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </div>
+                        );
+
+                        return isHosting ? (
+                          <>
+                            {yourSdpSection}
+                            {remoteSdpSection}
+                          </>
+                        ) : (
+                          <>
+                            {remoteSdpSection}
+                            {yourSdpSection}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
-            <div className="w-full flex gap-2">
-              <button
-                onClick={resetState}
-                className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${isDark
-                  ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
-                  : "border-red-200 text-red-600 hover:bg-red-50"
-                  }`}
-              >
-                Cancel Pairing
-              </button>
-            </div>
+            {pairingWorkflow !== "signaling" && (
+              <div className="w-full flex gap-2">
+                <button
+                  onClick={resetState}
+                  className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-bold uppercase transition-all ${isDark
+                    ? "border-red-500/20 text-red-400 hover:bg-red-500/10"
+                    : "border-red-200 text-red-600 hover:bg-red-50"
+                    }`}
+                >
+                  Cancel Pairing
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 

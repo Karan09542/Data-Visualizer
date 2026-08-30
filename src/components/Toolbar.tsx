@@ -49,6 +49,7 @@ import BarcodeGeneratorModal from "./BarcodeGeneratorModal";
 import { QuickUtilsModal } from "./utilities/QuickUtilsModal";
 import { CameraCaptureModal } from "./CameraCaptureModal";
 import { PromptModal } from "./PromptModal";
+import UserMenu, { AuthModals } from "./UserMenu";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
@@ -1157,6 +1158,9 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${showExportPopover ? "rotate-180" : ""}`} />
                 </button>
               </div>
+              <div className="hidden lg:flex items-center pl-2">
+                <UserMenu />
+              </div>
             </div>
           </div>
         </div>
@@ -1187,6 +1191,11 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           />
           <div className="lg:hidden fixed top-[48px] left-0 right-0 bottom-0 bg-slate-50 dark:bg-[#0f172a] z-[510] shadow-2xl overflow-y-auto custom-scrollbar flex flex-col">
             <div className="p-4 pb-16 grid grid-cols-2 gap-4">
+              {/* Account / User Section for Mobile */}
+              <div className="col-span-2">
+                <UserMenu variant="row" onAction={() => setIsMobileMenuOpen(false)} />
+              </div>
+
               {/* AI Features Section */}
               <div className="col-span-2 p-3 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 dark:from-purple-950/40 dark:via-indigo-950/40 dark:to-slate-900/40 border border-purple-200 dark:border-purple-800/40 rounded-xl flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
@@ -1759,6 +1768,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           }
         }}
       />
+      <AuthModals />
     </>
   );
 }

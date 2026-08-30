@@ -150,6 +150,25 @@ export default defineConfig(({ mode }) => {
           secure: false,
           rewrite: (path) => path.replace(/^\/api\/nvidia/, ''),
         },
+        '/api': {
+          target: 'https://datavisualizer-signalling-server.onrender.com',
+          changeOrigin: true,
+          secure: false,
+          headers: {
+            Origin: 'https://datavisualizer.urlmediainspector.dev',
+            Referer: 'https://datavisualizer.urlmediainspector.dev/',
+          },
+        },
+        '/socket.io': {
+          target: 'https://datavisualizer-signalling-server.onrender.com',
+          ws: true,
+          changeOrigin: true,
+          secure: false,
+          headers: {
+            Origin: 'https://datavisualizer.urlmediainspector.dev',
+            Referer: 'https://datavisualizer.urlmediainspector.dev/',
+          },
+        },
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
