@@ -482,6 +482,7 @@ export const TransferNodeRenderer: React.FC<{
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [onlinePresence, setOnlinePresence] = useState<Record<string, boolean>>({});
+  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const signalingSocketRef = useRef<Socket | null>(null);
   const [targetRemoteEmail, setTargetRemoteEmail] = useState<string | null>(null);
 
@@ -550,8 +551,18 @@ export const TransferNodeRenderer: React.FC<{
       }
     });
 
-    socket.on("webrtc-offer", async (data: { from: string; offer: RTCSessionDescriptionInit }) => {
+    socket.on("webrtc-offer", async (data: any) => {
       await handleServerOffer(data);
+    });
+
+    socket.on("webrtc-reject", () => {
+      if (pcRef.current) pcRef.current.close();
+      setConnectionState("waiting");
+      setOfferQR("");
+      setAnswerQR("");
+      setScanMode(null);
+      setIsHosting(false);
+      setNotification({ message: "Connection request was declined", type: "error" });
     });
 
     socket.on("webrtc-answer", async (data: { from: string; answer: RTCSessionDescriptionInit }) => {
@@ -575,6 +586,21 @@ export const TransferNodeRenderer: React.FC<{
   const [copyPasteAnswer, setCopyPasteAnswer] = useState("");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const pendingCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
+
+  const flushPendingCandidates = async (pc: RTCPeerConnection, targetSocketId?: string) => {
+    const key = targetSocketId || "default";
+    const candidates = pendingCandidatesRef.current[key] || [];
+    for (const candidate of candidates) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.warn("[WebRTC] Error adding queued ice candidate:", e);
+      }
+    }
+    pendingCandidatesRef.current[key] = [];
+  };
+
   const dcRef = useRef<RTCDataChannel | null>(null);
   const chunksRef = useRef<
     Record<
@@ -2073,7 +2099,14 @@ export const TransferNodeRenderer: React.FC<{
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    signalingSocketRef.current.emit("webrtc-offer", { targetEmail, offer });
+    signalingSocketRef.current.emit("webrtc-offer", { 
+      targetEmail, 
+      offer,
+      senderProfile: {
+        username: user?.username,
+        photoUrl: user?.photoUrl
+      }
+    });
   };
 
   const handleAutoConnect = (targetEmail: string) => {
@@ -2103,6 +2136,17 @@ export const TransferNodeRenderer: React.FC<{
       setIsSearching(false);
     }
   };
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchQuery.trim()) {
+        searchUsers();
+      } else {
+        setSearchResults([]);
+      }
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   const updateDefaultTarget = async (newEmail?: string, toggleAutoConnect?: boolean) => {
     if (!token) return;
@@ -2136,7 +2180,22 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const handleServerOffer = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; offer: RTCSessionDescriptionInit }) => {
+  const handleServerOffer = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; offer: RTCSessionDescriptionInit; senderProfile?: any }) => {
+    const remoteEmail = data.senderEmail || data.from || "Remote Peer";
+    if (remoteEmail === user?.email) {
+      // Auto-accept own devices
+      processServerOffer(data);
+    } else {
+      // Queue requests from others
+      setIncomingRequests(prev => {
+        // Prevent duplicates from same sender/socket
+        if (prev.find(req => req.senderSocketId === data.senderSocketId)) return prev;
+        return [...prev, data];
+      });
+    }
+  };
+
+  const processServerOffer = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; offer: RTCSessionDescriptionInit; senderProfile?: any }) => {
     const remoteEmail = data.senderEmail || data.from || "Remote Peer";
 
     try {
@@ -2163,6 +2222,7 @@ export const TransferNodeRenderer: React.FC<{
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+      await flushPendingCandidates(pc, data.senderSocketId);
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -2177,7 +2237,7 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const handleServerAnswer = async (data: { senderEmail?: string; from?: string; answer: RTCSessionDescriptionInit }) => {
+  const handleServerAnswer = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; answer: RTCSessionDescriptionInit }) => {
     const remoteEmail = data.senderEmail || data.from || targetRemoteEmail || "Remote Peer";
     if (pcRef.current) {
       if (pcRef.current.signalingState !== "have-local-offer") {
@@ -2186,6 +2246,7 @@ export const TransferNodeRenderer: React.FC<{
       }
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+        await flushPendingCandidates(pcRef.current, data.senderSocketId);
         setLastConnectedEmail(remoteEmail);
         localStorage.setItem("transfer-last-connected", remoteEmail);
         setConnectionHistory(prev => {
@@ -2199,13 +2260,23 @@ export const TransferNodeRenderer: React.FC<{
     }
   };
 
-  const handleServerIceCandidate = async (data: { senderEmail?: string; from?: string; candidate: RTCIceCandidateInit }) => {
-    if (pcRef.current && pcRef.current.remoteDescription) {
-      try {
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      } catch (e) {
-        console.warn("[WebRTC] Error adding received ice candidate:", e);
+  const handleServerIceCandidate = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; candidate: RTCIceCandidateInit }) => {
+    if (pcRef.current) {
+      if (pcRef.current.remoteDescription) {
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {
+          console.warn("[WebRTC] Error adding received ice candidate:", e);
+        }
+      } else {
+        const key = data.senderSocketId || "default";
+        if (!pendingCandidatesRef.current[key]) pendingCandidatesRef.current[key] = [];
+        pendingCandidatesRef.current[key].push(data.candidate);
       }
+    } else {
+      const key = data.senderSocketId || "default";
+      if (!pendingCandidatesRef.current[key]) pendingCandidatesRef.current[key] = [];
+      pendingCandidatesRef.current[key].push(data.candidate);
     }
   };
 
@@ -2330,6 +2401,7 @@ export const TransferNodeRenderer: React.FC<{
     const start = performance.now();
     const pc = initPeer();
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    await flushPendingCandidates(pc);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
@@ -2379,6 +2451,7 @@ export const TransferNodeRenderer: React.FC<{
       await pcRef.current.setRemoteDescription(
         new RTCSessionDescription(answer),
       );
+      await flushPendingCandidates(pcRef.current);
       setScanMode(null);
       setConnectionState("connected");
     }
@@ -2511,6 +2584,8 @@ export const TransferNodeRenderer: React.FC<{
     setAnswerQR("");
     setIsHosting(false);
     setScanMode(null);
+    setIncomingRequests([]);
+    pendingCandidatesRef.current = {};
   };
 
   const isDark = appTheme === "dark";
@@ -2959,10 +3034,68 @@ export const TransferNodeRenderer: React.FC<{
               </p>
             ) : (
               <div className="flex flex-col gap-2.5 w-full">
+                {/* 0. Incoming Requests */}
+                {incomingRequests.length > 0 && (
+                  <div className="flex flex-col gap-2.5 w-full">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Incoming Requests
+                    </span>
+                    {incomingRequests.map((req, idx) => (
+                      <div key={idx} className={`p-3 rounded-xl border flex flex-col gap-3 shadow-lg shadow-emerald-500/10 ${isDark ? "bg-emerald-500/10 border-emerald-500/30" : "bg-emerald-50 border-emerald-200"}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 font-bold text-xs flex items-center justify-center shrink-0">
+                            {req.senderProfile?.photoUrl ? (
+                              <img src={req.senderProfile.photoUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+                            ) : req.senderProfile?.username ? (
+                              req.senderProfile.username[0].toUpperCase()
+                            ) : (
+                              "U"
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className={`text-sm font-bold truncate ${isDark ? "text-slate-200" : "text-slate-800"}`}>
+                              {req.senderProfile?.username || "Unknown User"}
+                            </span>
+                            <span className="text-[10px] text-slate-500 truncate">
+                              {req.senderEmail || req.from}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setIncomingRequests(prev => prev.filter(r => r !== req));
+                              processServerOffer(req);
+                            }}
+                            className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg text-xs transition-colors shadow-md cursor-pointer"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIncomingRequests(prev => prev.filter(r => r !== req));
+                              if (req.senderSocketId) {
+                                signalingSocketRef.current?.emit("webrtc-reject", { targetSocketId: req.senderSocketId });
+                              }
+                            }}
+                            className={`flex-1 py-2 font-bold rounded-lg text-xs transition-colors cursor-pointer ${isDark ? "bg-white/10 hover:bg-white/20 text-slate-300" : "bg-slate-200 hover:bg-slate-300 text-slate-700"}`}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className={`h-[1px] w-full my-2 ${isDark ? "bg-white/5" : "bg-slate-200"}`} />
+                  </div>
+                )}
+
                 {/* 1. Connect to My Devices */}
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => initiateServerConnection(user?.email || "")}
-                  className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"}`}
+                  className={`cursor-pointer p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${onlinePresence[user?.email || ""] ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
@@ -2992,13 +3125,15 @@ export const TransferNodeRenderer: React.FC<{
                     </button>
                     <Laptop className="w-4 h-4 text-emerald-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
                   </div>
-                </button>
+                </div>
 
                 {/* 2. Connect to Default Target (if configured) */}
                 {user?.defaultTargetEmail && user.defaultTargetEmail !== user.email && (
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => initiateServerConnection(user.defaultTargetEmail!)}
-                    className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 hover:bg-blue-100"}`}
+                    className={`cursor-pointer p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 hover:bg-blue-100"}`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${onlinePresence[user.defaultTargetEmail] ? "bg-blue-500 animate-pulse" : "bg-slate-400"}`} />
@@ -3024,14 +3159,16 @@ export const TransferNodeRenderer: React.FC<{
                       </div>
                     </div>
                     <Radio className="w-4 h-4 text-blue-500 flex-shrink-0 group-hover:scale-110 transition-transform animate-pulse" />
-                  </button>
+                  </div>
                 )}
 
                 {/* 3. Reconnect Last Connected Device */}
                 {lastConnectedEmail && lastConnectedEmail !== user?.email && lastConnectedEmail !== user?.defaultTargetEmail && (
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={reconnectLastUser}
-                    className={`p-3 rounded-xl border flex items-center justify-between transition-all ${isDark ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20" : "bg-indigo-50 border-indigo-200 hover:bg-indigo-100"}`}
+                    className={`cursor-pointer p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20" : "bg-indigo-50 border-indigo-200 hover:bg-indigo-100"}`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${onlinePresence[lastConnectedEmail] ? "bg-indigo-500 animate-pulse" : "bg-slate-400"}`} />
@@ -3044,8 +3181,24 @@ export const TransferNodeRenderer: React.FC<{
                         </span>
                       </div>
                     </div>
-                    <RotateCcw className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                  </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (user?.defaultTargetEmail === lastConnectedEmail) {
+                            updateDefaultTarget("", false);
+                          } else {
+                            updateDefaultTarget(lastConnectedEmail, true);
+                          }
+                        }}
+                        className={`p-1.5 rounded-md text-[10px] font-semibold transition-colors cursor-pointer ${user?.defaultTargetEmail === lastConnectedEmail ? "text-amber-400 bg-amber-400/10" : "text-indigo-500/50 hover:text-amber-400 hover:bg-indigo-500/10"}`}
+                        title={user?.defaultTargetEmail === lastConnectedEmail ? "Default Target Device" : "Set as Default Target Device"}
+                      >
+                        <Star size={14} className={user?.defaultTargetEmail === lastConnectedEmail ? "fill-amber-400" : ""} />
+                      </button>
+                      <RotateCcw className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                    </div>
+                  </div>
                 )}
 
 
@@ -3065,24 +3218,24 @@ export const TransferNodeRenderer: React.FC<{
 
                 {/* 5. Search by Email */}
                 <div className="flex gap-2 mt-1">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search device by email..."
-                    className={`flex-1 px-3 py-2.5 text-xs rounded-xl border outline-none ${isDark ? "bg-white/5 border-white/10 text-white focus:border-indigo-500/50" : "bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500"}`}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === 'Enter') searchUsers();
-                    }}
-                  />
-                  <button
-                    onClick={searchUsers}
-                    disabled={isSearching || !searchQuery}
-                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
-                  >
-                    {isSearching ? "Searching..." : "Search"}
-                  </button>
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search device by email..."
+                      className={`w-full px-3 py-2.5 pr-10 text-xs rounded-xl border outline-none transition-colors ${isDark ? "bg-white/5 border-white/10 text-white focus:border-indigo-500/50" : "bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500"}`}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') searchUsers();
+                      }}
+                    />
+                    {isSearching && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 5. Search Results with Connect & Set Default */}

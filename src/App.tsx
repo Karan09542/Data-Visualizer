@@ -8,6 +8,7 @@ import AutosaveManager from "./components/AutosaveManager";
 import { NotificationToast } from "./components/NotificationToast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useStore } from "./store/useStore";
+import { useAuthStore } from "./store/useAuthStore";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
 import { initDexieSync } from "./store/dexieSync";
@@ -73,9 +74,38 @@ function App() {
   const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
   const parsedData = useStore((state) => state.parsedData);
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const focusNodePath = searchParams.get('focusNode');
   const forceWorkspace = searchParams.get('forceWorkspace');
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token) {
+      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
+      fetch(`${baseUrl}/api/users/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(user => {
+        if (!user.error) {
+          useAuthStore.getState().setAuth(token, user);
+          useStore.getState().setNotification({ message: 'Successfully logged in!', type: 'success' });
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        searchParams.delete('token');
+        setSearchParams(searchParams, { replace: true });
+      });
+    }
+    
+    const error = searchParams.get('error');
+    if (error) {
+      useStore.getState().setNotification({ message: `Login failed: ${error}`, type: 'error' });
+      searchParams.delete('error');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
   const setCode = useStore((state) => state.setCode);
