@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download, RotateCw, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download, RotateCw, RotateCcw, AlignStartVertical, AlignCenterVertical } from "lucide-react";
 import { useDebounce } from "use-debounce";
 import * as pdfjsLib from "pdfjs-dist";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
@@ -44,6 +44,7 @@ interface ThumbnailCardProps {
   onOpenFormatMenu?: (pageNum: number) => void;
   onCloseFormatMenu?: () => void;
   isOverlay?: boolean;
+  isDark?: boolean;
 }
 
 interface FormatMenuPortalProps {
@@ -173,7 +174,8 @@ const ThumbnailCard: React.FC<ThumbnailCardProps> = React.memo(({
   onDownloadPage,
   onOpenFormatMenu,
   onCloseFormatMenu,
-  isOverlay
+  isOverlay,
+  isDark = false
 }) => {
   const downloadHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const downloadButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -221,12 +223,12 @@ const ThumbnailCard: React.FC<ThumbnailCardProps> = React.memo(({
       }`}
     >
       <div
-        className={`rounded-xl overflow-hidden aspect-[1/1.4] bg-slate-950 relative border shadow-md transition-colors duration-150 ${
+        className={`rounded-xl overflow-hidden aspect-[1/1.4] relative border shadow-md transition-colors duration-150 ${isDark ? "bg-slate-950" : "bg-white"} ${
           isSelected
-            ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/15'
+            ? isDark ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/15' : 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/20'
             : (currentPage === pageNum && !selectionMode
-              ? 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/15'
-              : 'border-slate-800/80 group-hover:border-slate-600/80')
+              ? isDark ? 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/15' : 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/20'
+              : isDark ? 'border-slate-800/80 group-hover:border-slate-600/80' : 'border-slate-200 group-hover:border-slate-300')
         }`}
       >
         <img
@@ -351,7 +353,7 @@ const SortableThumbnail: React.FC<SortableThumbnailProps> = React.memo(({
     transform: CSS.Transform.toString(transform),
     transition: isDragging ? undefined : transition,
     opacity: isDragging ? 0.25 : 1,
-    touchAction: 'none',
+    touchAction: 'pan-y',
     willChange: 'transform',
   };
 
@@ -391,6 +393,7 @@ interface VirtualizedThumbnailSlotProps {
   defaultFormat: ExportImageFormat;
   isDownloadingThisPage?: boolean;
   isFormatMenuOpen?: boolean;
+  isDark?: boolean;
   onRequestThumbnail: (pageNum: number) => void;
   onSelect: (pageNum: number) => void;
   onGoToPage: (pageNum: number) => void;
@@ -421,6 +424,7 @@ const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.
   onDownloadPage,
   onOpenFormatMenu,
   onCloseFormatMenu,
+  isDark = false,
 }) => {
   const observerElRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -468,7 +472,7 @@ const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.
     transform: CSS.Transform.toString(transform),
     transition: isDragging ? undefined : transition,
     opacity: isDragging ? 0.25 : 1,
-    touchAction: 'none',
+    touchAction: 'pan-y',
     willChange: 'transform',
   };
 
@@ -491,6 +495,7 @@ const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.
           onDownloadPage={onDownloadPage}
           onOpenFormatMenu={onOpenFormatMenu}
           onCloseFormatMenu={onCloseFormatMenu}
+          isDark={isDark}
         />
       </div>
     );
@@ -505,15 +510,15 @@ const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.
       {...listeners}
       className="relative flex flex-col gap-1.5 select-none"
     >
-      <div className="rounded-xl overflow-hidden aspect-[1/1.4] bg-slate-950 relative border border-slate-800/80 shadow-md flex items-center justify-center">
+      <div className={`rounded-xl overflow-hidden aspect-[1/1.4] relative border shadow-md flex items-center justify-center ${isDark ? "bg-slate-950 border-slate-800/80" : "bg-slate-50 border-slate-200"}`}>
         {isVisible ? (
           <div className="flex flex-col items-center gap-1.5 text-slate-500">
-            <Loader2 size={16} className="animate-spin text-indigo-500/70" />
-            <span className="text-[9px] font-mono font-medium tracking-wide">Loading...</span>
+            <Loader2 size={16} className={`animate-spin ${isDark ? "text-indigo-500/70" : "text-indigo-400"}`} />
+            <span className={`text-[9px] font-mono font-medium tracking-wide ${isDark ? "" : "text-slate-400"}`}>Loading...</span>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1 text-slate-600">
-            <LayoutGrid size={14} className="text-slate-700" />
+          <div className={`flex flex-col items-center gap-1 ${isDark ? "text-slate-600" : "text-slate-400"}`}>
+            <LayoutGrid size={14} className={isDark ? "text-slate-700" : "text-slate-300"} />
             <span className="text-[9px] font-mono font-medium tracking-wide">Page {pageNum}</span>
           </div>
         )}
@@ -531,6 +536,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLi
 interface PdfViewerProps {
   url: string;
   alignment?: 'top' | 'center';
+  isDark?: boolean;
 }
 
 interface PdfPageCanvasProps {
@@ -679,7 +685,7 @@ const PdfPlaceholderCanvas: React.FC<PdfPlaceholderCanvasProps> = ({ pageNum, wi
   );
 };
 
-export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) => {
+export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top', isDark = true }) => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(0);
@@ -700,6 +706,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   const [baseViewportWidth, setBaseViewportWidth] = useState<number>(0);
   const [baseViewportHeight, setBaseViewportHeight] = useState<number>(0);
   const [currentViewport, setCurrentViewport] = useState<any>(null);
+
+  const [alignMode, setAlignMode] = useState<'top' | 'center'>(alignment);
 
   // Pinch to zoom state
   const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
@@ -1599,8 +1607,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
   if (useIframeFallback) {
     const cleanUrl = url.replace(/#.*$/, "");
     return (
-      <div className="flex flex-col h-full w-full bg-slate-950/20 dark:bg-slate-950/60 overflow-hidden shadow-none border-0">
-        <div className="flex-1 w-full bg-slate-800 dark:bg-slate-900/40 flex items-stretch justify-stretch min-h-[500px]">
+      <div className={`flex flex-col h-full w-full overflow-hidden shadow-none border-0 ${isDark ? "bg-slate-950/20" : "bg-slate-100"}`}>
+        <div className={`flex-1 w-full flex items-stretch justify-stretch min-h-[500px] ${isDark ? "bg-slate-800" : "bg-slate-200/50"}`}>
           <iframe
             src={`https://docs.google.com/gview?url=${encodeURIComponent(cleanUrl)}&embedded=true`}
             className="w-full h-full border-0 bg-white"
@@ -1627,14 +1635,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
             className="fixed inset-0 z-[29999] bg-black/60 backdrop-blur-xs sm:hidden"
             onClick={() => setShowSidebar(false)}
           />
-          <div className={`fixed inset-y-0 left-0 z-[30000] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 bg-slate-900 border-r border-slate-800/90 shadow-2xl flex flex-col ${isSidebarExpanded ? 'w-full sm:w-[540px] md:w-[640px]' : 'w-[85%] max-w-[340px] sm:w-80'}`}>
-            <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800/90 bg-slate-950/40">
-              <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 shadow-inner">
+          <div className={`fixed inset-y-0 left-0 z-[30000] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 border-r shadow-2xl flex flex-col ${isDark ? "bg-slate-900 border-slate-800/90" : "bg-slate-50 border-slate-200"} ${isSidebarExpanded ? 'w-full sm:w-[540px] md:w-[640px]' : 'w-[85%] max-w-[340px] sm:w-80'}`}>
+            <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isDark ? "border-slate-800/90 bg-slate-950/40" : "border-slate-200 bg-white"}`}>
+              <div className={`flex items-center gap-1 p-1 rounded-xl border shadow-inner ${isDark ? "bg-slate-950/80 border-slate-800/80" : "bg-slate-200/50 border-slate-300/50"}`}>
                 <button
                   onClick={() => setSidebarTab('thumbnails')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sidebarTab === 'thumbnails'
-                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm'
-                      : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                      ? isDark ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm' : 'bg-white text-indigo-600 border border-slate-200 shadow-sm'
+                      : isDark ? 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
                     }`}
                 >
                   <LayoutGrid size={14} />
@@ -1643,8 +1651,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                 <button
                   onClick={() => setSidebarTab('search')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sidebarTab === 'search'
-                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm'
-                      : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                      ? isDark ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm' : 'bg-white text-indigo-600 border border-slate-200 shadow-sm'
+                      : isDark ? 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
                     }`}
                 >
                   <Search size={14} />
@@ -1656,7 +1664,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                 {/* Expand / Fullscreen Toggle Button */}
                 <button
                   onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition-colors"
+                  className={`p-1.5 rounded-lg transition-colors ${isDark ? "text-slate-400 hover:text-white hover:bg-slate-800/80" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200"}`}
                   title={isSidebarExpanded ? 'Collapse Panel' : 'Expand Panel'}
                 >
                   {isSidebarExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -1701,7 +1709,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                   )}
 
                   {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && !thumbnailsReady && (
-                    <div className="flex flex-col items-center justify-center p-6 text-center h-52 border border-slate-800/80 rounded-2xl bg-slate-950/40 backdrop-blur-sm">
+                    <div className={`flex flex-col items-center justify-center p-6 text-center h-52 border rounded-2xl backdrop-blur-sm ${isDark ? "bg-slate-950/40 border-slate-800/80" : "bg-white border-slate-200"}`}>
                       <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3">
                         <LayoutGrid size={22} />
                       </div>
@@ -1737,6 +1745,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                           <VirtualizedThumbnailSlot
                             key={pageNum}
                             pageNum={pageNum}
+                            isDark={isDark}
                             thumbnailUrl={thumbnails[pageNum] || null}
                             currentPage={currentPage}
                             selectionMode={selectionMode}
@@ -1771,6 +1780,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                       {activeId ? (
                         <ThumbnailCard
                           pageNum={activeId}
+                          isDark={isDark}
                           url={thumbnails[activeId]}
                           currentPage={currentPage}
                           selectionMode={selectionMode}
@@ -1799,7 +1809,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                         }
                       }}
                       placeholder="Search in PDF..."
-                      className="flex-1 bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      className={`flex-1 border text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors ${isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"}`}
                     />
                     <button
                       type="submit"
@@ -1818,10 +1828,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
                       <div
                         key={`${result.pageNumber}-${i}`}
                         onClick={() => goToPage(result.pageNumber)}
-                        className="p-3 bg-slate-950/50 hover:bg-indigo-500/10 border border-slate-800 hover:border-indigo-500/30 rounded-lg cursor-pointer transition-colors"
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${isDark ? "bg-slate-950/50 hover:bg-indigo-500/10 border-slate-800 hover:border-indigo-500/30" : "bg-white hover:bg-indigo-50 border-slate-200 hover:border-indigo-300 shadow-sm"}`}
                       >
-                        <div className="text-[10px] font-bold text-indigo-400 mb-1">Page {result.pageNumber}</div>
-                        <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{result.snippet}</p>
+                        <div className={`text-[10px] font-bold mb-1 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}>Page {result.pageNumber}</div>
+                        <p className={`text-xs line-clamp-3 leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>{result.snippet}</p>
                       </div>
                     ))}
                   </div>
@@ -1831,7 +1841,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
 
             {/* Pinned Bottom Action Bar */}
             {(selectionMode || orderedPages.some((p, i) => p !== i + 1)) && (thumbnailsReady || Object.keys(thumbnails).length > 0) && sidebarTab === 'thumbnails' && (
-              <div className="flex-none p-3.5 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/90 flex flex-col gap-2.5 z-20 shadow-2xl">
+              <div className={`flex-none p-3.5 backdrop-blur-xl border-t flex flex-col gap-2.5 z-20 shadow-2xl ${isDark ? "bg-slate-950/95 border-slate-800/90" : "bg-white/95 border-slate-200"}`}>
                 {selectionMode && (
                   <div className="flex justify-between items-center px-0.5">
                     <span className="text-xs font-medium text-slate-300">
@@ -1910,7 +1920,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
       {/* Main Canvas Area */}
       <div
         ref={containerRef}
-        className={`flex-1 w-full h-full overflow-auto custom-scrollbar touch-pan-x touch-pan-y relative z-0 flex flex-col ${alignment === 'top' ? 'items-center pt-2 sm:pt-4' : ''} px-0 sm:px-4 pb-16 sm:pb-20`}
+        className={`flex-1 w-full h-full overflow-auto custom-scrollbar touch-pan-x touch-pan-y relative z-0 flex flex-col ${alignMode === 'top' ? 'items-center pt-2 sm:pt-4' : ''} px-0 sm:px-4 pb-16 sm:pb-20`}
         style={{ overscrollBehavior: 'contain' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -1963,7 +1973,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           </div>
         ) : (
           <div
-            className={`shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative ${alignment === 'center' ? 'm-auto' : 'mx-auto'}`}
+            className={`shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative ${alignMode === 'center' ? 'm-auto' : 'mx-auto'}`}
             style={{
               width: baseViewportWidth ? `${baseViewportWidth * scale}px` : 'auto',
               height: baseViewportHeight ? `${baseViewportHeight * scale}px` : 'auto',
@@ -1989,18 +1999,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
 
       {/* Floating Controls */}
       <div
-        className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-3 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl text-slate-200 z-10 shadow-2xl transition-all duration-300 ${showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-          }`}
+        className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-3 backdrop-blur-md border px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl z-10 shadow-2xl transition-all duration-300 ${showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"} ${isDark ? "bg-slate-950/85 border-slate-700/80 text-slate-200" : "bg-white/90 border-slate-200 text-slate-800"}`}
       >
         <button
           onClick={() => setShowSidebar(!showSidebar)}
-          className={`p-1.5 rounded-md sm:rounded-lg transition-colors flex-shrink-0 ${showSidebar ? 'bg-indigo-500 text-white' : 'hover:bg-slate-800'}`}
+          className={`p-1.5 rounded-md sm:rounded-lg transition-colors flex-shrink-0 ${showSidebar ? 'bg-indigo-500 text-white' : isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-200'}`}
           title="Toggle Sidebar"
         >
           <Sidebar size={15} />
         </button>
 
-        <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
+        <div className={`w-px h-5 flex-shrink-0 hidden sm:block ${isDark ? "bg-slate-700" : "bg-slate-300"}`} />
 
         {/* View Mode Toggle Button (Single vs Continuous Vertical) */}
         <button
@@ -2014,21 +2023,30 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
               }, 60);
             }
           }}
-          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 ${viewMode === 'vertical' ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-800 text-slate-300'
-            }`}
+          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 ${viewMode === 'vertical' ? 'bg-indigo-600 text-white shadow-sm' : isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-200 text-slate-700'}`}
           title={viewMode === 'vertical' ? "Switch to Single Page View" : "Switch to Continuous Vertical Scroll View"}
         >
           {viewMode === 'vertical' ? <Layers size={15} /> : <BookOpen size={15} />}
           <span className="hidden sm:inline text-[11px] font-semibold">{viewMode === 'vertical' ? 'Vertical' : 'Single'}</span>
         </button>
 
-        <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
+        {/* Alignment Toggle Button (Top vs Center) */}
+        <button
+          onClick={() => setAlignMode(alignMode === 'top' ? 'center' : 'top')}
+          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-200 text-slate-700'}`}
+          title={alignMode === 'top' ? "Switch to Center Alignment" : "Switch to Top Alignment"}
+        >
+          {alignMode === 'top' ? <AlignStartVertical size={15} /> : <AlignCenterVertical size={15} />}
+          <span className="hidden sm:inline text-[11px] font-semibold">{alignMode === 'top' ? 'Top' : 'Center'}</span>
+        </button>
+
+        <div className={`w-px h-5 flex-shrink-0 hidden sm:block ${isDark ? "bg-slate-700" : "bg-slate-300"}`} />
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={handlePrevPage}
             disabled={currentPage <= 1 || (viewMode === 'single' && rendering)}
-            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
             title="Previous Page"
           >
             <ChevronLeft size={16} />
@@ -2040,9 +2058,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
               value={pageInput}
               onChange={(e) => setPageInput(e.target.value)}
               onBlur={handlePageSubmit}
-              className="w-8 sm:w-11 bg-slate-900 border border-slate-700 text-center text-[11px] sm:text-xs font-mono font-bold rounded px-0.5 py-0.5 sm:py-1 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+              className={`w-8 sm:w-11 border text-center text-[11px] sm:text-xs font-mono font-bold rounded px-0.5 py-0.5 sm:py-1 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-300 text-slate-800"}`}
             />
-            <span className="text-[11px] sm:text-xs font-mono font-medium select-none text-slate-400">
+            <span className={`text-[11px] sm:text-xs font-mono font-medium select-none ${isDark ? "text-slate-400" : "text-slate-500"}`}>
               /{totalPages}
             </span>
           </form>
@@ -2050,20 +2068,20 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           <button
             onClick={handleNextPage}
             disabled={currentPage >= totalPages || (viewMode === 'single' && rendering)}
-            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
             title="Next Page"
           >
             <ChevronRight size={16} />
           </button>
         </div>
 
-        <div className="w-px h-5 bg-slate-700 flex-shrink-0 hidden sm:block" />
+        <div className={`w-px h-5 flex-shrink-0 hidden sm:block ${isDark ? "bg-slate-700" : "bg-slate-300"}`} />
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={handleRotateCcw}
             disabled={viewMode === 'single' && rendering}
-            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
             title="Rotate Counter-Clockwise"
           >
             <RotateCcw size={14} />
@@ -2071,7 +2089,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           <button
             onClick={handleRotateCw}
             disabled={viewMode === 'single' && rendering}
-            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
             title="Rotate Clockwise"
           >
             <RotateCw size={14} />
@@ -2079,7 +2097,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           <button
             onClick={handleZoomOut}
             disabled={scale <= 0.4 || (viewMode === 'single' && rendering)}
-            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
             title="Zoom Out"
           >
             <ZoomOut size={14} />
@@ -2090,7 +2108,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top' }) 
           <button
             onClick={handleZoomIn}
             disabled={scale >= 3.0 || (viewMode === 'single' && rendering)}
-            className="p-1 sm:p-1.5 rounded-md hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
             title="Zoom In"
           >
             <ZoomIn size={14} />

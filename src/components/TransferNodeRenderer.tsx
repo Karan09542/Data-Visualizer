@@ -125,7 +125,7 @@ export interface Attachment {
   originalBlob?: Blob;
 }
 
-const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer" }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: { id: string, status: string } | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid" }) => {
+const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer", isDark = true }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: { id: string, status: string } | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid", isDark?: boolean }) => {
   const isFileObj = file instanceof File;
   const fileName = isFileObj ? file.name : (file as Attachment).fileName;
   const fileSize = isFileObj ? file.size : (file as Attachment).fileSize;
@@ -151,7 +151,7 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
         : (fType === "image" || fType === "video" || fType === "3d_model" ? "w-32 h-32" : "w-48 p-2.5 flex items-center gap-3");
 
   return (
-    <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 ${sizeClasses}`}>
+    <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border ${sizeClasses} ${isDark ? "border-slate-700/50 bg-slate-800/50" : "border-slate-200 bg-white shadow-sm"}`}>
       {fType === "image" && content && (
         <>
           <img src={content} alt={fileName} className="w-full h-full object-cover" />
@@ -190,34 +190,34 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
       )}
       {fType === "audio" && (
         <>
-          <div className="w-10 h-10 rounded bg-indigo-500/20 flex items-center justify-center shrink-0">
-            <Volume2 className="w-5 h-5 text-indigo-400" />
+          <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 ${isDark ? "bg-indigo-500/20 text-indigo-400" : "bg-indigo-100 text-indigo-600"}`}>
+            <Volume2 className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-slate-200 truncate">{fileName}</div>
-            <div className="text-xs text-slate-400">{formatFileSize(fileSize)}</div>
+            <div className={`text-sm truncate font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>{fileName}</div>
+            <div className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{formatFileSize(fileSize)}</div>
           </div>
         </>
       )}
       {fType === "pdf" && (
         <>
-          <div className="w-10 h-10 rounded bg-red-500/20 flex items-center justify-center shrink-0">
-            <FileText className="w-5 h-5 text-red-400" />
+          <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 ${isDark ? "bg-red-500/20 text-red-400" : "bg-red-100 text-red-600"}`}>
+            <FileText className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-slate-200 truncate">{fileName}</div>
-            <div className="text-xs text-slate-400">{formatFileSize(fileSize)}</div>
+            <div className={`text-sm truncate font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>{fileName}</div>
+            <div className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{formatFileSize(fileSize)}</div>
           </div>
         </>
       )}
       {fType !== "image" && fType !== "video" && fType !== "3d_model" && fType !== "audio" && fType !== "pdf" && (
         <>
-          <div className="w-10 h-10 rounded bg-slate-500/20 flex items-center justify-center shrink-0">
-            <FileIcon className="w-5 h-5 text-slate-400" />
+          <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 ${isDark ? "bg-slate-500/20 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+            <FileIcon className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-slate-200 truncate">{fileName}</div>
-            <div className="text-xs text-slate-400">{formatFileSize(fileSize)}</div>
+            <div className={`text-sm truncate font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>{fileName}</div>
+            <div className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{formatFileSize(fileSize)}</div>
           </div>
         </>
       )}
@@ -4108,14 +4108,14 @@ export const TransferNodeRenderer: React.FC<{
               >
                 {/* Modern Compact Toolbar */}
                 <div
-                  className={`flex items-center justify-between p-2 sm:p-3 border-b shrink-0 ${isDark ? "bg-[#0d1017]/80 backdrop-blur-md border-white/5" : "bg-white/80 backdrop-blur-md border-slate-100"}`}
+                  className={`flex items-center justify-between gap-2 overflow-x-auto p-2 sm:p-3 border-b shrink-0 ${isDark ? "bg-[#0d1017]/80 backdrop-blur-md border-white/5" : "bg-white/80 backdrop-blur-md border-slate-100"}`}
                 >
                   <div
-                    className={`flex p-1 rounded-lg flex-1 max-w-[200px] ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                    className={`flex p-1 rounded-lg shrink-0 ${isDark ? "bg-white/5" : "bg-slate-100"}`}
                   >
                     <button
                       onClick={() => setViewMode("chat")}
-                      className={`flex-1 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-2 ${viewMode === "chat"
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-2 ${viewMode === "chat"
                         ? isDark
                           ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                           : "bg-white text-indigo-600 shadow-sm"
@@ -4129,7 +4129,7 @@ export const TransferNodeRenderer: React.FC<{
                     </button>
                     <button
                       onClick={() => setViewMode("media")}
-                      className={`flex-1 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === "media"
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === "media"
                         ? isDark
                           ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
                           : "bg-white text-indigo-600 shadow-sm"
@@ -4141,6 +4141,41 @@ export const TransferNodeRenderer: React.FC<{
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {isFullscreen && (
+                      <div className={`flex p-1 rounded-lg mr-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
+                        <button
+                          onClick={() => setLargeFileMode(false)}
+                          className={`px-2 sm:px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${!largeFileMode
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
+                            }`}
+                        >
+                          <span className="hidden sm:inline">Memory</span>
+                          <span className="sm:hidden">Mem</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if ('showSaveFilePicker' in window) {
+                              setLargeFileMode(true);
+                            } else {
+                              setNotification({ message: "File System API not supported in this browser.", type: "error" });
+                            }
+                          }}
+                          className={`px-2 sm:px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${largeFileMode
+                            ? isDark
+                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                              : "bg-white text-indigo-600 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
+                            }`}
+                        >
+                          <span className="hidden sm:inline">Stream to Disk</span>
+                          <span className="sm:hidden">Disk</span>
+                        </button>
+                      </div>
+                    )}
+
                     <button
                       onClick={() => setAutoClipboardSync(!autoClipboardSync)}
                       title={autoClipboardSync ? "Auto Clipboard Sync: ON" : "Auto Clipboard Sync: OFF"}
@@ -4317,7 +4352,7 @@ export const TransferNodeRenderer: React.FC<{
                                 )}
                                 {/* Hover Actions Bar - Desktop only */}
                                 <div
-                                  className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10 shadow-lg ${msg.sender === "me"
+                                  className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-all z-20 hidden lg:flex items-center gap-1 p-1 rounded-full backdrop-blur-md border shadow-lg ${isDark ? "bg-white/10 border-white/10" : "bg-white/90 border-slate-200 shadow-slate-200/50"} ${msg.sender === "me"
                                     ? "right-full mr-2"
                                     : "left-full ml-2"
                                     }`}
@@ -4327,10 +4362,10 @@ export const TransferNodeRenderer: React.FC<{
                                       handleCopyMessage(msg)
                                     }
                                     title="Copy"
-                                    className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
+                                    className={`p-1.5 rounded-full transition-colors ${isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
                                   >
                                     {copyStatus?.id === msg.id && copyStatus.status === "success" ? (
-                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
                                     ) : (
                                       <Copy className="w-3.5 h-3.5" />
                                     )}
@@ -4338,7 +4373,7 @@ export const TransferNodeRenderer: React.FC<{
                                   <button
                                     onClick={() => setReplyingTo(msg)}
                                     title="Reply"
-                                    className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
+                                    className={`p-1.5 rounded-full transition-colors ${isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
                                   >
                                     <CornerDownRight className="w-3.5 h-3.5" />
                                   </button>
@@ -4405,6 +4440,7 @@ export const TransferNodeRenderer: React.FC<{
                                                     >
                                                       <FilePreviewCard
                                                         file={att}
+                                                        isDark={isDark}
                                                         readonly
                                                         layout={visuals.length === 1 ? "single-grid" : "grid"}
                                                         copyStatusObj={copyStatus}
@@ -4429,6 +4465,7 @@ export const TransferNodeRenderer: React.FC<{
                                                     >
                                                       <FilePreviewCard
                                                         file={att}
+                                                        isDark={isDark}
                                                         readonly
                                                         layout="list"
                                                         copyStatusObj={copyStatus}
@@ -4965,6 +5002,7 @@ export const TransferNodeRenderer: React.FC<{
                                   <FilePreviewCard
                                     key={`${file.name}-${idx}`}
                                     file={file}
+                                    isDark={isDark}
                                     onRemove={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
                                   />
                                 ))}
@@ -5152,12 +5190,17 @@ export const TransferNodeRenderer: React.FC<{
                                     className="w-full h-full object-cover"
                                   />
                                 ) : m.fileType === "video" ? (
-                                  <div className="w-full h-full bg-slate-900 flex items-center justify-center text-white">
+                                  <div className={`w-full h-full flex items-center justify-center ${isDark ? "bg-slate-900 text-white" : "bg-slate-800 text-white"}`}>
                                     <Play className="w-6 h-6" />
                                   </div>
+                                ) : getFileType(m.fileName || "") === "pdf" || m.fileType === "pdf" ? (
+                                  <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isDark ? "bg-red-500/10" : "bg-red-50"}`}>
+                                    <FileText className={`w-10 h-10 ${isDark ? "text-red-400" : "text-red-500"}`} />
+                                    <span className={`text-[10px] font-bold tracking-widest ${isDark ? "text-red-400" : "text-red-500"}`}>PDF</span>
+                                  </div>
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <FileIcon className="w-6 h-6 text-indigo-500" />
+                                  <div className={`w-full h-full flex items-center justify-center ${isDark ? "bg-white/5" : "bg-slate-50"}`}>
+                                    <FileIcon className="w-8 h-8 text-indigo-500" />
                                   </div>
                                 )}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
@@ -5340,20 +5383,21 @@ export const TransferNodeRenderer: React.FC<{
                   selectedIndex={selectedMediaIdx}
                   onIndexChange={(idx) => setSelectedMedia(mediaMsgs[idx])}
                   keepMounted={true}
+                  isDark={isDark}
                   renderHeaderMiddle={(item, index, total) => (
                     <>
                       <p className="text-sm sm:text-base font-black mb-0.5 truncate w-full px-4">
                         {item.fileName}
                       </p>
-                      <div className="flex items-center gap-2 opacity-80 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">
+                      <div className={`flex items-center gap-2 text-[10px] sm:text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis ${isDark ? "opacity-80" : "opacity-60"}`}>
                         <span className="hidden sm:inline">
                           {formatFileSize(item.fileSize || 0)}
                         </span>
-                        <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                        <span className={`w-1 h-1 rounded-full shrink-0 hidden sm:inline ${isDark ? "bg-white/50" : "bg-slate-900/40"}`} />
                         <span className="truncate hidden sm:inline">
                           {new Date(item.timestamp).toLocaleString()}
                         </span>
-                        <span className="w-1 h-1 rounded-full bg-white/50 shrink-0 hidden sm:inline" />
+                        <span className={`w-1 h-1 rounded-full shrink-0 hidden sm:inline ${isDark ? "bg-white/50" : "bg-slate-900/40"}`} />
                         <span>
                           {index + 1} / {total}
                         </span>
@@ -5368,18 +5412,18 @@ export const TransferNodeRenderer: React.FC<{
                             e.stopPropagation();
                             setImageRotation((r) => (r + 90) % 360);
                           }}
-                          className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md flex items-center justify-center"
+                          className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${isDark ? "bg-white/10 hover:bg-white/20 text-white" : "bg-slate-200/60 hover:bg-slate-300 text-slate-800"}`}
                           title="Rotate"
                         >
                           <RotateCw className="w-4 h-4" />
                         </button>
                       )}
                       <button
-                        onClick={(e) => {
+                          onClick={(e) => {
                           e.stopPropagation();
                           handleMediaCopy(item);
                         }}
-                        className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === item.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                        className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center ${copyStatus?.id === item.id && copyStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-200/60 hover:bg-slate-300 text-slate-800'}`}
                         title="Copy"
                       >
                         {copyStatus?.id === item.id && copyStatus.status === "success" ? (
@@ -5421,14 +5465,18 @@ export const TransferNodeRenderer: React.FC<{
                           <AudioPlayer media={item} isSelected={isSelected} />
                         )}
                         {effectiveFileType === "pdf" && (
-                          <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none pointer-events-auto">
-                            <PdfViewer url={item.content} />
+                          <div className="w-full h-full pt-16 sm:pt-20 pb-4 sm:pb-8 px-2 sm:px-6 max-w-5xl flex flex-col relative select-none pointer-events-auto">
+                            <div className={`flex-1 w-full rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl relative ${isDark ? "bg-slate-900" : "bg-slate-100/50 border border-slate-200/60"}`}>
+                              <PdfViewer url={item.content} isDark={isDark} />
+                            </div>
                           </div>
                         )}
                         {effectiveFileType === "text_file" && (
-                          <div className="w-[90%] h-[90%] max-w-5xl bg-[#1e1e1e] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-[12005] pointer-events-auto">
-                            <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
-                              <TextFileViewer url={item.content} />
+                          <div className="w-full h-full pt-16 sm:pt-20 pb-4 sm:pb-8 px-4 sm:px-8 max-w-5xl flex flex-col relative z-[12005] pointer-events-auto">
+                            <div className="flex-1 w-full bg-[#1e1e1e] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col relative">
+                              <div className="flex-1 overflow-auto p-6 md:p-10 text-xs sm:text-sm font-mono text-slate-300 whitespace-pre-wrap select-text selection:bg-indigo-500/30 selection:text-white">
+                                <TextFileViewer url={item.content} />
+                              </div>
                             </div>
                           </div>
                         )}

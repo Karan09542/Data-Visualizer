@@ -64,8 +64,9 @@ const getBlobForClipboard = async (url: string) => {
 };
 
 const MediaPreviewPopup: React.FC = () => {
-  const activePreviewMedia = useStore((state) => state.activePreviewMedia);
-  const setActivePreviewMedia = useStore((state) => state.setActivePreviewMedia);
+  const { activePreviewMedia, setActivePreviewMedia } = useStore();
+  const appTheme = useStore(state => state.appTheme);
+  const isDark = appTheme === "dark";
   const setNotification = useStore((state) => state.setNotification);
   const uploadedMediaMetadata = useStore((state) => state.uploadedMediaMetadata);
 
@@ -74,7 +75,6 @@ const MediaPreviewPopup: React.FC = () => {
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [rotation, setRotation] = React.useState(0);
   const [isUIHidden, setIsUIHidden] = React.useState(false);
-  const [pdfAlignment, setPdfAlignment] = React.useState<'top' | 'center'>('top');
 
   React.useEffect(() => {
     if (!activePreviewMedia?.url) {
@@ -347,7 +347,7 @@ const MediaPreviewPopup: React.FC = () => {
           {resolvedAssetUrl === null && originalUrl.startsWith('img_') ? (
             <div className="flex w-full h-full justify-center items-center text-slate-500">Loading asset...</div>
           ) : (
-            <PdfViewer url={resolvedUrl} alignment={pdfAlignment} />
+            <PdfViewer url={resolvedUrl} isDark={isDark} />
           )}
         </div>
       );
@@ -500,16 +500,6 @@ const MediaPreviewPopup: React.FC = () => {
                       >
                         <ExternalLink size={14} />
                         <span className="hidden sm:inline">Copy source</span>
-                      </button>
-                    )}
-
-                    {activePreviewMedia.type === 'pdf' && (
-                      <button
-                        onClick={() => setPdfAlignment(prev => prev === 'top' ? 'center' : 'top')}
-                        className={`inline-flex h-8 items-center justify-center rounded-md border px-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${pdfAlignment === 'center' ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/40' : 'border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
-                        title="Toggle PDF Alignment"
-                      >
-                        {pdfAlignment === 'top' ? 'Align: Top' : 'Align: Ctr'}
                       </button>
                     )}
 

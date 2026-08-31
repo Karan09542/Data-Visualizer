@@ -13,6 +13,7 @@ export interface MediaCarouselProps<T> {
   renderHeaderMiddle?: (item: T, index: number, total: number) => React.ReactNode;
   renderHeaderRight?: (item: T, index: number) => React.ReactNode;
   keepMounted?: boolean;
+  isDark?: boolean;
 }
 
 export default function MediaCarousel<T>({
@@ -25,6 +26,7 @@ export default function MediaCarousel<T>({
   renderHeaderMiddle,
   renderHeaderRight,
   keepMounted = false,
+  isDark = true,
 }: MediaCarouselProps<T>) {
   const [showChrome, setShowChrome] = useState(true);
   const touchStartXRef = useRef<number>(0);
@@ -95,7 +97,7 @@ export default function MediaCarousel<T>({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/98 backdrop-blur-3xl nodrag nowheel"
+          className={`fixed inset-0 z-[12000] flex items-center justify-center backdrop-blur-3xl nodrag nowheel ${isDark ? "bg-black/98" : "bg-white/95"}`}
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
@@ -129,7 +131,7 @@ export default function MediaCarousel<T>({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.2 }}
-                className="absolute top-0 inset-x-0 z-[12010] flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-auto"
+                className={`absolute top-0 inset-x-0 z-[12010] flex items-center justify-between p-4 bg-gradient-to-b pointer-events-auto ${isDark ? "from-black/80 to-transparent" : "from-white/90 to-transparent"}`}
               >
                 <div className="flex items-center gap-3 w-1/3">
                   <button
@@ -137,14 +139,14 @@ export default function MediaCarousel<T>({
                       e.stopPropagation();
                       onClose();
                     }}
-                    className="p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-md"
+                    className={`p-3 rounded-full transition-all backdrop-blur-md ${isDark ? "bg-white/10 hover:bg-white/20 text-white" : "bg-slate-200/60 hover:bg-slate-300 text-slate-800"}`}
                   >
                     <ChevronLeft className="w-5 h-5 sm:hidden" />
                     <X className="w-5 h-5 hidden sm:block" />
                   </button>
                 </div>
 
-                <div className="flex flex-col items-center justify-center text-white max-w-[calc(100%-100px)] w-1/3 text-center">
+                <div className={`flex flex-col items-center justify-center max-w-[calc(100%-100px)] w-1/3 text-center ${isDark ? "text-white" : "text-slate-900"}`}>
                   {renderHeaderMiddle && renderHeaderMiddle(items[selectedIndex], selectedIndex, items.length)}
                 </div>
 
@@ -165,7 +167,7 @@ export default function MediaCarousel<T>({
                   e.stopPropagation();
                   onIndexChange(selectedIndex - 1);
                 }}
-                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 p-2 sm:p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md pointer-events-auto"
+                className={`absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 p-2 sm:p-4 rounded-full z-[12010] transition-all border shadow-xl backdrop-blur-md pointer-events-auto ${isDark ? "bg-black/40 hover:bg-black/80 text-white border-white/10" : "bg-white/60 hover:bg-white/90 text-slate-800 border-slate-200/50"}`}
               >
                 <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
               </motion.button>
@@ -182,7 +184,7 @@ export default function MediaCarousel<T>({
                   e.stopPropagation();
                   onIndexChange(selectedIndex + 1);
                 }}
-                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 p-2 sm:p-4 rounded-full bg-black/40 hover:bg-black/80 text-white z-[12010] transition-all border border-white/10 shadow-xl backdrop-blur-md pointer-events-auto"
+                className={`absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 p-2 sm:p-4 rounded-full z-[12010] transition-all border shadow-xl backdrop-blur-md pointer-events-auto ${isDark ? "bg-black/40 hover:bg-black/80 text-white border-white/10" : "bg-white/60 hover:bg-white/90 text-slate-800 border-slate-200/50"}`}
               >
                 <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
               </motion.button>
