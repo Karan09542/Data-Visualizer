@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -11,6 +11,7 @@ import { JwtDecoder } from "./JwtDecoder";
 import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
 import { ImageSlicerUtil } from "./ImageSlicerUtil";
+import { PdfMergeUtil } from "./PdfMergeUtil";
 import CustomSelect from "../CustomSelect";
 
 const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
@@ -18,6 +19,7 @@ const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").the
 const TABS = [
   { id: "passport", label: "Passport Studio", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },
   { id: "img2pdf", label: "Image to PDF", icon: FileImage, activeClass: "bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 shadow-sm border border-sky-200/50 dark:border-sky-800/30", iconClass: "text-sky-500" },
+  { id: "pdfmerge", label: "Merge PDFs", icon: FileStack, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },
   { id: "imgslicer", label: "Image Slicer", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
   { id: "wavedisp", label: "Wave Studio", icon: Waves, activeClass: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 shadow-sm border border-cyan-200/50 dark:border-cyan-800/30 font-bold", iconClass: "text-cyan-500" },
   { id: "folder2zip", label: "Folder to ZIP", icon: FolderArchive, activeClass: "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 shadow-sm border border-purple-200/50 dark:border-purple-800/30", iconClass: "text-purple-500" },
@@ -35,7 +37,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
+  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   // Close on Escape key
@@ -73,38 +75,62 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               : "w-full h-full md:h-[90vh] md:max-h-[850px] max-w-6xl md:rounded-2xl border border-black/10 dark:border-white/10"
               } bg-slate-50 dark:bg-[#080b11] shadow-2xl flex flex-col md:flex-row overflow-hidden`}
           >
-            {/* Close & Maximize buttons for mobile (absolute top right) */}
-            <div className="md:hidden absolute top-3 right-3 z-50 flex items-center gap-1.5">
-              <button
-                onClick={onClose}
-                className="p-2 bg-black/20 dark:bg-white/10 hover:bg-black/30 dark:hover:bg-white/20 rounded-full text-slate-800 dark:text-slate-200 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
             {/* Sidebar / Top Navigation */}
             <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22] flex flex-col shrink-0 select-none">
-              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <h1 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Quick Utilities
+              <div className="p-2.5 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                <h1 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0 truncate">
+                  Quick Utils
                 </h1>
-                {/* Maximize & Close buttons for desktop */}
-                <div className="hidden md:flex items-center gap-1">
-                  <button
-                    onClick={() => setIsMaximized(!isMaximized)}
-                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                    title={isMaximized ? "Restore Modal" : "Maximize Fullscreen"}
-                  >
-                    {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-                  </button>
+                
+                <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
+                  {/* Mobile Dropdown */}
+                  <div className="md:hidden w-[150px] sm:w-[200px]">
+                    <CustomSelect
+                      value={activeTab}
+                      onChange={(val) => setActiveTab(val as any)}
+                      options={TABS.map(t => ({
+                        label: t.label,
+                        value: t.id,
+                        icon: <t.icon size={14} className={t.iconClass} />
+                      }))}
+                      icon={
+                        TABS.find(t => t.id === activeTab) ? (
+                          (() => {
+                            const TabIcon = TABS.find(t => t.id === activeTab)!.icon;
+                            const iconClass = TABS.find(t => t.id === activeTab)!.iconClass;
+                            return <TabIcon size={16} className={iconClass} />;
+                          })()
+                        ) : undefined
+                      }
+                      className="w-full font-semibold shadow-sm text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Mobile Close Button */}
                   <button
                     onClick={onClose}
-                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                    title="Close"
+                    className="md:hidden p-1.5 sm:p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors shrink-0"
                   >
                     <X size={16} />
                   </button>
+
+                  {/* Maximize & Close buttons for desktop */}
+                  <div className="hidden md:flex items-center gap-1">
+                    <button
+                      onClick={() => setIsMaximized(!isMaximized)}
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      title={isMaximized ? "Restore Modal" : "Maximize Fullscreen"}
+                    >
+                      {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                    </button>
+                    <button
+                      onClick={onClose}
+                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      title="Close"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -124,29 +150,6 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                   </button>
                 ))}
               </div>
-
-              {/* Mobile Dropdown */}
-              <div className="md:hidden p-3 bg-slate-100/50 dark:bg-[#0a0d14]/50 border-b border-slate-200 dark:border-slate-800/50">
-                <CustomSelect
-                  value={activeTab}
-                  onChange={(val) => setActiveTab(val as any)}
-                  options={TABS.map(t => ({
-                    label: t.label,
-                    value: t.id,
-                    icon: <t.icon size={14} className={t.iconClass} />
-                  }))}
-                  icon={
-                    TABS.find(t => t.id === activeTab) ? (
-                      (() => {
-                        const TabIcon = TABS.find(t => t.id === activeTab)!.icon;
-                        const iconClass = TABS.find(t => t.id === activeTab)!.iconClass;
-                        return <TabIcon size={16} className={iconClass} />;
-                      })()
-                    ) : undefined
-                  }
-                  className="w-full font-semibold shadow-sm text-sm"
-                />
-              </div>
             </div>
 
             {/* Main Content Area */}
@@ -158,6 +161,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               </div>
               {activeTab === "passport" && <PassportStudioUtil />}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
+              {activeTab === "pdfmerge" && <PdfMergeUtil />}
               {activeTab === "imgslicer" && <ImageSlicerUtil />}
               {activeTab === "folder2zip" && <FolderToZipConverter />}
               {activeTab === "base64" && <Base64Converter />}

@@ -41,7 +41,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.13.26",
+    "@tanstack/react-virtual": "^3.14.10",
     "@types/jsbarcode": "^3.11.4",
     "@types/uuid": "^10.0.0",
     "@use-gesture/react": "^10.3.1",
