@@ -121,8 +121,10 @@ export interface Attachment {
   fileName: string;
   fileSize: number;
   fileType: string;
-  content: string; // Object URL locally, base64 when sent
+  content?: string; // Object URL locally, base64 when sent
   originalBlob?: Blob;
+  streamState?: "offered" | "transferring" | "paused" | "completed" | "canceled";
+  streamProgress?: number;
 }
 
 const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer", isDark = true }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: { id: string, status: string } | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid", isDark?: boolean }) => {
@@ -142,13 +144,15 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
   }, [file]);
 
   const content = file instanceof File ? localUrl : (file as Attachment).content;
+  const hasVisualContent = (fType === "image" || fType === "video" || fType === "3d_model") && !!content;
+
   const sizeClasses = layout === "grid"
-    ? (fType === "image" || fType === "video" || fType === "3d_model" ? "w-full min-w-[120px] aspect-square" : "w-full p-2.5 flex items-center gap-3")
+    ? (hasVisualContent ? "w-full min-w-[120px] aspect-square" : "w-full p-2.5 flex items-center gap-3")
     : layout === "single-grid"
-      ? (fType === "3d_model" ? "w-full min-w-[200px] sm:min-w-[280px] aspect-square max-h-[240px]" : fType === "image" || fType === "video" ? "w-full h-[350px]" : "w-full p-2.5 flex items-center gap-3")
+      ? (fType === "3d_model" && content ? "w-full min-w-[200px] sm:min-w-[280px] aspect-square max-h-[240px]" : (fType === "image" || fType === "video") && content ? "w-full h-[350px]" : "w-full p-2.5 flex items-center gap-3")
       : layout === "list"
         ? "w-full p-2.5 flex items-center gap-3"
-        : (fType === "image" || fType === "video" || fType === "3d_model" ? "w-32 h-32" : "w-48 p-2.5 flex items-center gap-3");
+        : (hasVisualContent ? "w-32 h-32" : "w-48 p-2.5 flex items-center gap-3");
 
   return (
     <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border ${sizeClasses} ${isDark ? "border-slate-700/50 bg-slate-800/50" : "border-slate-200 bg-white shadow-sm"}`}>
@@ -210,7 +214,7 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
           </div>
         </>
       )}
-      {fType !== "image" && fType !== "video" && fType !== "3d_model" && fType !== "audio" && fType !== "pdf" && (
+      {fType !== "audio" && fType !== "pdf" && !hasVisualContent && (
         <>
           <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 ${isDark ? "bg-slate-500/20 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
             <FileIcon className="w-5 h-5" />
@@ -460,6 +464,25 @@ export const TransferNodeRenderer: React.FC<{
   >("waiting");
   const [isHosting, setIsHosting] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+
+  const updateStreamMessage = useCallback((msgId: string, updates: Partial<Message> & Partial<Attachment>) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id === msgId) {
+          return { ...m, ...updates };
+        }
+        if (m.type === "composite" && m.attachments?.some((a) => a.id === msgId)) {
+          return {
+            ...m,
+            attachments: m.attachments.map((a) =>
+              a.id === msgId ? { ...a, ...updates } : a
+            ),
+          };
+        }
+        return m;
+      })
+    );
+  }, []);
   const [chatInput, setChatInput] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
@@ -621,6 +644,7 @@ export const TransferNodeRenderer: React.FC<{
     offset: number;
     paused: boolean;
     canceled: boolean;
+    accepted: boolean;
     checksum: number; // simple CRC or similar
   }>>({});
 
@@ -1443,8 +1467,11 @@ export const TransferNodeRenderer: React.FC<{
     if (stream.offset >= stream.file.size) {
       // Done
       dcRef.current.send(JSON.stringify({ type: "stream_end", msgId, checksum: stream.checksum }));
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: "sent", streamState: "completed" } : m));
+      updateStreamMessage(msgId, { status: "sent", streamState: "completed" });
       delete outgoingStreamsRef.current[msgId];
+      if (Object.keys(outgoingStreamsRef.current).length === 0) {
+        setTransferProgress(0);
+      }
       return;
     }
 
@@ -1466,7 +1493,10 @@ export const TransferNodeRenderer: React.FC<{
       stream.offset += chunkBuffer.length;
 
       const progress = Math.floor((stream.offset / stream.file.size) * 100);
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, streamProgress: progress } : m));
+      updateStreamMessage(msgId, { streamProgress: progress });
+      if (progress % 5 === 0 || progress === 100) {
+        setTransferProgress(progress);
+      }
 
       // Wait if bufferedAmount is too high
       if (dcRef.current.bufferedAmount < dcRef.current.bufferedAmountLowThreshold) {
@@ -1476,8 +1506,11 @@ export const TransferNodeRenderer: React.FC<{
     } catch (err) {
       console.error("Streaming error", err);
       dcRef.current.send(JSON.stringify({ type: "stream_cancel", msgId }));
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: "error", streamState: "canceled" } : m));
+      updateStreamMessage(msgId, { status: "error", streamState: "canceled" });
       delete outgoingStreamsRef.current[msgId];
+      if (Object.keys(outgoingStreamsRef.current).length === 0) {
+        setTransferProgress(0);
+      }
     }
   };
 
@@ -1491,6 +1524,7 @@ export const TransferNodeRenderer: React.FC<{
       offset: 0,
       paused: false,
       canceled: false,
+      accepted: false,
       checksum: 0,
     };
 
@@ -1728,12 +1762,9 @@ export const TransferNodeRenderer: React.FC<{
     dc.bufferedAmountLowThreshold = 65536; // 64KB
 
     dc.onbufferedamountlow = () => {
-      Object.values(outgoingStreamsRef.current).forEach(stream => {
-        if (!stream.paused && !stream.canceled) {
-          // We just need the ID. Wait, I didn't save ID inside the object, let's find it
-          // Actually, it's the key.
-          const msgId = Object.keys(outgoingStreamsRef.current).find(k => outgoingStreamsRef.current[k] === stream);
-          if (msgId) processNextChunk(msgId);
+      Object.entries(outgoingStreamsRef.current).forEach(([streamId, stream]) => {
+        if (!stream.paused && !stream.canceled && stream.accepted) {
+          processNextChunk(streamId);
         }
       });
     };
@@ -1760,7 +1791,7 @@ export const TransferNodeRenderer: React.FC<{
             stream.checksum = crc32(chunk, stream.checksum);
 
             const progress = Math.floor((stream.received / stream.total) * 100);
-            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, streamProgress: progress } : m));
+            updateStreamMessage(msgId, { streamProgress: progress });
             setTransferProgress(progress);
           } catch (err) {
             console.error("Failed to write chunk", err);
@@ -1821,17 +1852,37 @@ export const TransferNodeRenderer: React.FC<{
             sendLocalNotification("Incoming Large File", msg.fileName || "File");
           }
           return;
+        }
+
+        if (msg.type === "composite_stream_offer") {
+          const newMsg: Message = {
+            id: msg.msgId,
+            sender: "remote",
+            type: "composite",
+            content: msg.content || "",
+            attachments: msg.attachments || [],
+            timestamp: Date.now(),
+            status: "received",
+            replyTo: msg.replyTo,
+          };
+          setMessages((prev) => [...prev, newMsg]);
+          if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
+            setUnreadCount((prev) => prev + 1);
+            sendLocalNotification("Incoming Files", `Received ${msg.attachments?.length || 0} files`);
+          }
+          return;
         } else if (msg.type === "stream_accept") {
           const stream = outgoingStreamsRef.current[msg.msgId];
           if (stream) {
-            setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, streamState: "transferring" } : m));
+            stream.accepted = true;
+            updateStreamMessage(msg.msgId, { streamState: "transferring" });
             processNextChunk(msg.msgId);
           }
           return;
         } else if (msg.type === "stream_pause") {
           const stream = outgoingStreamsRef.current[msg.msgId];
           if (stream) stream.paused = true;
-          setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, streamState: "paused" } : m));
+          updateStreamMessage(msg.msgId, { streamState: "paused" });
           return;
         } else if (msg.type === "stream_resume") {
           const stream = outgoingStreamsRef.current[msg.msgId];
@@ -1839,7 +1890,7 @@ export const TransferNodeRenderer: React.FC<{
             stream.paused = false;
             processNextChunk(msg.msgId);
           }
-          setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, streamState: "transferring" } : m));
+          updateStreamMessage(msg.msgId, { streamState: "transferring" });
           return;
         } else if (msg.type === "stream_cancel") {
           const outStream = outgoingStreamsRef.current[msg.msgId];
@@ -1852,11 +1903,17 @@ export const TransferNodeRenderer: React.FC<{
             try { inStream.stream.close(); } catch (e) { }
             delete incomingStreamsRef.current[msg.msgId];
           }
-          setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, streamState: "canceled" } : m));
+          updateStreamMessage(msg.msgId, { streamState: "canceled" });
+          if (Object.keys(outgoingStreamsRef.current).length === 0 && Object.keys(incomingStreamsRef.current).length === 0) {
+            setTransferProgress(0);
+          }
           return;
         } else if (msg.type === "stream_end") {
           const inStream = incomingStreamsRef.current[msg.msgId];
           if (inStream) {
+            if ((inStream as any).writeQueue) {
+              await (inStream as any).writeQueue;
+            }
             try {
               await inStream.stream.close();
             } catch (e) { }
@@ -1867,8 +1924,10 @@ export const TransferNodeRenderer: React.FC<{
               setNotification({ message: "File download complete.", type: "success" });
             }
             delete incomingStreamsRef.current[msg.msgId];
-            setMessages(prev => prev.map(m => m.id === msg.msgId ? { ...m, streamState: "completed" } : m));
-            setTransferProgress(0);
+            updateStreamMessage(msg.msgId, { streamState: "completed" });
+            if (Object.keys(outgoingStreamsRef.current).length === 0 && Object.keys(incomingStreamsRef.current).length === 0) {
+              setTransferProgress(0);
+            }
           }
           return;
         }
@@ -2503,12 +2562,73 @@ export const TransferNodeRenderer: React.FC<{
 
     if (filesToProcess.length > 0) {
       if (largeFileMode) {
+        if (filesToProcess.length === 1 && !textContent.trim()) {
+          startFileStream(filesToProcess[0], replyData);
+          return;
+        }
+
+        const msgId = uuidv4();
+        const attachments: Attachment[] = [];
+        const payloadAttachments: any[] = [];
+
         for (const file of filesToProcess) {
-          startFileStream(file, replyData);
+          const attId = uuidv4();
+          const fType = getFileType(file.name);
+          const objectUrl = URL.createObjectURL(file);
+          blobRegistry.set(objectUrl, file);
+
+          outgoingStreamsRef.current[attId] = {
+            file,
+            offset: 0,
+            paused: false,
+            canceled: false,
+            accepted: false,
+            checksum: 0,
+          };
+
+          attachments.push({
+            id: attId,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: fType,
+            content: objectUrl,
+            originalBlob: file,
+            streamState: "offered",
+            streamProgress: 0,
+          });
+
+          payloadAttachments.push({
+            id: attId,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: fType,
+            streamState: "offered",
+            streamProgress: 0,
+          });
         }
-        if (textContent.trim()) {
-          await sendLargeMessage("text", textContent, undefined, replyData);
-        }
+
+        const compositeMsg: Message = {
+          id: msgId,
+          sender: "me",
+          type: "composite",
+          content: textContent,
+          attachments,
+          timestamp: Date.now(),
+          status: "sent",
+          replyTo: replyData,
+        };
+
+        setMessages((prev) => [...prev, compositeMsg]);
+
+        dcRef.current?.send(
+          JSON.stringify({
+            type: "composite_stream_offer",
+            msgId,
+            content: textContent,
+            attachments: payloadAttachments,
+            replyTo: replyData,
+          })
+        );
         return;
       }
 
@@ -2615,22 +2735,194 @@ export const TransferNodeRenderer: React.FC<{
     });
   };
 
-  const mediaMsgs = messages.reduce<any[]>((acc, m) => {
-    if (m.type === "file") {
-      acc.push(m);
-    }
-    if (m.type === "composite" && m.attachments) {
-      m.attachments.forEach(att => {
-        acc.push({ ...att, sender: m.sender, timestamp: m.timestamp });
-      });
-    }
-    if (m.type === "file_offer" && m.content) {
-      acc.push(m);
-    }
-    return acc;
+  const getMediaItems = useCallback((msgs: Message[]) => {
+    return msgs.reduce<any[]>((acc, m) => {
+      if (m.type === "file" && m.content) {
+        acc.push(m);
+      }
+      if (m.type === "composite" && m.attachments) {
+        m.attachments.forEach((att) => {
+          if (att.content) {
+            acc.push({ ...att, sender: m.sender, timestamp: m.timestamp });
+          }
+        });
+      }
+      if (m.type === "file_offer" && m.content) {
+        acc.push(m);
+      }
+      return acc;
+    }, []);
   }, []);
+
+  const mediaMsgs = getMediaItems(messages);
   const selectedMediaIdx = selectedMedia ? mediaMsgs.findIndex((m) => m.id === selectedMedia.id) : -1;
 
+  const renderStreamStateUI = (
+    item: { id: string; streamState?: string; streamProgress?: number },
+    sender: string,
+    fileName: string,
+    fileSize: number,
+    hideAcceptButton: boolean = false
+  ) => {
+    if (!item.streamState) return null;
+    return (
+      <div className="w-full mt-2">
+        {item.streamState === "offered" && sender === "remote" && !hideAcceptButton && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (!('showSaveFilePicker' in window)) {
+                setNotification({ message: "File System API not supported. Falling back to memory buffering.", type: "warning" });
+                const memoryBuffer: Uint8Array[] = [];
+                const streamMock = {
+                  write: async (chunk: Uint8Array) => {
+                    memoryBuffer.push(new Uint8Array(chunk));
+                  },
+                  close: async () => {
+                    const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
+                    const combined = new Uint8Array(totalLength);
+                    let offset = 0;
+                    for (const chunk of memoryBuffer) {
+                      combined.set(chunk, offset);
+                      offset += chunk.length;
+                    }
+                    const blob = new Blob([combined]);
+                    const url = URL.createObjectURL(blob);
+                    
+                    updateStreamMessage(item.id, {
+                      content: url,
+                      originalBlob: blob,
+                      streamState: "completed"
+                    });
+                  }
+                };
+                incomingStreamsRef.current[item.id] = {
+                  handle: null,
+                  stream: streamMock,
+                  received: 0,
+                  total: fileSize,
+                  checksum: 0
+                };
+                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: item.id }));
+                updateStreamMessage(item.id, { streamState: "transferring" });
+                return;
+              }
+              try {
+                const handle = await (window as any).showSaveFilePicker({ suggestedName: fileName });
+                const stream = await handle.createWritable();
+                incomingStreamsRef.current[item.id] = { handle, stream, received: 0, total: fileSize, checksum: 0 };
+                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: item.id }));
+                updateStreamMessage(item.id, { streamState: "transferring" });
+              } catch (e: any) {
+                if (e.name !== "AbortError") {
+                  setNotification({ message: "Could not open file: " + e.message, type: "error" });
+                }
+              }
+            }}
+            className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            {'showSaveFilePicker' in window ? 'Accept File' : 'Accept File (Memory Fallback)'}
+          </button>
+        )}
+
+        {item.streamState === "offered" && sender === "me" && (
+          <div className="text-[10px] text-center font-bold opacity-60 italic">Waiting for receiver to accept...</div>
+        )}
+
+        {item.streamState === "transferring" && (
+          <div className="flex flex-col gap-1 w-full mt-1 px-1">
+            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
+              <span>Transferring...</span>
+              <span>{item.streamProgress || 0}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-emerald-400"
+                initial={{ width: 0 }}
+                animate={{ width: `${item.streamProgress || 0}%` }}
+                transition={{ duration: 0.1 }}
+              />
+            </div>
+          </div>
+        )}
+
+        {item.streamState === "paused" && (
+          <div className="flex flex-col gap-1 w-full mt-1 px-1">
+            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
+              <span>Paused</span>
+              <span>{item.streamProgress || 0}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+              <div className="h-full bg-amber-400" style={{ width: `${item.streamProgress || 0}%` }} />
+            </div>
+          </div>
+        )}
+
+        {(item.streamState === "completed" || item.streamState === "canceled") && (
+          <div className={`text-[10px] text-center font-bold uppercase tracking-widest ${item.streamState === "completed" ? "text-emerald-500" : "text-red-500"}`}>
+            {item.streamState}
+          </div>
+        )}
+
+        {(item.streamState === "transferring" || item.streamState === "paused") && (
+          <div className="flex gap-2 w-full mt-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (item.streamState === "transferring") {
+                  dcRef.current?.send(JSON.stringify({ type: "stream_pause", msgId: item.id }));
+                  updateStreamMessage(item.id, { streamState: "paused" });
+                  if (sender === "me") {
+                    const outStream = outgoingStreamsRef.current[item.id];
+                    if (outStream) outStream.paused = true;
+                  }
+                } else {
+                  dcRef.current?.send(JSON.stringify({ type: "stream_resume", msgId: item.id }));
+                  updateStreamMessage(item.id, { streamState: "transferring" });
+                  if (sender === "me") {
+                    const outStream = outgoingStreamsRef.current[item.id];
+                    if (outStream) {
+                      outStream.paused = false;
+                      processNextChunk(item.id);
+                    }
+                  }
+                }
+              }}
+              className="flex-1 py-1 bg-amber-500/20 text-amber-500 font-bold text-[10px] rounded hover:bg-amber-500/30 transition-all flex justify-center items-center gap-1"
+            >
+              {item.streamState === "transferring" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              {item.streamState === "transferring" ? "Pause" : "Resume"}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: item.id }));
+                updateStreamMessage(item.id, { streamState: "canceled" });
+                if (sender === "me") {
+                  const outStream = outgoingStreamsRef.current[item.id];
+                  if (outStream) outStream.canceled = true;
+                  delete outgoingStreamsRef.current[item.id];
+                } else {
+                  const inStream = incomingStreamsRef.current[item.id];
+                  if (inStream) {
+                    try { inStream.stream.close(); } catch (e) { }
+                    delete incomingStreamsRef.current[item.id];
+                  }
+                }
+                if (Object.keys(outgoingStreamsRef.current).length === 0 && Object.keys(incomingStreamsRef.current).length === 0) {
+                  setTransferProgress(0);
+                }
+              }}
+              className="flex-1 py-1 bg-red-500/20 text-red-500 font-bold text-[10px] rounded hover:bg-red-500/30 transition-all flex justify-center items-center gap-1"
+            >
+              <X className="w-3 h-3" /> Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -4058,17 +4350,7 @@ export const TransferNodeRenderer: React.FC<{
           connectionState === "transferring") &&
           (() => {
             const chatMessages = messages;
-            const mediaMessages = messages.reduce<any[]>((acc, m) => {
-              if (m.type === "file") {
-                acc.push(m);
-              }
-              if (m.type === "composite" && m.attachments) {
-                m.attachments.forEach(att => {
-                  acc.push({ ...att, sender: m.sender, timestamp: m.timestamp });
-                });
-              }
-              return acc;
-            }, []);
+            const mediaMessages = getMediaItems(messages);
 
             const scrollToMessage = (id: string) => {
               const el = document.getElementById(`msg-${id}`);
@@ -4446,6 +4728,7 @@ export const TransferNodeRenderer: React.FC<{
                                                         copyStatusObj={copyStatus}
                                                         onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
                                                       />
+                                                      {renderStreamStateUI(att, msg.sender, att.fileName, att.fileSize || 0, true)}
                                                     </div>
                                                   ))}
                                                 </div>
@@ -4471,6 +4754,7 @@ export const TransferNodeRenderer: React.FC<{
                                                         copyStatusObj={copyStatus}
                                                         onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
                                                       />
+                                                      {renderStreamStateUI(att, msg.sender, att.fileName, att.fileSize || 0, true)}
                                                     </div>
                                                   ))}
                                                 </div>
@@ -4482,6 +4766,62 @@ export const TransferNodeRenderer: React.FC<{
                                           <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text">
                                             {renderContentWithLinks(msg.content)}
                                           </div>
+                                        )}
+                                        {msg.attachments?.some(att => att.streamState === "offered" && msg.sender === "remote") && (
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              if ('showDirectoryPicker' in window) {
+                                                try {
+                                                  const dirHandle = await (window as any).showDirectoryPicker();
+                                                  for (const att of msg.attachments || []) {
+                                                    if (att.streamState !== "offered") continue;
+                                                    const fileHandle = await dirHandle.getFileHandle(att.fileName, { create: true });
+                                                    const stream = await fileHandle.createWritable();
+                                                    incomingStreamsRef.current[att.id] = { handle: fileHandle, stream, received: 0, total: att.fileSize || 0, checksum: 0 };
+                                                    dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: att.id }));
+                                                    updateStreamMessage(att.id, { streamState: "transferring" });
+                                                  }
+                                                } catch (e: any) {
+                                                  if (e.name !== "AbortError") {
+                                                    setNotification({ message: "Could not open directory: " + e.message, type: "error" });
+                                                  }
+                                                }
+                                              } else {
+                                                setNotification({ message: "File System API not supported. Falling back to memory buffering.", type: "warning" });
+                                                for (const att of msg.attachments || []) {
+                                                  if (att.streamState !== "offered") continue;
+                                                  const memoryBuffer: Uint8Array[] = [];
+                                                  const streamMock = {
+                                                    write: async (chunk: Uint8Array) => { memoryBuffer.push(new Uint8Array(chunk)); },
+                                                    close: async () => {
+                                                      const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
+                                                      const combined = new Uint8Array(totalLength);
+                                                      let offset = 0;
+                                                      for (const chunk of memoryBuffer) {
+                                                        combined.set(chunk, offset);
+                                                        offset += chunk.length;
+                                                      }
+                                                      const blob = new Blob([combined]);
+                                                      const url = URL.createObjectURL(blob);
+                                                      updateStreamMessage(att.id, {
+                                                        content: url,
+                                                        originalBlob: blob,
+                                                        streamState: "completed"
+                                                      });
+                                                    }
+                                                  };
+                                                  incomingStreamsRef.current[att.id] = { handle: null, stream: streamMock, received: 0, total: att.fileSize || 0, checksum: 0 };
+                                                  dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: att.id }));
+                                                  updateStreamMessage(att.id, { streamState: "transferring" });
+                                                }
+                                              }
+                                            }}
+                                            className="w-full mt-3 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
+                                          >
+                                            <Download className="w-4 h-4" />
+                                            Accept All Files
+                                          </button>
                                         )}
                                       </div>
                                     )}
@@ -4499,168 +4839,7 @@ export const TransferNodeRenderer: React.FC<{
                                           </div>
                                         </div>
 
-                                        {msg.streamState === "offered" && msg.sender === "remote" && (
-                                          <button
-                                            onClick={async () => {
-                                              if (!('showSaveFilePicker' in window)) {
-                                                // Fallback to memory
-                                                setNotification({ message: "File System API not supported. Falling back to memory buffering. Large files may crash.", type: "warning" });
-
-                                                // Create a mock stream-like object that accumulates chunks in memory
-                                                const memoryBuffer: Uint8Array[] = [];
-                                                const streamMock = {
-                                                  write: async (chunk: Uint8Array) => {
-                                                    memoryBuffer.push(new Uint8Array(chunk));
-                                                  },
-                                                  close: async () => {
-                                                    const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
-                                                    const combined = new Uint8Array(totalLength);
-                                                    let offset = 0;
-                                                    for (const chunk of memoryBuffer) {
-                                                      combined.set(chunk, offset);
-                                                      offset += chunk.length;
-                                                    }
-                                                    const blob = new Blob([combined]);
-                                                    const url = URL.createObjectURL(blob);
-
-                                                    // Convert this message to a normal file message so it renders the media
-                                                    setMessages(prev => prev.map(m => m.id === msg.id ? {
-                                                      ...m,
-                                                      type: "file" as any,
-                                                      content: url,
-                                                      originalBlob: blob,
-                                                      streamState: "completed"
-                                                    } : m));
-                                                  }
-                                                };
-
-                                                incomingStreamsRef.current[msg.id] = {
-                                                  handle: null,
-                                                  stream: streamMock,
-                                                  received: 0,
-                                                  total: msg.fileSize || 0,
-                                                  checksum: 0
-                                                };
-
-                                                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: msg.id }));
-                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
-                                                return;
-                                              }
-                                              try {
-                                                const handle = await (window as any).showSaveFilePicker({ suggestedName: msg.fileName });
-                                                const stream = await handle.createWritable();
-                                                incomingStreamsRef.current[msg.id] = { handle, stream, received: 0, total: msg.fileSize || 0, checksum: 0 };
-                                                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: msg.id }));
-                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
-                                              } catch (e: any) {
-                                                if (e.name !== "AbortError") {
-                                                  setNotification({ message: "Could not open file: " + e.message, type: "error" });
-                                                }
-                                              }
-                                            }}
-                                            className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
-                                          >
-                                            <Download className="w-4 h-4" />
-                                            {'showSaveFilePicker' in window ? 'Accept File (Save to Disk)' : 'Accept File (Memory Fallback)'}
-                                          </button>
-                                        )}
-
-                                        {msg.streamState === "offered" && msg.sender === "me" && (
-                                          <div className="text-[10px] text-center font-bold opacity-60 italic">Waiting for receiver to accept...</div>
-                                        )}
-
-                                        {msg.streamState === "transferring" && (
-                                          <div className="flex flex-col gap-1 w-full mt-1 px-1">
-                                            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
-                                              <span>Transferring...</span>
-                                              <span>{msg.streamProgress || 0}%</span>
-                                            </div>
-                                            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
-                                              <motion.div
-                                                className="h-full bg-emerald-400"
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${msg.streamProgress || 0}%` }}
-                                                transition={{ duration: 0.1 }}
-                                              />
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {msg.streamState === "paused" && (
-                                          <div className="flex flex-col gap-1 w-full mt-1 px-1">
-                                            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
-                                              <span>Paused</span>
-                                              <span>{msg.streamProgress || 0}%</span>
-                                            </div>
-                                            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
-                                              <div className="h-full bg-amber-400" style={{ width: `${msg.streamProgress || 0}%` }} />
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {(msg.streamState === "completed" || msg.streamState === "canceled") && (
-                                          <div className={`text-[10px] text-center font-bold uppercase tracking-widest ${msg.streamState === "completed" ? "text-emerald-500" : "text-red-500"}`}>
-                                            {msg.streamState}
-                                          </div>
-                                        )}
-
-                                        {(msg.streamState === "transferring" || msg.streamState === "paused") && (
-                                          <div className="flex gap-2 w-full mt-1">
-                                            <button
-                                              onClick={() => {
-                                                if (msg.streamState === "transferring") {
-                                                  dcRef.current?.send(JSON.stringify({ type: "stream_pause", msgId: msg.id }));
-                                                  setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "paused" } : m));
-                                                  if (msg.sender === "me") {
-                                                    const outStream = outgoingStreamsRef.current[msg.id];
-                                                    if (outStream) outStream.paused = true;
-                                                  }
-                                                } else {
-                                                  dcRef.current?.send(JSON.stringify({ type: "stream_resume", msgId: msg.id }));
-                                                  setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "transferring" } : m));
-                                                  if (msg.sender === "me") {
-                                                    const outStream = outgoingStreamsRef.current[msg.id];
-                                                    if (outStream) {
-                                                      outStream.paused = false;
-                                                      processNextChunk(msg.id);
-                                                    }
-                                                  }
-                                                }
-                                              }}
-                                              className={`flex-1 py-1.5 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${msg.streamState === "transferring"
-                                                ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-500"
-                                                : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
-                                                }`}
-                                            >
-                                              {msg.streamState === "transferring" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                                              {msg.streamState === "transferring" ? "Pause" : "Resume"}
-                                            </button>
-
-                                            <button
-                                              onClick={() => {
-                                                dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: msg.id }));
-                                                // Process cancellation locally
-                                                if (msg.sender === "remote") {
-                                                  const inStream = incomingStreamsRef.current[msg.id];
-                                                  if (inStream) {
-                                                    try { inStream.stream.close(); } catch (e) { }
-                                                    delete incomingStreamsRef.current[msg.id];
-                                                  }
-                                                } else {
-                                                  const outStream = outgoingStreamsRef.current[msg.id];
-                                                  if (outStream) {
-                                                    outStream.canceled = true;
-                                                    delete outgoingStreamsRef.current[msg.id];
-                                                  }
-                                                }
-                                                setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, streamState: "canceled" } : m));
-                                              }}
-                                              className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1"
-                                            >
-                                              <X className="w-3 h-3" /> Cancel
-                                            </button>
-                                          </div>
-                                        )}
+                                        {renderStreamStateUI(msg, msg.sender, msg.fileName || "", msg.fileSize || 0)}
                                       </div>
                                     )}
                                     {msg.type === "file" && (
@@ -4965,11 +5144,23 @@ export const TransferNodeRenderer: React.FC<{
                                         dcRef.current?.send(JSON.stringify({ type: "chunk_cancel", msgId: activeTransferIdRef.current }));
                                         cancelTokensRef.current.delete(activeTransferIdRef.current);
                                         delete chunksRef.current[activeTransferIdRef.current];
-                                        setTransferProgress(0);
                                         setConnectionState("connected");
                                         setMessages(prev => prev.map(m => m.id === activeTransferIdRef.current ? { ...m, status: "error", streamState: "canceled" } : m));
                                         activeTransferIdRef.current = null;
                                       }
+                                      Object.keys(outgoingStreamsRef.current).forEach(id => {
+                                        dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: id }));
+                                        updateStreamMessage(id, { streamState: "canceled" });
+                                      });
+                                      Object.keys(incomingStreamsRef.current).forEach(id => {
+                                        dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: id }));
+                                        const inStream = incomingStreamsRef.current[id];
+                                        if (inStream) { try { inStream.stream.close(); } catch (e) { } }
+                                        updateStreamMessage(id, { streamState: "canceled" });
+                                      });
+                                      outgoingStreamsRef.current = {};
+                                      incomingStreamsRef.current = {};
+                                      setTransferProgress(0);
                                     }}
                                     className="p-1 hover:bg-red-500/20 text-red-400 rounded-full transition-colors group"
                                     title="Cancel Transfer"
