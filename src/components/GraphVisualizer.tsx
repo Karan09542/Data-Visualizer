@@ -20,6 +20,8 @@ import {
   X,
   TableProperties,
   Info,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { InlineApiEditor } from "./InlineApiEditor";
 
@@ -184,7 +186,20 @@ export default function GraphVisualizer() {
   const [tableViewData, setTableViewData] = useState<{
     data: any[];
     title: string;
+    path?: string;
   } | null>(null);
+  const [isTableMaximized, setIsTableMaximized] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && tableViewData) {
+        setTableViewData(null);
+        setIsTableMaximized(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tableViewData]);
   const [mediaInfoModal, setMediaInfoModal] = useState<{
     filename: string;
     mimeType: string;
@@ -552,9 +567,25 @@ export default function GraphVisualizer() {
         let finalValue: any = newValueStr;
         if (action === "edit" || action === "add") {
           if (typeOverride && typeOverride !== "auto") {
-            if (typeOverride === "object") finalValue = {};
-            else if (typeOverride === "array") finalValue = [];
-            else if (typeOverride === "null") finalValue = null;
+            if (typeOverride === "object") {
+              try {
+                finalValue = newValueStr ? JSON.parse(newValueStr) : {};
+                if (typeof finalValue !== "object" || Array.isArray(finalValue) || finalValue === null) {
+                  finalValue = {};
+                }
+              } catch {
+                finalValue = {};
+              }
+            } else if (typeOverride === "array") {
+              try {
+                finalValue = newValueStr ? JSON.parse(newValueStr) : [];
+                if (!Array.isArray(finalValue)) {
+                  finalValue = [];
+                }
+              } catch {
+                finalValue = [];
+              }
+            } else if (typeOverride === "null") finalValue = null;
             else if (typeOverride === "boolean")
               finalValue = newValueStr === "true";
             else if (typeOverride === "number") {
@@ -653,9 +684,25 @@ export default function GraphVisualizer() {
 
       if (action === "edit" || action === "add") {
         if (typeOverride && typeOverride !== "auto") {
-          if (typeOverride === "object") finalValue = {};
-          else if (typeOverride === "array") finalValue = [];
-          else if (typeOverride === "null") finalValue = null;
+          if (typeOverride === "object") {
+            try {
+              finalValue = newValueStr ? JSON.parse(newValueStr) : {};
+              if (typeof finalValue !== "object" || Array.isArray(finalValue) || finalValue === null) {
+                finalValue = {};
+              }
+            } catch {
+              finalValue = {};
+            }
+          } else if (typeOverride === "array") {
+            try {
+              finalValue = newValueStr ? JSON.parse(newValueStr) : [];
+              if (!Array.isArray(finalValue)) {
+                finalValue = [];
+              }
+            } catch {
+              finalValue = [];
+            }
+          } else if (typeOverride === "null") finalValue = null;
           else if (typeOverride === "boolean")
             finalValue = newValueStr === "true";
           else if (typeOverride === "number") {
@@ -1410,32 +1457,87 @@ export default function GraphVisualizer() {
       {tableViewData &&
         createPortal(
           <div
-            className={`fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 ${appTheme}`}
+            className={`fixed inset-0 z-[10000] flex items-center justify-center ${
+              isTableMaximized ? "p-0" : "p-0 sm:p-4 md:p-6"
+            } ${appTheme}`}
           >
             <div
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={() => setTableViewData(null)}
+              onClick={() => {
+                setTableViewData(null);
+                setIsTableMaximized(false);
+              }}
             />
             <div
-              className="relative w-full max-w-6xl max-h-[85vh] h-full bg-slate-50 dark:bg-slate-900 rounded-xl shadow-2xl flex flex-col overflow-hidden"
+              className={`relative transition-all duration-200 ${
+                isTableMaximized
+                  ? "w-screen h-screen max-w-none max-h-none rounded-none border-none p-0"
+                  : "w-full h-full sm:h-[90vh] sm:max-h-[920px] max-w-7xl sm:rounded-2xl border border-slate-200/90 dark:border-emerald-950/60 shadow-2xl shadow-emerald-950/10 dark:shadow-emerald-950/40"
+              } bg-[#fafcfb] dark:bg-[#0a0f0d] flex flex-col overflow-hidden`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                  <TableProperties className="text-blue-500" size={20} />
-                  Table View: {tableViewData.title}
+              <div className="flex justify-between items-center px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-b border-slate-200/90 dark:border-emerald-950/70 bg-white/95 dark:bg-[#0d1613]/95 backdrop-blur-md shrink-0">
+                <h2 className="text-sm sm:text-base md:text-lg font-semibold flex items-center gap-2 text-slate-800 dark:text-emerald-50 truncate pr-2">
+                  <TableProperties className="text-emerald-500 shrink-0" size={19} />
+                  <span className="truncate">Table View: {tableViewData.title}</span>
                 </h2>
-                <button
-                  onClick={() => setTableViewData(null)}
-                  className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setIsTableMaximized(!isTableMaximized)}
+                    className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${
+                      isTableMaximized
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm shadow-emerald-500/20"
+                        : "bg-white hover:bg-emerald-50/70 text-slate-700 hover:text-emerald-700 border-slate-200 dark:bg-[#121c18] dark:hover:bg-emerald-950/50 dark:text-slate-200 dark:hover:text-emerald-300 dark:border-emerald-900/50"
+                    }`}
+                    title={isTableMaximized ? "Return to Normal View (Esc)" : "Expand to Fullscreen"}
+                    aria-label={isTableMaximized ? "Normal View" : "Fullscreen"}
+                  >
+                    {isTableMaximized ? (
+                      <>
+                        <Minimize2 size={14} />
+                        <span>Normal View</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 size={14} />
+                        <span>Fullscreen</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTableViewData(null);
+                      setIsTableMaximized(false);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border border-transparent hover:border-red-200 dark:hover:border-red-900/40 transition-colors"
+                    title="Close (Esc)"
+                    aria-label="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 p-4 bg-slate-50 dark:bg-slate-900 overflow-hidden">
+              <div className="flex-1 bg-[#fafcfb] dark:bg-[#0a0f0d] overflow-hidden min-h-0">
                 <TableView
                   data={tableViewData.data}
                   title={tableViewData.title}
+                  isMaximized={isTableMaximized}
+                  onToggleMaximize={() => setIsTableMaximized(!isTableMaximized)}
+                  onClose={() => {
+                    setTableViewData(null);
+                    setIsTableMaximized(false);
+                  }}
+                  onSaveData={(updatedData) => {
+                    if (tableViewData.path) {
+                      applyJsonChange(
+                        tableViewData.path,
+                        "edit",
+                        JSON.stringify(updatedData),
+                        undefined,
+                        "array"
+                      );
+                    }
+                  }}
                 />
               </div>
             </div>

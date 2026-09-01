@@ -1,9 +1,20 @@
 import Papa from "papaparse";
 
+export function normalizeCsvText(text: string): string {
+  if (typeof text !== "string") return "";
+  let cleaned = text.trim();
+  // If the text does not contain actual newlines but contains escaped \n or \r\n (common in JSON string values)
+  if (!cleaned.includes("\n") && !cleaned.includes("\r") && (cleaned.includes("\\n") || cleaned.includes("\\r"))) {
+    cleaned = cleaned.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n");
+  }
+  return cleaned;
+}
+
 export function isProbableCsv(text: string): boolean {
   if (typeof text !== "string") return false;
 
-  const result = Papa.parse(text, {
+  const cleaned = normalizeCsvText(text);
+  const result = Papa.parse(cleaned, {
     header: false,
     preview: 10,
     skipEmptyLines: true,
@@ -22,7 +33,7 @@ export function isProbableCsv(text: string): boolean {
 
   // If it is a single column, ensure it looks like a list rather than paragraphs of text
   if (numColumns === 1) {
-    const lines = text.trim().split("\n");
+    const lines = cleaned.trim().split("\n");
     if (lines.length < 2) return false; // Need at least header + 1 row
 
     // Check if lines are reasonably short (like a list/CSV) rather than prose
@@ -37,12 +48,14 @@ export function isProbableCsv(text: string): boolean {
 }
 
 export function parseCsv(text: string): any[] {
-  const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+  const cleaned = normalizeCsvText(text);
+  const result = Papa.parse(cleaned, { header: true, skipEmptyLines: true, dynamicTyping: true });
   return result.data;
 }
 
 export function parseCsvArray(text: string): any[][] {
-  const result = Papa.parse(text, { header: false, skipEmptyLines: true });
+  const cleaned = normalizeCsvText(text);
+  const result = Papa.parse(cleaned, { header: false, skipEmptyLines: true, dynamicTyping: true });
   return result.data as any[][];
 }
 
