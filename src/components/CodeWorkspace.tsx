@@ -120,6 +120,7 @@ interface WorkspaceSettings {
   | "synthwave-84";
   sidebarWidth?: number;
   isSidebarOpen?: boolean;
+  wordWrap?: "on" | "off";
 }
 
 const defaultWorkspaceSettings: WorkspaceSettings = {
@@ -131,6 +132,7 @@ const defaultWorkspaceSettings: WorkspaceSettings = {
   editorTheme: "default",
   sidebarWidth: 260,
   isSidebarOpen: true,
+  wordWrap: "on",
 };
 
 export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
@@ -1084,7 +1086,15 @@ declare const console: {
   const [terminalState, setTerminalState] = useState<
     "normal" | "maximized" | "hidden"
   >("normal");
-  const [wordWrap, setWordWrap] = useState<"on" | "off">("on");
+  const [wordWrap, setWordWrap] = useState<"on" | "off">(
+    () => settings.wordWrap || "on"
+  );
+
+  const toggleWordWrap = (target?: "on" | "off") => {
+    const next = target ?? (wordWrap === "on" ? "off" : "on");
+    setWordWrap(next);
+    saveSettings({ ...settings, wordWrap: next });
+  };
 
   const terminalInputRef = useRef<HTMLInputElement>(null);
   const currentPrompt = activePrompts[currentFilePath];
@@ -1125,7 +1135,7 @@ declare const console: {
       // Toggle Word Wrap: Alt + Z
       if (e.altKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        setWordWrap((prev) => (prev === "on" ? "off" : "on"));
+        toggleWordWrap();
       }
       // Save all modified tabs: Ctrl+Shift+S / Cmd+Shift+S
       if (
@@ -1657,6 +1667,17 @@ declare const console: {
                     >
                       <span>Show Whitespace</span>
                       {settings.renderCharacters && (
+                        <Check size={12} className="text-blue-500" />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => toggleWordWrap()}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
+                      title="Toggle Text Wrap (Alt+Z)"
+                    >
+                      <span>Text Wrap</span>
+                      {wordWrap === "on" && (
                         <Check size={12} className="text-blue-500" />
                       )}
                     </button>
