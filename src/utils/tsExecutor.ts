@@ -129,7 +129,7 @@ export const executeTsNode = async (
             );
 
             [...syntactic, ...semantic].forEach((diag: any) => {
-              if (diag.code === 2451 || diag.code === 2300) return; // Ignore global scope clashes
+              if (diag.code === 2451 || diag.code === 2300 || diag.code === 2307 || diag.code === 7016) return; // Ignore global scope clashes & module resolution
               const start = diag.start || 0;
               const position = tsModel.getPositionAt(start);
               const line = position ? position.lineNumber : 1;
@@ -156,8 +156,12 @@ export const executeTsNode = async (
                 m.severity === 8 &&
                 m.code !== "2451" &&
                 m.code !== "2300" &&
+                m.code !== "2307" &&
+                m.code !== "7016" &&
                 m.code !== 2451 &&
-                m.code !== 2300,
+                m.code !== 2300 &&
+                m.code !== 2307 &&
+                m.code !== 7016,
             ); // MarkerSeverity.Error is 8
             if (errorMarkers.length > 0) {
               typeErrors = errorMarkers.map(
@@ -532,8 +536,16 @@ export const executeTsNode = async (
 
                     try {
                         const localRequire = (req) => customRequire(req, resolved);
+                        const moduleConsole = {};
+                        for (const key in customConsole) {
+                            if (typeof customConsole[key] === 'function') {
+                                moduleConsole[key] = () => undefined;
+                            } else {
+                                moduleConsole[key] = customConsole[key];
+                            }
+                        }
                         const wrapper = new Function('require', 'exports', 'module', 'console', 'input', vfsData[resolved]);
-                        wrapper(localRequire, module.exports, module, customConsole, input);
+                        wrapper(localRequire, module.exports, module, moduleConsole, input);
                     } finally {
                         module.loading = false;
                         module.loaded = true;

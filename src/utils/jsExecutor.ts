@@ -491,8 +491,16 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
 
                     try {
                         const localRequire = (req) => customRequire(req, resolved);
+                        const moduleConsole = {};
+                        for (const key in customConsole) {
+                            if (typeof customConsole[key] === 'function') {
+                                moduleConsole[key] = () => undefined;
+                            } else {
+                                moduleConsole[key] = customConsole[key];
+                            }
+                        }
                         const wrapper = new Function('require', 'exports', 'module', 'console', 'input', vfsData[resolved]);
-                        wrapper(localRequire, module.exports, module, customConsole, input);
+                        wrapper(localRequire, module.exports, module, moduleConsole, input);
                     } finally {
                         module.loading = false;
                         module.loaded = true;

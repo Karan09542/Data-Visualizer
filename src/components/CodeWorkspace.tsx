@@ -885,13 +885,16 @@ declare const console: {
               moduleResolution:
                 (monaco.languages as any).typescript.ModuleResolutionKind
                   ?.NodeJs ?? 2,
-              allowNonTsExtensions: false,
+              allowNonTsExtensions: true,
+              allowJs: true,
+              esModuleInterop: true,
+              allowSyntheticDefaultImports: true,
               isolatedModules: true,
               resolveJsonModule: true,
               moduleDetection: 3,
             });
             defaults.setDiagnosticsOptions({
-              diagnosticCodesToIgnore: [2451, 2300],
+              diagnosticCodesToIgnore: [2451, 2300, 2307, 7016],
             });
           });
         }
