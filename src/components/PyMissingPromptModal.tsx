@@ -148,7 +148,7 @@ export const PyMissingPromptModal: React.FC = () => {
             onClick={handleClose}
             className="px-3.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition"
           >
-            Cancel
+            Back
           </button>
           {!installing && (
             <button
