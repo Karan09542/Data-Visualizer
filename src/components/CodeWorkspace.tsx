@@ -1251,6 +1251,7 @@ declare const console: {
 
   // Resizing hooks and listeners
   const consolePanelRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef(false);
 
   const handleMouseDown = useCallback(() => {
@@ -1483,13 +1484,10 @@ declare const console: {
                     settings.isSidebarOpen === false ? true : false,
                 })
               }
-              className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
+              className={`p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors ${settings.isSidebarOpen !== false ? "bg-slate-200/50 dark:bg-slate-800/80 text-blue-500 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"}`}
               title="Toggle Sidebar"
             >
-              <PanelLeft
-                size={15}
-                className={settings.isSidebarOpen === false ? "opacity-60" : ""}
-              />
+              <PanelLeft size={15} />
             </button>
 
             {/* Terminal Toggle Button */}
@@ -1837,17 +1835,18 @@ declare const console: {
           {/* Side Drawer Panel */}
           {settings.isSidebarOpen !== false && (
             <div
+              ref={(el) => { (sidebarRef as React.MutableRefObject<HTMLDivElement | null>).current = el; }}
               style={{ "--sidebar-width": `${settings.sidebarWidth || 260}px` } as React.CSSProperties}
-              className="absolute md:relative top-0 bottom-0 left-0 w-full md:w-[var(--sidebar-width)] max-w-full md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30 transition-[width]"
+              className="absolute md:relative top-0 bottom-0 left-0 w-full md:w-[var(--sidebar-width)] max-w-full md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30"
             >
-              {/* Elegant Header Sidebar Tabs to switch between Files Explorer and Python Packages Panel */}
-              {isPy ? (
+              {/* Python: small tab switcher inside content area */}
+              {isPy && (
                 <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 p-2 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
                   <button
                     onClick={() => setSidebarTab("files")}
                     className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "files" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
                   >
-                    Explorer
+                    Files
                   </button>
                   <button
                     onClick={() => setSidebarTab("packages")}
@@ -1855,12 +1854,6 @@ declare const console: {
                   >
                     Packages
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-4 py-3.5 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
-                  <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">
-                    Explorer
-                  </span>
                 </div>
               )}
 
@@ -1876,29 +1869,43 @@ declare const console: {
               <div
                 onMouseDown={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   const startX = e.clientX;
                   const startWidth = settings.sidebarWidth || 260;
 
+                  // Add a full-screen overlay to prevent iframe/editor stealing mouse events
+                  const overlay = document.createElement('div');
+                  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:col-resize;user-select:none;';
+                  document.body.appendChild(overlay);
+                  document.body.style.cursor = "col-resize";
+                  document.body.style.userSelect = "none";
+
+                  let lastWidth = startWidth;
+
                   const handleMouseMove = (moveEvent: MouseEvent) => {
                     const delta = moveEvent.clientX - startX;
-                    const newWidth = Math.max(
-                      160,
-                      Math.min(600, startWidth + delta),
-                    );
-                    saveSettings({ ...settings, sidebarWidth: newWidth });
+                    const newWidth = Math.max(160, Math.min(600, startWidth + delta));
+                    lastWidth = newWidth;
+                    // Directly set the CSS variable on the DOM element — no React re-render
+                    if (sidebarRef.current) {
+                      sidebarRef.current.style.setProperty('--sidebar-width', `${newWidth}px`);
+                    }
                   };
 
                   const handleMouseUp = () => {
                     document.removeEventListener("mousemove", handleMouseMove);
                     document.removeEventListener("mouseup", handleMouseUp);
+                    overlay.remove();
                     document.body.style.cursor = "";
+                    document.body.style.userSelect = "";
+                    // Persist final width to React state + localStorage only once
+                    saveSettings({ ...settings, sidebarWidth: lastWidth });
                   };
 
-                  document.body.style.cursor = "col-resize";
                   document.addEventListener("mousemove", handleMouseMove);
                   document.addEventListener("mouseup", handleMouseUp);
                 }}
-                className="absolute top-0 right-0 bottom-0 w-1 bg-transparent hover:bg-blue-500 cursor-col-resize z-50 transition-colors"
+                className="absolute top-0 right-0 bottom-0 w-1.5 bg-transparent hover:bg-blue-500/70 cursor-col-resize z-50 transition-colors"
               />
             </div>
           )}

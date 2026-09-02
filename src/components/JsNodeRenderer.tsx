@@ -33,7 +33,6 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
   const jsNodeDurations = useStore((state) => state.jsNodeDurations);
   const jsNodeLastRuns = useStore((state) => state.jsNodeLastRuns);
   const toggleJsNodeVisibility = useStore((state) => state.toggleJsNodeVisibility);
-  const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
   const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
   const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
   const updateNodeValue = useStore((state) => state.updateNodeValue);

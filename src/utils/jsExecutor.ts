@@ -132,36 +132,99 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
         enabledProxies.push("https://go.data-visualizer.workers.dev/?url=");
     }
     const workerCode = `
+         let __activeTasks = 0;
+         let __resolveExecution = null;
+         const __checkCompletion = () => {
+             if (__activeTasks === 0 && __resolveExecution) {
+                 __resolveExecution();
+                 __resolveExecution = null;
+             }
+         };
+
+         const origSetTimeout = self.setTimeout;
+         const origClearTimeout = self.clearTimeout;
+         const origSetInterval = self.setInterval;
+         const origClearInterval = self.clearInterval;
+         const __timerMap = new Set();
+
+         self.setTimeout = function(fn, delay, ...args) {
+             const id = origSetTimeout(async (...a) => {
+                 __timerMap.delete(id);
+                 try { 
+                    if (typeof fn === 'function') await fn(...a); 
+                 } finally {
+                     __activeTasks--;
+                     __checkCompletion();
+                 }
+             }, delay, ...args);
+             __timerMap.add(id);
+             __activeTasks++;
+             return id;
+         };
+
+         self.clearTimeout = function(id) {
+             origClearTimeout(id);
+             if (__timerMap.has(id)) {
+                 __timerMap.delete(id);
+                 __activeTasks--;
+                 __checkCompletion();
+             }
+         };
+
+         self.setInterval = function(fn, delay, ...args) {
+             const id = origSetInterval(async (...a) => {
+                 if (typeof fn === 'function') await fn(...a);
+             }, delay, ...args);
+             __timerMap.add(id);
+             __activeTasks++;
+             return id;
+         };
+
+         self.clearInterval = function(id) {
+             origClearInterval(id);
+             if (__timerMap.has(id)) {
+                 __timerMap.delete(id);
+                 __activeTasks--;
+                 __checkCompletion();
+             }
+         };
+
          const originalFetch = self.fetch;
          const enabledProxies = ${JSON.stringify(enabledProxies)};
          self.fetch = async function(input, init) {
-             let urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : input.url);
+             __activeTasks++;
              try {
-                 return await originalFetch(input, init);
-             } catch (err) {
-                 if (err.name === "TypeError" && err.message === "Failed to fetch") {
-                     if (typeof urlStr === "string" && (urlStr.startsWith("http://") || urlStr.startsWith("https://"))) {
-                         let isCrossOrigin = false;
-                         try {
-                             const parsed = new URL(urlStr);
-                             isCrossOrigin = parsed.origin !== self.location.origin;
-                         } catch (e) {}
-
-                         if (isCrossOrigin) {
-                             for (const proxyBaseUrl of enabledProxies) {
-                                 if (urlStr.includes(proxyBaseUrl)) continue; // avoid proxying to itself
-                                 try {
-                                     console.warn("[JS Fetch]: CORS/network error. Retrying via proxy: " + proxyBaseUrl);
-                                     const proxyUrl = proxyBaseUrl + urlStr;
-                                     return await originalFetch(proxyUrl, init);
-                                 } catch (proxyErr) {
-                                     console.warn("[JS Fetch]: Proxy fallback failed for " + proxyBaseUrl, proxyErr);
+                 let urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : input.url);
+                 try {
+                     return await originalFetch(input, init);
+                 } catch (err) {
+                     if (err.name === "TypeError" && err.message === "Failed to fetch") {
+                         if (typeof urlStr === "string" && (urlStr.startsWith("http://") || urlStr.startsWith("https://"))) {
+                             let isCrossOrigin = false;
+                             try {
+                                 const parsed = new URL(urlStr);
+                                 isCrossOrigin = parsed.origin !== self.location.origin;
+                             } catch (e) {}
+    
+                             if (isCrossOrigin) {
+                                 for (const proxyBaseUrl of enabledProxies) {
+                                     if (urlStr.includes(proxyBaseUrl)) continue; // avoid proxying to itself
+                                     try {
+                                         console.warn("[JS Fetch]: CORS/network error. Retrying via proxy: " + proxyBaseUrl);
+                                         const proxyUrl = proxyBaseUrl + urlStr;
+                                         return await originalFetch(proxyUrl, init);
+                                     } catch (proxyErr) {
+                                         console.warn("[JS Fetch]: Proxy fallback failed for " + proxyBaseUrl, proxyErr);
+                                     }
                                  }
                              }
                          }
                      }
+                     throw err;
                  }
-                 throw err;
+             } finally {
+                 __activeTasks--;
+                 __checkCompletion();
              }
          };
 
@@ -197,7 +260,7 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                
                const flushLogs = () => { try { if (logBatch.length > 0) { self.postMessage({ type: 'logs', logs: logBatch }); logBatch = []; } } catch (err) { logBatch = [{ type: 'error', args: ['Log Serialization Error: ' + err.message], time: getTime() }]; try { self.postMessage({ type: 'logs', logs: logBatch }); } catch(err2) {} logBatch = []; } };
                
-               flushInterval = setInterval(flushLogs, 50);
+               flushInterval = origSetInterval(flushLogs, 50);
                
                const addLog = (type, args) => {
                    const safeArgs = args.map(a => {
@@ -211,12 +274,82 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                    if (logBatch.length >= 5000) flushLogs();
                };
                
+               const __timers = new Map();
+               const __counters = new Map();
+               
                const customConsole = {
                    log: (...args) => addLog('log', args),
                    warn: (...args) => addLog('warn', args),
                    error: (...args) => addLog('error', args),
+                   info: (...args) => addLog('log', args),
+                   debug: (...args) => addLog('log', args),
                    clear: () => { addLog('clear', []); flushLogs(); },
-                   info: (...args) => addLog('log', args)
+                   assert: (condition, ...args) => {
+                       if (!condition) addLog('error', ['Assertion failed:', ...args.length ? args : ['console.assert']]);
+                   },
+                   count: (label = 'default') => {
+                       const c = (__counters.get(label) || 0) + 1;
+                       __counters.set(label, c);
+                       addLog('log', [label + ': ' + c]);
+                   },
+                   countReset: (label = 'default') => {
+                       __counters.set(label, 0);
+                       addLog('log', [label + ': 0']);
+                   },
+                   dir: (...args) => addLog('log', args),
+                   dirxml: (...args) => addLog('log', args),
+                   group: (...args) => addLog('log', args),
+                   groupCollapsed: (...args) => addLog('log', args),
+                   groupEnd: () => {},
+                   table: (data, columns) => {
+                       if (typeof data !== 'object' || data === null) { addLog('log', [data]); return; }
+                       const rows = []; const cols = new Set(['(index)']);
+                       const isArray = Array.isArray(data);
+                       for (const key in data) {
+                           if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+                           const rowData = data[key];
+                           const row = { '(index)': isArray ? Number(key) : key };
+                           if (typeof rowData === 'object' && rowData !== null) {
+                               for (const col in rowData) {
+                                   if (!columns || columns.includes(col)) { cols.add(col); row[col] = typeof rowData[col] === 'object' && rowData[col] !== null ? JSON.stringify(rowData[col]) : String(rowData[col]); }
+                               }
+                           } else { cols.add('Value'); row['Value'] = String(rowData); }
+                           rows.push(row);
+                       }
+                       const colArr = Array.from(cols); const widths = {};
+                       colArr.forEach(c => widths[c] = String(c).length);
+                       rows.forEach(r => { colArr.forEach(c => { const l = r[c] !== undefined ? String(r[c]).length : 0; if (l > widths[c]) widths[c] = l; }); });
+                       const l = '+' + colArr.map(c => '-'.repeat(widths[c] + 2)).join('+') + '+';
+                       let str = l + '\\n|' + colArr.map(c => ' ' + String(c).padEnd(widths[c], ' ') + ' ').join('|') + '|\\n' + l;
+                       rows.forEach(r => { str += '\\n|' + colArr.map(c => ' ' + (r[c] !== undefined ? String(r[c]) : '').padEnd(widths[c], ' ') + ' ').join('|') + '|'; });
+                       str += '\\n' + l;
+                       addLog('log', [str]);
+                   },
+                   time: (label = 'default') => {
+                       __timers.set(label, performance.now());
+                   },
+                   timeLog: (label = 'default', ...args) => {
+                       if (__timers.has(label)) {
+                           const duration = performance.now() - __timers.get(label);
+                           addLog('log', [label + ': ' + duration.toFixed(3) + ' ms', ...args]);
+                       } else {
+                           addLog('warn', ["Timer '" + label + "' does not exist"]);
+                       }
+                   },
+                   timeEnd: (label = 'default') => {
+                       if (__timers.has(label)) {
+                           const duration = performance.now() - __timers.get(label);
+                           addLog('log', [label + ': ' + duration.toFixed(3) + ' ms']);
+                           __timers.delete(label);
+                       } else {
+                           addLog('warn', ["Timer '" + label + "' does not exist"]);
+                       }
+                   },
+                   trace: (...args) => {
+                       const err = new Error();
+                       err.name = 'Trace';
+                       addLog('log', [...args, err.stack]);
+                   }
                };
 
                const currentSessionId = "${sessionId}";
@@ -383,16 +516,19 @@ export const executeJsNode = async (path: string, codeToRun: string) => {
                 let result;
                 try {
                     result = await executionFunc(localRequire, entryModule.exports, entryModule, customConsole, input);
+                    if (__activeTasks > 0) {
+                        await new Promise(resolve => { __resolveExecution = resolve; });
+                    }
                 } finally {
                     entryModule.loading = false;
                     entryModule.loaded = true;
                     self.__import_stack__.pop();
                 }
-               clearInterval(flushInterval);
+               origClearInterval(flushInterval);
                flushLogs();
                self.postMessage({ success: true, result });
             } catch (error) {
-               if (flushInterval) clearInterval(flushInterval);
+               if (flushInterval) origClearInterval(flushInterval);
                try { if (typeof flushLogs === "function") flushLogs(); } catch(e) {}
                let eMsg = "Unknown Error";
                let eStack = undefined;

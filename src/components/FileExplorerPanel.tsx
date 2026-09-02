@@ -21,7 +21,9 @@ import {
   FileText,
   Maximize2,
   CheckSquare,
-  Image
+  Image,
+  FoldVertical,
+  UnfoldVertical,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import {
@@ -1176,18 +1178,22 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
           </button>
           <div className="h-3 w-[1px] bg-slate-300 dark:bg-slate-800/80 mx-1" />
           <button
-            onClick={handleExpandAll}
-            title="Expand All Folders"
-            className="p-1 rounded text-[10px] uppercase font-bold text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
+            onClick={() => {
+              const hasAnyExpanded = Object.values(explorerExpandedPaths).some(Boolean);
+              if (hasAnyExpanded) {
+                handleCollapseAll();
+              } else {
+                handleExpandAll();
+              }
+            }}
+            title={Object.values(explorerExpandedPaths).some(Boolean) ? "Collapse All Folders" : "Expand All Folders"}
+            className="p-1 rounded text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
           >
-            unfold
-          </button>
-          <button
-            onClick={handleCollapseAll}
-            title="Collapse All Folders"
-            className="p-1 rounded text-[10px] uppercase font-bold text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
-          >
-            fold
+            {Object.values(explorerExpandedPaths).some(Boolean) ? (
+              <FoldVertical size={14} />
+            ) : (
+              <UnfoldVertical size={14} />
+            )}
           </button>
         </div>
       </div>
