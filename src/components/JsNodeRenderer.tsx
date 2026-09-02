@@ -201,6 +201,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
               </div>
               <div className="flex-1 w-full relative pt-2 pb-2">
                 <SafeEditor
+                  path={path}
                   height="100%"
                   language="javascript"
                   theme={appTheme === "dark" ? "vs-dark" : "light"}

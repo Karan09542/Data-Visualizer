@@ -200,6 +200,7 @@ export function TsNodeRenderer({ path, code, width, height }: TsNodeRendererProp
               </div>
               <div className="flex-1 w-full relative pt-2 pb-2">
                 <SafeEditor
+                  path={path}
                   height="100%"
                   language="typescript"
                   theme={appTheme === "dark" ? "vs-dark" : "light"}

@@ -202,6 +202,7 @@ export function PyNodeRenderer({ path, code, width, height }: PyNodeRendererProp
               </div>
               <div className="flex-1 w-full relative pt-2 pb-2">
                 <SafeEditor
+                  path={path}
                   height="100%"
                   language="python"
                   theme={appTheme === "dark" ? "vs-dark" : "light"}

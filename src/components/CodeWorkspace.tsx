@@ -802,11 +802,17 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   };
 
   // TypeScript schema auto-generation for Monaco typescript compiler
+  const extraLibRef = useRef<{ dispose(): void } | null>(null);
+  const lastExtraLibSourceRef = useRef<string>("");
+
+  // TypeScript schema auto-generation for Monaco typescript compiler
   useEffect(() => {
-    if (
-      monaco &&
-      (editorLanguage === "typescript" || editorLanguage === "javascript")
-    ) {
+    if (!monaco) return;
+
+    try {
+      const tsDefaults = (monaco.languages as any)?.typescript?.typescriptDefaults;
+      if (!tsDefaults) return;
+
       const { types, entry } = generateTypeScriptSchema(inputData, "Input");
       const libUri = "ts:globals/schema.d.ts";
 
@@ -826,32 +832,33 @@ declare const console: {
 };
       `;
 
-      let disposable: { dispose(): void } | null = null;
-      try {
-        if (
-          monaco.languages &&
-          (monaco.languages as any).typescript &&
-          (monaco.languages as any).typescript.typescriptDefaults
-        ) {
-          disposable = (
-            monaco.languages as any
-          ).typescript.typescriptDefaults.addExtraLib(libSource, libUri);
-        }
-      } catch (err) {
-        console.warn("Failed to mount type definitions to Monaco service", err);
-      }
-
-      return () => {
-        if (disposable) {
+      // Only re-mount extraLib if the schema content actually changed
+      if (lastExtraLibSourceRef.current !== libSource) {
+        lastExtraLibSourceRef.current = libSource;
+        if (extraLibRef.current) {
           try {
-            disposable.dispose();
-          } catch (e) {
-            // ignore
-          }
+            extraLibRef.current.dispose();
+          } catch {}
         }
-      };
+        extraLibRef.current = tsDefaults.addExtraLib(libSource, libUri);
+      }
+    } catch (err) {
+      console.warn("Failed to mount type definitions to Monaco service", err);
     }
-  }, [monaco, inputData, editorLanguage]);
+  }, [monaco, inputData]);
+
+  // Clean up extraLib only when CodeWorkspace is unmounted
+  useEffect(() => {
+    return () => {
+      if (extraLibRef.current) {
+        try {
+          extraLibRef.current.dispose();
+          extraLibRef.current = null;
+          lastExtraLibSourceRef.current = "";
+        } catch {}
+      }
+    };
+  }, []);
 
   // Configure Monaco globally to prevent name clashes
   useEffect(() => {

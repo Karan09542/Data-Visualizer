@@ -153,6 +153,23 @@ def get_diagnostics(code, path="main.py"):
         return json.dumps([])
     `);
 
+    // Helper to load Pyodide built-in package or install from PyPI via micropip
+    const loadOrInstallPackage = async (name: string) => {
+      try {
+        await pyodide.loadPackage(name);
+      } catch {
+        try {
+          await pyodide.loadPackage("micropip");
+          await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('${name}')
+          `);
+        } catch (pipErr) {
+          console.warn(`[PyIntelliSense Worker]: Optional preload of package "${name}" failed:`, pipErr);
+        }
+      }
+    };
+
     // Synchronize workspace packages
     try {
       // console.log("[PyIntelliSense Worker]: Synchronizing installed libraries...");
@@ -160,12 +177,7 @@ def get_diagnostics(code, path="main.py"):
       const readyPkgs = installedPkgs.filter(p => p.status === "installed");
       if (readyPkgs.length > 0) {
         for (const pkg of readyPkgs) {
-          try {
-            // console.log(`[PyIntelliSense Worker]: Mapping package completions for "${pkg.name}"...`);
-            await pyodide.loadPackage(pkg.name);
-          } catch (pkgErr) {
-            console.warn(`[PyIntelliSense Worker]: Optional preload of package ${pkg.name} failed:`, pkgErr);
-          }
+          await loadOrInstallPackage(pkg.name);
         }
       }
     } catch (gErr) {
@@ -196,9 +208,20 @@ async function processRequest(e: MessageEvent) {
 
   if (type === "sync_packages" && packages) {
     try {
-      for (const p of packages) {
-        // console.log(`[PyIntelliSense Worker]: Dynamically aligning package completions for "${p}"...`);
-        await pyodide.loadPackage(p);
+      if (pyodide) {
+        for (const p of packages) {
+          try {
+            await pyodide.loadPackage(p);
+          } catch {
+            try {
+              await pyodide.loadPackage("micropip");
+              await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('${p}')
+              `);
+            } catch {}
+          }
+        }
       }
     } catch (err) {
       console.warn("[PyIntelliSense Worker]: Dynamic load package error:", err);

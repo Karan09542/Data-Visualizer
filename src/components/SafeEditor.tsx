@@ -8,6 +8,17 @@ import { enableMonacoTouchScroll } from "../utils/monacoTouchScroll";
 import { registerPythonFormattingProvider } from "../utils/pythonFormatter";
 import { handleSafeEditorPaste } from "../utils/clipboardHelper";
 
+// Catch and gracefully suppress Monaco background worker race conditions on disposed in-memory models
+if (typeof window !== "undefined" && !(window as any).__monacoWorkerDisposedModelFilterRegistered) {
+  (window as any).__monacoWorkerDisposedModelFilterRegistered = true;
+  window.addEventListener("unhandledrejection", (event) => {
+    const msg = event?.reason?.message;
+    if (typeof msg === "string" && msg.includes("Could not find source file: 'inmemory://model-")) {
+      event.preventDefault();
+    }
+  });
+}
+
 class EditorErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode; resetTrigger?: any },
   { hasError: boolean; lastTrigger?: any }
