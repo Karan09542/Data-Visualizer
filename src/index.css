@@ -658,19 +658,59 @@ input[type="number"] {
   border-image: linear-gradient(to bottom right, #4a7c59, #6c8f5c, #95b876, #6c8f5c, #4a7c59) 1;
 }
 
-/* Enable text selection and touch interactions in Monaco Editor on mobile */
+/* Enable touch scrolling and mobile interactions in Monaco Editor */
 .monaco-editor,
+.monaco-editor .overflow-guard,
+.monaco-editor .monaco-scrollable-element,
 .monaco-editor .view-lines,
 .monaco-editor .view-line,
 .monaco-editor .lines-content {
-  -webkit-user-select: text !important;
-  user-select: text !important;
-  touch-action: pan-x pan-y !important;
+  touch-action: none !important;
 }
 
 .monaco-editor .inputarea {
   -webkit-user-select: text !important;
   user-select: text !important;
+}
+
+/* Ensure Monaco Editor context menu and floating widgets are never clipped and always on top */
+#monaco-overflow-widgets {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  pointer-events: none !important;
+  z-index: 999999 !important;
+}
+
+#monaco-overflow-widgets .context-view,
+#monaco-overflow-widgets .monaco-menu-container,
+.context-view.monaco-component,
+.monaco-editor .context-view {
+  pointer-events: auto !important;
+  z-index: 999999 !important;
+}
+
+.monaco-menu-container {
+  z-index: 999999 !important;
+  max-height: 85vh !important;
+  overflow-y: auto !important;
+  background-color: #1e1e1e !important;
+  color: #cccccc !important;
+  border: 1px solid #454545 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 6px !important;
+}
+
+:not(.dark) .monaco-menu-container {
+  background-color: #ffffff !important;
+  color: #333333 !important;
+  border: 1px solid #d1d5db !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.monaco-menu-container .actions-container {
+  padding: 4px 0 !important;
 }
 
 /* Lexical Checklist Styles */

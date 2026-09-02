@@ -4,6 +4,9 @@ import {
   registerPyIntelliSense,
   runDiagnostics,
 } from "../utils/pyIntelliSense";
+import { enableMonacoTouchScroll } from "../utils/monacoTouchScroll";
+import { registerPythonFormattingProvider } from "../utils/pythonFormatter";
+import { handleSafeEditorPaste } from "../utils/clipboardHelper";
 
 class EditorErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode; resetTrigger?: any },
@@ -130,24 +133,53 @@ function SafeEditor(props: EditorProps) {
     : `lang-${lang}-${componentId}`;
 
   const mergedOptions = React.useMemo(() => {
-    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
+    const isMobile =
+      typeof window !== "undefined" &&
+      (window.innerWidth < 768 || "ontouchstart" in window);
     const options: any = {
-      fixedOverflowWidgets: true,
       automaticLayout: true,
-      scrollBeyondLastLine: false,
+      scrollBeyondLastLine: isMobile ? true : false,
       wordWrap: "on",
-      ...(isMobile ? {
-        selectionClipboard: false,
-        domReadOnly: false,
-        mouseWheelZoom: false,
-        links: true,
-        contextmenu: true,
-        selectOnLineNumbers: true,
-      } : {}),
+      ...(isMobile
+        ? {
+            selectionClipboard: false,
+            domReadOnly: false,
+            mouseWheelZoom: false,
+            links: true,
+            selectOnLineNumbers: true,
+          }
+        : {}),
       ...(props.options || {}),
+      fixedOverflowWidgets: true,
+      contextmenu: true,
     };
+
+    if (isMobile) {
+      const userScrollbar = props.options?.scrollbar || {};
+      options.scrollbar = {
+        vertical: "auto",
+        horizontal: "auto",
+        alwaysConsumeMouseWheel: false,
+        ...userScrollbar,
+        verticalScrollbarSize: Math.max(12, userScrollbar.verticalScrollbarSize ?? 12),
+        horizontalScrollbarSize: Math.max(12, userScrollbar.horizontalScrollbarSize ?? 12),
+        verticalSliderSize: Math.max(12, userScrollbar.verticalSliderSize ?? 12),
+        horizontalSliderSize: Math.max(12, userScrollbar.horizontalSliderSize ?? 12),
+      };
+      if (options.scrollBeyondLastLine === undefined) {
+        options.scrollBeyondLastLine = true;
+      }
+    }
+
     return options;
   }, [props.options]);
+
+  const handleBeforeMount = (monaco: any) => {
+    registerPythonFormattingProvider(monaco);
+    if (props.beforeMount) {
+      props.beforeMount(monaco);
+    }
+  };
 
   const handleOnMount = (editor: any, monaco: any) => {
     const model = editor.getModel();
@@ -160,6 +192,7 @@ function SafeEditor(props: EditorProps) {
     }
     if (lang === "python") {
       try {
+        registerPythonFormattingProvider(monaco);
         registerPyIntelliSense(monaco);
         if (model) {
           runDiagnostics(model, monaco);
@@ -168,6 +201,29 @@ function SafeEditor(props: EditorProps) {
         console.warn("Error registering Python IntelliSense on mount", err);
       }
     }
+
+    // Register high-priority Paste action in context menu
+    try {
+      editor.addAction({
+        id: "editor.action.customClipboardPaste",
+        label: "Paste",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV],
+        contextMenuGroupId: "9_cutcopypaste",
+        contextMenuOrder: 1,
+        run: async (ed: any) => {
+          await handleSafeEditorPaste(ed);
+        },
+      });
+    } catch (err) {
+      console.warn("Could not register custom paste action", err);
+    }
+
+    // Enable touch scrolling for mobile devices and touchscreens
+    const cleanupTouch = enableMonacoTouchScroll(editor);
+    editor.onDidDispose?.(() => {
+      cleanupTouch();
+    });
+
     if (props.onMount) {
       props.onMount(editor, monaco);
     }
@@ -183,6 +239,7 @@ function SafeEditor(props: EditorProps) {
         {...props}
         path={resolvedPath}
         options={mergedOptions}
+        beforeMount={handleBeforeMount}
         onMount={handleOnMount}
       />
     </EditorErrorBoundary>

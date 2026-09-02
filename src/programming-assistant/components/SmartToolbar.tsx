@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { commonSymbols } from "../language";
 import { insertSnippet, insertText, insertPair, undo, redo } from "../services/SnippetService";
 import { useAssistantStore, AssistantItem } from "../stores/useAssistantStore";
-import { ChevronDown, ChevronUp, Undo, Redo } from "lucide-react";
+import { ChevronDown, ChevronUp, Undo, Redo, ClipboardPaste } from "lucide-react";
+import { handleSafeEditorPaste } from "../../utils/clipboardHelper";
 
 interface SmartToolbarProps {
   editor: any;
@@ -151,6 +152,20 @@ export const SmartToolbar: React.FC<SmartToolbarProps> = ({ editor }) => {
       >
         <Redo size={13} />
         <span className="font-sans font-medium">Redo</span>
+      </button>
+
+      {/* Quick Paste Button */}
+      <button
+        onClick={() => {
+          if (editor) {
+            handleSafeEditorPaste(editor);
+          }
+        }}
+        className="shrink-0 h-8 px-2.5 rounded-md border font-mono text-xs shadow-sm flex items-center gap-1.5 transition-all mr-1 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 active:scale-95 cursor-pointer"
+        title="Paste from clipboard (Ctrl+V)"
+      >
+        <ClipboardPaste size={13} />
+        <span className="font-sans font-medium">Paste</span>
       </button>
 
       {/* Sleek vertical separator */}

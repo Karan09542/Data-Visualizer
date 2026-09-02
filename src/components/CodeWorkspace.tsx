@@ -32,6 +32,7 @@ import {
   Sun,
   Moon,
   Info,
+  ClipboardPaste,
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
@@ -55,6 +56,8 @@ import {
 } from "../utils/tsExecutor";
 import { executeJsNode, abortJsNode } from "../utils/jsExecutor";
 import { executePyNode, abortPyNode } from "../utils/pyExecutor";
+import { formatPythonCode } from "../utils/pythonFormatter";
+import { insertTextIntoEditor } from "../utils/clipboardHelper";
 import {
   registerWorkspaceIntelliSense,
   syncWorkspaceModelsToMonaco,
@@ -168,6 +171,24 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const [copied, setCopied] = useState(false);
   const [monaco, setMonaco] = useState<any>(null);
   const [editorInstance, setEditorInstance] = useState<any>(null);
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [pasteInputValue, setPasteInputValue] = useState("");
+  const pasteTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const handlePasteFallback = () => {
+      setIsPasteModalOpen(true);
+      setPasteInputValue("");
+      setTimeout(() => {
+        pasteTextareaRef.current?.focus();
+      }, 50);
+    };
+
+    window.addEventListener("monaco-request-paste-fallback", handlePasteFallback);
+    return () => {
+      window.removeEventListener("monaco-request-paste-fallback", handlePasteFallback);
+    };
+  }, []);
 
   // Active open file in the workspace
   const currentFilePath = activeExplorerFile || path;
@@ -478,6 +499,34 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
       }
       // handleUpdateGlobalCode(currentFilePath, value); // Don't auto-save to JSON if we use explicit save
     }
+  };
+
+  const handleClearAllCode = () => {
+    if (editorRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        editorRef.current.executeEdits("clear-all-code", [
+          {
+            range: model.getFullModelRange(),
+            text: "",
+          },
+        ]);
+        editorRef.current.pushUndoStop();
+      } else {
+        editorRef.current.setValue("");
+      }
+    }
+    setJsNodeCodeOverride(currentFilePath, "");
+    updateNodeValue(currentFilePath, "");
+    const tab = workspaceTabs.find((t) => t.path === currentFilePath);
+    if (tab && !tab.isDirty) {
+      markWorkspaceTabDirty(currentFilePath, true);
+    }
+    setIsMinimapMenuOpen(false);
+    useStore.getState().setNotification({
+      message: "Cleared all code (Ctrl+Z / Cmd+Z to undo)",
+      type: "info",
+    });
   };
 
   // API fetching execution logic
@@ -1136,11 +1185,15 @@ declare const console: {
 
   // Code editor options properties
   const codeEditorOptions = useMemo(() => {
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 768 || 'ontouchstart' in window);
+    const defaultScrollbarSize = isMobile ? 12 : 8;
     return {
-      minimap: { enabled: settings.enabled },
+      minimap: { enabled: isMobile ? false : settings.enabled },
+      fixedOverflowWidgets: true,
+      contextmenu: true,
       lineNumbers: "on" as const,
-      scrollBeyondLastLine: false,
-      fontSize: 13,
+      scrollBeyondLastLine: isMobile ? true : false,
+      fontSize: isMobile ? 12 : 13,
       fontFamily: "Fira Code, SFMono-Regular, Consolas, Menlo, monospace",
       automaticLayout: true,
       tabSize: 2,
@@ -1150,24 +1203,25 @@ declare const console: {
       renderWhitespace: settings.renderCharacters
         ? ("all" as const)
         : ("none" as const),
+      padding: { top: 8, bottom: isMobile ? 60 : 8 },
       scrollbar: {
         verticalSliderSize:
           settings.verticalSize === "fit"
-            ? 8
+            ? defaultScrollbarSize
             : settings.verticalSize === "large"
               ? 14
               : settings.verticalSize === "small"
-                ? 4
-                : 8,
+                ? (isMobile ? 10 : 4)
+                : defaultScrollbarSize,
         verticalHasArrows: false,
         horizontalHasArrows: false,
         horizontal: "auto" as const,
         vertical: "auto" as const,
         arrowSize: 11,
         useShadows: true,
-        horizontalSliderSize: 8,
-        verticalScrollbarSize: 8,
-        horizontalScrollbarSize: 8,
+        horizontalSliderSize: defaultScrollbarSize,
+        verticalScrollbarSize: defaultScrollbarSize,
+        horizontalScrollbarSize: defaultScrollbarSize,
       },
       theme:
         settings.editorTheme === "default"
@@ -1505,12 +1559,29 @@ declare const console: {
               </button>
 
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (editorRef.current) {
                     try {
-                      editorRef.current
-                        .getAction("editor.action.formatDocument")
-                        .run();
+                      if (editorLanguage === "python") {
+                        const current = editorRef.current.getValue();
+                        const formatted = formatPythonCode(current);
+                        if (formatted !== current) {
+                          const model = editorRef.current.getModel();
+                          if (model) {
+                            editorRef.current.executeEdits("python-formatter", [
+                              {
+                                range: model.getFullModelRange(),
+                                text: formatted,
+                              },
+                            ]);
+                            editorRef.current.pushUndoStop();
+                          }
+                        }
+                      } else {
+                        await editorRef.current
+                          .getAction("editor.action.formatDocument")
+                          ?.run();
+                      }
                     } catch (err) {
                       console.warn("Monaco document formatting error:", err);
                     }
@@ -1696,6 +1767,18 @@ declare const console: {
                         ))}
                       </div>
                     )}
+
+                    <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
+                    <button
+                      onClick={handleClearAllCode}
+                      className="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-between transition-colors text-red-600 dark:text-red-400 font-medium"
+                      title="Clear all code in current tab (Ctrl+Z to undo)"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Trash2 size={12} className="text-red-500 shrink-0" />
+                        <span>Clear All Code</span>
+                      </div>
+                    </button>
                   </div>
                 )}
               </div>
@@ -2656,6 +2739,89 @@ declare const console: {
       </div>
       <ProxySettingsModal />
       <GlobalAlertModal />
+
+      {/* Fallback Paste Modal for browsers that block direct clipboard read */}
+      {isPasteModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[999999] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setIsPasteModalOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-[#161b22] border border-slate-300 dark:border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-4 flex flex-col gap-3 animate-in zoom-in-95 duration-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-sm text-slate-800 dark:text-slate-100">
+                <ClipboardPaste size={16} className="text-emerald-500" />
+                <span>Paste into Editor</span>
+              </div>
+              <button
+                onClick={() => setIsPasteModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Browser blocked direct clipboard access. Press{" "}
+              <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                Ctrl+V
+              </kbd>{" "}
+              (or{" "}
+              <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                Cmd+V
+              </kbd>
+              ) into the box below:
+            </p>
+
+            <textarea
+              ref={pasteTextareaRef}
+              autoFocus
+              placeholder="Paste your text here (Ctrl+V / Cmd+V)..."
+              value={pasteInputValue}
+              onChange={(e) => setPasteInputValue(e.target.value)}
+              onPaste={(e) => {
+                const pasted = e.clipboardData?.getData("text/plain");
+                if (pasted && editorRef.current) {
+                  e.preventDefault();
+                  insertTextIntoEditor(editorRef.current, pasted);
+                  setIsPasteModalOpen(false);
+                  setPasteInputValue("");
+                }
+              }}
+              rows={4}
+              className="w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0d1117] text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+            />
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight">
+                💡 Tip: Set Clipboard to "Allow" in site settings for 1-click paste.
+              </span>
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <button
+                  onClick={() => setIsPasteModalOpen(false)}
+                  className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (pasteInputValue && editorRef.current) {
+                      insertTextIntoEditor(editorRef.current, pasteInputValue);
+                    }
+                    setIsPasteModalOpen(false);
+                    setPasteInputValue("");
+                  }}
+                  className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow transition-colors cursor-pointer"
+                >
+                  Insert
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
