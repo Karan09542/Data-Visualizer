@@ -9,6 +9,11 @@ import {
 import { CustomSelect } from './CustomSelect';
 import { useStore } from '../../../../store/useStore';
 import { CameraCaptureModal } from '../../../CameraCaptureModal';
+import { ai } from '../../../../ai';
+import { aiEngine } from '../../../../ai/manager/AIEngine';
+import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
+import { aiInferenceCache } from '../../../../ai/manager/AIInferenceCache';
+import { PassportBackgroundPicker, PassportBackground } from './PassportBackgroundPicker';
 import {
   DndContext,
   closestCenter,
@@ -30,6 +35,7 @@ import { CSS } from '@dnd-kit/utilities';
 export type PhotoQueueItem = {
   id: string;
   src: string;
+  originalSrc?: string;
   quantity: number;
 };
 
@@ -96,6 +102,7 @@ function SortablePhotoItem({ id, item, idx, isDark, setPhotoQueue }: { id: strin
 interface PassportPrintModalProps {
   sourceImage: string; // Data URL of the generated passport photo
   onClose: () => void;
+  initialAutoAdjust?: boolean;
 }
 
 // DPI conversion: pixels = (mm / 25.4) * dpi
@@ -298,7 +305,7 @@ export const DOCUMENT_PRESETS = {
   }
 };
 
-export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose }) => {
+export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose, initialAutoAdjust = false }) => {
   const appTheme = useStore((state) => state.appTheme);
   const setAppTheme = useStore((state) => state.setAppTheme);
   const isDark = appTheme === 'dark';
@@ -370,6 +377,27 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const [imageObj, setImageObj] = useState<HTMLImageElement | null>(null);
+
+  // Auto-Adjust AI State
+  const [autoAdjust, setAutoAdjust] = useState(initialAutoAdjust);
+  const [hasAppliedAI, setHasAppliedAI] = useState(false);
+  const [applyTargetMode, setApplyTargetMode] = useState<'all' | 'specific'>('all');
+  const [applyTargetIds, setApplyTargetIds] = useState<string[]>([]);
+  const aiResultsCache = useRef<Record<string, {
+    imageData: ImageData,
+    detectionResult: any,
+    bgResult: any,
+    faceModel: string,
+    bgModel: string
+  }>>({});
+
+  const faceModels = useMemo(() => modelRegistry.getForTask('face-detection'), []);
+  const bgModels = useMemo(() => modelRegistry.getForTask('background-removal'), []);
+  const [autoAdjustFaceModel, setAutoAdjustFaceModel] = useState<string>(faceModels.length > 0 ? faceModels[0].id : 'blaze_face_short_range');
+  const [autoAdjustBgModel, setAutoAdjustBgModel] = useState<string>('u2netp');
+  const [autoAdjustBg, setAutoAdjustBg] = useState<PassportBackground>({ type: 'color', color: 'rgba(255, 255, 255, 1)' });
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<string>('');
 
   // Mobile View Toggle: 'preview' | 'settings'
   const [mobileTab, setMobileTab] = useState<'preview' | 'settings'>('preview');
@@ -790,30 +818,267 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
   // Initialize initial photoQueue on mount/sourceImage change
   useEffect(() => {
-    setPhotoQueue([{ id: 'initial-' + Date.now(), src: sourceImage, quantity: 20 }]); // maxCapacity handles clipping
+    setPhotoQueue([{ id: 'initial-' + Date.now(), src: sourceImage, originalSrc: sourceImage, quantity: 20 }]); // maxCapacity handles clipping
     setCellOverrides({});
+    setHasAppliedAI(false);
   }, [sourceImage]);
 
+  // Process photo through AI pipeline (Face Detection -> Background Removal -> Crop)
+  const processPhotoWithAI = async (dataUrl: string, hideOverlay = false): Promise<string | null> => {
+    if (!hideOverlay) {
+      setIsProcessingAI(true);
+      setProcessingStatus('Preparing Image...');
+    }
+    try {
+      let imageData: ImageData;
+      let detectionResult: any;
+      let bgResult: any;
+      
+      console.log("[processPhotoWithAI] Start processing:", dataUrl.substring(0, 50), "hideOverlay:", hideOverlay);
+      
+      const cache = aiResultsCache.current[dataUrl];
+      const isSameFaceModel = cache?.faceModel === autoAdjustFaceModel;
+      const isSameBgModel = cache?.bgModel === autoAdjustBgModel;
+      
+      if (cache && isSameFaceModel && isSameBgModel) {
+        // Fast path: Reuse previously extracted image data and AI outputs
+        imageData = cache.imageData;
+        detectionResult = cache.detectionResult;
+        bgResult = cache.bgResult;
+      } else {
+        // Slow path: Process image, run models, update cache
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = reject;
+          img.src = dataUrl;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(img, 0, 0);
+        imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        if (!hideOverlay) setProcessingStatus('Detecting Face...');
+        const imageHash = await aiInferenceCache.hashImage(imageData);
+        const faceCacheKey = aiInferenceCache.getCacheKey(imageHash, autoAdjustFaceModel);
+        detectionResult = aiInferenceCache.get(faceCacheKey)?.result;
+        if (!detectionResult) {
+          const { promise } = ai.execute('face-detection', imageData, { modelId: autoAdjustFaceModel });
+          const faceRes = await promise;
+          detectionResult = faceRes.output;
+          aiInferenceCache.set(faceCacheKey, autoAdjustFaceModel, imageHash, detectionResult);
+        }
+
+        if (!hideOverlay) setProcessingStatus('Removing Background...');
+        const bgCacheKey = aiInferenceCache.getCacheKey(imageHash, autoAdjustBgModel);
+        bgResult = aiInferenceCache.get(bgCacheKey)?.result;
+        if (!bgResult) {
+          const { promise } = ai.execute('background-removal', imageData, { modelId: autoAdjustBgModel });
+          const bgRes = await promise;
+          bgResult = bgRes.output;
+          aiInferenceCache.set(bgCacheKey, autoAdjustBgModel, imageHash, bgResult);
+        }
+        
+        aiResultsCache.current[dataUrl] = {
+          imageData,
+          detectionResult,
+          bgResult,
+          faceModel: autoAdjustFaceModel,
+          bgModel: autoAdjustBgModel
+        };
+      }
+      
+      let finalSourceImageData = imageData;
+      if (bgResult instanceof ImageData) {
+        finalSourceImageData = bgResult;
+      }
+
+      setProcessingStatus('Applying Passport Layout...');
+      const workerInstance = aiEngine.effectPool.getAvailableWorker();
+      if (!workerInstance) throw new Error('No available workers');
+      
+      aiEngine.effectPool.setWorkerBusy(workerInstance.id, true);
+
+      const transferables: Transferable[] = [];
+      const imageBitmap = await createImageBitmap(finalSourceImageData);
+      transferables.push(imageBitmap);
+      
+      const safeOptions: any = {};
+      console.log("[processPhotoWithAI] Applying bg:", autoAdjustBg.type, autoAdjustBg.color);
+      if (autoAdjustBg.type === 'color') safeOptions.backgroundColor = autoAdjustBg.color;
+      if (autoAdjustBg.type === 'image' && autoAdjustBg.imageEl) {
+        safeOptions.backgroundImage = await createImageBitmap(autoAdjustBg.imageEl);
+        transferables.push(safeOptions.backgroundImage);
+      }
+
+      const finalImage = await new Promise<ImageBitmap | ImageData | null>((resolve, reject) => {
+        const messageId = Math.random().toString(36).substring(7);
+        const handleMessage = (e: MessageEvent) => {
+          if (e.data.id === messageId) {
+            workerInstance.worker.removeEventListener('message', handleMessage);
+            aiEngine.effectPool.setWorkerBusy(workerInstance.id, false);
+            if (e.data.error) reject(new Error(e.data.error));
+            else resolve(e.data.result);
+          }
+        };
+        workerInstance.worker.addEventListener('message', handleMessage);
+        workerInstance.worker.postMessage({
+          id: messageId,
+          effectId: 'passport-crop',
+          sourceImage: imageBitmap,
+          faceDetection: detectionResult,
+          options: safeOptions
+        }, transferables);
+      });
+
+      if (!finalImage) return null;
+
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = finalImage.width;
+      outCanvas.height = finalImage.height;
+      const outCtx = outCanvas.getContext('2d')!;
+      if (finalImage instanceof ImageData) {
+        outCtx.putImageData(finalImage, 0, 0);
+      } else {
+        outCtx.drawImage(finalImage, 0, 0);
+      }
+
+      return outCanvas.toDataURL();
+    } catch (e) {
+      console.error('[PassportPrintModal] AI Auto-Adjust failed', e);
+      return dataUrl; // Fallback to original image if AI fails
+    } finally {
+      if (!hideOverlay) {
+        setIsProcessingAI(false);
+        setProcessingStatus('');
+      }
+    }
+  };
+
+  const handleApplyAIToCurrent = async () => {
+    if (photoQueue.length === 0) {
+      alert("Queue is empty. Please upload a photo first.");
+      return;
+    }
+    
+    const targets = applyTargetMode === 'all' 
+      ? photoQueue 
+      : photoQueue.filter(p => applyTargetIds.includes(p.id));
+
+    if (targets.length === 0) {
+      alert("Please select at least one photo to adjust.");
+      return;
+    }
+
+    let appliedCount = 0;
+    let nextQueue = [...photoQueue];
+
+    for (const target of targets) {
+      const srcToProcess = target.originalSrc || target.src;
+      const aiResult = await processPhotoWithAI(srcToProcess);
+      if (aiResult) {
+        const idx = nextQueue.findIndex(p => p.id === target.id);
+        if (idx !== -1) {
+          nextQueue[idx] = { ...nextQueue[idx], src: aiResult, originalSrc: srcToProcess };
+        }
+        appliedCount++;
+      }
+    }
+
+    if (appliedCount > 0) {
+      setPhotoQueue(nextQueue);
+      setHasAppliedAI(true);
+    }
+  };
+
+  // Trigger initial AI apply if autoAdjust was passed as true (e.g. from QuickUtilsModal)
+  const hasTriggeredInitialAI = useRef(false);
+  useEffect(() => {
+    if (autoAdjust && !hasTriggeredInitialAI.current && photoQueue.length > 0 && !hasAppliedAI) {
+      hasTriggeredInitialAI.current = true;
+      handleApplyAIToCurrent();
+    }
+  }, [autoAdjust, photoQueue, hasAppliedAI]);
+
+  // Instant Auto-Apply when settings change if AI is already applied
+  useEffect(() => {
+    if (autoAdjust && hasAppliedAI && photoQueue.length > 0) {
+      const targets = applyTargetMode === 'all' 
+        ? photoQueue 
+        : photoQueue.filter(p => applyTargetIds.includes(p.id));
+        
+      if (targets.length === 0) return;
+
+      console.log("[Auto-Apply] Dependencies changed. Targets:", targets.length);
+
+      const isInstant = targets.every(t => {
+         const src = t.originalSrc || t.src;
+         const cache = aiResultsCache.current[src];
+         return cache && cache.faceModel === autoAdjustFaceModel && cache.bgModel === autoAdjustBgModel;
+      });
+      console.log("[Auto-Apply] isInstant:", isInstant);
+      
+      if (isInstant) {
+         Promise.all(targets.map(async t => {
+           const src = t.originalSrc || t.src;
+           const res = await processPhotoWithAI(src, true);
+           return { id: t.id, src: res, originalSrc: src };
+         })).then(results => {
+           setPhotoQueue(prev => {
+             const next = [...prev];
+             results.forEach(res => {
+               if (res.src) {
+                 const idx = next.findIndex(p => p.id === res.id);
+                 if (idx !== -1) next[idx] = { ...next[idx], src: res.src, originalSrc: res.originalSrc };
+               }
+             });
+             console.log("[Auto-Apply] Updated queue with new bg results", next.length);
+             return next;
+           });
+         });
+      } else {
+         console.log("[Auto-Apply] Running handleApplyAIToCurrent");
+         handleApplyAIToCurrent();
+      }
+    }
+  }, [autoAdjustFaceModel, autoAdjustBgModel, autoAdjustBg]);
+
   // Handle file upload from device
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       if (typeof reader.result === 'string') {
-        const newSrc = reader.result;
+        let newSrc = reader.result;
+        let original = newSrc;
+        setHasAppliedAI(false);
+        
+        if (autoAdjust) {
+          const aiResult = await processPhotoWithAI(newSrc);
+          if (aiResult) {
+            newSrc = aiResult;
+            setHasAppliedAI(true);
+          }
+        }
+
         if (overrideTargetCell !== null) {
           setCellOverrides(prev => ({ ...prev, [overrideTargetCell]: newSrc }));
           setOverrideTargetCell(null);
         } else {
-          setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, quantity: 1 }]);
+          setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, originalSrc: original, quantity: 1 }]);
         }
       }
     };
     reader.readAsDataURL(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [overrideTargetCell]);
+  }, [overrideTargetCell, autoAdjust, autoAdjustFaceModel, autoAdjustBgModel, autoAdjustBg]);
 
   // Prevent background scrolling
   useEffect(() => {
@@ -1467,6 +1732,177 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           {/* Scrollable Settings Form */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5 custom-scrollbar">
 
+            {/* 0. AI Auto-Adjust Settings */}
+            <section className="space-y-3 pb-3 border-b border-slate-200 dark:border-[#222]">
+              <div className="flex items-center justify-between">
+                <h2 className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
+                  <Sparkles size={13} className="text-blue-500" /> Auto-Adjust Uploads
+                </h2>
+                <div
+                  className={`w-9 h-5 rounded-full flex items-center p-0.5 cursor-pointer transition-colors ${autoAdjust ? 'bg-blue-600' : isDark ? 'bg-[#333]' : 'bg-slate-300'}`}
+                  onClick={() => {
+                    const next = !autoAdjust;
+                    setAutoAdjust(next);
+                    if (!next && hasAppliedAI) {
+                      setPhotoQueue(prev => prev.map(p => p.originalSrc ? { ...p, src: p.originalSrc } : p));
+                      setHasAppliedAI(false);
+                    }
+                  }}
+                  title="Automatically detect face and remove background on newly uploaded photos"
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${autoAdjust ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </div>
+
+              {autoAdjust && (
+                <div className={`p-3.5 border rounded-2xl space-y-3 animate-in slide-in-from-top-2 duration-150 ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Face Detection Model</label>
+                    <CustomSelect 
+                      value={autoAdjustFaceModel} 
+                      onChange={setAutoAdjustFaceModel} 
+                      options={faceModels.map(m => ({ value: m.id, label: m.name }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Background Removal</label>
+                    <CustomSelect 
+                      value={autoAdjustBgModel} 
+                      onChange={setAutoAdjustBgModel} 
+                      options={bgModels.map(m => ({ value: m.id, label: m.name }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Passport Background</label>
+                    <PassportBackgroundPicker value={autoAdjustBg} onChange={setAutoAdjustBg} />
+                  </div>
+                  
+                  <div className="space-y-1.5 mt-4 pt-3 border-t border-slate-200 dark:border-[#333]">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Apply Target</label>
+                    <div className="flex gap-5 mb-2 mt-1">
+                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer group">
+                        <div className="relative flex items-center justify-center">
+                          <input 
+                            type="radio" 
+                            name="applyMode" 
+                            className="peer appearance-none w-4 h-4 border-2 border-slate-300 dark:border-[#444] rounded-full checked:border-blue-500 checked:bg-blue-500 transition-colors cursor-pointer"
+                            checked={applyTargetMode === 'all'} 
+                            onChange={() => {
+                              if (applyTargetMode !== 'all') {
+                                setApplyTargetMode('all');
+                                // Instantly apply AI to any photos that were not in target ids
+                                photoQueue.forEach(photo => {
+                                  if (!applyTargetIds.includes(photo.id)) {
+                                    const src = photo.originalSrc || photo.src;
+                                    processPhotoWithAI(src, true).then(aiResult => {
+                                      if (aiResult) {
+                                        setPhotoQueue(prev => prev.map(p => p.id === photo.id ? { ...p, src: aiResult } : p));
+                                        setHasAppliedAI(true);
+                                      }
+                                    });
+                                  }
+                                });
+                              }
+                            }}
+                          />
+                          <div className="absolute w-1.5 h-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none shadow-sm" />
+                        </div>
+                        <span className="group-hover:text-slate-900 dark:group-hover:text-white transition-colors">All Photos</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer group">
+                        <div className="relative flex items-center justify-center">
+                          <input 
+                            type="radio" 
+                            name="applyMode" 
+                            className="peer appearance-none w-4 h-4 border-2 border-slate-300 dark:border-[#444] rounded-full checked:border-blue-500 checked:bg-blue-500 transition-colors cursor-pointer"
+                            checked={applyTargetMode === 'specific'} 
+                            onChange={() => {
+                              setApplyTargetMode('specific');
+                              if (applyTargetIds.length === 0) {
+                                setApplyTargetIds(photoQueue.map(p => p.id));
+                              }
+                            }}
+                          />
+                          <div className="absolute w-1.5 h-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none shadow-sm" />
+                        </div>
+                        <span className="group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Select Manually</span>
+                      </label>
+                    </div>
+                    {applyTargetMode === 'specific' && photoQueue.length > 0 && (
+                      <div className="grid grid-cols-4 gap-1.5 mt-2">
+                        {photoQueue.map(photo => (
+                          <div 
+                            key={photo.id}
+                            className={`relative rounded border overflow-hidden cursor-pointer ${applyTargetIds.includes(photo.id) ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-300 dark:border-[#444] opacity-60'}`}
+                            onClick={() => {
+                              const isSelected = applyTargetIds.includes(photo.id);
+                              if (isSelected) {
+                                // Deselect -> Revert this photo
+                                setApplyTargetIds(prev => prev.filter(id => id !== photo.id));
+                                if (photo.originalSrc) {
+                                  setPhotoQueue(prev => prev.map(p => p.id === photo.id ? { ...p, src: photo.originalSrc! } : p));
+                                }
+                              } else {
+                                // Select -> Apply AI instantly
+                                setApplyTargetIds(prev => [...prev, photo.id]);
+                                const srcToProcess = photo.originalSrc || photo.src;
+                                processPhotoWithAI(srcToProcess, true).then(aiResult => {
+                                  if (aiResult) {
+                                    setPhotoQueue(prev => prev.map(p => p.id === photo.id ? { ...p, src: aiResult } : p));
+                                    setHasAppliedAI(true);
+                                  }
+                                });
+                              }
+                            }}
+                          >
+                            <img src={photo.originalSrc || photo.src} className="w-full h-10 object-cover" />
+                            {applyTargetIds.includes(photo.id) && (
+                               <div className="absolute top-0.5 right-0.5 bg-blue-500 text-white rounded-full p-0.5 shadow">
+                                 <Check size={10} strokeWidth={4} />
+                               </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targets = applyTargetMode === 'all' ? photoQueue : photoQueue.filter(p => applyTargetIds.includes(p.id));
+                        let revertedCount = 0;
+                        const newPhotoQueue = photoQueue.map(p => {
+                          if (targets.find(t => t.id === p.id) && p.originalSrc) {
+                            revertedCount++;
+                            return { ...p, src: p.originalSrc };
+                          }
+                          return p;
+                        });
+                        if (revertedCount > 0) {
+                          setPhotoQueue(newPhotoQueue);
+                          if (applyTargetMode === 'all' || applyTargetIds.length === photoQueue.length) setHasAppliedAI(false);
+                        }
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2A2A] dark:hover:bg-[#333] text-slate-700 dark:text-slate-300 py-2 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-[#333]"
+                    >
+                      <RotateCcw size={14} /> Revert
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyAIToCurrent}
+                      className="flex-[2] flex items-center justify-center gap-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 py-2 rounded-xl text-xs font-bold transition-all border border-blue-500/20"
+                    >
+                      <Sparkles size={14} /> Apply AI
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
             {/* 1. Document Preset Selector */}
             <section className="space-y-3">
               <div className="flex items-center justify-between">
@@ -1587,21 +2023,21 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   }`}>
                   <Grid2X2 size={13} /> {photoQueue.length === 1 ? 'Photo Quantity' : 'Photo Queue'}
                 </h2>
-                <div className="flex gap-3">
+                <div className="flex gap-2 shrink-0">
                   <button
                     onClick={() => { setPhotoQueue([]); setCellOverrides({}); }}
-                    className="text-[10px] text-rose-500 hover:text-rose-600 font-semibold transition-colors"
+                    className={`text-[10px] px-2.5 py-1 rounded-md font-bold transition-colors flex items-center gap-1 ${isDark ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
                   >
-                    Clear All
+                    <X size={12} /> Clear All
                   </button>
                   <button
                     onClick={() => {
                       setOverrideTargetCell(null);
                       fileInputRef.current?.click();
                     }}
-                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold transition-colors flex items-center gap-0.5"
+                    className={`text-[10px] px-2.5 py-1 rounded-md font-bold transition-colors flex items-center gap-1 ${isDark ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
                   >
-                    <Upload size={10} /> Add Photo
+                    <Upload size={12} /> Add Photo
                   </button>
                 </div>
               </div>
@@ -2450,16 +2886,26 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       {isCameraOpen && (
         <CameraCaptureModal
           onClose={() => setIsCameraOpen(false)}
-          onCapture={(file) => {
+          onCapture={async (file) => {
             const reader = new FileReader();
-            reader.onload = () => {
+            reader.onload = async () => {
               if (typeof reader.result === 'string') {
-                const newSrc = reader.result;
+                let newSrc = reader.result;
+                let original = newSrc;
+                setHasAppliedAI(false);
+                if (autoAdjust) {
+                  const aiResult = await processPhotoWithAI(newSrc);
+                  if (aiResult) {
+                    newSrc = aiResult;
+                    setHasAppliedAI(true);
+                  }
+                }
+
                 if (overrideTargetCell !== null) {
                   setCellOverrides(prev => ({ ...prev, [overrideTargetCell]: newSrc }));
                   setOverrideTargetCell(null);
                 } else {
-                  setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, quantity: 1 }]);
+                  setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, originalSrc: original, quantity: 1 }]);
                 }
               }
               setIsCameraOpen(false);
@@ -2467,6 +2913,19 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             reader.readAsDataURL(file);
           }}
         />
+      )}
+
+      {/* Global AI Processing Overlay */}
+      {isProcessingAI && (
+        <div className="absolute inset-0 z-[999999] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`p-6 rounded-2xl border shadow-2xl flex flex-col items-center max-w-xs w-full ${isDark ? 'bg-[#161616] border-[#333]' : 'bg-white border-slate-200'}`}>
+            <Wand2 size={40} className="text-blue-500 animate-pulse mb-4" />
+            <div className="text-lg font-bold text-center mb-1">AI Auto-Adjust</div>
+            <div className="text-sm text-center font-medium text-slate-500 dark:text-slate-400">
+              {processingStatus || 'Processing...'}
+            </div>
+          </div>
+        </div>
       )}
     </div>,
     document.body

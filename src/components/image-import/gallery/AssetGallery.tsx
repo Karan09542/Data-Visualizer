@@ -1,5 +1,6 @@
 import { formatFileSize } from "../../../lib/formatFileSize";
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Check, FileImage, Image as ImageIcon, Box, Globe } from 'lucide-react';
 import { discoverAllAssets } from '../services/assetDiscovery';
 import { GalleryAsset } from '../providers/indexedDbProvider';
@@ -142,7 +143,7 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
 
   const isCurrentLoading = activeTab === 'local' ? loading : pexelsLoading;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-[#111] border border-slate-200 dark:border-[#222] sm:rounded-xl w-full max-w-5xl h-full sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-800 dark:text-white">
         {/* Header */}
@@ -261,6 +262,7 @@ export function AssetGallery({ onClose, onImport }: AssetGalleryProps) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

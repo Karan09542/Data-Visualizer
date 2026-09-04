@@ -45,6 +45,8 @@ export const OfficeUtilitiesPanel: React.FC<Props> = ({ onExecute, onPrintSheet,
   const [thumbRatio, setThumbRatio] = useState(16/9);
 
   const faceModels = modelRegistry.getForTask('face-detection');
+  const bgModels = modelRegistry.getForTask('background-removal');
+  const [bgModelId, setBgModelId] = useState<string>(bgModels.length > 0 ? bgModels[0].id : 'ormbg');
 
   const handleRun = (effectId: string, options: any) => {
     onExecute(effectId, { ...options, modelId });
@@ -131,13 +133,25 @@ export const OfficeUtilitiesPanel: React.FC<Props> = ({ onExecute, onPrintSheet,
         {activeTab === 'passport-crop' && (
           <div className="space-y-3">
             <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider flex items-center gap-2">
+                <Settings size={12} /> BG Removal Model
+              </label>
+              <CustomSelect 
+                value={bgModelId}
+                onChange={setBgModelId}
+                options={bgModels.map(m => ({ value: m.id, label: m.name }))}
+                disabled={disabled}
+              />
+            </div>
+            <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Background</label>
               <PassportBackgroundPicker value={passportBg} onChange={setPassportBg} disabled={disabled} />
             </div>
             <ActionButton 
               onClick={() => handleRun('passport-crop', { 
                 backgroundColor: passportBg.type === 'color' ? passportBg.color : undefined,
-                backgroundImage: passportBg.type === 'image' ? passportBg.imageEl : undefined
+                backgroundImage: passportBg.type === 'image' ? passportBg.imageEl : undefined,
+                bgModelId: bgModelId
               })} 
               disabled={disabled} 
               label="Apply Passport Layout" isLoading={isActive} 

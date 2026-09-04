@@ -8,8 +8,8 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
   protected isNCHW = false;
 
   protected preprocess(imageData: ImageData, inputShape?: number[]): any {
-    if (this.modelId === 'sinet') {
-      return this.preprocessSinet(imageData, inputShape);
+    if (this.modelId === 'u2netp') {
+      return this.preprocessU2netp(imageData, inputShape);
     }
     return this.preprocessOrmbg(imageData, inputShape);
   }
@@ -24,13 +24,43 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
 
     let maskImageData: ImageData;
 
-    if (this.modelId === 'sinet') {
-      maskImageData = this.postprocessSinet(maskData);
-    } else {
-      maskImageData = this.postprocessOrmbg(maskData);
+    if (this.modelId === 'u2netp') {
+      // U2-Net uses stretching, not letterboxing. So the mask is already stretched.
+      // We just need to stretch it back to the original width/height.
+      maskImageData = this.postprocessU2netp(maskData);
+      const outW = maskImageData.width;
+      const outH = maskImageData.height;
+      
+      const maskCanvas = new OffscreenCanvas(outW, outH);
+      maskCanvas.getContext('2d')!.putImageData(maskImageData, 0, 0);
+      
+      const croppedMaskCanvas = new OffscreenCanvas(width, height);
+      const croppedCtx = croppedMaskCanvas.getContext('2d')!;
+      croppedCtx.imageSmoothingEnabled = true;
+      croppedCtx.imageSmoothingQuality = 'high';
+      
+      // Directly stretch the mask to original dimensions
+      croppedCtx.drawImage(maskCanvas, 0, 0, outW, outH, 0, 0, width, height);
+      const resizedMaskData = croppedCtx.getImageData(0, 0, width, height);
+      
+      const result = new ImageData(width, height);
+      if (originalImageData) {
+        for (let i = 0; i < width * height; i++) {
+          const origAlpha = originalImageData.data[i * 4 + 3];
+          const maskAlpha = resizedMaskData.data[i * 4 + 3];
+          result.data[i * 4] = originalImageData.data[i * 4];
+          result.data[i * 4 + 1] = originalImageData.data[i * 4 + 1];
+          result.data[i * 4 + 2] = originalImageData.data[i * 4 + 2];
+          result.data[i * 4 + 3] = Math.round((origAlpha * maskAlpha) / 255);
+        }
+        return result;
+      }
+      return resizedMaskData;
     }
 
-    // Un-letterbox and resize mask back to original width/height
+    maskImageData = this.postprocessOrmbg(maskData);
+
+    // Un-letterbox and resize mask back to original width/height for ORMBG
     const outW = maskImageData.width;
     const outH = maskImageData.height;
 
@@ -123,10 +153,10 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
     return float32Data;
   }
 
-  private preprocessSinet(imageData: ImageData, inputShape?: number[]): Float32Array {
-    let targetWidth = 324;
-    let targetHeight = 324;
-    this.isNCHW = false; // Assume NHWC like UpscalePipeline by default
+  private preprocessU2netp(imageData: ImageData, inputShape?: number[]): Float32Array {
+    let targetWidth = 320;
+    let targetHeight = 320;
+    this.isNCHW = false;
 
     if (inputShape && inputShape.length === 4) {
       if (inputShape[1] === 3 || inputShape[1] === 1) {
@@ -143,17 +173,36 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
     this.lastTargetWidth = targetWidth;
     this.lastTargetHeight = targetHeight;
 
-    const { resizedData } = this.letterboxImage(imageData, targetWidth, targetHeight);
+    // U2-Net expects the image to be stretched to the target size, not letterboxed
+    const canvas = new OffscreenCanvas(targetWidth, targetHeight);
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    const origCanvas = new OffscreenCanvas(imageData.width, imageData.height);
+    origCanvas.getContext('2d')!.putImageData(imageData, 0, 0);
+    ctx.drawImage(origCanvas, 0, 0, imageData.width, imageData.height, 0, 0, targetWidth, targetHeight);
+    
+    const resizedData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 
     const float32Data = new Float32Array(targetWidth * targetHeight * 3);
     const numPixels = targetWidth * targetHeight;
 
+    // U2-Net typical normalization: (val/max - mean) / std
+    // Where mean=[0.485, 0.456, 0.406] and std=[0.229, 0.224, 0.225]
+    let maxVal = 0;
+    for (let i = 0; i < resizedData.data.length; i += 4) {
+      if (resizedData.data[i] > maxVal) maxVal = resizedData.data[i];
+      if (resizedData.data[i + 1] > maxVal) maxVal = resizedData.data[i + 1];
+      if (resizedData.data[i + 2] > maxVal) maxVal = resizedData.data[i + 2];
+    }
+    const denom = maxVal > 0 ? maxVal : 255.0;
+
     for (let p = 0; p < numPixels; p++) {
       const srcIdx = p * 4;
-      // [0, 1] Normalization just like UpscalePipeline!
-      const r = resizedData.data[srcIdx] / 255.0;
-      const g = resizedData.data[srcIdx + 1] / 255.0;
-      const b = resizedData.data[srcIdx + 2] / 255.0;
+      const r = (resizedData.data[srcIdx] / denom - 0.485) / 0.229;
+      const g = (resizedData.data[srcIdx + 1] / denom - 0.456) / 0.224;
+      const b = (resizedData.data[srcIdx + 2] / denom - 0.406) / 0.225;
 
       if (this.isNCHW) {
         float32Data[p] = r;
@@ -245,68 +294,29 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
     return maskImageData;
   }
 
-  private postprocessSinet(maskData: Float32Array): ImageData {
-    // SINet specific decoding
-    // Try to infer dimensions in case it's different from input shape
+  private postprocessU2netp(maskData: Float32Array): ImageData {
     let outW = this.lastTargetWidth;
     let outH = this.lastTargetHeight;
     let numPixels = outW * outH;
 
-    if (maskData.length !== numPixels && maskData.length !== numPixels * 2 && maskData.length !== numPixels * 4) {
-      const dim1 = Math.sqrt(maskData.length);
-      const dim2 = Math.sqrt(maskData.length / 2);
-      if (Number.isInteger(dim1)) {
-        outW = dim1; outH = dim1; numPixels = outW * outH;
-      } else if (Number.isInteger(dim2)) {
-        outW = dim2; outH = dim2; numPixels = outW * outH;
+    if (maskData.length !== numPixels) {
+      // In case litert gives a different output shape dynamically
+      const dim = Math.sqrt(maskData.length);
+      if (Number.isInteger(dim)) {
+        outW = dim; outH = dim; numPixels = outW * outH;
       }
-    }
-
-    let stride = 1;
-    let offset = 0;
-
-    const getFgScore = (cStride: number, cOffset: number) => {
-      let centerSum = 0, centerCount = 0, cornerSum = 0, cornerCount = 0;
-      const marginX = Math.floor(outW * 0.1), marginY = Math.floor(outH * 0.1);
-      for (let y = 0; y < outH; y++) {
-        for (let x = 0; x < outW; x++) {
-          const val = maskData[(y * outW + x) * cStride + cOffset];
-          const isCorner = (x < marginX || x >= outW - marginX) && (y < marginY || y >= outH - marginY);
-          const isCenter = (x > outW * 0.35 && x < outW * 0.65) && (y > outH * 0.35 && y < outH * 0.65);
-          if (isCorner) { cornerSum += val; cornerCount++; }
-          if (isCenter) { centerSum += val; centerCount++; }
-        }
-      }
-      return (centerSum / Math.max(1, centerCount)) - (cornerSum / Math.max(1, cornerCount));
-    };
-
-    if (maskData.length === numPixels * 4) {
-      stride = 4;
-      offset = 3;
-    } else if (maskData.length === numPixels * 2) {
-      // 2-channel mask: Pick the channel with highest foreground score
-      let s0 = this.isNCHW ? 1 : 2, o0 = 0;
-      let s1 = this.isNCHW ? 1 : 2, o1 = this.isNCHW ? numPixels : 1;
-
-      const score0 = getFgScore(s0, o0);
-      const score1 = getFgScore(s1, o1);
-      if (score0 > score1) { stride = s0; offset = o0; }
-      else { stride = s1; offset = o1; }
-    } else {
-      // 1-channel mask
-      stride = 1;
-      offset = 0;
     }
 
     let minVal = Infinity, maxVal = -Infinity;
     for (let px = 0; px < numPixels; px++) {
-      const v = maskData[px * stride + offset];
+      const v = maskData[px];
       if (v < minVal) minVal = v;
       if (v > maxVal) maxVal = v;
     }
 
-    // SINet explicitly outputs raw logits, so we MUST apply Sigmoid
-    const needsSigmoid = true;
+    // U2-Net applies Sigmoid, so values are in [0, 1].
+    // If it outputs logits, we apply sigmoid dynamically.
+    const needsSigmoid = (minVal < -2.0 || maxVal > 2.0) && (maxVal <= 100);
 
     let minA = needsSigmoid ? 1 / (1 + Math.exp(-minVal)) : minVal;
     let maxA = needsSigmoid ? 1 / (1 + Math.exp(-maxVal)) : maxVal;
@@ -314,8 +324,10 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
 
     const maskImageData = new ImageData(outW, outH);
     for (let px = 0; px < numPixels; px++) {
-      let alpha = maskData[px * stride + offset];
+      let alpha = maskData[px];
       if (needsSigmoid) alpha = 1 / (1 + Math.exp(-alpha));
+      
+      // Normalize to [0, 1] range based on min/max to enhance contrast
       if (scale > 0) alpha = (alpha - minA) * scale;
       alpha = Math.max(0, Math.min(1, alpha));
 

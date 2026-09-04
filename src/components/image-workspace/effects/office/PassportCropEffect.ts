@@ -12,6 +12,25 @@ export class PassportCropEffect implements SegmentationEffect {
       canvas.width = sourceImage.width;
       canvas.height = sourceImage.height;
       const ctx = canvas.getContext('2d')!;
+      
+      if (options.backgroundImage) {
+        const bg = options.backgroundImage;
+        const bgRatio = bg.width / bg.height;
+        const targetRatio = canvas.width / canvas.height;
+        let drawW = canvas.width, drawH = canvas.height, bgX = 0, bgY = 0;
+        if (bgRatio > targetRatio) {
+          drawW = bg.width * (canvas.height / bg.height);
+          bgX = (canvas.width - drawW) / 2;
+        } else {
+          drawH = bg.height * (canvas.width / bg.width);
+          bgY = (canvas.height - drawH) / 2;
+        }
+        ctx.drawImage(bg, bgX, bgY, drawW, drawH);
+      } else {
+        ctx.fillStyle = options.backgroundColor || '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      
       ctx.drawImage(sourceImage, 0, 0);
       return ctx.getImageData(0, 0, canvas.width, canvas.height);
     }

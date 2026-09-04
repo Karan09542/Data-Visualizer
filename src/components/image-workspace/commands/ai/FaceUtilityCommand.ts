@@ -232,16 +232,16 @@ export class FaceUtilityCommand implements Command {
         }
         try {
           const bgHash = await aiInferenceCache.hashImage(imageData);
-          // We don't strictly know the exact model ID here, so we use a generic 'background-removal' cache key
-          const bgCacheKey = aiInferenceCache.getCacheKey(bgHash, 'bg_rm_default');
+          const bgModel = this.effectOptions.bgModelId || 'ormbg';
+          const bgCacheKey = aiInferenceCache.getCacheKey(bgHash, bgModel);
           let bgResult = aiInferenceCache.get(bgCacheKey)?.result;
 
           if (!bgResult) {
-            // Using default background removal model
-            const { promise } = ai.execute('background-removal', imageData, {}, 5);
+            // Using selected background removal model
+            const { promise } = ai.execute('background-removal', imageData, { modelId: bgModel }, 5);
             const res = await promise;
             bgResult = res.output;
-            aiInferenceCache.set(bgCacheKey, 'bg_rm_default', bgHash, bgResult);
+            aiInferenceCache.set(bgCacheKey, bgModel, bgHash, bgResult);
           }
           if (bgResult instanceof ImageData) {
             finalSourceImageData = bgResult;

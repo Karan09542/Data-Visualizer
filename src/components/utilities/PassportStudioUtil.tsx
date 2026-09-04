@@ -7,6 +7,7 @@ export function PassportStudioUtil() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [autoAdjust, setAutoAdjust] = useState(false);
 
   // Default sample passport photo for instant testing
   const sampleImage = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80";
@@ -58,19 +59,33 @@ export function PassportStudioUtil() {
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto custom-scrollbar">
       {/* Header Banner */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex-1">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white">
               Passport Photo Studio
             </h2>
-            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
               <Sparkles size={10} /> 300 / 600 DPI
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Commercial passport grid generator with camera capture, scissor guidelines, custom photo count & KB size compression.
           </p>
+        </div>
+        
+        {/* Auto Adjust Toggle Switch */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
+            Auto-Adjust
+          </span>
+          <button
+            type="button"
+            onClick={() => setAutoAdjust(!autoAdjust)}
+            className={`w-9 h-5 rounded-full transition-colors relative flex items-center ${autoAdjust ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+          >
+            <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transform transition-transform ${autoAdjust ? 'translate-x-[18px]' : 'translate-x-1'}`} />
+          </button>
         </div>
       </div>
 
@@ -194,11 +209,12 @@ export function PassportStudioUtil() {
         />
       )}
 
-      {/* Render PassportPrintModal when active */}
+      {/* External Utilities via Modals */}
       {isModalOpen && selectedImage && (
         <PassportPrintModal
           sourceImage={selectedImage}
           onClose={() => setIsModalOpen(false)}
+          initialAutoAdjust={autoAdjust}
         />
       )}
     </div>

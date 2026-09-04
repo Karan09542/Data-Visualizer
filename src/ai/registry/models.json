@@ -19,15 +19,15 @@
     ]
   },
   {
-    "id": "sinet",
+    "id": "u2netp",
     "version": "1.0.0",
     "task": "background-removal",
-    "name": "SINet (Fast)",
+    "name": "U2NetP (Fast)",
     "description": "Lightweight portrait segmentation for background removal",
     "sources": [
       {
         "type": "local",
-        "url": "/models/sinet.tflite"
+        "url": "/models/u2netp_bgremover.tflite"
       }
     ],
     "supports": [
