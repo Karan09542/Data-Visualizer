@@ -21,14 +21,15 @@ import {
   Check,
   X,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Hand,
+  Sparkles
 } from 'lucide-react';
 import { ai } from '../../ai';
-import { CustomSelect } from '../image-workspace/components/shared/CustomSelect';
 import { ColorPickerTrigger } from '../image-workspace/components/shared/ColorPickers';
 import * as d3 from 'd3';
 
-export type SelectionTool = 'full' | 'rect' | 'circle' | 'pen';
+export type SelectionTool = 'full' | 'pan' | 'rect' | 'circle' | 'pen';
 
 export interface RectSelection {
   type: 'rect';
@@ -96,6 +97,26 @@ export function StickerMakerUtil() {
   const [customWidth, setCustomWidth] = useState<number>(512);
 
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const panOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lastPinchCenterRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Splitbar resizing state for mobile (vertical) and desktop (horizontal)
+  const [isMobileView, setIsMobileView] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [mobilePanelHeight, setMobilePanelHeight] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return Math.min(360, Math.max(180, Math.round(window.innerHeight * 0.45)));
+    }
+    return 320;
+  });
+  const [desktopSidebarWidth, setDesktopSidebarWidth] = useState<number>(320);
+  const [isResizingSplitter, setIsResizingSplitter] = useState(false);
+  const isResizingSplitterRef = useRef(false);
+  const dragSplitterStartRef = useRef<{ x: number; y: number; startH: number; startW: number }>({ x: 0, y: 0, startH: 320, startW: 320 });
+  const rootContainerRef = useRef<HTMLDivElement>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -140,7 +161,7 @@ export function StickerMakerUtil() {
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  // Pinch-to-zoom
+  // Pinch-to-zoom & two-finger pan
   useEffect(() => {
     const el = previewContainerRef.current;
     if (!el) return;
@@ -150,21 +171,37 @@ export function StickerMakerUtil() {
       return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     };
 
+    const getCenter = (touches: TouchList) => {
+      const [a, b] = [touches[0], touches[1]];
+      return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+    };
+
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         lastPinchDistRef.current = getDistance(e.touches);
+        lastPinchCenterRef.current = getCenter(e.touches);
       }
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && lastPinchDistRef.current !== null) {
+      if (e.touches.length === 2 && lastPinchDistRef.current !== null && lastPinchCenterRef.current !== null) {
         e.preventDefault();
         const dist = getDistance(e.touches);
+        const center = getCenter(e.touches);
         const scale = dist / lastPinchDistRef.current;
         setZoom(prev => clampZoom(prev * scale));
+
+        const dx = center.x - lastPinchCenterRef.current.x;
+        const dy = center.y - lastPinchCenterRef.current.y;
+        setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+
         lastPinchDistRef.current = dist;
+        lastPinchCenterRef.current = center;
       }
     };
-    const onTouchEnd = () => { lastPinchDistRef.current = null; };
+    const onTouchEnd = () => { 
+      lastPinchDistRef.current = null; 
+      lastPinchCenterRef.current = null;
+    };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -175,6 +212,102 @@ export function StickerMakerUtil() {
       el.removeEventListener('touchend', onTouchEnd);
     };
   }, []);
+
+  // Spacebar pan detection
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        setIsSpacePressed(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
+  // Window resize detection for mobile layout
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileView(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Splitbar drag handlers
+  const handleSplitterPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+    setIsResizingSplitter(true);
+    isResizingSplitterRef.current = true;
+    dragSplitterStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      startH: mobilePanelHeight,
+      startW: desktopSidebarWidth
+    };
+  };
+
+  useEffect(() => {
+    if (!isResizingSplitter) return;
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isResizingSplitterRef.current) return;
+      const isMobile = window.innerWidth < 768;
+      const root = rootContainerRef.current;
+
+      if (isMobile) {
+        const containerH = root ? root.clientHeight : (window.innerHeight || 600);
+        // Dragging UP (smaller clientY) -> increase bottom panel height
+        // Dragging DOWN (larger clientY) -> decrease bottom panel height
+        const deltaY = e.clientY - dragSplitterStartRef.current.y;
+        const targetH = dragSplitterStartRef.current.startH - deltaY;
+        const minH = 100;
+        const maxH = Math.max(minH, containerH - 120);
+        setMobilePanelHeight(Math.min(Math.max(targetH, minH), maxH));
+      } else {
+        const deltaX = e.clientX - dragSplitterStartRef.current.x;
+        const targetW = dragSplitterStartRef.current.startW + deltaX;
+        const minW = 240;
+        const maxW = 500;
+        setDesktopSidebarWidth(Math.min(Math.max(targetW, minW), maxW));
+      }
+    };
+
+    const onPointerUp = () => {
+      setIsResizingSplitter(false);
+      isResizingSplitterRef.current = false;
+    };
+
+    const prevSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = window.innerWidth < 768 ? 'row-resize' : 'col-resize';
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+
+    return () => {
+      document.body.style.userSelect = prevSelect;
+      document.body.style.cursor = prevCursor;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [isResizingSplitter]);
 
   useEffect(() => {
     if (maskImageData && originalImage && canvasRef.current) {
@@ -200,6 +333,7 @@ export function StickerMakerUtil() {
     setSelectionTool('full');
     setHoverPoint(null);
     setIsNearStart(false);
+    setPan({ x: 0, y: 0 });
     
     const img = new Image();
     img.onload = () => {
@@ -296,8 +430,59 @@ export function StickerMakerUtil() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectionTool, selection]);
 
+  const startPan = (clientX: number, clientY: number, pointerId?: number) => {
+    setIsPanning(true);
+    panStartRef.current = { x: clientX, y: clientY };
+    panOriginRef.current = { ...pan };
+  };
+
+  const handleContainerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button, input, select, [role="button"]')) {
+      return;
+    }
+    const isMiddleClick = e.button === 1;
+    const isBackgroundClick = e.target === previewContainerRef.current || (e.target as HTMLElement)?.classList.contains('pointer-events-none');
+    
+    if (isMiddleClick || isSpacePressed || isBackgroundClick || maskImageData || selectionTool === 'full' || selectionTool === 'pan') {
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch (_) {}
+      startPan(e.clientX, e.clientY, e.pointerId);
+    }
+  };
+
+  const handleContainerPointerMove = (e: React.PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPan({
+        x: panOriginRef.current.x + dx,
+        y: panOriginRef.current.y + dy
+      });
+    }
+  };
+
+  const handleContainerPointerUp = (e: React.PointerEvent<HTMLDivElement | HTMLCanvasElement>) => {
+    if (isPanning) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      setIsPanning(false);
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (selectionTool === 'full' || !originalImage) return;
+    if (!originalImage) return;
+
+    // Pan when in full/pan tool, or holding space, or middle click
+    if (e.button === 1 || isSpacePressed || selectionTool === 'full' || selectionTool === 'pan') {
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch (_) {}
+      startPan(e.clientX, e.clientY, e.pointerId);
+      return;
+    }
+
     const pt = getImageCoords(e);
     if (!pt) return;
 
@@ -378,6 +563,16 @@ export function StickerMakerUtil() {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPan({
+        x: panOriginRef.current.x + dx,
+        y: panOriginRef.current.y + dy
+      });
+      return;
+    }
+
     if (!originalImage) return;
     const curr = getImageCoords(e);
     if (!curr) return;
@@ -437,6 +632,14 @@ export function StickerMakerUtil() {
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isPanning) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      setIsPanning(false);
+      return;
+    }
+
     if (selectionTool === 'pen') return;
     if (!isDrawingSelection) return;
     try {
@@ -494,7 +697,7 @@ export function StickerMakerUtil() {
   const processImage = async () => {
     if (!originalImage) return;
 
-    if (selectionTool !== 'full' && (!selection || (selection.type === 'pen' && selection.points.length < 3))) {
+    if (selectionTool !== 'full' && selectionTool !== 'pan' && (!selection || (selection.type === 'pen' && selection.points.length < 3))) {
       alert('Please select a specific portion of the image first using the selection tool.');
       return;
     }
@@ -505,7 +708,7 @@ export function StickerMakerUtil() {
       let cropY = 0;
       let cropW = originalImage.naturalWidth;
       let cropH = originalImage.naturalHeight;
-      const hasCustomSelection = selectionTool !== 'full' && selection !== null;
+      const hasCustomSelection = selectionTool !== 'full' && selectionTool !== 'pan' && selection !== null;
 
       if (hasCustomSelection && selection) {
         if (selection.type === 'rect') {
@@ -728,6 +931,29 @@ export function StickerMakerUtil() {
     ctx.restore();
   };
 
+  const getOutputDimensions = () => {
+    if (!maskImageData) return null;
+    let outW = maskImageData.width;
+    let outH = maskImageData.height;
+    if (sizeMode === 'small') {
+      const scale = Math.min(512 / outW, 512 / outH);
+      outW *= scale;
+      outH *= scale;
+    } else if (sizeMode === 'medium') {
+      const scale = Math.min(1024 / outW, 1024 / outH);
+      outW *= scale;
+      outH *= scale;
+    } else if (sizeMode === 'custom') {
+      const scale = customWidth / outW;
+      outW = customWidth;
+      outH *= scale;
+    }
+    const padding = strokeWidth * 2;
+    const finalW = Math.round(outW) + padding;
+    const finalH = Math.round(outH) + padding;
+    return `${finalW} × ${finalH} px`;
+  };
+
   const handleDownload = () => {
     if (!canvasRef.current) return;
     const dataUrl = canvasRef.current.toDataURL('image/png');
@@ -739,72 +965,119 @@ export function StickerMakerUtil() {
 
   return (
     <div 
-      className="custom-dropzone relative flex h-full w-full bg-white dark:bg-[#0c0f16] flex-col md:flex-row"
+      ref={rootContainerRef}
+      className="custom-dropzone relative flex h-full w-full bg-white dark:bg-[#0c0f16] flex-col md:flex-row overflow-hidden"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="w-full md:w-80 border-t md:border-t-0 md:border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] p-4 flex flex-col gap-4 overflow-y-auto shrink-0 order-2 md:order-1 h-[50vh] md:h-auto">
-        <div>
-          <h2 className="text-lg font-bold flex items-center gap-2 mb-4 dark:text-white">
-            <Sticker className="text-purple-500" /> Sticker Maker
-          </h2>
+      <div 
+        className="w-full border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] p-4 flex flex-col gap-4 overflow-y-auto shrink-0 order-3 md:order-1"
+        style={{
+          height: isMobileView ? `${mobilePanelHeight}px` : undefined,
+          width: !isMobileView ? `${desktopSidebarWidth}px` : undefined,
+        }}
+      >
+        {/* Header with Compact Upload / Change */}
+        <div className="pb-1 border-b border-slate-200/80 dark:border-slate-800/80">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
+              <Sticker className="text-purple-500" size={16} /> Sticker Maker
+            </h2>
+            {selectedImage && (
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[11px] text-purple-600 dark:text-purple-400 hover:text-purple-500 font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
+                title="Change Photo"
+              >
+                <UploadCloud size={12} /> Change Photo
+              </button>
+            )}
+          </div>
           
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
           
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className={`w-full py-3 px-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all ${
-              isDraggingOver 
-                ? 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/30 shadow-lg shadow-purple-500/10 scale-[1.01]' 
-                : 'border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50'
-            }`}
-          >
-            <UploadCloud className={`transition-colors ${isDraggingOver ? 'text-purple-500 animate-bounce' : 'text-slate-400'}`} />
-            <span className="text-sm font-medium dark:text-slate-300">
-              {isDraggingOver ? "Drop Photo Here" : (selectedImage ? "Change Photo (or Drop)" : "Upload or Drop Image")}
-            </span>
-          </button>
+          {!selectedImage && (
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className={`w-full mt-3 py-4 px-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all ${
+                isDraggingOver 
+                  ? 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/30 shadow-lg shadow-purple-500/10 scale-[1.01]' 
+                  : 'border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <UploadCloud className={`transition-colors ${isDraggingOver ? 'text-purple-500 animate-bounce' : 'text-slate-400'}`} size={24} />
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {isDraggingOver ? "Drop Photo Here" : "Upload or Drop Photo"}
+              </span>
+              <span className="text-[10px] text-slate-400">PNG, JPG, WEBP</span>
+            </button>
+          )}
         </div>
 
         {selectedImage && (
           <>
             {/* Selection Tool Mode Controls */}
             {!maskImageData && (
-              <div className="space-y-2 pb-1 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold flex items-center gap-1.5 dark:text-slate-300">
-                    <Crop size={15} className="text-purple-500" /> Focus / Selection
-                  </h3>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Crop size={11} className="text-purple-500" /> Subject Focus
+                  </span>
                   {selection && (
-                    <button
-                      onClick={() => {
-                        setSelection(null);
-                        setSelectionTool('full');
-                      }}
-                      className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline font-medium"
-                    >
-                      Reset Full
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[10px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50 px-1.5 py-0.5 rounded border border-purple-200/60 dark:border-purple-800/50">
+                        {selection.type === 'rect'
+                          ? `${Math.round(selection.width)}×${Math.round(selection.height)}`
+                          : selection.type === 'circle'
+                          ? `${Math.round(selection.rx * 2)}×${Math.round(selection.ry * 2)}`
+                          : `${selection.points.length} dots`}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSelection(null);
+                          setSelectionTool('full');
+                        }}
+                        className="text-[10px] text-slate-400 hover:text-red-500 font-medium transition-colors"
+                      >
+                        Reset
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/50 dark:bg-black/30 rounded-xl border border-slate-300/50 dark:border-slate-700/50">
+                {/* Sleek Segmented Switcher */}
+                <div className="grid grid-cols-5 gap-0.5 p-0.5 bg-slate-200/60 dark:bg-black/50 rounded-lg border border-slate-300/40 dark:border-slate-800/70">
                   <button
                     onClick={() => {
                       setSelectionTool('full');
                       setSelection(null);
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition-all ${
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
                       selectionTool === 'full'
-                        ? 'bg-purple-600 text-white shadow-sm'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
                     }`}
-                    title="Full Image (Whole Canvas)"
+                    title="Full Image"
                   >
-                    <Maximize2 size={15} />
-                    <span className="text-[10px]">Full</span>
+                    <Maximize2 size={12} />
+                    <span>Full</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectionTool('pan');
+                    }}
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
+                      selectionTool === 'pan'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
+                    }`}
+                    title="Move / Pan image"
+                  >
+                    <Hand size={12} />
+                    <span>Move</span>
                   </button>
 
                   <button
@@ -816,15 +1089,15 @@ export function StickerMakerUtil() {
                         setIsNearStart(false);
                       }
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition-all ${
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
                       selectionTool === 'rect'
-                        ? 'bg-purple-600 text-white shadow-sm'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
                     }`}
-                    title="Square / Rectangle Selection"
+                    title="Square / Box Selection"
                   >
-                    <Square size={15} />
-                    <span className="text-[10px]">Square</span>
+                    <Square size={12} />
+                    <span>Box</span>
                   </button>
 
                   <button
@@ -836,15 +1109,15 @@ export function StickerMakerUtil() {
                         setIsNearStart(false);
                       }
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition-all ${
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
                       selectionTool === 'circle'
-                        ? 'bg-purple-600 text-white shadow-sm'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
                     }`}
-                    title="Circle / Ellipse Selection"
+                    title="Circle Selection"
                   >
-                    <Circle size={15} />
-                    <span className="text-[10px]">Circle</span>
+                    <Circle size={12} />
+                    <span>Circle</span>
                   </button>
 
                   <button
@@ -856,135 +1129,149 @@ export function StickerMakerUtil() {
                         setIsNearStart(false);
                       }
                     }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition-all ${
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
                       selectionTool === 'pen'
-                        ? 'bg-purple-600 text-white shadow-sm'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
                     }`}
                     title="Dot-by-Dot Pen Tool"
                   >
-                    <PenTool size={15} />
-                    <span className="text-[10px]">Pen</span>
+                    <PenTool size={12} />
+                    <span>Pen</span>
                   </button>
                 </div>
 
+                {/* Contextual Action / Status Bar */}
                 {selectionTool === 'pen' ? (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1">
-                        <PenTool size={12} />
-                        {selection && selection.type === 'pen' && selection.points.length > 0
-                          ? `${selection.points.length} dot${selection.points.length !== 1 ? 's' : ''} placed ${selection.isClosed ? '(Closed ✓)' : ''}`
-                          : 'Dot-by-Dot Pen Tool'}
+                  selection && selection.type === 'pen' && selection.points.length > 0 ? (
+                    <div className="flex items-center justify-between gap-1.5 bg-purple-500/10 dark:bg-purple-950/30 px-2 py-1 rounded-lg border border-purple-500/30 text-[11px]">
+                      <span className="font-semibold text-purple-600 dark:text-purple-300 flex items-center gap-1 shrink-0">
+                        <span className={`w-1.5 h-1.5 rounded-full ${selection.isClosed ? 'bg-green-400' : 'bg-purple-400 animate-pulse'}`} />
+                        {selection.points.length} dot{selection.points.length !== 1 ? 's' : ''} {selection.isClosed ? '(Ready)' : ''}
                       </span>
-                      {selection && selection.type === 'pen' && selection.points.length > 0 && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        {!selection.isClosed && (
+                          <>
+                            <button
+                              onClick={undoLastPenPoint}
+                              className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-medium flex items-center gap-0.5 transition-colors"
+                              title="Undo last dot (Backspace)"
+                            >
+                              <Undo2 size={10} /> Undo
+                            </button>
+                            {selection.points.length >= 3 && (
+                              <button
+                                onClick={closePenPath}
+                                className="px-1.5 py-0.5 rounded bg-green-600 hover:bg-green-500 text-white text-[10px] font-medium flex items-center gap-0.5 transition-colors shadow-sm"
+                                title="Close shape (Enter)"
+                              >
+                                <Check size={10} /> Close
+                              </button>
+                            )}
+                          </>
+                        )}
                         <button
                           onClick={() => { setSelection(null); setHoverPoint(null); setIsNearStart(false); }}
-                          className="text-[11px] text-red-500 hover:underline font-medium"
+                          className="p-0.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+                          title="Clear dots"
                         >
-                          Clear
+                          <X size={12} />
                         </button>
-                      )}
-                    </div>
-
-                    {selection && selection.type === 'pen' && !selection.isClosed && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={undoLastPenPoint}
-                          className="flex-1 py-1.5 px-2 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1 transition-colors"
-                          title="Undo last dot (Backspace)"
-                        >
-                          <Undo2 size={12} /> Undo Dot
-                        </button>
-                        {selection.points.length >= 3 && (
-                          <button
-                            onClick={closePenPath}
-                            className="flex-1 py-1.5 px-2 rounded-lg bg-green-600 hover:bg-green-700 text-xs font-medium text-white flex items-center justify-center gap-1 transition-colors shadow-sm"
-                            title="Close shape (Enter)"
-                          >
-                            <Check size={12} /> Close Shape
-                          </button>
-                        )}
                       </div>
-                    )}
-
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
-                      {selection && selection.type === 'pen' && selection.points.length > 0
-                        ? (selection.isClosed
-                            ? '✓ Shape is closed! Ready to generate sticker or click on the image to start a new shape.'
-                            : 'Click near dot #1 or double-click to close. Backspace to undo dot.')
-                        : 'Click on the image to place dots around your subject. Click dot #1 to close.'}
-                    </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 px-1">
+                      <PenTool size={11} className="text-purple-400 shrink-0" />
+                      <span>Click on preview to place dots. Click #1 to close.</span>
+                    </div>
+                  )
+                ) : selectionTool === 'pan' ? (
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 px-1">
+                    <Hand size={11} className="text-purple-400 shrink-0" />
+                    <span>Drag anywhere to move image • Scroll to zoom</span>
                   </div>
-                ) : selectionTool !== 'full' ? (
-                  <p className="text-[11px] text-purple-600/90 dark:text-purple-400/90 font-medium px-0.5">
-                    {selection ? (
-                      selection.type === 'rect' ? (
-                        `Selected: ${Math.round(selection.width)}×${Math.round(selection.height)}px`
-                      ) : selection.type === 'circle' ? (
-                        `Selected: ${Math.round(selection.rx * 2)}×${Math.round(selection.ry * 2)}px circle`
-                      ) : (
-                        `Selected: ${selection.points.length} dots`
-                      )
-                    ) : (
-                      '💡 Click & drag on preview to select subject area'
+                ) : selectionTool !== 'full' && (
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 px-1">
+                    <span>{selection ? '✓ Area selected' : '💡 Drag on preview to select region'}</span>
+                    {selection && (
+                      <button
+                        onClick={() => { setSelection(null); setSelectionTool('full'); }}
+                        className="text-red-400 hover:underline"
+                      >
+                        Clear
+                      </button>
                     )}
-                  </p>
-                ) : null}
+                  </div>
+                )}
               </div>
             )}
 
             {maskImageData && (
-              <div className="pb-1">
+              <div>
                 <button
                   onClick={() => setMaskImageData(null)}
-                  className="w-full py-2 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-semibold rounded-lg text-xs transition-colors border border-purple-200 dark:border-purple-800/40 flex items-center justify-center gap-1.5"
+                  className="w-full py-1.5 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-semibold rounded-lg text-xs transition-colors border border-purple-200 dark:border-purple-800/40 flex items-center justify-center gap-1.5"
                 >
-                  <Crop size={14} /> Re-select Subject / Area
+                  <Crop size={13} /> Re-select Subject / Area
                 </button>
               </div>
             )}
 
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold flex items-center gap-2 dark:text-slate-300">
-                <Settings size={16} /> Background Removal
-              </h3>
-              <div className="flex gap-1.5 bg-slate-200/50 dark:bg-black/30 p-1 rounded-xl border border-slate-300/50 dark:border-slate-700/50 backdrop-blur-sm">
-                <button
-                  onClick={() => setModelId('ormbg')}
-                  className={`flex-1 py-2 text-sm rounded-lg font-semibold transition-all duration-300 ${modelId === 'ormbg' ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md shadow-purple-500/20 scale-[1.02]' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-white/5'}`}
-                >
-                  ORMBG
-                </button>
-                <button
-                  onClick={() => setModelId('u2netp')}
-                  className={`flex-1 py-2 text-sm rounded-lg font-semibold transition-all duration-300 ${modelId === 'u2netp' ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md shadow-purple-500/20 scale-[1.02]' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-white/5'}`}
-                >
-                  U2Net-P
-                </button>
+            {/* AI Background Removal & Generation Bar */}
+            <div className="space-y-2 pt-1 border-t border-slate-200/80 dark:border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Sparkles size={11} className="text-purple-400" /> AI Removal Model
+                </span>
+                <div className="flex bg-slate-200/70 dark:bg-black/40 p-0.5 rounded-lg border border-slate-300/40 dark:border-slate-800/80">
+                  <button
+                    onClick={() => setModelId('ormbg')}
+                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${
+                      modelId === 'ormbg' 
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold' 
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                    title="ORMBG (High quality)"
+                  >
+                    ORMBG
+                  </button>
+                  <button
+                    onClick={() => setModelId('u2netp')}
+                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${
+                      modelId === 'u2netp' 
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold' 
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                    title="U2Net-P (Fast)"
+                  >
+                    U2Net-P
+                  </button>
+                </div>
               </div>
-              
+
               <button 
                 onClick={processImage}
-                disabled={isProcessing || (selectionTool !== 'full' && (!selection || (selection.type === 'pen' && selection.points.length < 3)))}
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={isProcessing || (selectionTool !== 'full' && selectionTool !== 'pan' && (!selection || (selection.type === 'pen' && selection.points.length < 3)))}
+                className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               >
                 {isProcessing ? (
-                  <Loader2 className="animate-spin" size={18} />
+                  <Loader2 className="animate-spin" size={15} />
                 ) : selection && selectionTool !== 'full' ? (
-                  <Scissors size={18} />
+                  <Scissors size={15} />
                 ) : (
-                  <Sticker size={18} />
+                  <Sticker size={15} />
                 )}
-                {isProcessing 
-                  ? 'Processing...' 
-                  : selectionTool === 'pen' && selection && selection.type === 'pen' && selection.points.length > 0 && selection.points.length < 3
-                  ? 'Add at least 3 dots'
-                  : selectionTool !== 'full' && !selection
-                  ? 'Select area on image'
-                  : selection && selectionTool !== 'full'
-                  ? 'Generate from Selection'
-                  : 'Generate Sticker'}
+                <span>
+                  {isProcessing 
+                    ? 'Processing...' 
+                    : selectionTool === 'pen' && selection && selection.type === 'pen' && selection.points.length > 0 && selection.points.length < 3
+                    ? 'Place at least 3 dots'
+                    : selectionTool !== 'full' && selectionTool !== 'pan' && !selection
+                    ? 'Select area on preview'
+                    : selection && selectionTool !== 'full'
+                    ? 'Generate from Selection'
+                    : 'Generate Sticker'}
+                </span>
               </button>
             </div>
 
@@ -1128,40 +1415,92 @@ export function StickerMakerUtil() {
             )}
 
             {maskImageData && (
-              <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-                <h3 className="text-sm font-semibold flex items-center gap-2 dark:text-slate-300">
-                  <ImagePlus size={16} /> Output Size
-                </h3>
-                <CustomSelect
-                  value={sizeMode}
-                  onChange={(val) => setSizeMode(val as SizeMode)}
-                  options={[
-                    { value: "original", label: "Original Size" },
-                    { value: "medium", label: "Medium (Max 1024px)" },
-                    { value: "small", label: "Small (Max 512px)" },
-                    { value: "custom", label: "Custom Width" },
-                  ]}
-                  className="w-full"
-                  buttonClassName="h-[38px] text-sm font-medium"
-                />
-                
+              <div className="space-y-2.5 pt-3 border-t border-slate-200/80 dark:border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <ImagePlus size={11} className="text-purple-400" /> Output Size
+                  </span>
+                  {getOutputDimensions() && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200/70 dark:bg-black/40 text-slate-600 dark:text-slate-400 font-medium border border-slate-300/40 dark:border-slate-800/80">
+                      {getOutputDimensions()}
+                    </span>
+                  )}
+                </div>
+
+                {/* Sleek Segmented Switcher */}
+                <div className="grid grid-cols-4 gap-0.5 p-0.5 bg-slate-200/60 dark:bg-black/50 rounded-lg border border-slate-300/40 dark:border-slate-800/70">
+                  {[
+                    { id: 'original', label: 'Original' },
+                    { id: 'medium', label: '1024px' },
+                    { id: 'small', label: '512px' },
+                    { id: 'custom', label: 'Custom' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSizeMode(opt.id as SizeMode)}
+                      className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center transition-all ${
+                        sizeMode === opt.id
+                          ? 'bg-purple-600 text-white shadow-sm font-semibold'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+
                 {sizeMode === 'custom' && (
-                  <div className="relative mt-2">
-                    <input 
-                      type="number" value={customWidth}
-                      onChange={(e) => setCustomWidth(parseInt(e.target.value) || 512)}
-                      className="w-full h-10 pl-3 pr-8 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-[#0c0f16] text-sm dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:border-purple-500 transition-all font-mono"
-                      placeholder="e.g. 512"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 select-none pointer-events-none">px</span>
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <div className="relative flex-1">
+                      <input 
+                        type="number"
+                        min="64"
+                        max="8192"
+                        step="32"
+                        value={customWidth}
+                        onChange={(e) => setCustomWidth(Math.max(32, parseInt(e.target.value) || 512))}
+                        className="w-full h-8 pl-2.5 pr-7 border border-slate-300 dark:border-slate-700/80 rounded-lg bg-white dark:bg-[#0c0f16] text-xs dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:border-purple-500 transition-all font-mono"
+                        placeholder="Width"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400 select-none pointer-events-none">px</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {[256, 512, 1024, 2048].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCustomWidth(preset)}
+                          className={`px-1.5 py-1 text-[10px] font-mono rounded transition-colors ${
+                            customWidth === preset
+                              ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300 font-semibold border border-purple-500/30'
+                              : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 
+                {/* Modern Ultra-Polished Download Button */}
                 <button 
                   onClick={handleDownload}
-                  className="w-full mt-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-sm transition-colors flex items-center justify-center gap-2"
+                  className="w-full mt-2 py-2.5 px-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:via-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 dark:shadow-emerald-950/40 border border-emerald-400/30 transition-all flex items-center justify-between group active:scale-[0.99]"
                 >
-                  <Download size={18} /> Download Sticker
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Download size={13} className="text-white group-hover:translate-y-0.5 transition-transform" />
+                    </div>
+                    <span className="font-semibold text-white tracking-wide">Download Sticker</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {getOutputDimensions() && (
+                      <span className="text-[10px] font-mono opacity-80">{getOutputDimensions()}</span>
+                    )}
+                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-black/20 text-white/95 border border-white/10">PNG</span>
+                  </div>
                 </button>
               </div>
             )}
@@ -1169,8 +1508,44 @@ export function StickerMakerUtil() {
         )}
       </div>
 
-      <div className="flex-1 min-h-[40vh] bg-slate-100/50 dark:bg-[#080b11] p-4 flex items-center justify-center overflow-hidden relative order-1 md:order-2">
-        <div ref={previewContainerRef} className="w-full h-full border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-white/50 dark:bg-black/20 touch-none">
+      {/* Splitbar Divider for Mobile and Desktop */}
+      <div 
+        onPointerDown={handleSplitterPointerDown}
+        onDoubleClick={() => {
+          if (isMobileView) setMobilePanelHeight(320);
+          else setDesktopSidebarWidth(320);
+        }}
+        className={`order-2 relative z-30 shrink-0 select-none flex items-center justify-center transition-colors group touch-none ${
+          isMobileView
+            ? 'w-full h-5 cursor-row-resize bg-slate-100 dark:bg-[#111622] border-y border-slate-200/80 dark:border-slate-800/80 hover:bg-purple-50 dark:hover:bg-purple-950/20 active:bg-purple-100/50 dark:active:bg-purple-900/30'
+            : 'h-full w-2.5 cursor-col-resize bg-slate-100/80 dark:bg-[#111622]/80 border-r border-slate-200/80 dark:border-slate-800/80 hover:bg-purple-50 dark:hover:bg-purple-950/20 active:bg-purple-100/50 dark:active:bg-purple-900/30'
+        }`}
+        title={isMobileView ? "Drag to resize preview and controls (Double-tap to reset)" : "Drag to resize sidebar (Double-click to reset)"}
+      >
+        {isMobileView ? (
+          <div className="flex items-center gap-1.5 py-1">
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-purple-500 group-active:bg-purple-400 group-hover:w-16 transition-all shadow-sm" />
+          </div>
+        ) : (
+          <div className="w-1 h-8 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-purple-500 group-active:bg-purple-400 group-hover:h-12 transition-all shadow-sm" />
+        )}
+      </div>
+
+      <div className="flex-1 min-h-0 bg-slate-100/50 dark:bg-[#080b11] p-4 flex items-center justify-center overflow-hidden relative order-1 md:order-3">
+        <div 
+          ref={previewContainerRef} 
+          onPointerDown={handleContainerPointerDown}
+          onPointerMove={handleContainerPointerMove}
+          onPointerUp={handleContainerPointerUp}
+          onPointerCancel={handleContainerPointerUp}
+          className={`w-full h-full border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-white/50 dark:bg-black/20 touch-none ${
+            isPanning 
+              ? 'cursor-grabbing' 
+              : isSpacePressed || selectionTool === 'full' || selectionTool === 'pan' || maskImageData
+              ? 'cursor-grab' 
+              : 'cursor-default'
+          }`}
+        >
           <div className="absolute inset-0 z-0 opacity-20 pointer-events-none" 
             style={{ backgroundImage: 'conic-gradient(rgba(128,128,128,0.3) 90deg, transparent 90deg 180deg, rgba(128,128,128,0.3) 180deg 270deg, transparent 270deg)', backgroundSize: '20px 20px' }}
           />
@@ -1179,6 +1554,7 @@ export function StickerMakerUtil() {
           {selectedImage && !maskImageData && (
             isToolbarCollapsed ? (
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => setIsToolbarCollapsed(false)}
                 className="absolute top-4 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1.5 bg-white/95 dark:bg-[#161b22]/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-700/80 shadow-xl rounded-full px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all select-none animate-in fade-in zoom-in-95 duration-150 group"
                 title="Expand Selection Toolbar"
@@ -1187,6 +1563,11 @@ export function StickerMakerUtil() {
                 {selectionTool === 'full' && (
                   <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400 font-bold">
                     <Maximize2 size={12} /> Full
+                  </span>
+                )}
+                {selectionTool === 'pan' && (
+                  <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400 font-bold">
+                    <Hand size={12} /> Move
                   </span>
                 )}
                 {selectionTool === 'rect' && (
@@ -1208,14 +1589,24 @@ export function StickerMakerUtil() {
                 <ChevronDown size={13} className="text-slate-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors" />
               </button>
             ) : (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1 bg-white/95 dark:bg-[#161b22]/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-700/80 shadow-xl rounded-full px-2 py-1 select-none animate-in fade-in zoom-in-95 duration-150">
+              <div 
+                onPointerDown={(e) => e.stopPropagation()}
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1 bg-white/95 dark:bg-[#161b22]/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-700/80 shadow-xl rounded-full px-2 py-1 select-none animate-in fade-in zoom-in-95 duration-150"
+              >
                 <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 px-1.5">Tool:</span>
                 <button
                   onClick={() => { setSelectionTool('full'); setSelection(null); setHoverPoint(null); setIsNearStart(false); }}
                   className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${selectionTool === 'full' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                  title="Full Image"
+                  title="Full Image (Click & drag to move)"
                 >
                   <Maximize2 size={13} /> Full
+                </button>
+                <button
+                  onClick={() => { setSelectionTool('pan'); setHoverPoint(null); setIsNearStart(false); }}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${selectionTool === 'pan' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  title="Move / Pan Image (Drag in any direction)"
+                >
+                  <Hand size={13} /> Move
                 </button>
                 <button
                   onClick={() => {
@@ -1287,7 +1678,10 @@ export function StickerMakerUtil() {
 
           {/* Floating Pen In-Progress Helper Pill */}
           {selectedImage && !maskImageData && selectionTool === 'pen' && (
-            <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1.5 bg-slate-900/90 dark:bg-[#161b22]/95 text-white backdrop-blur-xl border border-purple-500/40 shadow-xl rounded-full px-3 py-1 text-xs select-none animate-in fade-in slide-in-from-top-1 duration-150 whitespace-nowrap">
+            <div 
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute top-14 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1.5 bg-slate-900/90 dark:bg-[#161b22]/95 text-white backdrop-blur-xl border border-purple-500/40 shadow-xl rounded-full px-3 py-1 text-xs select-none animate-in fade-in slide-in-from-top-1 duration-150 whitespace-nowrap"
+            >
               {selection && selection.type === 'pen' && selection.points.length > 0 ? (
                 <>
                   <span className="flex items-center gap-1.5 font-medium text-purple-300">
@@ -1336,15 +1730,32 @@ export function StickerMakerUtil() {
           )}
           
           {maskImageData ? (
-            <canvas ref={canvasRef} className="object-contain relative z-10 filter drop-shadow-2xl transition-transform duration-150 ease-out max-w-none" style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} />
+            <canvas 
+              ref={canvasRef} 
+              onPointerDown={(e) => {
+                if (e.button !== 0 && e.button !== 1) return;
+                try {
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                } catch (_) {}
+                startPan(e.clientX, e.clientY, e.pointerId);
+              }}
+              onPointerMove={handleContainerPointerMove}
+              onPointerUp={handleContainerPointerUp}
+              onPointerCancel={handleContainerPointerUp}
+              className={`object-contain relative z-10 filter drop-shadow-2xl ${isPanning ? 'transition-none cursor-grabbing' : 'transition-transform duration-150 ease-out cursor-grab'} max-w-none`} 
+              style={{ 
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, 
+                transformOrigin: 'center' 
+              }} 
+            />
           ) : selectedImage && originalImage ? (
             <div 
               ref={imageWrapperRef}
-              className="relative z-10 select-none max-w-none transition-transform duration-150 ease-out"
+              className={`relative z-10 select-none max-w-none ${isPanning ? 'transition-none' : 'transition-transform duration-150 ease-out'}`}
               style={{ 
                 width: originalImage.naturalWidth, 
                 height: originalImage.naturalHeight, 
-                transform: `scale(${zoom})`, 
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, 
                 transformOrigin: 'center' 
               }}
             >
@@ -1362,12 +1773,21 @@ export function StickerMakerUtil() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
-                onPointerLeave={() => { setHoverPoint(null); setIsNearStart(false); }}
+                onPointerLeave={() => {
+                  if (!isPanning) {
+                    setHoverPoint(null);
+                    setIsNearStart(false);
+                  }
+                }}
                 onDoubleClick={handleDoubleClick}
                 className={`absolute inset-0 touch-none select-none z-20 ${
-                  selectionTool !== 'full' 
-                    ? (selectionTool === 'pen' ? (isNearStart ? 'cursor-pointer' : 'cursor-crosshair') : 'cursor-crosshair') 
-                    : 'cursor-default'
+                  isPanning
+                    ? 'cursor-grabbing'
+                    : isSpacePressed || selectionTool === 'full' || selectionTool === 'pan'
+                    ? 'cursor-grab'
+                    : selectionTool === 'pen' 
+                    ? (isNearStart ? 'cursor-pointer' : 'cursor-crosshair') 
+                    : 'cursor-crosshair'
                 }`}
               >
                 <svg
@@ -1615,7 +2035,10 @@ export function StickerMakerUtil() {
 
         {/* Zoom Controls */}
         {(maskImageData || selectedImage) && (
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 bg-white/90 dark:bg-[#1e1e2e]/90 backdrop-blur-xl rounded-full border border-slate-200/80 dark:border-slate-600/40 shadow-xl shadow-black/10 dark:shadow-black/30 px-1.5 py-1">
+          <div 
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 bg-white/90 dark:bg-[#1e1e2e]/90 backdrop-blur-xl rounded-full border border-slate-200/80 dark:border-slate-600/40 shadow-xl shadow-black/10 dark:shadow-black/30 px-1.5 py-1"
+          >
             <button
               onClick={() => setZoom(prev => clampZoom(prev - 0.25))}
               className="w-7 h-7 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-purple-100 dark:hover:bg-purple-500/20 hover:text-purple-600 dark:hover:text-purple-300 transition-all active:scale-90"
@@ -1633,9 +2056,12 @@ export function StickerMakerUtil() {
             </button>
             <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-0.5" />
             <button
-              onClick={() => setZoom(getFitZoom())}
+              onClick={() => {
+                setZoom(getFitZoom());
+                setPan({ x: 0, y: 0 });
+              }}
               className="w-7 h-7 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-purple-100 dark:hover:bg-purple-500/20 hover:text-purple-600 dark:hover:text-purple-300 transition-all active:scale-90"
-              title="Fit to View"
+              title="Fit to View & Center"
             >
               <RotateCcw size={12} />
             </button>
