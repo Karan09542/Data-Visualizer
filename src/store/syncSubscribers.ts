@@ -28,8 +28,8 @@ export function setupSyncSubscribers() {
     const settingsChanged = settingsKeys.some(
       (key) => (state as any)[key] !== (prevState as any)[key]
     );
-    if (settingsChanged) {
-      syncService.broadcast({ type: "SETTINGS_CHANGED" }, 500);
+    if (settingsChanged || state.collapsedNodes !== prevState.collapsedNodes) {
+      syncService.broadcast({ type: "SETTINGS_CHANGED" }, 300);
     }
     
     // Detect other workspace state changes

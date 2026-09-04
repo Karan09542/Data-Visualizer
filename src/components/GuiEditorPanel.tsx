@@ -63,8 +63,26 @@ export default function GuiEditorPanel() {
   // Internal visual modes
   const [viewMode, setViewMode] = useState<"tree" | "flat">("tree");
   const [collapsedPaths, setCollapsedPaths] = useState<Record<string, boolean>>(
-    {},
+    () => {
+      try {
+        const saved = localStorage.getItem("gui_editor_collapsed_paths");
+        return saved ? JSON.parse(saved) : {};
+      } catch {
+        return {};
+      }
+    },
   );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "gui_editor_collapsed_paths",
+        JSON.stringify(collapsedPaths),
+      );
+    } catch {
+      // ignore quota or storage errors
+    }
+  }, [collapsedPaths]);
 
   // Editor Layout State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);

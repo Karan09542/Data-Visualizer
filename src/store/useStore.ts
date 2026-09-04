@@ -304,6 +304,9 @@ export interface StoreState {
   setSearchQuery: (query: string) => void;
   toggleNodeCollapse: (id: string) => void;
   setCollapsedNodes: (nodes: Set<string>) => void;
+  expandNode: (id: string) => void;
+  collapseNode: (id: string) => void;
+  isNodeCollapsed: (id: string) => boolean;
   setSelectedNodeId: (id: string | null) => void;
   setIsolatedNodeId: (id: string | null) => void;
   setIsEditorPanelOpen: (isOpen: boolean) => void;
@@ -1003,7 +1006,26 @@ export const useStore = create<StoreState>()(
             return { collapsedNodes: newCollapsed };
           });
         },
-        setCollapsedNodes: (nodes: Set<string>) => set({ collapsedNodes: nodes }),
+        setCollapsedNodes: (nodes: Set<string>) => set({ collapsedNodes: new Set(nodes) }),
+        expandNode: (id: string) => {
+          set((state) => {
+            if (!state.collapsedNodes.has(id)) return state;
+            const newCollapsed = new Set(state.collapsedNodes);
+            newCollapsed.delete(id);
+            return { collapsedNodes: newCollapsed };
+          });
+        },
+        collapseNode: (id: string) => {
+          set((state) => {
+            if (state.collapsedNodes.has(id)) return state;
+            const newCollapsed = new Set(state.collapsedNodes);
+            newCollapsed.add(id);
+            return { collapsedNodes: newCollapsed };
+          });
+        },
+        isNodeCollapsed: (id: string) => {
+          return get().collapsedNodes.has(id);
+        },
         setSelectedNodeId: (id: string | null) => set({ selectedNodeId: id }),
         setIsolatedNodeId: (id: string | null) => set({ isolatedNodeId: id }),
         setApiMethod: (method: string) => set({ apiMethod: method }),
@@ -1262,12 +1284,12 @@ export const useStore = create<StoreState>()(
           const { code: currentCode, setCode } = get();
           // Use setCode to ensure all derived search states are cleared
           setCode("", false);
-          set({ dragOverrides: {}, selectedNodeId: null });
+          set({ dragOverrides: {}, selectedNodeId: null, collapsedNodes: new Set() });
           import('./dexieSync').then(m => m.clearPositionsInDexie());
         },
 
         resetAllSettings: () => {
-          set({ ...defaultSettings, dragOverrides: {} });
+          set({ ...defaultSettings, dragOverrides: {}, collapsedNodes: new Set() });
           import('./dexieSync').then(m => m.clearPositionsInDexie());
         },
       };
@@ -1306,9 +1328,29 @@ export const useStore = create<StoreState>()(
           "isDirty",
           "stickyNotesEnabled",
         ];
-        return Object.fromEntries(
+        const persistedEntries = Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key)),
         );
+        return {
+          ...persistedEntries,
+          collapsedNodes: Array.from(state.collapsedNodes || []),
+        };
+      },
+      merge: (persistedState: unknown, currentState: StoreState): StoreState => {
+        const p = (persistedState || {}) as any;
+        let collapsedNodes = currentState.collapsedNodes;
+        if (Array.isArray(p?.collapsedNodes)) {
+          collapsedNodes = new Set(p.collapsedNodes);
+        } else if (p?.collapsedNodes instanceof Set) {
+          collapsedNodes = p.collapsedNodes;
+        } else {
+          collapsedNodes = new Set();
+        }
+        return {
+          ...currentState,
+          ...p,
+          collapsedNodes,
+        };
       },
       onRehydrateStorage: () => (state) => {
         if (state && state.code) {

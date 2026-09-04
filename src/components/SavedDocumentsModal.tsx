@@ -123,6 +123,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
       activePreviewMedia: null,
       activePreviewText: null,
       globalTextExpanded: false,
+      collapsedNodes: new Set(),
     });
 
     setCode(defaultCode);
@@ -199,6 +200,7 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
       activePreviewMedia: null,
       activePreviewText: null,
       globalTextExpanded: false,
+      collapsedNodes: new Set(),
     });
 
     setCode(doc.code);
