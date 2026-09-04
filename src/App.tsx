@@ -474,7 +474,9 @@ function App() {
       e.preventDefault();
       dragCounter++;
 
-      const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
+      const isCustomZone = 
+        (e.target as Element)?.closest?.('.custom-dropzone, [data-quick-utils-modal], .quick-utils-modal') ||
+        !!document.querySelector('[data-quick-utils-modal="true"]');
       if (isCustomZone) {
         setIsDragOver(false);
       } else {
@@ -487,7 +489,9 @@ function App() {
       if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
       e.preventDefault();
 
-      const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
+      const isCustomZone = 
+        (e.target as Element)?.closest?.('.custom-dropzone, [data-quick-utils-modal], .quick-utils-modal') ||
+        !!document.querySelector('[data-quick-utils-modal="true"]');
       if (isCustomZone) {
         setIsDragOver(false);
       } else {
@@ -512,9 +516,11 @@ function App() {
       dragCounter = 0;
       setIsDragOver(false);
 
-      const isCustomZone = (e.target as Element)?.closest?.('.custom-dropzone');
+      const isCustomZone = 
+        (e.target as Element)?.closest?.('.custom-dropzone, [data-quick-utils-modal], .quick-utils-modal') ||
+        !!document.querySelector('[data-quick-utils-modal="true"]');
       if (isCustomZone) {
-        return; // The custom zone will handle the file import itself
+        return; // The custom zone or quick utils modal will handle the file import itself
       }
 
       if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;

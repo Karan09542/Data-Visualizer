@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -12,6 +12,7 @@ import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
 import { ImageSlicerUtil } from "./ImageSlicerUtil";
 import { PdfMergeUtil } from "./PdfMergeUtil";
+import { StickerMakerUtil } from "./StickerMakerUtil";
 import CustomSelect from "../CustomSelect";
 
 const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
@@ -29,6 +30,7 @@ const TABS = [
   { id: "color", label: "Color Converter", icon: Palette, activeClass: "bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 shadow-sm border border-pink-200/50 dark:border-pink-800/30", iconClass: "text-pink-500" },
   { id: "csv2json", label: "CSV to JSON", icon: FileSpreadsheet, activeClass: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-800/30", iconClass: "text-indigo-500" },
   { id: "jwt", label: "JWT Decoder", icon: Key, activeClass: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200/50 dark:border-amber-800/30", iconClass: "text-amber-500" },
+  { id: "stickermaker", label: "Sticker Maker", icon: Sticker, activeClass: "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 shadow-sm border border-purple-200/50 dark:border-purple-800/30", iconClass: "text-purple-500" },
 ] as const;
 
 interface QuickUtilsModalProps {
@@ -37,7 +39,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief">("passport");
+  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   // Close on Escape key
@@ -54,7 +56,24 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className={`fixed inset-0 z-[600] flex items-center justify-center ${isMaximized ? "p-0" : "p-0 md:p-4 sm:p-2"}`}>
+        <div 
+          data-quick-utils-modal="true"
+          className={`custom-dropzone quick-utils-modal fixed inset-0 z-[600] flex items-center justify-center ${isMaximized ? "p-0" : "p-0 md:p-4 sm:p-2"}`}
+          onDragEnter={(e) => {
+            e.stopPropagation();
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDragLeave={(e) => {
+            e.stopPropagation();
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -170,6 +189,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               {activeTab === "csv2json" && <CsvToJsonConverter />}
               {activeTab === "jwt" && <JwtDecoder />}
               {activeTab === "colorthief" && <ImageColorExtractor />}
+              {activeTab === "stickermaker" && <StickerMakerUtil />}
             </div>
           </motion.div>
         </div>

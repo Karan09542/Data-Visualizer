@@ -26,6 +26,7 @@ export function PassportStudioUtil() {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith("image/")) {
       const reader = new FileReader();
@@ -39,6 +40,7 @@ export function PassportStudioUtil() {
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleCameraCapture = (file: File) => {

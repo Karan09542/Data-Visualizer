@@ -159,6 +159,7 @@ export const ImageToPdfConverter = () => {
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -178,16 +179,22 @@ export const ImageToPdfConverter = () => {
     })
   );
 
+  const addImages = (files: File[]) => {
+    const newImages = files
+      .filter((file) => file.type.startsWith("image/"))
+      .map((file) => ({
+        id: Math.random().toString(36).substring(7),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+    if (newImages.length > 0) {
+      setImages((prev) => [...prev, ...newImages]);
+    }
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newImages = Array.from(e.target.files)
-        .filter((file) => file.type.startsWith("image/"))
-        .map((file) => ({
-          id: Math.random().toString(36).substring(7),
-          file,
-          previewUrl: URL.createObjectURL(file),
-        }));
-      setImages((prev) => [...prev, ...newImages]);
+      addImages(Array.from(e.target.files));
     }
   };
 
@@ -309,14 +316,35 @@ export const ImageToPdfConverter = () => {
 
       <div
         onClick={() => fileInputRef.current?.click()}
-        className="w-full h-40 p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-xl bg-slate-50 dark:bg-[#161b22]/50 flex flex-col items-center justify-center cursor-pointer transition-colors mb-8 group"
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.stopPropagation();
+          setIsDragOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(false);
+          if (e.dataTransfer.files) {
+            addImages(Array.from(e.dataTransfer.files));
+          }
+        }}
+        className={`w-full h-40 p-6 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors mb-8 group ${
+          isDragOver
+            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20"
+            : "border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 bg-slate-50 dark:bg-[#161b22]/50"
+        }`}
       >
         <FileImage
           size={28}
-          className="text-slate-400 group-hover:text-blue-500 mb-2 transition-colors"
+          className={`mb-2 transition-colors ${isDragOver ? "text-blue-500" : "text-slate-400 group-hover:text-blue-500"}`}
         />
         <span className="text-slate-600 dark:text-slate-300 font-medium">
-          Click or drag to add images
+          {isDragOver ? "Drop images here" : "Click or drag to add images"}
         </span>
         <span className="text-slate-400 text-xs mt-1">Supports JPG, PNG, WEBP</span>
         <input

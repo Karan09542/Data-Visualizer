@@ -295,6 +295,7 @@ export const ImageSlicerUtil: React.FC = () => {
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       setIsDragOver(false);
       const f = e.dataTransfer.files[0];
       if (f?.type.startsWith("image/")) loadImage(f);
@@ -561,9 +562,13 @@ export const ImageSlicerUtil: React.FC = () => {
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               setIsDragOver(true);
             }}
-            onDragLeave={() => setIsDragOver(false)}
+            onDragLeave={(e) => {
+              e.stopPropagation();
+              setIsDragOver(false);
+            }}
             onDrop={onDrop}
             className={`w-full max-w-md h-44 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all group ${
               isDragOver

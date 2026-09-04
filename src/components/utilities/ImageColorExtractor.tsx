@@ -38,6 +38,7 @@ export const ImageColorExtractor = () => {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith("image/")) {
@@ -152,7 +153,10 @@ export const ImageColorExtractor = () => {
         <div className="lg:col-span-1 flex flex-col gap-4">
           <div
             onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={() => fileInputRef.current?.click()}
             className="w-full aspect-square border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-fuchsia-500 dark:hover:border-fuchsia-500 rounded-xl bg-slate-50 dark:bg-[#161b22]/50 flex flex-col items-center justify-center cursor-pointer transition-colors group overflow-hidden relative shadow-sm"
           >

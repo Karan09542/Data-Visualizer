@@ -423,15 +423,18 @@ export const PdfMergeUtil = () => {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDraggingOver(true);
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
     setIsDraggingOver(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDraggingOver(false);
     if (e.dataTransfer.files) {
       processFiles(Array.from(e.dataTransfer.files), mergeMode);
