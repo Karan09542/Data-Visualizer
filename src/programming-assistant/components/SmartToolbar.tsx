@@ -115,10 +115,10 @@ export const SmartToolbar: React.FC<SmartToolbarProps> = ({ editor }) => {
   };
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1 px-1 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0d1117] shrink-0 touch-pan-x">
+    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1 px-1.5 border-b border-[var(--vsc-border,#e5e5e5)] bg-[var(--vsc-panel,#f8f8f8)] shrink-0 touch-pan-x">
       <button
         onClick={() => setIsVisible(!isVisible)}
-        className="shrink-0 h-8 min-w-[36px] px-2 rounded-md bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-mono text-sm shadow-sm flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-800/50 active:scale-95 transition-all mr-1"
+        className="shrink-0 h-8 min-w-[34px] px-2 rounded-[4px] bg-[var(--vsc-input,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] text-[var(--vsc-fg,#3b3b3b)] font-mono text-sm flex items-center justify-center hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] active:scale-95 transition-colors cursor-pointer mr-1"
         title="Toggle Assistant Panel"
       >
         {isVisible ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
@@ -128,10 +128,10 @@ export const SmartToolbar: React.FC<SmartToolbarProps> = ({ editor }) => {
       <button
         onClick={handleUndo}
         disabled={!canUndo}
-        className={`shrink-0 h-8 px-2.5 rounded-md border font-mono text-xs shadow-sm flex items-center gap-1.5 transition-all mr-1 ${
+        className={`shrink-0 h-8 px-2.5 rounded-[4px] border font-mono text-xs flex items-center gap-1.5 transition-colors mr-1 ${
           canUndo
-            ? "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 active:scale-95 cursor-pointer"
-            : "bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600 opacity-50 cursor-not-allowed"
+            ? "bg-[var(--vsc-input,#ffffff)] border-[var(--vsc-border-strong,#cecece)] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] active:scale-95 cursor-pointer"
+            : "bg-transparent border-[var(--vsc-border,#e5e5e5)] text-[var(--vsc-fg-muted,#616161)] opacity-50 cursor-not-allowed"
         }`}
         title="Undo change (Ctrl+Z)"
       >
@@ -143,10 +143,10 @@ export const SmartToolbar: React.FC<SmartToolbarProps> = ({ editor }) => {
       <button
         onClick={handleRedo}
         disabled={!canRedo}
-        className={`shrink-0 h-8 px-2.5 rounded-md border font-mono text-xs shadow-sm flex items-center gap-1.5 transition-all mr-1 ${
+        className={`shrink-0 h-8 px-2.5 rounded-[4px] border font-mono text-xs flex items-center gap-1.5 transition-colors mr-1 ${
           canRedo
-            ? "bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 active:scale-95 cursor-pointer"
-            : "bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600 opacity-50 cursor-not-allowed"
+            ? "bg-[var(--vsc-input,#ffffff)] border-[var(--vsc-border-strong,#cecece)] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] active:scale-95 cursor-pointer"
+            : "bg-transparent border-[var(--vsc-border,#e5e5e5)] text-[var(--vsc-fg-muted,#616161)] opacity-50 cursor-not-allowed"
         }`}
         title="Redo change (Ctrl+Y)"
       >
@@ -161,7 +161,7 @@ export const SmartToolbar: React.FC<SmartToolbarProps> = ({ editor }) => {
             handleSafeEditorPaste(editor);
           }
         }}
-        className="shrink-0 h-8 px-2.5 rounded-md border font-mono text-xs shadow-sm flex items-center gap-1.5 transition-all mr-1 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 active:scale-95 cursor-pointer"
+        className="shrink-0 h-8 px-2.5 rounded-[4px] border font-mono text-xs flex items-center gap-1.5 transition-colors mr-1 bg-[var(--vsc-input,#ffffff)] border-[var(--vsc-border-strong,#cecece)] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] active:scale-95 cursor-pointer"
         title="Paste from clipboard (Ctrl+V)"
       >
         <ClipboardPaste size={13} />
@@ -169,13 +169,13 @@ export const SmartToolbar: React.FC<SmartToolbarProps> = ({ editor }) => {
       </button>
 
       {/* Sleek vertical separator */}
-      <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1 shrink-0" />
+      <div className="h-5 w-px bg-[var(--vsc-border,#e5e5e5)] mx-1 shrink-0" />
 
       {commonSymbols.map((sym) => (
         <button
           key={sym.id}
           onClick={() => handleInsert(sym)}
-          className="shrink-0 h-8 min-w-[36px] px-2 rounded-md bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-sm shadow-sm flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition-all"
+          className="shrink-0 h-8 min-w-[34px] px-2 rounded-[4px] bg-[var(--vsc-input,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] text-[var(--vsc-fg,#3b3b3b)] font-mono text-sm flex items-center justify-center hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] active:scale-95 transition-colors cursor-pointer"
         >
           {sym.label}
         </button>

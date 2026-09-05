@@ -41,7 +41,7 @@ export const SnippetPanel: React.FC<SnippetPanelProps> = ({ editor, items }) => 
           <button
             key={item.id}
             onClick={() => handleInsert(item)}
-            className="relative group h-12 bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm flex items-center justify-center font-mono text-sm text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all overflow-hidden"
+            className="relative group h-11 bg-[var(--vsc-input,#ffffff)] border border-[var(--vsc-border,#e5e5e5)] rounded-[4px] flex items-center justify-center font-mono text-sm text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] hover:border-[var(--vsc-border-strong,#cecece)] active:scale-95 transition-colors overflow-hidden cursor-pointer"
           >
             <span className="truncate px-2">{item.label}</span>
             <div
@@ -50,7 +50,7 @@ export const SnippetPanel: React.FC<SnippetPanelProps> = ({ editor, items }) => 
             >
               <Star
                 size={12}
-                className={isFav ? "fill-yellow-400 text-yellow-400" : "text-slate-400"}
+                className={isFav ? "fill-amber-400 text-amber-400" : "text-[var(--vsc-fg-muted,#616161)]"}
               />
             </div>
             {isFav && (

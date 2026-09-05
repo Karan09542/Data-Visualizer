@@ -33,6 +33,8 @@ import {
   Moon,
   Info,
   ClipboardPaste,
+  Plus,
+  Minus,
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { useStore } from "../store/useStore";
@@ -126,6 +128,7 @@ interface WorkspaceSettings {
   | "synthwave-84";
   sidebarWidth?: number;
   isSidebarOpen?: boolean;
+  fontSize?: number;
   wordWrap?: "on" | "off";
 }
 
@@ -473,6 +476,9 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const isExecutable = useMemo(() => {
     return isTs || isJs || isPy;
   }, [isTs, isJs, isPy]);
+
+  // True when the tab is backed by the Monaco editor (so a caret exists).
+  const hasTextEditor = !isTodo && !isImg && !isSearch;
 
   // Input data check
   const getJsNodeInputData = (pData: any, nPath: string): any => {
@@ -1174,6 +1180,37 @@ declare const console: {
     Math.min(settings.sidebarWidth || 260, 640),
   );
 
+  // Editor zoom. Unset means "follow the responsive default", so a phone still
+  // starts a point smaller until the reader picks a size of their own.
+  const MIN_FONT_SIZE = 8;
+  const MAX_FONT_SIZE = 32;
+  const defaultFontSizeRef = useRef(13);
+  defaultFontSizeRef.current = isMobile ? 12 : 13;
+
+  const editorFontSize = Math.min(
+    MAX_FONT_SIZE,
+    Math.max(MIN_FONT_SIZE, settings.fontSize || defaultFontSizeRef.current),
+  );
+
+  // Stable so the keyboard shortcuts below can call it without stale state.
+  const changeFontSize = useCallback((delta: number) => {
+    setSettings((prev) => {
+      const next: WorkspaceSettings = { ...prev };
+      if (delta === 0) {
+        delete next.fontSize;
+      } else {
+        const base = prev.fontSize || defaultFontSizeRef.current;
+        next.fontSize = Math.min(32, Math.max(8, base + delta));
+      }
+      try {
+        localStorage.setItem("workspace_layout_settings", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
   const terminalInputRef = useRef<HTMLInputElement>(null);
   const currentPrompt = activePrompts[currentFilePath];
 
@@ -1209,6 +1246,19 @@ declare const console: {
       if ((e.altKey || e.ctrlKey || e.metaKey) && e.key === "`") {
         e.preventDefault();
         setTerminalState((prev) => (prev === "hidden" ? "normal" : "hidden"));
+      }
+      // Editor zoom: Ctrl/Cmd with + / - / 0
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          changeFontSize(1);
+        } else if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          changeFontSize(-1);
+        } else if (e.key === "0") {
+          e.preventDefault();
+          changeFontSize(0);
+        }
       }
       // Toggle Word Wrap: Alt + Z
       if (e.altKey && e.key.toLowerCase() === "z") {
@@ -1281,7 +1331,7 @@ declare const console: {
       contextmenu: true,
       lineNumbers: "on" as const,
       scrollBeyondLastLine: isMobile ? true : false,
-      fontSize: isMobile ? 12 : 13,
+      fontSize: editorFontSize,
       fontFamily: "Fira Code, SFMono-Regular, Consolas, Menlo, monospace",
       automaticLayout: true,
       tabSize: 2,
@@ -3116,28 +3166,42 @@ declare const console: {
             )}
         </div>
 
-        {/* Status bar */}
+        {/* Status bar - editor-only readouts, so tabs that render their own
+            workspace (todo / image / search) get no empty strip. */}
+        {hasTextEditor && (
         <div className="flex items-center justify-between gap-2 h-[22px] shrink-0 px-1 text-[11px] bg-[var(--vsc-statusbar)] border-t border-[var(--vsc-border)] text-[var(--vsc-fg-muted)] select-none">
           <div className="flex items-center gap-0.5 min-w-0">
-            <button
-              onClick={() => {
-                setTerminalState("normal");
-                setActiveTab("console");
-              }}
-              className="flex items-center gap-2 px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer shrink-0"
-              title="Show console output"
-            >
-              <span
-                className={`flex items-center gap-1 ${lastError ? "text-red-500" : ""}`}
+            {/* Console summary: only meaningful for runnable files, and the
+                panel is not worth a toggle on a phone-sized screen. */}
+            {isExecutable && !isMobile && (
+              <button
+                onClick={() => {
+                  if (terminalState === "hidden") {
+                    setTerminalState("normal");
+                    setActiveTab("console");
+                  } else {
+                    setTerminalState("hidden");
+                  }
+                }}
+                className={`flex items-center gap-2 px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer shrink-0 ${terminalState !== "hidden" ? "text-[var(--vsc-fg)]" : ""}`}
+                title={
+                  terminalState === "hidden"
+                    ? "Show panel (Ctrl+`)"
+                    : "Hide panel (Ctrl+`)"
+                }
               >
-                <X size={11} />
-                {lastError ? 1 : 0}
-              </span>
-              <span className="flex items-center gap-1">
-                <TerminalIcon size={11} />
-                {logCount}
-              </span>
-            </button>
+                <span
+                  className={`flex items-center gap-1 ${lastError ? "text-red-500" : ""}`}
+                >
+                  <X size={11} />
+                  {lastError ? 1 : 0}
+                </span>
+                <span className="flex items-center gap-1">
+                  <TerminalIcon size={11} />
+                  {logCount}
+                </span>
+              </button>
+            )}
             {isLoading && (
               <span className="flex items-center gap-1.5 px-1.5 text-[var(--vsc-accent)] shrink-0">
                 <Loader2 size={11} className="animate-spin" />
@@ -3150,19 +3214,52 @@ declare const console: {
           </div>
 
           <div className="flex items-center gap-0.5 shrink-0">
-            <button
-              onClick={() => {
-                setIsGoToLineOpen(true);
-                setGoToLineValue("");
-              }}
-              className="px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer whitespace-nowrap"
-              title="Go to Line (Ctrl+G)"
-            >
-              Ln {cursorPos.line}, Col {cursorPos.column}
-              {cursorPos.selected > 0 ? ` (${cursorPos.selected} sel)` : ""}
-            </button>
-            <span className="px-1.5 hidden lg:inline">Spaces: 2</span>
-            <span className="px-1.5 hidden xl:inline">UTF-8</span>
+            {hasTextEditor && !isMobile && (
+              <button
+                onClick={() => {
+                  setIsGoToLineOpen(true);
+                  setGoToLineValue("");
+                }}
+                className="px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer whitespace-nowrap"
+                title="Go to Line (Ctrl+G)"
+              >
+                Ln {cursorPos.line}, Col {cursorPos.column}
+                {cursorPos.selected > 0 ? ` (${cursorPos.selected} sel)` : ""}
+              </button>
+            )}
+            {hasTextEditor && (
+              <>
+                <span className="px-1.5 hidden lg:inline">Spaces: 2</span>
+                <span className="px-1.5 hidden xl:inline">UTF-8</span>
+              </>
+            )}
+            {/* Editor zoom */}
+            <span className="flex items-center shrink-0">
+              <button
+                onClick={() => changeFontSize(-1)}
+                disabled={editorFontSize <= MIN_FONT_SIZE}
+                className="px-1 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title="Decrease font size (Ctrl+-)"
+              >
+                <Minus size={11} />
+              </button>
+              <button
+                onClick={() => changeFontSize(0)}
+                className="px-1 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer tabular-nums whitespace-nowrap"
+                title="Reset font size (Ctrl+0)"
+              >
+                {editorFontSize}px
+              </button>
+              <button
+                onClick={() => changeFontSize(1)}
+                disabled={editorFontSize >= MAX_FONT_SIZE}
+                className="px-1 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title="Increase font size (Ctrl+=)"
+              >
+                <Plus size={11} />
+              </button>
+            </span>
+
             <button
               onClick={() => toggleWordWrap()}
               className="px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer whitespace-nowrap hidden sm:block"
@@ -3175,6 +3272,7 @@ declare const console: {
             </span>
           </div>
         </div>
+        )}
       </div>
       <ProxySettingsModal />
       <GlobalAlertModal />

@@ -1507,11 +1507,7 @@ export default function GuiEditorPanel() {
             >
               {/* Dynamic Header */}
               <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-widest px-3 py-2 bg-slate-50 dark:bg-[#0d1220]/80">
-                <span>
-                  {viewMode === "tree"
-                    ? "Tree Structure"
-                    : "Field Directory Path"}
-                </span>
+                <span>{viewMode === "tree" ? "Structure" : "Field"}</span>
                 <span>Actions</span>
               </div>
 
@@ -1540,10 +1536,7 @@ export default function GuiEditorPanel() {
                 return (
                   <div
                     key={field.path}
-                    style={{
-                      paddingLeft: `${depth * (isMobile ? 10 : 16) + 10}px`,
-                    }}
-                    className={`relative group flex flex-col pr-2 py-1.5 transition-colors text-slate-800 dark:text-slate-100 ${isEditing
+                    className={`relative group flex flex-col px-2 py-1.5 transition-colors text-slate-800 dark:text-slate-100 ${isEditing
                         ? "bg-blue-50/70 dark:bg-blue-500/5"
                         : "hover:bg-slate-100/70 dark:hover:bg-white/[0.03]"
                       }`}
@@ -1556,7 +1549,7 @@ export default function GuiEditorPanel() {
                           aria-hidden
                           className="absolute top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-800 pointer-events-none"
                           style={{
-                            left: `${d * (isMobile ? 10 : 16) + 14}px`,
+                            left: `${d * (isMobile ? 10 : 16) + 16}px`,
                           }}
                         />
                       ))}
@@ -1565,9 +1558,27 @@ export default function GuiEditorPanel() {
                     <div className="flex items-start justify-between gap-4">
                       {/* Left: Fields Details, Paths & Types */}
                       <div
-                        className={`flex-1 min-w-0 ${isEditing ? "" : "flex items-center gap-3"}`}
+                        className={`flex-1 min-w-0 ${isEditing ? "" : "grid items-center gap-2 sm:gap-3"}`}
+                        style={
+                          isEditing
+                            ? undefined
+                            : {
+                              gridTemplateColumns: isMobile
+                                ? "minmax(0,1fr) minmax(0,1fr)"
+                                : "minmax(0,1.25fr) 76px minmax(0,1fr)",
+                            }
+                        }
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="flex items-center gap-2 min-w-0"
+                          style={
+                            viewMode === "tree" && depth > 0
+                              ? {
+                                paddingLeft: `${depth * (isMobile ? 10 : 16)}px`,
+                              }
+                              : undefined
+                          }
+                        >
                           {/* Folder collapse chevron */}
                           {isContainer && viewMode === "tree" && (
                             <button
@@ -1659,7 +1670,20 @@ export default function GuiEditorPanel() {
                               title={isArrayChild ? "Array elements cannot be renamed" : "Click to rename field"}
                             >
                               <span className="truncate">
-                                {isArrayChild ? `#${field.keyName}` : (viewMode === "tree" ? field.keyName : field.path)}
+                                {isArrayChild ? (
+                                  `#${field.keyName}`
+                                ) : viewMode === "tree" ? (
+                                  field.keyName
+                                ) : (
+                                  <>
+                                    {field.keyName}
+                                    {field.parentPath && (
+                                      <span className="ml-1.5 font-normal text-slate-400 dark:text-slate-500">
+                                        {field.parentPath}
+                                      </span>
+                                    )}
+                                  </>
+                                )}
                               </span>
                               {!isArrayChild && (
                                 <Edit3
@@ -1669,28 +1693,28 @@ export default function GuiEditorPanel() {
                               )}
                             </span>
                           )}
+                        </div>
 
-                          {/* Field type badges */}
+                        {/* Type column */}
+                        {!isEditing && !isMobile && (
                           <span
-                            className={`text-[9px] font-semibold uppercase tracking-wide px-1 py-px rounded-[3px] shrink-0 ${field.type === "string"
-                                ? "text-amber-700 dark:text-amber-400 bg-amber-500/5 border-amber-500/20"
+                            className={`text-[10px] font-medium lowercase tracking-wide truncate ${field.type === "string"
+                                ? "text-amber-600 dark:text-amber-400/90"
                                 : field.type === "number"
-                                  ? "text-cyan-750 dark:text-cyan-400 bg-cyan-500/5 border-cyan-500/20"
+                                  ? "text-cyan-600 dark:text-cyan-400/90"
                                   : field.type === "boolean"
-                                    ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/5 border-emerald-500/20"
+                                    ? "text-emerald-600 dark:text-emerald-400/90"
                                     : field.type === "array"
-                                      ? "text-purple-700 dark:text-purple-400 bg-purple-500/5 border-purple-500/20"
-                                      : "text-indigo-700 dark:text-indigo-400 bg-indigo-500/5 border-indigo-500/20"
+                                      ? "text-purple-600 dark:text-purple-400/90"
+                                      : "text-indigo-600 dark:text-indigo-400/90"
                               }`}
                           >
                             {field.type}
                           </span>
-                        </div>
+                        )}
 
                         {/* Value: inline with the key, or below it while editing */}
-                        <div
-                          className={`text-xs min-w-0 ${isEditing ? "mt-2" : "flex-1"}`}
-                        >
+                        <div className="text-xs min-w-0">
                           {isEditing ? (
                             field.type === "string" ? (
                               <div

@@ -41,28 +41,24 @@ export const ProgrammingKeyboard: React.FC<ProgrammingKeyboardProps> = ({
   if (!isEnabled) return null;
 
   return (
-    <div className="flex flex-col bg-slate-100 dark:bg-[#0d1117] border-t border-slate-200 dark:border-slate-800 shadow-xl w-full select-none z-50">
+    <div className="flex flex-col bg-[var(--vsc-panel,#f8f8f8)] border-t border-[var(--vsc-border,#e5e5e5)] w-full select-none z-50">
       <SmartToolbar editor={editor} />
 
       {isVisible && (
         <div className="flex flex-col overflow-hidden">
-          <div className="flex items-center border-b border-slate-200 dark:border-slate-800 px-1 bg-white dark:bg-[#161b22] overflow-x-auto no-scrollbar touch-pan-x">
+          <div className="flex items-center border-b border-[var(--vsc-border,#e5e5e5)] px-1.5 bg-[var(--vsc-panel,#f8f8f8)] overflow-x-auto no-scrollbar touch-pan-x">
             <button
               onClick={() => setActiveCategory("Recent")}
-              className={`flex items-center gap-1 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                activeCategory === "Recent"
-                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-                  : "text-slate-600 dark:text-slate-400"
+              className={`flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors cursor-pointer border-b-2 ${
+                activeCategory === "Recent" ? "text-[var(--vsc-fg,#3b3b3b)] border-[var(--vsc-accent,#005fb8)]" : "text-[var(--vsc-fg-muted,#616161)] border-transparent hover:text-[var(--vsc-fg,#3b3b3b)]"
               }`}
             >
               <Clock size={14} /> Recent
             </button>
             <button
               onClick={() => setActiveCategory("Favorites")}
-              className={`flex items-center gap-1 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                activeCategory === "Favorites"
-                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-                  : "text-slate-600 dark:text-slate-400"
+              className={`flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors cursor-pointer border-b-2 ${
+                activeCategory === "Favorites" ? "text-[var(--vsc-fg,#3b3b3b)] border-[var(--vsc-accent,#005fb8)]" : "text-[var(--vsc-fg-muted,#616161)] border-transparent hover:text-[var(--vsc-fg,#3b3b3b)]"
               }`}
             >
               <Star size={14} /> Favorites
@@ -71,10 +67,8 @@ export const ProgrammingKeyboard: React.FC<ProgrammingKeyboardProps> = ({
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
-                className={`px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeCategory === cat
-                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400"
-                    : "text-slate-600 dark:text-slate-400"
+                className={`flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors cursor-pointer border-b-2 ${
+                  activeCategory === cat ? "text-[var(--vsc-fg,#3b3b3b)] border-[var(--vsc-accent,#005fb8)]" : "text-[var(--vsc-fg-muted,#616161)] border-transparent hover:text-[var(--vsc-fg,#3b3b3b)]"
                 }`}
               >
                 {cat}
@@ -83,19 +77,19 @@ export const ProgrammingKeyboard: React.FC<ProgrammingKeyboardProps> = ({
             <div className="flex-1" />
             <button
               onClick={() => setIsVisible(false)}
-              className="p-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              className="p-1.5 ml-1 rounded-[4px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] transition-colors cursor-pointer shrink-0"
               title="Close Assistant"
             >
               <X size={16} />
             </button>
           </div>
 
-          <div className="h-40 md:h-48 overflow-y-auto no-scrollbar bg-slate-50 dark:bg-[#0d1117]">
+          <div className="h-40 md:h-48 overflow-y-auto no-scrollbar bg-[var(--vsc-panel-body,#ffffff)]">
             {activeCategory === "Recent" ? (
               recentItems.length > 0 ? (
                 <SnippetPanel editor={editor} items={recentItems} />
               ) : (
-                <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+                <div className="flex items-center justify-center h-full text-[var(--vsc-fg-muted,#616161)] text-sm">
                   No recent items
                 </div>
               )
@@ -103,7 +97,7 @@ export const ProgrammingKeyboard: React.FC<ProgrammingKeyboardProps> = ({
               favoriteItems.length > 0 ? (
                 <SnippetPanel editor={editor} items={favoriteItems} />
               ) : (
-                <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+                <div className="flex items-center justify-center h-full text-[var(--vsc-fg-muted,#616161)] text-sm">
                   No favorite items
                 </div>
               )

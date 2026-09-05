@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import { usePyPackageStore } from '../store/usePyPackageStore';
+import { usePyPackageStore, cancelActiveInstalls } from '../store/usePyPackageStore';
 import lodashGet from 'lodash.get';
 import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionStore';
 import { buildVirtualFS, getVirtualPath } from './vfs';
@@ -52,8 +52,21 @@ export const SHARED_KEY = "shared_global_python_worker";
 
 export let currentExecutingPath: string | null = null;
 
-export const abortPyNode = (path: string, forceTerminate: boolean = false) => { 
+// Set while a run is aborting so the install phase can bail out between steps.
+export const pyAbortRequests: Record<string, boolean> = {};
+
+export const abortPyNode = (
+    path: string,
+    forceTerminate: boolean = false,
+    cancelInstalls: boolean = true,
+) => {
+    pyAbortRequests[path] = true;
     abortExecutionQueue(path);
+    if (cancelInstalls) {
+        try {
+            cancelActiveInstalls();
+        } catch {}
+    }
     try {
         useStore.getState().setActivePrompt(path, null);
     } catch {}
@@ -72,7 +85,8 @@ export const abortPyNode = (path: string, forceTerminate: boolean = false) => {
 
 export const executePyNode = async (path: string, codeToRun: string) => {
     // Safely abort any previous execution first to prevent concurrent overlapping state and solve execution sequence conflicts.
-    abortPyNode(path);
+    // Installs started elsewhere keep running - only a user stop cancels those.
+    abortPyNode(path, false, false);
 
     const startTime = performance.now();
     const store = useStore.getState();
@@ -117,6 +131,31 @@ export const executePyNode = async (path: string, codeToRun: string) => {
 
     setJsNodeLoading(path, true);
     setJsNodeError(path, null);
+
+    // Claim the shared worker for this path now: installation runs before
+    // execution starts, and Stop can only terminate the worker it owns.
+    delete pyAbortRequests[path];
+    currentExecutingPath = path;
+
+    // Clear the previous run's output before installing, so the installation
+    // logs written below survive instead of being wiped on execution start.
+    const sessionId = Date.now().toString() + Math.random().toString(36).substring(7);
+    if (store.autoClearLogs) {
+        await resetNodeSession(path, sessionId);
+    }
+
+    const bailIfAborted = async () => {
+        if (!pyAbortRequests[path]) return false;
+        delete pyAbortRequests[path];
+        await appendLogs(path, [{
+            type: "warn",
+            args: ["[Aborted] Execution stopped by user."],
+            time: new Date().toISOString()
+        }]).catch(() => {});
+        setJsNodeLoading(path, false);
+        if (currentExecutingPath === path) currentExecutingPath = null;
+        return true;
+    };
 
     // Analyze packages before execution
     const codeImports = detectImports(codeToRun);
@@ -192,6 +231,7 @@ export const executePyNode = async (path: string, codeToRun: string) => {
     if (missing.length > 0) {
       if (packageStore.autoInstallMissing) {
         for (const pkg of missing) {
+          if (await bailIfAborted()) return;
           const cleanPkg = pkg.toLowerCase();
           await appendLogs(path, [{
             type: "log",
@@ -199,6 +239,7 @@ export const executePyNode = async (path: string, codeToRun: string) => {
             time: new Date().toISOString()
           }]);
           const success = await packageStore.installPackage(cleanPkg, path);
+          if (await bailIfAborted()) return;
           if (!success) {
             setJsNodeError(path, `Auto-installation of missing dependency "${cleanPkg}" failed. Execution aborted.`);
             setJsNodeLoading(path, false);
@@ -216,12 +257,9 @@ export const executePyNode = async (path: string, codeToRun: string) => {
       }
     }
     
-    try {
-      const sessionId = Date.now().toString() + Math.random().toString(36).substring(7);
-      if (store.autoClearLogs) {
-          await resetNodeSession(path, sessionId);
-      }
+    if (await bailIfAborted()) return;
 
+    try {
       let worker = activePyWorkers[SHARED_KEY];
       if (!worker) {
           worker = new Worker(new URL('./pyWorker.ts', import.meta.url), { type: 'module' });

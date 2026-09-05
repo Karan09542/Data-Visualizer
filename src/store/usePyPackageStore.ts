@@ -22,6 +22,15 @@ export interface PyPackageStore {
   setShowMissingModal: (val: { isOpen: boolean; path: string; missingPackages: string[] } | null) => void;
 }
 
+// Installs in flight. Aborting execution terminates the shared worker, which
+// would otherwise leave these promises pending until their timeout fires.
+const activeInstallCancellers = new Set<() => void>();
+
+export function cancelActiveInstalls() {
+  for (const cancel of Array.from(activeInstallCancellers)) cancel();
+  activeInstallCancellers.clear();
+}
+
 // Spawns a temporary worker specifically for running a package installation if no worker exists
 async function runWorkerInstall(
   packageName: string, 
@@ -68,11 +77,19 @@ async function runWorkerInstall(
 
     function cleanup() {
       clearTimeout(timer);
+      activeInstallCancellers.delete(cancel);
       if (worker) {
         worker.removeEventListener("message", messageHandler);
         worker.removeEventListener("error", errorHandler);
       }
     }
+
+    function cancel() {
+      cleanup();
+      resolve({ success: false, version: "", error: "Cancelled" });
+    }
+
+    activeInstallCancellers.add(cancel);
 
     worker.addEventListener("message", messageHandler);
     worker.addEventListener("error", errorHandler);
@@ -231,6 +248,15 @@ export const usePyPackageStore = create<PyPackageStore>((set, get) => ({
 
       await get().loadRegistry();
       return true;
+    } else if (result.error === "Cancelled") {
+      set((state) => {
+        const copy = { ...state.activeInstallations };
+        delete copy[cleanName];
+        return { activeInstallations: copy };
+      });
+      await removeInstalledPackage(cleanName);
+      await get().loadRegistry();
+      return false;
     } else {
       set((state) => ({
         activeInstallations: {
