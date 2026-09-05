@@ -136,6 +136,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     }
   }, [shareSizeInfo.status]);
 
+  // The palette listens for Ctrl+J / Cmd+J, so the hint has to follow the OS
+  // rather than always showing the Mac glyph.
+  const modKeyLabel = useMemo(
+    () =>
+      typeof navigator !== "undefined" &&
+      /Mac|iPhone|iPad|iPod/.test(navigator.platform || "")
+        ? "⌘"
+        : "Ctrl+",
+    [],
+  );
+
   const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
   const [isBarcodeGeneratorOpen, setIsBarcodeGeneratorOpen] = useState(false);
   const [isQuickUtilsOpen, setIsQuickUtilsOpen] = useState(false);
@@ -928,16 +939,16 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
 
           <div className="flex items-center gap-1 xl:gap-4 lg:gap-2">
-            <div className="flex items-center space-x-2 border-r border-slate-200 dark:border-slate-800/80 pr-2 xl:pr-4 flex-shrink-0">
+            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
               <button
                 onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
-                className="group flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:via-indigo-500 hover:to-blue-500 text-white transition-all cursor-pointer text-xs font-bold shadow-sm shadow-purple-500/20 active:scale-95 border border-purple-400/30"
-                title="Open AI Command Palette (Ctrl+J)"
+                className="group flex items-center gap-1.5 p-1.5 px-2.5 rounded-md text-purple-600 dark:text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-all cursor-pointer text-xs font-semibold border border-purple-500/25 hover:-translate-y-px active:scale-95"
+                title={`Open AI Command Palette (${modKeyLabel}J)`}
               >
-                <Sparkles size={13} className="text-white group-hover:scale-110 transition-transform" />
-                <span className="truncate text-white font-black tracking-wide">Ask AI</span>
-                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-black/20 text-[9px] font-mono font-bold text-white/90 border border-white/20">
-                  ⌘J
+                <Sparkles size={14} className="group-hover:scale-110 transition-transform" />
+                <span>Ask AI</span>
+                <kbd className="hidden xl:inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/25 text-[9px] font-mono font-semibold">
+                  {modKeyLabel}J
                 </kbd>
               </button>
             </div>
@@ -969,10 +980,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${undoStack.length > 0
-                  ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
-                  }`}
+                className="p-1.5 rounded transition-colors text-slate-500 dark:text-slate-400 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 enabled:hover:text-slate-800 dark:enabled:hover:text-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
                 title="Undo (Ctrl+Z)"
               >
                 <Undo2 size={16} />
@@ -980,10 +988,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed border ${redoStack.length > 0
-                  ? "border-red-400 text-red-500 bg-red-500/10 hover:bg-red-500/20 shadow-sm"
-                  : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
-                  }`}
+                className="p-1.5 rounded transition-colors text-slate-500 dark:text-slate-400 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 enabled:hover:text-slate-800 dark:enabled:hover:text-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
                 title="Redo (Ctrl+Y)"
               >
                 <Redo2 size={16} />

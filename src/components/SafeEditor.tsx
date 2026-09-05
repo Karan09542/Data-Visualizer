@@ -143,6 +143,8 @@ function SafeEditor(props: EditorProps) {
     ? `path-${resolvedPath}`
     : `lang-${lang}-${componentId}`;
 
+  const keepCurrentModel = props.keepCurrentModel ?? !!props.path;
+
   const mergedOptions = React.useMemo(() => {
     const isMobile =
       typeof window !== "undefined" &&
@@ -194,6 +196,18 @@ function SafeEditor(props: EditorProps) {
 
   const handleOnMount = (editor: any, monaco: any) => {
     const model = editor.getModel();
+    // A retained model can outlive the value it was built from (another
+    // document loaded while no editor was mounted on this path). The library
+    // only pushes `value` into the model on later changes, never at creation
+    // time when it reuses an existing model, so reconcile once here.
+    if (
+      model &&
+      keepCurrentModel &&
+      typeof props.value === "string" &&
+      model.getValue() !== props.value
+    ) {
+      model.setValue(props.value);
+    }
     if (model && lang && model.getLanguageId?.() !== lang) {
       try {
         monaco.editor.setModelLanguage(model, lang);
@@ -248,6 +262,7 @@ function SafeEditor(props: EditorProps) {
       <MonacoEditor
         key={activeKey}
         {...props}
+        keepCurrentModel={keepCurrentModel}
         path={resolvedPath}
         options={mergedOptions}
         beforeMount={handleBeforeMount}

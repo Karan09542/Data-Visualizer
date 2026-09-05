@@ -1242,10 +1242,12 @@ declare const console: {
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Toggle Terminal: Alt + `, Ctrl + `, Cmd + `
+      // Toggle Terminal: Alt + `, Ctrl + `, Cmd + ` - editor tabs only
       if ((e.altKey || e.ctrlKey || e.metaKey) && e.key === "`") {
         e.preventDefault();
-        setTerminalState((prev) => (prev === "hidden" ? "normal" : "hidden"));
+        if (latestRefs.current.hasTextEditor) {
+          setTerminalState((prev) => (prev === "hidden" ? "normal" : "hidden"));
+        }
       }
       // Editor zoom: Ctrl/Cmd with + / - / 0
       if (e.ctrlKey || e.metaKey) {
@@ -1600,6 +1602,7 @@ declare const console: {
     onExecute,
     onClose,
     isExecutable,
+    hasTextEditor,
     updateNodeValue,
     markWorkspaceTabDirty,
     currentFilePath,
@@ -1615,6 +1618,7 @@ declare const console: {
       onExecute,
       onClose,
       isExecutable,
+      hasTextEditor,
       updateNodeValue,
       markWorkspaceTabDirty,
       currentFilePath,
@@ -1748,23 +1752,27 @@ declare const console: {
             </div>
           </div>
 
-          {/* Command centre: shows the open file, opens Go to Line */}
-          <button
-            onClick={() => {
-              setIsGoToLineOpen(true);
-              setGoToLineValue("");
-            }}
-            title={`${currentFilePath} - Go to Line (Ctrl+G)`}
-            className="hidden lg:flex items-center justify-center gap-2 h-[26px] flex-[0_1_440px] min-w-0 px-3 mx-2 rounded-[6px] border border-[var(--vsc-border-strong)] bg-[var(--vsc-input)] text-[var(--vsc-fg-muted)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
-          >
-            {getTabIcon(currentFilePath, true)}
-            <span className="shrink-0 text-[12px] text-[var(--vsc-fg)]">
-              {activeCleanName}
-            </span>
-            <span className="truncate min-w-0 text-[11px] text-[var(--vsc-fg-muted)]">
-              {currentFilePath}
-            </span>
-          </button>
+          {/* Command centre: shows the open file, opens Go to Line. Go to Line
+              is its only action, so tabs that render their own workspace
+              (todo / image / search) leave the slot empty. */}
+          {hasTextEditor && (
+            <button
+              onClick={() => {
+                setIsGoToLineOpen(true);
+                setGoToLineValue("");
+              }}
+              title={`${currentFilePath} - Go to Line (Ctrl+G)`}
+              className="hidden lg:flex items-center justify-center gap-2 h-[26px] flex-[0_1_440px] min-w-0 px-3 mx-2 rounded-[6px] border border-[var(--vsc-border-strong)] bg-[var(--vsc-input)] text-[var(--vsc-fg-muted)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
+            >
+              {getTabIcon(currentFilePath, true)}
+              <span className="shrink-0 text-[12px] text-[var(--vsc-fg)]">
+                {activeCleanName}
+              </span>
+              <span className="truncate min-w-0 text-[11px] text-[var(--vsc-fg-muted)]">
+                {currentFilePath}
+              </span>
+            </button>
+          )}
 
           <div className="flex items-center justify-end gap-1 flex-1 basis-0">
             {/* Run Button (Executable files only) */}
@@ -1814,39 +1822,48 @@ declare const console: {
               </div>
             )}
 
-            {/* Editor actions - folded into the settings menu on phones */}
-            <button
-              onClick={() => {
-                setIsGoToLineOpen(true);
-                setGoToLineValue("");
-              }}
-              className={`${iconBtn} hidden sm:block text-xs font-mono font-semibold`}
-              title="Go to line (Ctrl+G)"
-            >
-              Line
-            </button>
+            {/* Editor actions - folded into the settings menu on phones, and
+                hidden entirely on tabs that render their own workspace
+                (todo / image / search) since there is no caret or text. */}
+            {hasTextEditor && (
+              <>
+                <button
+                  onClick={() => {
+                    setIsGoToLineOpen(true);
+                    setGoToLineValue("");
+                  }}
+                  className={`${iconBtn} hidden sm:block text-xs font-mono font-semibold`}
+                  title="Go to line (Ctrl+G)"
+                >
+                  Line
+                </button>
 
-            <button
-              onClick={handleFormatDocument}
-              className={`${iconBtn} hidden sm:block text-xs font-semibold`}
-              title="Format Document (Shift+Alt+F)"
-            >
-              Format
-            </button>
+                <button
+                  onClick={handleFormatDocument}
+                  className={`${iconBtn} hidden sm:block text-xs font-semibold`}
+                  title="Format Document (Shift+Alt+F)"
+                >
+                  Format
+                </button>
 
-            <button
-              onClick={handleCopyContents}
-              className={`${iconBtn} hidden sm:flex items-center justify-center min-w-[28px]`}
-              title="Copy Contents"
-            >
-              {copied ? (
-                <Check size={14} className="text-emerald-500" />
-              ) : (
-                <Copy size={14} />
-              )}
-            </button>
+                <button
+                  onClick={handleCopyContents}
+                  className={`${iconBtn} hidden sm:flex items-center justify-center min-w-[28px]`}
+                  title="Copy Contents"
+                >
+                  {copied ? (
+                    <Check size={14} className="text-emerald-500" />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                </button>
+              </>
+            )}
 
-            {/* Advanced Minimap/Editor Config */}
+            {/* Advanced Minimap/Editor Config - every entry acts on the
+                Monaco editor, so tabs that render their own workspace
+                (todo / image / search) never show it. */}
+            {hasTextEditor && (
             <div className="relative shrink-0">
               <button
                 ref={minimapBtnRef}
@@ -2107,6 +2124,7 @@ declare const console: {
                 </div>
               )}
             </div>
+            )}
 
             <div className="w-px h-5 bg-[var(--vsc-border)] mx-0.5" />
 
@@ -2121,6 +2139,9 @@ declare const console: {
               <PanelLeft size={15} />
             </button>
 
+            {/* The console/result panel is kept hidden on todo / image /
+                search tabs, so the toggle would be a no-op there. */}
+            {hasTextEditor && (
             <button
               onClick={() =>
                 setTerminalState(terminalState === "hidden" ? "normal" : "hidden")
@@ -2134,6 +2155,7 @@ declare const console: {
                 <PanelRight size={15} />
               )}
             </button>
+            )}
 
             <button
               onClick={onClose}
