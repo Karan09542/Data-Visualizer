@@ -360,7 +360,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
 
   if (!payload) {
     return (
-      <div className="flex items-center justify-center p-8 text-neutral-400 italic text-xs bg-neutral-900 rounded-lg border border-neutral-800">
+      <div className="flex items-center justify-center p-8 text-[var(--vsc-fg-muted)] italic text-xs bg-[var(--vsc-panel-body)] rounded-[4px] border border-[var(--vsc-border)]">
         <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin text-indigo-500" />
         Processing plot representation...
       </div>
@@ -392,24 +392,24 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
       id={inFullscreen ? "matplotlib-viewer-fullscreen" : "matplotlib-viewer-root"}
       className={
         inFullscreen
-          ? "fixed inset-0 z-[9999999] bg-[#070709] flex flex-col w-screen h-screen m-0 p-0 overflow-hidden font-sans select-none text-neutral-200 animate-in fade-in duration-150"
-          : "my-3 bg-[#111113] border border-[#222225] rounded-lg overflow-hidden shadow-lg flex flex-col w-full max-w-[620px] font-sans select-none text-neutral-200"
+          ? "fixed inset-0 z-[9999999] bg-[var(--vsc-editor)] flex flex-col w-screen h-screen m-0 p-0 overflow-hidden font-sans select-none text-[var(--vsc-fg)] animate-in fade-in duration-150"
+          : "my-3 bg-[var(--vsc-panel-body)] border border-[var(--vsc-border)] rounded-[4px] overflow-hidden flex flex-col w-full max-w-[620px] font-sans select-none text-[var(--vsc-fg)]"
       }
     >
       {/* 1. Header Toolbar */}
       <div
-        className={`flex items-center justify-between bg-[#0e0e10] border-b border-[#212124] ${
+        className={`flex items-center justify-between bg-[var(--vsc-panel)] border-b border-[var(--vsc-border)] ${
           inFullscreen ? "h-11 px-4" : "h-10 px-3 py-1.5"
         }`}
       >
         {/* Left: Plot symbol and title */}
         <div className="flex items-center gap-2">
-          <LineChart className="w-3.5 h-3.5 text-neutral-400" />
+          <LineChart className="w-3.5 h-3.5 text-[var(--vsc-fg-muted)]" />
           <span
             className={`font-semibold tracking-wide ${
               inFullscreen
-                ? "text-sm text-neutral-200"
-                : "text-xs text-neutral-300"
+                ? "text-sm text-[var(--vsc-fg)]"
+                : "text-xs text-[var(--vsc-fg)]"
             }`}
           >
             Plot Viewer
@@ -423,13 +423,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-zoom-in"
               onClick={handleZoomIn}
-              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none cursor-pointer"
+              className="p-1.5 rounded text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] active:scale-95 transition-all outline-none cursor-pointer"
               aria-label="Zoom In"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[#0b0b0c] text-neutral-200 text-[10px] rounded border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
-              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[var(--vsc-widget)] text-[var(--vsc-fg)] text-[10px] rounded border border-[var(--vsc-border-strong)] opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
+              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[var(--vsc-widget)] border-t border-l border-[var(--vsc-border-strong)] rotate-45" />
               <span className="relative z-10 font-medium">Zoom In (Ctrl++)</span>
             </div>
           </div>
@@ -439,13 +439,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-zoom-out"
               onClick={handleZoomOut}
-              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none cursor-pointer"
+              className="p-1.5 rounded text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] active:scale-95 transition-all outline-none cursor-pointer"
               aria-label="Zoom Out"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[#0b0b0c] text-neutral-200 text-[10px] rounded border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
-              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[var(--vsc-widget)] text-[var(--vsc-fg)] text-[10px] rounded border border-[var(--vsc-border-strong)] opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
+              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[var(--vsc-widget)] border-t border-l border-[var(--vsc-border-strong)] rotate-45" />
               <span className="relative z-10 font-medium">Zoom Out (Ctrl+-)</span>
             </div>
           </div>
@@ -455,19 +455,19 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-fit-canvas"
               onClick={handleReset}
-              className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800/80 active:scale-95 transition-all outline-none cursor-pointer"
+              className="p-1.5 rounded text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] active:scale-95 transition-all outline-none cursor-pointer"
               aria-label="Reset View"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[#0b0b0c] text-neutral-200 text-[10px] rounded border border-neutral-800 opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
-              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[#0b0b0c] border-t border-l border-neutral-800 rotate-45" />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-[var(--vsc-widget)] text-[var(--vsc-fg)] text-[10px] rounded border border-[var(--vsc-border-strong)] opacity-0 group-hover:opacity-100 transition-all duration-150 pointer-events-none whitespace-nowrap z-50 shadow-xl flex flex-col items-center">
+              <div className="absolute -top-[4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-[var(--vsc-widget)] border-t border-l border-[var(--vsc-border-strong)] rotate-45" />
               <span className="relative z-10 font-medium">Reset View & Pan (Ctrl+0)</span>
             </div>
           </div>
 
           {/* Live Zoom scale indicator value style */}
-          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-neutral-500 select-none">
+          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-[var(--vsc-fg-muted)] select-none">
             {Math.round(zoom * 100)}%
           </span>
         </div>
@@ -478,14 +478,14 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
           <button
             id="btn-header-fullscreen"
             onClick={handleToggleFullscreen}
-            className="h-7 w-7 rounded bg-[#202023] hover:bg-[#28282b] text-neutral-200 hover:text-white border border-[#303034]/60 shadow transition-all duration-150 flex items-center justify-center select-none outline-none active:scale-95 cursor-pointer"
+            className="h-7 w-7 rounded bg-[var(--vsc-input)] hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg)] hover:text-[var(--vsc-fg)] border border-[var(--vsc-border-strong)] shadow transition-all duration-150 flex items-center justify-center select-none outline-none active:scale-95 cursor-pointer"
             title={inFullscreen ? "Exit Fullscreen (Esc)" : "Fullscreen (F)"}
             aria-label={inFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           >
             {inFullscreen ? (
-              <Minimize2 className="w-3.5 h-3.5 text-neutral-300" />
+              <Minimize2 className="w-3.5 h-3.5 text-[var(--vsc-fg)]" />
             ) : (
-              <Maximize2 className="w-3.5 h-3.5 text-neutral-300" />
+              <Maximize2 className="w-3.5 h-3.5 text-[var(--vsc-fg)]" />
             )}
           </button>
 
@@ -494,10 +494,10 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <button
               id="btn-export-dropdown"
               onClick={() => setShowFormatsDropdown(!showFormatsDropdown)}
-              className="h-7 px-2.5 rounded bg-[#202023] hover:bg-[#28282b] text-neutral-100 border border-[#303034]/60 shadow transition-all duration-150 flex items-center justify-center gap-1 font-semibold text-[10px] select-none outline-none active:scale-95 cursor-pointer"
+              className="h-7 px-2.5 rounded bg-[var(--vsc-input)] hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg)] border border-[var(--vsc-border-strong)] shadow transition-all duration-150 flex items-center justify-center gap-1 font-semibold text-[10px] select-none outline-none active:scale-95 cursor-pointer"
             >
               <span>Export</span>
-              <ChevronDown className="w-3 h-3 text-neutral-400" />
+              <ChevronDown className="w-3 h-3 text-[var(--vsc-fg-muted)]" />
             </button>
 
             {showFormatsDropdown && (
@@ -506,17 +506,17 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
                   className="fixed inset-0 z-40"
                   onClick={() => setShowFormatsDropdown(false)}
                 />
-                <div className="absolute right-0 mt-2 w-52 bg-neutral-950 border border-neutral-800 rounded shadow-2xl py-1 z-50 text-neutral-200 animate-in fade-in duration-100">
-                  <div className="px-3 py-1 text-[9px] text-neutral-500 uppercase tracking-wider font-extrabold">
+                <div className="absolute right-0 mt-2 w-52 bg-[var(--vsc-widget)] border border-[var(--vsc-border-strong)] rounded shadow-2xl py-1 z-50 text-[var(--vsc-fg)] animate-in fade-in duration-100">
+                  <div className="px-3 py-1 text-[9px] text-[var(--vsc-fg-muted)] uppercase tracking-wider font-extrabold">
                     Download Options
                   </div>
 
                   {payload.svg && (
                     <button
                       onClick={() => handleDownload("svg")}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition cursor-pointer"
+                      className="w-full text-left px-3 py-1.5 hover:bg-[var(--vsc-hover)] flex items-center justify-between text-[11px] transition cursor-pointer"
                     >
-                      <span className="flex items-center gap-2 font-medium text-neutral-200">
+                      <span className="flex items-center gap-2 font-medium text-[var(--vsc-fg)]">
                         <FileText className="w-3.5 h-3.5 text-emerald-400" />
                         Save as Vector SVG
                       </span>
@@ -528,13 +528,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
 
                   <button
                     onClick={() => handleDownload("png")}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition cursor-pointer"
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--vsc-hover)] flex items-center justify-between text-[11px] transition cursor-pointer"
                   >
-                    <span className="flex items-center gap-2 font-medium text-neutral-200">
+                    <span className="flex items-center gap-2 font-medium text-[var(--vsc-fg)]">
                       <Image className="w-3.5 h-3.5 text-sky-400" />
                       Save as PNG Image
                     </span>
-                    <span className="text-[8px] bg-neutral-900 text-neutral-500 px-1 py-0.2 rounded border border-neutral-800 font-bold">
+                    <span className="text-[8px] bg-[var(--vsc-input)] text-[var(--vsc-fg-muted)] px-1 py-0.2 rounded border border-[var(--vsc-border-strong)] font-bold">
                       300dpi
                     </span>
                   </button>
@@ -542,9 +542,9 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
                   {payload.jpeg && (
                     <button
                       onClick={() => handleDownload("jpeg")}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition cursor-pointer"
+                      className="w-full text-left px-3 py-1.5 hover:bg-[var(--vsc-hover)] flex items-center justify-between text-[11px] transition cursor-pointer"
                     >
-                      <span className="flex items-center gap-2 font-medium text-neutral-200">
+                      <span className="flex items-center gap-2 font-medium text-[var(--vsc-fg)]">
                         <Image className="w-3.5 h-3.5 text-amber-500" />
                         Save as JPEG Image
                       </span>
@@ -554,13 +554,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
                   {payload.pdf && (
                     <button
                       onClick={() => handleDownload("pdf")}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[#161618] flex items-center justify-between text-[11px] transition cursor-pointer"
+                      className="w-full text-left px-3 py-1.5 hover:bg-[var(--vsc-hover)] flex items-center justify-between text-[11px] transition cursor-pointer"
                     >
-                      <span className="flex items-center gap-2 font-medium text-neutral-200">
+                      <span className="flex items-center gap-2 font-medium text-[var(--vsc-fg)]">
                         <FileText className="w-3.5 h-3.5 text-rose-400" />
                         Save as printable PDF
                       </span>
-                      <span className="text-[8px] bg-neutral-900 text-slate-400 px-1 py-0.2 rounded border border-neutral-800 font-extrabold">
+                      <span className="text-[8px] bg-[var(--vsc-input)] text-slate-400 px-1 py-0.2 rounded border border-[var(--vsc-border-strong)] font-extrabold">
                         PDF
                       </span>
                     </button>
@@ -580,7 +580,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
         onMouseUp={handleMouseUpOrLeave}
         onMouseLeave={handleMouseUpOrLeave}
         onDoubleClick={handleReset}
-        className={`relative flex items-center justify-center bg-[#070708] overflow-hidden select-none transition-all ${
+        className={`relative flex items-center justify-center bg-[var(--vsc-editor)] overflow-hidden select-none transition-all ${
           inFullscreen
             ? "flex-1 w-full h-full min-h-0 p-6"
             : "p-3.5 min-h-[250px] md:min-h-[280px] max-h-[320px]"
@@ -589,7 +589,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
       >
         {/* Soft grid/dots background accent with subtle opacity */}
         <div
-          className={`absolute inset-0 bg-[#060607] bg-[radial-gradient(#1e1e24_1px,transparent_1px)] pointer-events-none opacity-30 ${
+          className={`absolute inset-0 bg-[var(--vsc-editor)] bg-[radial-gradient(var(--vsc-border)_1px,transparent_1px)] pointer-events-none opacity-30 ${
             inFullscreen ? "bg-[size:24px_24px]" : "bg-[size:18px_18px]"
           }`}
         />
@@ -604,7 +604,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
                 ? "none"
                 : "transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
-          className={`relative block bg-white rounded shadow-2xl border border-neutral-200 select-none pointer-events-none flex items-center justify-center transition-colors ${
+          className={`relative block bg-white rounded-[3px] shadow-[0_2px_12px_rgba(0,0,0,0.35)] border border-neutral-200 select-none pointer-events-none flex items-center justify-center transition-colors ${
             inFullscreen
               ? "max-w-[94vw] max-h-[82vh] w-auto h-auto p-4 rounded-lg hover:border-neutral-300"
               : "w-full max-w-[420px] aspect-[4/3] max-h-[270px] p-2 hover:border-neutral-300"
@@ -626,7 +626,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
 
       {/* 3. Footer Bar: Metadata Specifications */}
       <div
-        className={`flex items-center justify-between px-3 bg-[#0e0e10] border-t border-[#212124] text-[10px] font-mono text-neutral-400 ${
+        className={`flex items-center justify-between px-3 bg-[var(--vsc-panel)] border-t border-[var(--vsc-border)] text-[10px] font-mono text-[var(--vsc-fg-muted)] ${
           inFullscreen ? "h-9 px-4 text-xs" : "h-8"
         }`}
       >
@@ -636,22 +636,22 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             onClick={() => setActiveFormat("svg")}
             className={`px-1.5 py-0.5 rounded text-[9px] transition cursor-pointer ${
               activeFormat === "svg"
-                ? "bg-neutral-800 text-neutral-100 font-bold"
-                : "hover:text-neutral-200"
+                ? "bg-[var(--vsc-accent)] text-[var(--vsc-accent-fg)] font-semibold"
+                : "hover:text-[var(--vsc-fg)]"
             }`}
             title="Switch display to infinite SVG vectors"
           >
             SVG
           </button>
 
-          <span className="text-neutral-700/80 text-[9px] select-none">|</span>
+          <span className="text-[var(--vsc-border-strong)] text-[9px] select-none">|</span>
 
           <button
             onClick={() => setActiveFormat("png")}
             className={`px-1.5 py-0.5 rounded text-[9px] transition cursor-pointer ${
               activeFormat === "png"
-                ? "bg-neutral-800 text-neutral-100 font-bold"
-                : "hover:text-neutral-200"
+                ? "bg-[var(--vsc-accent)] text-[var(--vsc-accent-fg)] font-semibold"
+                : "hover:text-[var(--vsc-fg)]"
             }`}
             title="Switch display to exact High-Res standard PNG output"
           >
@@ -661,7 +661,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
 
         {/* In Fullscreen mode: show handy navigation hints */}
         {inFullscreen && (
-          <div className="hidden sm:flex items-center gap-2.5 text-neutral-500 text-[11px]">
+          <div className="hidden sm:flex items-center gap-2.5 text-[var(--vsc-fg-muted)] text-[11px]">
             <span>Drag to Pan</span>
             <span>•</span>
             <span>Scroll/Pinch to Zoom</span>
@@ -670,7 +670,7 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
             <span>•</span>
             <span>
               Press{" "}
-              <kbd className="text-neutral-300 bg-neutral-900 px-1 py-0.2 rounded border border-neutral-800">
+              <kbd className="text-[var(--vsc-fg)] bg-[var(--vsc-input)] px-1 py-0.2 rounded border border-[var(--vsc-border-strong)]">
                 Esc
               </kbd>{" "}
               to Exit
@@ -681,13 +681,13 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
         {/* Right metadata log values */}
         <div className="flex items-center gap-2">
           <span>800×600</span>
-          <span className="text-neutral-700/80 select-none">|</span>
+          <span className="text-[var(--vsc-border-strong)] select-none">|</span>
           <span className="flex items-center gap-1 text-[9px]">
-            <Layers className="w-2.5 h-2.5 text-neutral-500" />
+            <Layers className="w-2.5 h-2.5 text-[var(--vsc-fg-muted)]" />
             {activeFormat === "svg" ? "Vector" : "Grid (300dpi)"}
           </span>
-          <span className="text-neutral-700/80 select-none">|</span>
-          <span className="font-semibold text-neutral-300">
+          <span className="text-[var(--vsc-border-strong)] select-none">|</span>
+          <span className="font-semibold text-[var(--vsc-fg)]">
             {getFileSizeString()}
           </span>
         </div>
@@ -699,19 +699,19 @@ export function MatplotlibPlotViewer({ imageData }: MatplotlibPlotViewerProps) {
     return (
       <>
         {/* Inline placeholder while fullscreen view is active */}
-        <div className="my-3 p-3 bg-[#111113] border border-[#222225] rounded-lg text-xs text-neutral-400 flex items-center justify-between shadow">
+        <div className="my-3 p-3 bg-[var(--vsc-panel-body)] border border-[var(--vsc-border)] rounded-[4px] text-xs text-[var(--vsc-fg-muted)] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <LineChart className="w-3.5 h-3.5 text-neutral-400" />
-            <span className="text-neutral-300 font-medium">
+            <LineChart className="w-3.5 h-3.5 text-[var(--vsc-fg-muted)]" />
+            <span className="text-[var(--vsc-fg)] font-medium">
               Plot Viewer is active in Fullscreen
             </span>
           </div>
           <button
             onClick={handleToggleFullscreen}
-            className="h-7 w-7 rounded bg-[#202023] hover:bg-[#28282b] text-neutral-200 hover:text-white border border-[#303034]/60 flex items-center justify-center transition-colors cursor-pointer"
+            className="h-7 w-7 rounded bg-[var(--vsc-input)] hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg)] hover:text-[var(--vsc-fg)] border border-[var(--vsc-border-strong)] flex items-center justify-center transition-colors cursor-pointer"
             title="Exit Fullscreen (Esc)"
           >
-            <Minimize2 className="w-3.5 h-3.5 text-neutral-300" />
+            <Minimize2 className="w-3.5 h-3.5 text-[var(--vsc-fg)]" />
           </button>
         </div>
 

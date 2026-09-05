@@ -1,15 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Sticker, 
-  ImagePlus, 
-  UploadCloud, 
-  Download, 
-  Settings, 
-  Palette, 
-  Image as ImageIcon, 
-  Loader2, 
-  ZoomIn, 
-  ZoomOut, 
+import {
+  Sticker,
+  ImagePlus,
+  UploadCloud,
+  Download,
+  Settings,
+  Palette,
+  Image as ImageIcon,
+  Loader2,
+  ZoomIn,
+  ZoomOut,
   RotateCcw,
   Crop,
   Square,
@@ -79,15 +79,15 @@ export function StickerMakerUtil() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [originalImage, setOriginalImage] = useState<HTMLImageElement | null>(null);
   const [maskImageData, setMaskImageData] = useState<ImageData | null>(null);
-  
+
   const [modelId, setModelId] = useState<'ormbg' | 'u2netp'>('ormbg');
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   const [strokeWidth, setStrokeWidth] = useState<number>(10);
   const [strokeColor, setStrokeColor] = useState<string>('#ffffff');
   const [patternImage, setPatternImage] = useState<HTMLImageElement | null>(null);
   const [patternScale, setPatternScale] = useState<number>(1);
-  
+
   const [selectionTool, setSelectionTool] = useState<SelectionTool>('full');
   const [selection, setSelection] = useState<SelectionData>(null);
   const [isDrawingSelection, setIsDrawingSelection] = useState(false);
@@ -205,8 +205,8 @@ export function StickerMakerUtil() {
         lastPinchCenterRef.current = center;
       }
     };
-    const onTouchEnd = () => { 
-      lastPinchDistRef.current = null; 
+    const onTouchEnd = () => {
+      lastPinchDistRef.current = null;
       lastPinchCenterRef.current = null;
     };
 
@@ -256,7 +256,7 @@ export function StickerMakerUtil() {
     e.stopPropagation();
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch (_) { }
     setIsResizingSplitter(true);
     isResizingSplitterRef.current = true;
     dragSplitterStartRef.current = {
@@ -341,7 +341,7 @@ export function StickerMakerUtil() {
     setHoverPoint(null);
     setIsNearStart(false);
     setPan({ x: 0, y: 0 });
-    
+
     const img = new Image();
     img.onload = () => {
       setOriginalImage(img);
@@ -449,11 +449,11 @@ export function StickerMakerUtil() {
     }
     const isMiddleClick = e.button === 1;
     const isBackgroundClick = e.target === previewContainerRef.current || (e.target as HTMLElement)?.classList.contains('pointer-events-none');
-    
+
     if (isMiddleClick || isSpacePressed || isBackgroundClick || maskImageData || selectionTool === 'full' || selectionTool === 'pan') {
       try {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch (_) {}
+      } catch (_) { }
       startPan(e.clientX, e.clientY, e.pointerId);
     }
   };
@@ -473,7 +473,7 @@ export function StickerMakerUtil() {
     if (isPanning) {
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch (_) {}
+      } catch (_) { }
       setIsPanning(false);
     }
   };
@@ -485,7 +485,7 @@ export function StickerMakerUtil() {
     if (e.button === 1 || isSpacePressed || selectionTool === 'full' || selectionTool === 'pan') {
       try {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch (_) {}
+      } catch (_) { }
       startPan(e.clientX, e.clientY, e.pointerId);
       return;
     }
@@ -557,7 +557,7 @@ export function StickerMakerUtil() {
     // Square and Circle click-and-drag
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch (_) { }
 
     setIsDrawingSelection(true);
     setDrawStartPoint(pt);
@@ -642,7 +642,7 @@ export function StickerMakerUtil() {
     if (isPanning) {
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch (_) {}
+      } catch (_) { }
       setIsPanning(false);
       return;
     }
@@ -651,7 +651,7 @@ export function StickerMakerUtil() {
     if (!isDrawingSelection) return;
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch (_) { }
     setIsDrawingSelection(false);
     setDrawStartPoint(null);
 
@@ -708,7 +708,7 @@ export function StickerMakerUtil() {
       alert('Please select a specific portion of the image first using the selection tool.');
       return;
     }
-    
+
     setIsProcessing(true);
     try {
       let cropX = 0;
@@ -835,13 +835,13 @@ export function StickerMakerUtil() {
 
   const renderSticker = () => {
     if (!maskImageData || !canvasRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d')!;
-    
+
     let outW = maskImageData.width;
     let outH = maskImageData.height;
-    
+
     if (sizeMode === 'small') {
       const scale = Math.min(512 / outW, 512 / outH);
       outW *= scale; outH *= scale;
@@ -853,16 +853,16 @@ export function StickerMakerUtil() {
       outW = customWidth;
       outH *= scale;
     }
-    
+
     outW = Math.round(outW);
     outH = Math.round(outH);
-    
+
     const maskCanvas = document.createElement('canvas');
     maskCanvas.width = maskImageData.width;
     maskCanvas.height = maskImageData.height;
     const mCtx = maskCanvas.getContext('2d')!;
     mCtx.putImageData(maskImageData, 0, 0);
-    
+
     const resizedCanvas = document.createElement('canvas');
     resizedCanvas.width = outW;
     resizedCanvas.height = outH;
@@ -870,38 +870,38 @@ export function StickerMakerUtil() {
     rCtx.imageSmoothingEnabled = true;
     rCtx.imageSmoothingQuality = 'high';
     rCtx.drawImage(maskCanvas, 0, 0, outW, outH);
-    
+
     const padding = strokeWidth * 2;
     canvas.width = outW + padding;
     canvas.height = outH + padding;
-    
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Extract alpha values from the resized mask for contouring
     const resizedMaskData = rCtx.getImageData(0, 0, outW, outH);
     const alphaValues = new Float32Array(outW * outH);
     for (let i = 0, j = 3; i < outW * outH; ++i, j += 4) {
       alphaValues[i] = resizedMaskData.data[j];
     }
-    
+
     // Use D3 to find contours for the white die-cut bleed border
     const contours = d3.contours()
       .size([outW, outH])
       .thresholds([128]) // 50% opacity threshold
       (alphaValues as unknown as number[]);
-      
+
     // Set up D3 geoPath to render to canvas
     const pathRenderer = d3.geoPath().context(ctx);
-    
+
     ctx.save();
     ctx.translate(strokeWidth, strokeWidth);
-    
+
     // Render the contour as a stroke/bleed border
     if (contours.length > 0) {
       ctx.beginPath();
       // Only one contour multipolygon should be generated for the threshold
-      pathRenderer(contours[0]); 
-      
+      pathRenderer(contours[0]);
+
       // Setup the fill/stroke style
       if (patternImage) {
         const pattern = ctx.createPattern(patternImage, 'repeat');
@@ -920,10 +920,10 @@ export function StickerMakerUtil() {
         ctx.fillStyle = strokeColor;
         ctx.strokeStyle = strokeColor;
       }
-      
+
       // Fill the inside shape
       ctx.fill();
-      
+
       // Expand boundary path outwards by fixed padding
       if (strokeWidth > 0) {
         ctx.lineWidth = strokeWidth * 2;
@@ -932,7 +932,7 @@ export function StickerMakerUtil() {
         ctx.stroke();
       }
     }
-    
+
     // Draw masked cut-out image on top
     ctx.drawImage(resizedCanvas, 0, 0);
     ctx.restore();
@@ -1023,7 +1023,7 @@ export function StickerMakerUtil() {
   };
 
   return (
-    <div 
+    <div
       ref={rootContainerRef}
       className="custom-dropzone relative flex h-full w-full bg-white dark:bg-[#0c0f16] flex-col md:flex-row overflow-hidden"
       onDragEnter={handleDragEnter}
@@ -1031,7 +1031,7 @@ export function StickerMakerUtil() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div 
+      <div
         className="w-full border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] p-4 flex flex-col gap-4 overflow-y-auto shrink-0 order-3 md:order-1"
         style={{
           height: isMobileView ? `${mobilePanelHeight}px` : undefined,
@@ -1045,7 +1045,7 @@ export function StickerMakerUtil() {
               <Sticker className="text-purple-500" size={16} /> Sticker Maker
             </h2>
             {selectedImage && (
-              <button 
+              <button
                 onClick={() => fileInputRef.current?.click()}
                 className="text-[11px] text-purple-600 dark:text-purple-400 hover:text-purple-500 font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
                 title="Change Photo"
@@ -1054,17 +1054,16 @@ export function StickerMakerUtil() {
               </button>
             )}
           </div>
-          
+
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-          
+
           {!selectedImage && (
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
-              className={`w-full mt-3 py-4 px-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all ${
-                isDraggingOver 
-                  ? 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/30 shadow-lg shadow-purple-500/10 scale-[1.01]' 
+              className={`w-full mt-3 py-4 px-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all ${isDraggingOver
+                  ? 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/30 shadow-lg shadow-purple-500/10 scale-[1.01]'
                   : 'border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/50'
-              }`}
+                }`}
             >
               <UploadCloud className={`transition-colors ${isDraggingOver ? 'text-purple-500 animate-bounce' : 'text-slate-400'}`} size={24} />
               <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -1090,8 +1089,8 @@ export function StickerMakerUtil() {
                         {selection.type === 'rect'
                           ? `${Math.round(selection.width)}×${Math.round(selection.height)}`
                           : selection.type === 'circle'
-                          ? `${Math.round(selection.rx * 2)}×${Math.round(selection.ry * 2)}`
-                          : `${selection.points.length} dots`}
+                            ? `${Math.round(selection.rx * 2)}×${Math.round(selection.ry * 2)}`
+                            : `${selection.points.length} dots`}
                       </span>
                       <button
                         onClick={() => {
@@ -1113,11 +1112,10 @@ export function StickerMakerUtil() {
                       setSelectionTool('full');
                       setSelection(null);
                     }}
-                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      selectionTool === 'full'
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${selectionTool === 'full'
                         ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                     title="Full Image"
                   >
                     <Maximize2 size={12} />
@@ -1128,11 +1126,10 @@ export function StickerMakerUtil() {
                     onClick={() => {
                       setSelectionTool('pan');
                     }}
-                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      selectionTool === 'pan'
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${selectionTool === 'pan'
                         ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                     title="Move / Pan image"
                   >
                     <Hand size={12} />
@@ -1148,11 +1145,10 @@ export function StickerMakerUtil() {
                         setIsNearStart(false);
                       }
                     }}
-                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      selectionTool === 'rect'
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${selectionTool === 'rect'
                         ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                     title="Square / Box Selection"
                   >
                     <Square size={12} />
@@ -1168,11 +1164,10 @@ export function StickerMakerUtil() {
                         setIsNearStart(false);
                       }
                     }}
-                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      selectionTool === 'circle'
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${selectionTool === 'circle'
                         ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                     title="Circle Selection"
                   >
                     <Circle size={12} />
@@ -1188,11 +1183,10 @@ export function StickerMakerUtil() {
                         setIsNearStart(false);
                       }
                     }}
-                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      selectionTool === 'pen'
+                    className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-all ${selectionTool === 'pen'
                         ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                     title="Dot-by-Dot Pen Tool"
                   >
                     <PenTool size={12} />
@@ -1285,22 +1279,20 @@ export function StickerMakerUtil() {
                 <div className="flex bg-slate-200/70 dark:bg-black/40 p-0.5 rounded-lg border border-slate-300/40 dark:border-slate-800/80">
                   <button
                     onClick={() => setModelId('ormbg')}
-                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${
-                      modelId === 'ormbg' 
-                        ? 'bg-purple-600 text-white shadow-sm font-semibold' 
+                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${modelId === 'ormbg'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                    }`}
+                      }`}
                     title="ORMBG (High quality)"
                   >
                     ORMBG
                   </button>
                   <button
                     onClick={() => setModelId('u2netp')}
-                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${
-                      modelId === 'u2netp' 
-                        ? 'bg-purple-600 text-white shadow-sm font-semibold' 
+                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${modelId === 'u2netp'
+                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                    }`}
+                      }`}
                     title="U2Net-P (Fast)"
                   >
                     U2Net-P
@@ -1308,7 +1300,7 @@ export function StickerMakerUtil() {
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={processImage}
                 disabled={isProcessing || (selectionTool !== 'full' && selectionTool !== 'pan' && (!selection || (selection.type === 'pen' && selection.points.length < 3)))}
                 className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
@@ -1321,15 +1313,15 @@ export function StickerMakerUtil() {
                   <Sticker size={15} />
                 )}
                 <span>
-                  {isProcessing 
-                    ? 'Processing...' 
+                  {isProcessing
+                    ? 'Processing...'
                     : selectionTool === 'pen' && selection && selection.type === 'pen' && selection.points.length > 0 && selection.points.length < 3
-                    ? 'Place at least 3 dots'
-                    : selectionTool !== 'full' && selectionTool !== 'pan' && !selection
-                    ? 'Select area on preview'
-                    : selection && selectionTool !== 'full'
-                    ? 'Generate from Selection'
-                    : 'Generate Sticker'}
+                      ? 'Place at least 3 dots'
+                      : selectionTool !== 'full' && selectionTool !== 'pan' && !selection
+                        ? 'Select area on preview'
+                        : selection && selectionTool !== 'full'
+                          ? 'Generate from Selection'
+                          : 'Generate Sticker'}
                 </span>
               </button>
             </div>
@@ -1339,19 +1331,19 @@ export function StickerMakerUtil() {
                 <h3 className="text-sm font-semibold flex items-center gap-2 dark:text-slate-300">
                   <Palette size={16} /> Stroke Settings
                 </h3>
-                
+
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs dark:text-slate-400">
                     <span>Width</span>
                     <span>{strokeWidth}px</span>
                   </div>
-                  <input 
+                  <input
                     type="range" min="0" max="100" value={strokeWidth}
                     onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
                     className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-95 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-purple-500 [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-95 [&::-moz-range-thumb]:transition-transform"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-xs dark:text-slate-400">Stroke Color</label>
                   <div className="flex gap-2 items-center">
@@ -1365,7 +1357,7 @@ export function StickerMakerUtil() {
                         className="absolute inset-0 w-full h-full rounded border border-slate-300 dark:border-slate-700 shadow-inner cursor-pointer transition-transform active:scale-95 block"
                       />
                     </div>
-                    <input 
+                    <input
                       type="text" value={strokeColor}
                       onChange={(e) => {
                         setStrokeColor(e.target.value);
@@ -1380,7 +1372,7 @@ export function StickerMakerUtil() {
                   <div className="flex justify-between items-center text-xs dark:text-slate-400">
                     <label>Or use Pattern</label>
                     {patternImage && (
-                      <button 
+                      <button
                         onClick={() => setPatternImage(null)}
                         className="text-red-500 hover:text-red-600 transition-colors"
                       >
@@ -1388,7 +1380,7 @@ export function StickerMakerUtil() {
                       </button>
                     )}
                   </div>
-                  
+
                   <div className="flex flex-wrap gap-2">
                     {PREDEFINED_PATTERNS.map(pattern => {
                       const isSelected = patternImage?.src === pattern.url;
@@ -1411,7 +1403,7 @@ export function StickerMakerUtil() {
                         />
                       );
                     })}
-                    
+
                     <input type="file" ref={patternInputRef} className="hidden" accept="image/*" onChange={handlePatternUpload} />
                     <button
                       onClick={() => patternInputRef.current?.click()}
@@ -1453,11 +1445,11 @@ export function StickerMakerUtil() {
                           )}
                         </div>
                       </div>
-                      <input 
-                        type="range" 
-                        min="0.1" 
-                        max="4" 
-                        step="0.05" 
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="4"
+                        step="0.05"
                         value={patternScale}
                         onChange={(e) => setPatternScale(parseFloat(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-95 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-purple-500 [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-95 [&::-moz-range-thumb]:transition-transform"
@@ -1498,11 +1490,10 @@ export function StickerMakerUtil() {
                       key={opt.id}
                       type="button"
                       onClick={() => setSizeMode(opt.id as SizeMode)}
-                      className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center transition-all ${
-                        sizeMode === opt.id
+                      className={`py-1.5 px-1 rounded-md text-[11px] font-medium flex items-center justify-center transition-all ${sizeMode === opt.id
                           ? 'bg-purple-600 text-white shadow-sm font-semibold'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/40 dark:hover:bg-white/5'
-                      }`}
+                        }`}
                     >
                       <span>{opt.label}</span>
                     </button>
@@ -1512,7 +1503,7 @@ export function StickerMakerUtil() {
                 {sizeMode === 'custom' && (
                   <div className="flex items-center gap-1.5 pt-0.5">
                     <div className="relative flex-1">
-                      <input 
+                      <input
                         type="number"
                         min="64"
                         max="8192"
@@ -1530,11 +1521,10 @@ export function StickerMakerUtil() {
                           key={preset}
                           type="button"
                           onClick={() => setCustomWidth(preset)}
-                          className={`px-1.5 py-1 text-[10px] font-mono rounded transition-colors ${
-                            customWidth === preset
+                          className={`px-1.5 py-1 text-[10px] font-mono rounded transition-colors ${customWidth === preset
                               ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300 font-semibold border border-purple-500/30'
                               : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-700'
-                          }`}
+                            }`}
                         >
                           {preset}
                         </button>
@@ -1542,9 +1532,9 @@ export function StickerMakerUtil() {
                     </div>
                   </div>
                 )}
-                
+
                 {/* Modern Ultra-Polished Download Button */}
-                <button 
+                <button
                   onClick={handleDownload}
                   className="w-full mt-2 py-2.5 px-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:via-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 dark:shadow-emerald-950/40 border border-emerald-400/30 transition-all flex items-center justify-between group active:scale-[0.99]"
                 >
@@ -1584,17 +1574,16 @@ export function StickerMakerUtil() {
       </div>
 
       {/* Splitbar Divider for Mobile and Desktop */}
-      <div 
+      <div
         onPointerDown={handleSplitterPointerDown}
         onDoubleClick={() => {
           if (isMobileView) setMobilePanelHeight(320);
           else setDesktopSidebarWidth(320);
         }}
-        className={`order-2 relative z-30 shrink-0 select-none flex items-center justify-center transition-colors group touch-none ${
-          isMobileView
+        className={`order-2 relative z-30 shrink-0 select-none flex items-center justify-center transition-colors group touch-none ${isMobileView
             ? 'w-full h-5 cursor-row-resize bg-slate-100 dark:bg-[#111622] border-y border-slate-200/80 dark:border-slate-800/80 hover:bg-purple-50 dark:hover:bg-purple-950/20 active:bg-purple-100/50 dark:active:bg-purple-900/30'
             : 'h-full w-2.5 cursor-col-resize bg-slate-100/80 dark:bg-[#111622]/80 border-r border-slate-200/80 dark:border-slate-800/80 hover:bg-purple-50 dark:hover:bg-purple-950/20 active:bg-purple-100/50 dark:active:bg-purple-900/30'
-        }`}
+          }`}
         title={isMobileView ? "Drag to resize preview and controls (Double-tap to reset)" : "Drag to resize sidebar (Double-click to reset)"}
       >
         {isMobileView ? (
@@ -1607,24 +1596,23 @@ export function StickerMakerUtil() {
       </div>
 
       <div className="flex-1 min-h-0 bg-slate-100/50 dark:bg-[#080b11] p-4 flex items-center justify-center overflow-hidden relative order-1 md:order-3">
-        <div 
-          ref={previewContainerRef} 
+        <div
+          ref={previewContainerRef}
           onPointerDown={handleContainerPointerDown}
           onPointerMove={handleContainerPointerMove}
           onPointerUp={handleContainerPointerUp}
           onPointerCancel={handleContainerPointerUp}
-          className={`w-full h-full border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-white/50 dark:bg-black/20 touch-none ${
-            isPanning 
-              ? 'cursor-grabbing' 
+          className={`w-full h-full border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden bg-white/50 dark:bg-black/20 touch-none ${isPanning
+              ? 'cursor-grabbing'
               : isSpacePressed || selectionTool === 'full' || selectionTool === 'pan' || maskImageData
-              ? 'cursor-grab' 
-              : 'cursor-default'
-          }`}
+                ? 'cursor-grab'
+                : 'cursor-default'
+            }`}
         >
-          <div className="absolute inset-0 z-0 opacity-20 pointer-events-none" 
+          <div className="absolute inset-0 z-0 opacity-20 pointer-events-none"
             style={{ backgroundImage: 'conic-gradient(rgba(128,128,128,0.3) 90deg, transparent 90deg 180deg, rgba(128,128,128,0.3) 180deg 270deg, transparent 270deg)', backgroundSize: '20px 20px' }}
           />
-          
+
           {/* Floating Selection Tool Bar in Preview when Image is loaded and sticker not generated */}
           {selectedImage && !maskImageData && (
             isToolbarCollapsed ? (
@@ -1664,7 +1652,7 @@ export function StickerMakerUtil() {
                 <ChevronDown size={13} className="text-slate-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors" />
               </button>
             ) : (
-              <div 
+              <div
                 onPointerDown={(e) => e.stopPropagation()}
                 className="absolute top-4 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1 bg-white/95 dark:bg-[#161b22]/95 backdrop-blur-xl border border-slate-200/80 dark:border-slate-700/80 shadow-xl rounded-full px-2 py-1 select-none animate-in fade-in zoom-in-95 duration-150"
               >
@@ -1753,7 +1741,7 @@ export function StickerMakerUtil() {
 
           {/* Floating Pen In-Progress Helper Pill */}
           {selectedImage && !maskImageData && selectionTool === 'pen' && (
-            <div 
+            <div
               onPointerDown={(e) => e.stopPropagation()}
               className="absolute top-14 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-1.5 bg-slate-900/90 dark:bg-[#161b22]/95 text-white backdrop-blur-xl border border-purple-500/40 shadow-xl rounded-full px-3 py-1 text-xs select-none animate-in fade-in slide-in-from-top-1 duration-150 whitespace-nowrap"
             >
@@ -1803,42 +1791,42 @@ export function StickerMakerUtil() {
               )}
             </div>
           )}
-          
+
           {maskImageData ? (
-            <canvas 
-              ref={canvasRef} 
+            <canvas
+              ref={canvasRef}
               onPointerDown={(e) => {
                 if (e.button !== 0 && e.button !== 1) return;
                 try {
                   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                } catch (_) {}
+                } catch (_) { }
                 startPan(e.clientX, e.clientY, e.pointerId);
               }}
               onPointerMove={handleContainerPointerMove}
               onPointerUp={handleContainerPointerUp}
               onPointerCancel={handleContainerPointerUp}
-              className={`object-contain relative z-10 filter drop-shadow-2xl ${isPanning ? 'transition-none cursor-grabbing' : 'transition-transform duration-150 ease-out cursor-grab'} max-w-none`} 
-              style={{ 
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, 
-                transformOrigin: 'center' 
-              }} 
+              className={`object-contain relative z-10 filter drop-shadow-2xl ${isPanning ? 'transition-none cursor-grabbing' : 'transition-transform duration-150 ease-out cursor-grab'} max-w-none`}
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: 'center'
+              }}
             />
           ) : selectedImage && originalImage ? (
-            <div 
+            <div
               ref={imageWrapperRef}
               className={`relative z-10 select-none max-w-none ${isPanning ? 'transition-none' : 'transition-transform duration-150 ease-out'}`}
-              style={{ 
-                width: originalImage.naturalWidth, 
-                height: originalImage.naturalHeight, 
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, 
-                transformOrigin: 'center' 
+              style={{
+                width: originalImage.naturalWidth,
+                height: originalImage.naturalHeight,
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: 'center'
               }}
             >
-              <img 
+              <img
                 ref={imageDisplayRef}
-                src={selectedImage} 
-                alt="Selected" 
-                className="w-full h-full block select-none pointer-events-none" 
+                src={selectedImage}
+                alt="Selected"
+                className="w-full h-full block select-none pointer-events-none"
                 draggable={false}
               />
 
@@ -1855,15 +1843,14 @@ export function StickerMakerUtil() {
                   }
                 }}
                 onDoubleClick={handleDoubleClick}
-                className={`absolute inset-0 touch-none select-none z-20 ${
-                  isPanning
+                className={`absolute inset-0 touch-none select-none z-20 ${isPanning
                     ? 'cursor-grabbing'
                     : isSpacePressed || selectionTool === 'full' || selectionTool === 'pan'
-                    ? 'cursor-grab'
-                    : selectionTool === 'pen' 
-                    ? (isNearStart ? 'cursor-pointer' : 'cursor-crosshair') 
-                    : 'cursor-crosshair'
-                }`}
+                      ? 'cursor-grab'
+                      : selectionTool === 'pen'
+                        ? (isNearStart ? 'cursor-pointer' : 'cursor-crosshair')
+                        : 'cursor-crosshair'
+                  }`}
               >
                 <svg
                   viewBox={`0 0 ${originalImage.naturalWidth} ${originalImage.naturalHeight}`}
@@ -2110,7 +2097,7 @@ export function StickerMakerUtil() {
 
         {/* Zoom Controls */}
         {(maskImageData || selectedImage) && (
-          <div 
+          <div
             onPointerDown={(e) => e.stopPropagation()}
             className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 bg-white/90 dark:bg-[#1e1e2e]/90 backdrop-blur-xl rounded-full border border-slate-200/80 dark:border-slate-600/40 shadow-xl shadow-black/10 dark:shadow-black/30 px-1.5 py-1"
           >
@@ -2152,11 +2139,10 @@ export function StickerMakerUtil() {
           className="absolute bottom-4 right-4 z-50 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200"
         >
           <div
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl shadow-xl backdrop-blur-xl border text-xs font-semibold ${
-              toast.type === 'success'
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl shadow-xl backdrop-blur-xl border text-xs font-semibold ${toast.type === 'success'
                 ? 'bg-emerald-50/95 dark:bg-emerald-950/80 border-emerald-300/70 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-200'
                 : 'bg-red-50/95 dark:bg-red-950/80 border-red-300/70 dark:border-red-800/60 text-red-700 dark:text-red-200'
-            }`}
+              }`}
           >
             {toast.type === 'success' ? (
               <CheckCircle2 size={15} className="text-emerald-500 dark:text-emerald-400 shrink-0" />

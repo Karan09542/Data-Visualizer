@@ -10,7 +10,7 @@ import {
   FolderPlus,
   ChevronRight,
   ChevronDown,
-  MoreVertical,
+  MoreHorizontal,
   Edit2,
   Copy,
   Trash2,
@@ -929,7 +929,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
         }
       }
 
-      const indentPadding = `${depth * 12 + 10}px`;
+      const indentPadding = `${depth * 10 + 12}px`;
 
       return (
         <div key={item.id} className="select-none">
@@ -951,16 +951,28 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
               }
             }}
             style={{ paddingLeft: indentPadding }}
-            className={`group flex items-center justify-start py-1.5 cursor-pointer transition-colors text-xs border-l-2 select-none relative w-max min-w-full ${isFolder ? "pr-20" : "pr-8"
-              } ${isSelected
-                ? "bg-blue-500/10 dark:bg-blue-500/15 border-l-blue-600 dark:border-l-blue-500 text-blue-800 dark:text-blue-300 font-normal"
-                : "border-l-transparent text-slate-700 hover:text-slate-900 dark:text-slate-350 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-              } ${dragOverFolderId === item.id ? "bg-emerald-500/10 dark:bg-emerald-500/10 border border-emerald-500 border-dashed rounded" : ""}`}
+            className={`group flex items-center justify-start h-[22px] cursor-pointer transition-colors text-[13px] border-l-2 select-none relative w-full overflow-hidden ${
+              isFolder ? "pr-20" : "pr-8"
+            } ${
+              isSelected
+                ? "bg-[var(--vsc-selection,#e4e6f1)] border-l-[var(--vsc-accent,#005fb8)] text-[var(--vsc-fg,#3b3b3b)]"
+                : "border-l-transparent text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))]"
+            } ${dragOverFolderId === item.id ? "!bg-emerald-500/10 outline outline-1 outline-dashed outline-emerald-500 rounded-[3px]" : ""}`}
           >
-            <div className="flex items-center gap-2 pr-2 whitespace-nowrap">
+            {/* Indent guides, as in the VS Code file tree */}
+            {Array.from({ length: depth }).map((_, d) => (
+              <span
+                key={d}
+                aria-hidden
+                className="absolute top-0 bottom-0 w-px bg-[var(--vsc-border,#e5e5e5)] opacity-70 pointer-events-none"
+                style={{ left: `${d * 10 + 17}px` }}
+              />
+            ))}
+
+            <div className="flex items-center gap-2 pr-2 min-w-0 flex-1">
               {isFolder ? (
                 <>
-                  <span className="text-slate-400 hover:text-slate-300">
+                  <span className="text-[var(--vsc-fg-muted,#616161)] shrink-0">
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </span>
                   <span className="text-amber-500 dark:text-amber-400 shrink-0">
@@ -986,12 +998,14 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   className="w-full text-xs font-mono px-1 py-0.5 bg-white dark:bg-[#121824] border border-blue-500 rounded outline-none text-slate-800 dark:text-slate-200"
                 />
               ) : (
-                <span className="whitespace-nowrap font-mono tracking-tight">{item.name}</span>
+                <span className="truncate" title={item.name}>{item.name}</span>
               )}
             </div>
 
             {/* Quick Action icon triggers */}
-            <div className="hidden group-hover:flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 rounded border border-slate-200/60 dark:border-slate-800 bg-slate-100/95 dark:bg-[#151c24]/95 shadow-sm animate-in fade-in duration-100 z-10 absolute right-1.5 top-1/2 -translate-y-1/2">
+            <div
+              className={`hidden group-hover:flex focus-within:flex items-center gap-0.5 pl-3 pr-1.5 h-full absolute right-0 top-0 z-10 ${isSelected ? "bg-[var(--vsc-selection,#e4e6f1)]" : "bg-[var(--vsc-row-actions,#f0f0f0)]"}`}
+            >
               {isFolder && (
                 <>
                   <button
@@ -1000,7 +1014,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                       handleCreatePrompt(item.id, "primitive");
                     }}
                     title="New File"
-                    className="p-1 rounded text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 transition"
+                    className="p-0.5 rounded-[3px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-active,rgba(0,0,0,0.1))] transition cursor-pointer"
                   >
                     <Plus size={13} />
                   </button>
@@ -1010,7 +1024,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                       handleCreatePrompt(item.id, "folder");
                     }}
                     title="New Folder"
-                    className="p-1 rounded text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700/60 transition"
+                    className="p-0.5 rounded-[3px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-active,rgba(0,0,0,0.1))] transition cursor-pointer"
                   >
                     <FolderPlus size={13} />
                   </button>
@@ -1022,7 +1036,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   const targetRect = e.currentTarget.getBoundingClientRect();
                   if (containerRef.current) {
                     const rect = containerRef.current.getBoundingClientRect();
-                    const menuWidth = 192;
+                    const menuWidth = 220;
                     const menuHeight = 280;
 
                     let x = targetRect.left - rect.left - 120;
@@ -1044,9 +1058,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                     });
                   }
                 }}
-                className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/60 transition"
+                className="p-0.5 rounded-[3px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-active,rgba(0,0,0,0.1))] transition cursor-pointer"
               >
-                <MoreVertical size={13} />
+                <MoreHorizontal size={14} />
               </button>
             </div>
           </div>
@@ -1054,7 +1068,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
           {/* Creation input inside folder */}
           {isFolder && isExpanded && isCreatingInside && (
             <div
-              style={{ paddingLeft: `${(depth + 1) * 12 + 10}px` }}
+              style={{ paddingLeft: `${(depth + 1) * 10 + 12}px` }}
               className="flex items-center gap-1.5 py-1 pr-2 border border-transparent"
             >
               <span className="shrink-0">
@@ -1151,13 +1165,13 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
       }}
       tabIndex={-1}
       onClick={() => setSelectedExplorerFiles([])}
-      className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0a0d16] text-slate-700 dark:text-slate-300 relative overflow-hidden flex-1 select-none border-t border-slate-200 dark:border-slate-800/70 outline-none"
+      className="flex flex-col h-full bg-[var(--vsc-sidebar,#f8fafc)] text-[var(--vsc-fg,#3b3b3b)] relative overflow-hidden flex-1 select-none outline-none"
     >
       {/* Visual File Explorer Header controls */}
-      <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b101c]/90 flex items-center justify-between shrink-0 shadow-xs">
+      <div className="pl-4 pr-2 h-[26px] flex items-center justify-between gap-1 shrink-0 group/section">
         <div className="flex items-center gap-1.5 overflow-hidden">
-          <FolderOpen size={15} className="text-blue-500 shrink-0" />
-          <h2 className="text-xs font-extrabold text-slate-800 dark:text-slate-100 uppercase tracking-widest leading-none truncate" title={resolvedRootPath === "root" ? "Workspace Files" : resolvedRootPath}>
+          <ChevronDown size={14} className="text-[var(--vsc-fg-muted,#616161)] shrink-0" />
+          <h2 className="text-[11px] font-bold text-[var(--vsc-fg,#3b3b3b)] uppercase tracking-wide leading-none truncate" title={resolvedRootPath === "root" ? "Workspace Files" : resolvedRootPath}>
             {resolvedRootPath === "root" ? "Workspace Files" : resolvedRootPath.split(".").pop()}
           </h2>
         </div>
@@ -1165,18 +1179,18 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
           <button
             onClick={() => handleCreatePrompt(resolvedRootPath, "primitive")}
             title="New File"
-            className="p-1 rounded text-slate-550 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
+            className="p-1 rounded-[4px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] transition cursor-pointer"
           >
             <Plus size={14} />
           </button>
           <button
             onClick={() => handleCreatePrompt(resolvedRootPath, "folder")}
             title="New Folder"
-            className="p-1 rounded text-slate-550 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
+            className="p-1 rounded-[4px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] transition cursor-pointer"
           >
             <FolderPlus size={14} />
           </button>
-          <div className="h-3 w-[1px] bg-slate-300 dark:bg-slate-800/80 mx-1" />
+          <div className="h-3 w-px bg-[var(--vsc-border,#e5e5e5)] mx-1" />
           <button
             onClick={() => {
               const hasAnyExpanded = Object.values(explorerExpandedPaths).some(Boolean);
@@ -1187,7 +1201,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
               }
             }}
             title={Object.values(explorerExpandedPaths).some(Boolean) ? "Collapse All Folders" : "Expand All Folders"}
-            className="p-1 rounded text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition cursor-pointer"
+            className="p-1 rounded-[4px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] transition cursor-pointer"
           >
             {Object.values(explorerExpandedPaths).some(Boolean) ? (
               <FoldVertical size={14} />
@@ -1199,7 +1213,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
       </div>
 
       {/* SEARCH / INSTANT FILTER INPUT */}
-      <div className="p-2 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/40 dark:bg-[#0a0e1a]/30 shrink-0">
+      <div className="px-3 pb-2 pt-1 shrink-0">
         <div className="relative">
           <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-400 dark:text-slate-500 pointer-events-none">
             <Search size={13} />
@@ -1209,7 +1223,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search files, folders or nodes..."
-            className="w-full text-xs font-mono pl-8 pr-6 py-1.5 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-800 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-200 shadow-inner"
+            className="w-full text-xs pl-8 pr-6 py-1 bg-[var(--vsc-input,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] rounded-[3px] focus:outline-none focus:ring-1 focus:ring-[var(--vsc-accent,#005fb8)] text-[var(--vsc-fg,#3b3b3b)]"
           />
           {searchQuery && (
             <button
@@ -1235,8 +1249,8 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
       )}
 
       {/* CORE TREE CANVAS AREA */}
-      <div
-        className="flex-1 overflow-auto custom-scrollbar p-1.5 space-y-[1px]"
+      <div 
+        className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar py-1" 
         onClick={() => setSelectedExplorerFiles([])}
         onDoubleClick={(e) => {
           if (e.target === e.currentTarget) {
@@ -1311,7 +1325,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
       </div>
 
       {/* WORKSPACE PERSISTENCE SYNC FOOTER */}
-      <div className="p-2 border-t border-slate-200 dark:border-slate-800/80 bg-slate-50/60 dark:bg-[#080c14] flex items-center justify-between shrink-0 text-[10px] text-slate-405 dark:text-slate-500 font-mono">
+      <div className="px-3 py-1 border-t border-[var(--vsc-border,#e5e5e5)] flex items-center justify-between shrink-0 text-[10px] text-[var(--vsc-fg-muted,#616161)]">
         <span className="truncate flex items-center gap-1 text-[9.5px]">
           <Info size={10} className="text-indigo-400 shrink-0" />
           <span>Syncing graph state</span>
@@ -1343,10 +1357,10 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                 top: `${contextMenu.y}px`,
                 left: `${contextMenu.x}px`,
               }}
-              className="absolute z-[550] w-48 py-1.5 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl outline-none font-sans"
+              className="absolute z-[550] w-[220px] py-1 bg-[var(--vsc-widget,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] rounded-[5px] shadow-[0_4px_18px_var(--vsc-widget-shadow,rgba(0,0,0,0.16))] outline-none font-sans"
             >
-              <div className="px-3 py-1 border-b border-slate-100 dark:border-slate-800 mb-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase truncate">
+              <div className="px-3 py-1 border-b border-[var(--vsc-border,#e5e5e5)] mb-1">
+                <p className="text-[10px] font-semibold tracking-wider text-[var(--vsc-fg-muted,#616161)] uppercase truncate">
                   {contextMenu.name}
                 </p>
               </div>
@@ -1359,9 +1373,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                     setExpandedJsNodeId(activeNodeMenu.id);
                     setContextMenu(null);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                  className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
                 >
-                  <ExternalLink size={13} className="text-slate-400 dark:text-slate-500" />
+                  <ExternalLink size={13} className="shrink-0 opacity-80" />
                   <span>Open in Workspace</span>
                 </button>
               )}
@@ -1373,9 +1387,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                       handleCreatePrompt(activeNodeMenu.id, "primitive");
                       setContextMenu(null);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                    className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
                   >
-                    <Plus size={13} className="text-slate-400 dark:text-slate-500" />
+                    <Plus size={13} className="shrink-0 opacity-80" />
                     <span>New File</span>
                   </button>
                   <button
@@ -1383,9 +1397,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                       handleCreatePrompt(activeNodeMenu.id, "folder");
                       setContextMenu(null);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                    className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
                   >
-                    <FolderPlus size={13} className="text-slate-400 dark:text-slate-500" />
+                    <FolderPlus size={13} className="shrink-0 opacity-80" />
                     <span>New Subfolder</span>
                   </button>
                 </>
@@ -1396,9 +1410,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   handleRenamePrompt(activeNodeMenu);
                   setContextMenu(null);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
               >
-                <Edit2 size={13} className="text-slate-400 dark:text-slate-500" />
+                <Edit2 size={13} className="shrink-0 opacity-80" />
                 <span>Rename Item</span>
               </button>
 
@@ -1407,9 +1421,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   handleDuplicate(activeNodeMenu);
                   setContextMenu(null);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
               >
-                <Copy size={13} className="text-slate-400 dark:text-slate-500" />
+                <Copy size={13} className="shrink-0 opacity-80" />
                 <span>Duplicate Node</span>
               </button>
 
@@ -1419,9 +1433,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   setContextMenu(null);
                   toastNotification("Copied item name to clipboard");
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
               >
-                <Copy size={13} className="text-slate-400 dark:text-slate-500" />
+                <Copy size={13} className="shrink-0 opacity-80" />
                 <span>Copy Name</span>
               </button>
 
@@ -1432,9 +1446,9 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   setContextMenu(null);
                   toastNotification(`Copied path "${cleanedPath}" to clipboard`);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
               >
-                <Copy size={13} className="text-slate-400 dark:text-slate-500" />
+                <Copy size={13} className="shrink-0 opacity-80" />
                 <span>Copy Path</span>
               </button>
 
@@ -1445,22 +1459,22 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   setExpandedJsNodeId(null);
                   toastNotification(`Highlighted ${activeNodeMenu.name} in graph`);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition"
+                className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
               >
-                <Maximize2 size={13} className="text-slate-400 dark:text-slate-500" />
+                <Maximize2 size={13} className="shrink-0 opacity-80" />
                 <span>Reveal in Graph</span>
               </button>
 
-              <div className="border-t border-slate-100 dark:border-slate-800/80 my-1" />
+              <div className="h-px bg-[var(--vsc-border,#e5e5e5)] my-1" />
 
               <button
                 onClick={() => {
                   handleDelete(activeNodeMenu);
                   setContextMenu(null);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 transition font-medium"
+                className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
               >
-                <Trash2 size={13} className="text-red-400" />
+                <Trash2 size={13} className="shrink-0 opacity-90" />
                 <span>Delete Node</span>
               </button>
             </motion.div>
@@ -1471,24 +1485,24 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
       {/* CUSTOM CONFIRM DELETE DIALOG */}
       <AnimatePresence>
         {deleteItemsConfirm && (
-          <div className="absolute inset-0 z-[600] bg-slate-900/40 dark:bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="absolute inset-0 z-[600] bg-black/40 dark:bg-black/60 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
-              className="bg-white dark:bg-[#111624] border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl shadow-2xl w-full max-w-[260px] text-center"
+              className="bg-[var(--vsc-widget,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] p-4 rounded-[6px] shadow-[0_8px_28px_var(--vsc-widget-shadow,rgba(0,0,0,0.16))] w-full max-w-[280px] text-center"
             >
-              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5 uppercase tracking-wider">
+              <h3 className="text-[13px] font-semibold text-[var(--vsc-fg,#3b3b3b)] mb-1.5">
                 Delete Node{deleteItemsConfirm.length > 1 ? "s" : ""}?
               </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-4 font-mono truncate" title={deleteItemsConfirm.length > 1 ? deleteItemsConfirm.join(", ") : typeof deleteItemsConfirm[0] === 'string' ? deleteItemsConfirm[0].split(".").pop()?.replace(/_(js|ts|py|api)_node$/, "") : ""}>
+              <p className="text-[12px] text-[var(--vsc-fg-muted,#616161)] mb-4 truncate" title={deleteItemsConfirm.length > 1 ? deleteItemsConfirm.join(", ") : typeof deleteItemsConfirm[0] === 'string' ? deleteItemsConfirm[0].split(".").pop()?.replace(/_(js|ts|py|api)_node$/, "") : ""}>
                 {deleteItemsConfirm.length > 1 ? `Remove ${deleteItemsConfirm.length} items?` : `Remove "${typeof deleteItemsConfirm[0] === 'string' ? deleteItemsConfirm[0].split(".").pop()?.replace(/_(js|ts|py|api)_node$/, "") : ""}"?`} This cannot be undone.
               </p>
               <div className="flex gap-2 justify-center">
                 <button
                   onClick={() => setDeleteItemsConfirm(null)}
-                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 dark:border-slate-800 transition"
+                  className="px-4 py-1 text-[13px] bg-[var(--vsc-input,#ffffff)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] text-[var(--vsc-fg,#3b3b3b)] rounded-[3px] border border-[var(--vsc-border-strong,#cecece)] transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1509,7 +1523,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                     setSelectedExplorerFiles([]);
                     toastNotification(`Deleted ${ids.length} node(s)`);
                   }}
-                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-red-550 hover:bg-red-650 text-white rounded-md transition cursor-pointer"
+                  className="px-4 py-1 text-[13px] bg-red-600 hover:bg-red-700 text-white rounded-[3px] transition cursor-pointer"
                 >
                   Delete
                 </button>
@@ -1519,24 +1533,24 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
         )}
 
         {conflictConfirm && (
-          <div className="absolute inset-0 z-[600] bg-slate-900/40 dark:bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="absolute inset-0 z-[600] bg-black/40 dark:bg-black/60 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.92, opacity: 0 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
-              className="bg-white dark:bg-[#111624] border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl shadow-2xl w-full max-w-[260px] text-center"
+              className="bg-[var(--vsc-widget,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] p-4 rounded-[6px] shadow-[0_8px_28px_var(--vsc-widget-shadow,rgba(0,0,0,0.16))] w-full max-w-[280px] text-center"
             >
-              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5 uppercase tracking-wider">
+              <h3 className="text-[13px] font-semibold text-[var(--vsc-fg,#3b3b3b)] mb-1.5">
                 Naming Conflict
               </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-4 font-mono">
+              <p className="text-[12px] text-[var(--vsc-fg-muted,#616161)] mb-4">
                 A file or folder named "{conflictConfirm.path.split('.').pop()}" already exists.
               </p>
               <div className="flex gap-2 justify-center">
                 <button
                   onClick={() => setConflictConfirm(null)}
-                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md border border-slate-200 dark:border-slate-800 transition cursor-pointer"
+                  className="px-4 py-1 text-[13px] bg-[var(--vsc-input,#ffffff)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] text-[var(--vsc-fg,#3b3b3b)] rounded-[3px] border border-[var(--vsc-border-strong,#cecece)] transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1569,7 +1583,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
         )}
 
         {moveConfirm && (
-          <div className="absolute inset-0 z-[600] bg-slate-900/40 dark:bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="absolute inset-0 z-[600] bg-black/40 dark:bg-black/60 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}

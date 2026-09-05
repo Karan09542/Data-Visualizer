@@ -970,3 +970,166 @@ input[type="number"] {
     border-color: #b45309;
   }
 }
+/* ------------------------------------------------------------------
+   Workspace surface tokens.
+
+   Outside the Code Workspace these carry the app's own slate/blue palette,
+   so shared panels (the file explorer in the editor sidebar, the plot
+   viewer in node renderers) keep matching the app chrome. Inside
+   `.vsc-root` the same names carry the VS Code Modern palette, and the
+   workspace additionally overrides them inline with a palette derived
+   from the active editor theme.
+
+   Order matters: `.vsc-root` and `.dark` have equal specificity, so the
+   VS Code blocks must come last.
+   ------------------------------------------------------------------ */
+:root {
+  --vsc-titlebar: #ffffff;
+  --vsc-sidebar: #f8fafc;
+  --vsc-editor: #ffffff;
+  --vsc-tabbar: #ffffff;
+  --vsc-tab-active: #ffffff;
+  --vsc-tab-inactive-fg: #64748b;
+  --vsc-panel: #f8fafc;
+  --vsc-panel-body: #ffffff;
+  --vsc-statusbar: #f8fafc;
+  --vsc-border: #e2e8f0;
+  --vsc-border-strong: #cbd5e1;
+  --vsc-fg: #334155;
+  --vsc-fg-muted: #64748b;
+  --vsc-accent: #2563eb;
+  --vsc-accent-fg: #ffffff;
+  --vsc-hover: rgba(15, 23, 42, 0.06);
+  --vsc-active: rgba(15, 23, 42, 0.1);
+  --vsc-selection: #dbeafe;
+  --vsc-input: #ffffff;
+  --vsc-widget: #ffffff;
+  --vsc-widget-shadow: rgba(15, 23, 42, 0.16);
+  --vsc-badge: #cbd5e1;
+  --vsc-badge-fg: #334155;
+  --vsc-row-actions: #eef2f7;
+}
+
+.dark {
+  --vsc-titlebar: #0b101c;
+  --vsc-sidebar: #0a0d16;
+  --vsc-editor: #0d1117;
+  --vsc-tabbar: #0b101c;
+  --vsc-tab-active: #0d1117;
+  --vsc-tab-inactive-fg: #94a3b8;
+  --vsc-panel: #161b22;
+  --vsc-panel-body: #0d1117;
+  --vsc-statusbar: #0b101c;
+  --vsc-border: #1e293b;
+  --vsc-border-strong: #334155;
+  --vsc-fg: #cbd5e1;
+  --vsc-fg-muted: #94a3b8;
+  --vsc-accent: #3b82f6;
+  --vsc-accent-fg: #ffffff;
+  --vsc-hover: rgba(148, 163, 184, 0.12);
+  --vsc-active: rgba(148, 163, 184, 0.18);
+  --vsc-selection: #16294a;
+  --vsc-input: #121824;
+  --vsc-widget: #111622;
+  --vsc-widget-shadow: rgba(0, 0, 0, 0.55);
+  --vsc-badge: #334155;
+  --vsc-badge-fg: #e2e8f0;
+  --vsc-row-actions: #141a26;
+}
+
+.vsc-root {
+  --vsc-titlebar: #f8f8f8;
+  --vsc-sidebar: #f8f8f8;
+  --vsc-editor: #ffffff;
+  --vsc-tabbar: #f8f8f8;
+  --vsc-tab-active: #ffffff;
+  --vsc-tab-inactive-fg: #6f6f6f;
+  --vsc-panel: #f8f8f8;
+  --vsc-panel-body: #ffffff;
+  --vsc-statusbar: #f8f8f8;
+  --vsc-border: #e5e5e5;
+  --vsc-border-strong: #cecece;
+  --vsc-fg: #3b3b3b;
+  --vsc-fg-muted: #616161;
+  --vsc-accent: #005fb8;
+  --vsc-accent-fg: #ffffff;
+  --vsc-hover: rgba(0, 0, 0, 0.06);
+  --vsc-active: rgba(0, 0, 0, 0.1);
+  --vsc-selection: #e4e6f1;
+  --vsc-input: #ffffff;
+  --vsc-widget: #ffffff;
+  --vsc-widget-shadow: rgba(0, 0, 0, 0.16);
+  --vsc-badge: #cccccc;
+  --vsc-badge-fg: #3b3b3b;
+  --vsc-row-actions: #f0f0f0;
+}
+
+.dark .vsc-root {
+  --vsc-titlebar: #181818;
+  --vsc-sidebar: #181818;
+  --vsc-editor: #1f1f1f;
+  --vsc-tabbar: #181818;
+  --vsc-tab-active: #1f1f1f;
+  --vsc-tab-inactive-fg: #9d9d9d;
+  --vsc-panel: #181818;
+  --vsc-panel-body: #1f1f1f;
+  --vsc-statusbar: #181818;
+  --vsc-border: #2b2b2b;
+  --vsc-border-strong: #3c3c3c;
+  --vsc-fg: #cccccc;
+  --vsc-fg-muted: #9d9d9d;
+  --vsc-accent: #0078d4;
+  --vsc-accent-fg: #ffffff;
+  --vsc-hover: rgba(255, 255, 255, 0.08);
+  --vsc-active: rgba(255, 255, 255, 0.12);
+  --vsc-selection: #04395e;
+  --vsc-input: #313131;
+  --vsc-widget: #202020;
+  --vsc-widget-shadow: rgba(0, 0, 0, 0.55);
+  --vsc-badge: #616161;
+  --vsc-badge-fg: #f8f8f8;
+  --vsc-row-actions: #262626;
+}
+
+/* While a sash is being dragged the cursor must not flicker over other
+   elements (iframes/Monaco swallow pointer moves otherwise). */
+body.vsc-resizing,
+body.vsc-resizing * {
+  user-select: none !important;
+}
+body.vsc-resizing iframe,
+body.vsc-resizing .monaco-editor {
+  pointer-events: none !important;
+}
+
+/* Touch screens: fatten the sash hit area and show a grip, since a 7px
+   target is unusable with a finger. */
+@media (pointer: coarse) {
+  .vsc-sash-hit[data-orientation="vertical"] {
+    left: -9px;
+    right: -9px;
+  }
+  .vsc-sash-hit[data-orientation="horizontal"] {
+    top: -11px;
+    bottom: -11px;
+  }
+  .vsc-sash-hit[data-orientation="vertical"]::after,
+  .vsc-sash-hit[data-orientation="horizontal"]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    background: var(--vsc-border-strong);
+    pointer-events: none;
+  }
+  .vsc-sash-hit[data-orientation="vertical"]::after {
+    width: 4px;
+    height: 34px;
+  }
+  .vsc-sash-hit[data-orientation="horizontal"]::after {
+    width: 34px;
+    height: 4px;
+  }
+}

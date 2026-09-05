@@ -35,6 +35,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { maskParsedData, unmaskParsedData } from "../utils/masker";
 
+import CustomSelect from "./CustomSelect";
 interface LeafField {
   path: string; // e.g. "root.project", "root.settings.theme"
   parentPath: string; // e.g. "root" or "root.settings"
@@ -946,21 +947,14 @@ export default function GuiEditorPanel() {
                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center justify-between">
                     <span>Insert Folder / Location</span>
                   </span>
-                  <select
+                  <CustomSelect
                     value={newParentPath}
-                    onChange={(e) => setNewParentPath(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-white dark:bg-[#121824] border border-slate-200 dark:border-slate-800/90 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-slate-705 dark:text-slate-300 cursor-pointer shadow-sm"
-                  >
-                    {objectPaths.map((op) => (
-                      <option
-                        key={op.path}
-                        value={op.path}
-                        className="bg-white dark:bg-[#121824] text-slate-800 dark:text-slate-200"
-                      >
-                        {op.label === "root" ? "root (Top Level)" : op.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setNewParentPath}
+                    options={objectPaths.map((op) => ({ value: op.path, label: op.label }))}
+                    searchable
+                    className="w-full"
+                    placeholder="Select a location..."
+                  />
                 </div>
 
                 {/* Key attribute input name */}
@@ -1225,17 +1219,14 @@ export default function GuiEditorPanel() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Insert Location
                   </span>
-                  <select
+                  <CustomSelect
                     value={newParentPath}
-                    onChange={(e) => setNewParentPath(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-[#121824] border border-slate-800 rounded-md text-slate-300 font-mono"
-                  >
-                    {objectPaths.map((op) => (
-                      <option key={op.path} value={op.path}>
-                        {op.label === "root" ? "root (Top Level)" : op.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setNewParentPath}
+                    options={objectPaths.map((op) => ({ value: op.path, label: op.label }))}
+                    searchable
+                    className="w-full"
+                    placeholder="Select a location..."
+                  />
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -1479,18 +1470,19 @@ export default function GuiEditorPanel() {
           </div>
 
           <div className="flex gap-2">
-            <select
+            <CustomSelect
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full sm:w-auto text-xs px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white dark:bg-[#121824] border border-slate-250 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer shadow-sm"
-            >
-              <option value="all">All Data types</option>
-              <option value="string">String (Text)</option>
-              <option value="number">Number</option>
-              <option value="boolean">Boolean</option>
-              <option value="array">Array (List)</option>
-              <option value="object">Object (Group)</option>
-            </select>
+              onChange={setTypeFilter}
+              options={[
+                { value: "all", label: "All Data types" },
+                { value: "string", label: "String (Text)" },
+                { value: "number", label: "Number" },
+                { value: "boolean", label: "Boolean" },
+                { value: "array", label: "Array (List)" },
+                { value: "object", label: "Object (Group)" },
+              ]}
+              className="w-full sm:w-auto sm:min-w-[170px]"
+            />
           </div>
         </div>
 
@@ -1510,11 +1502,11 @@ export default function GuiEditorPanel() {
             </div>
           ) : (
             <div
-              className="flex flex-col gap-2 max-w-4xl mx-auto pb-10"
+              className="flex flex-col max-w-4xl mx-auto mb-10 border border-slate-200 dark:border-slate-800/70 rounded-lg overflow-hidden bg-white dark:bg-[#0b101c]/50 divide-y divide-slate-200 dark:divide-slate-800/60"
               ref={menuContainerRef}
             >
               {/* Dynamic Header */}
-              <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-1">
+              <div className="flex justify-between items-center text-[9px] font-bold text-slate-500 uppercase tracking-widest px-3 py-2 bg-slate-50 dark:bg-[#0d1220]/80">
                 <span>
                   {viewMode === "tree"
                     ? "Tree Structure"
@@ -1548,25 +1540,34 @@ export default function GuiEditorPanel() {
                 return (
                   <div
                     key={field.path}
-                    style={{ marginLeft: `${depth * (isMobile ? 6 : 14)}px` }}
-                    className={`relative group flex flex-col p-2 sm:p-3.5 bg-[#fafbfc] dark:bg-[#0d1220]/75 hover:bg-slate-100/50 dark:hover:bg-[#111728]/80 border ${isEditing
-                        ? "border-blue-500/70 shadow-lg bg-blue-50/15 dark:bg-[#111624]/60"
-                        : "border-slate-205 dark:border-slate-800/75"
-                      } rounded-lg transition-all text-slate-800 dark:text-slate-100 duration-150`}
+                    style={{
+                      paddingLeft: `${depth * (isMobile ? 10 : 16) + 10}px`,
+                    }}
+                    className={`relative group flex flex-col pr-2 py-1.5 transition-colors text-slate-800 dark:text-slate-100 ${isEditing
+                        ? "bg-blue-50/70 dark:bg-blue-500/5"
+                        : "hover:bg-slate-100/70 dark:hover:bg-white/[0.03]"
+                      }`}
                   >
-                    {/* Visual tree indentation guide rails */}
-                    {viewMode === "tree" && depth > 0 && (
-                      <div
-                        className="absolute top-0 bottom-0 border-l border-dashed border-slate-300 dark:border-slate-800/60"
-                        style={{ left: "-10px" }}
-                      />
-                    )}
+                    {/* One guide rail per nesting level, so depth is readable */}
+                    {viewMode === "tree" &&
+                      Array.from({ length: depth }).map((_, d) => (
+                        <span
+                          key={d}
+                          aria-hidden
+                          className="absolute top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-800 pointer-events-none"
+                          style={{
+                            left: `${d * (isMobile ? 10 : 16) + 14}px`,
+                          }}
+                        />
+                      ))}
 
                     {/* Left & Right Container Section */}
                     <div className="flex items-start justify-between gap-4">
                       {/* Left: Fields Details, Paths & Types */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+                      <div
+                        className={`flex-1 min-w-0 ${isEditing ? "" : "flex items-center gap-3"}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
                           {/* Folder collapse chevron */}
                           {isContainer && viewMode === "tree" && (
                             <button
@@ -1584,11 +1585,31 @@ export default function GuiEditorPanel() {
                             </button>
                           )}
 
-                          {isContainer && (
+                          {!(isContainer && viewMode === "tree") && (
+                            <span aria-hidden className="w-[18px] shrink-0" />
+                          )}
+
+                          {isContainer ? (
                             <Folder
                               size={12}
-                              className="text-blue-500 dark:text-blue-450 shrink-0 mt-0.5"
+                              className="text-blue-500 dark:text-blue-450 shrink-0"
                             />
+                          ) : (
+                            <span
+                              aria-hidden
+                              className="w-3 shrink-0 flex items-center justify-center"
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${field.type === "string"
+                                    ? "bg-amber-500"
+                                    : field.type === "number"
+                                      ? "bg-cyan-500"
+                                      : field.type === "boolean"
+                                        ? "bg-emerald-500"
+                                        : "bg-slate-400"
+                                  }`}
+                              />
+                            </span>
                           )}
 
                           {/* Interactive Renaming Form inline */}
@@ -1634,10 +1655,12 @@ export default function GuiEditorPanel() {
                                 setRenamingPath(field.path);
                                 setNewKeyRenameValue(field.keyName);
                               }}
-                              className={`font-mono text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 ${!isArrayChild ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline' : ''}`}
+                              className={`font-mono text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1 min-w-0 ${!isArrayChild ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline' : ''}`}
                               title={isArrayChild ? "Array elements cannot be renamed" : "Click to rename field"}
                             >
-                              {isArrayChild ? `#${field.keyName}` : (viewMode === "tree" ? field.keyName : field.path)}
+                              <span className="truncate">
+                                {isArrayChild ? `#${field.keyName}` : (viewMode === "tree" ? field.keyName : field.path)}
+                              </span>
                               {!isArrayChild && (
                                 <Edit3
                                   size={10}
@@ -1649,7 +1672,7 @@ export default function GuiEditorPanel() {
 
                           {/* Field type badges */}
                           <span
-                            className={`text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border ${field.type === "string"
+                            className={`text-[9px] font-semibold uppercase tracking-wide px-1 py-px rounded-[3px] shrink-0 ${field.type === "string"
                                 ? "text-amber-700 dark:text-amber-400 bg-amber-500/5 border-amber-500/20"
                                 : field.type === "number"
                                   ? "text-cyan-750 dark:text-cyan-400 bg-cyan-500/5 border-cyan-500/20"
@@ -1664,8 +1687,10 @@ export default function GuiEditorPanel() {
                           </span>
                         </div>
 
-                        {/* Middle value - direct inline edit support */}
-                        <div className="mt-2 text-xs">
+                        {/* Value: inline with the key, or below it while editing */}
+                        <div
+                          className={`text-xs min-w-0 ${isEditing ? "mt-2" : "flex-1"}`}
+                        >
                           {isEditing ? (
                             field.type === "string" ? (
                               <div
@@ -1799,7 +1824,7 @@ export default function GuiEditorPanel() {
                                   startEditing(field);
                                 }
                               }}
-                              className={`font-mono text-[11px] leading-relaxed transition-all ${isContainer
+                              className={`font-mono text-[11px] leading-relaxed transition-all min-w-0 ${isContainer
                                   ? "text-slate-500 dark:text-slate-400 italic cursor-pointer hover:bg-slate-205/60 dark:hover:bg-slate-800/30 px-1.5 py-0.5 rounded flex items-center gap-1.5 select-none"
                                   : "text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white cursor-pointer hover:bg-slate-205/65 dark:hover:bg-slate-800/40 px-1.5 py-0.5 rounded"
                                 }`}
@@ -1813,13 +1838,24 @@ export default function GuiEditorPanel() {
                                 <div className="flex items-center gap-1.5">
                                   {field.type === "array" ? (
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-slate-500 dark:text-slate-400 italic font-medium">
-                                        [] List Container ({Array.isArray(field.value) ? field.value.length : 0} elements)
+                                      <span className="text-slate-500 dark:text-slate-400 font-medium">
+                                        [] {Array.isArray(field.value) ? field.value.length : 0}{" "}
+                                        {(Array.isArray(field.value) ? field.value.length : 0) === 1 ? "item" : "items"}
                                       </span>
                                     </div>
                                   ) : (
                                     <div className="flex items-center gap-1.5">
-                                      <span>{"{}"} Group folder</span>
+                                      <span>
+                                        {"{}"}{" "}
+                                        {field.value && typeof field.value === "object"
+                                          ? Object.keys(field.value).length
+                                          : 0}{" "}
+                                        {(field.value && typeof field.value === "object"
+                                          ? Object.keys(field.value).length
+                                          : 0) === 1
+                                          ? "key"
+                                          : "keys"}
+                                      </span>
                                     </div>
                                   )}
                                 </div>
@@ -1833,7 +1869,14 @@ export default function GuiEditorPanel() {
                                   {String(field.value)}
                                 </span>
                               ) : (
-                                <span className="break-all font-mono text-slate-800 dark:text-slate-200">
+                                <span
+                                  className={`block truncate font-mono ${field.type === "string"
+                                      ? "text-amber-700 dark:text-amber-300"
+                                      : field.type === "number"
+                                        ? "text-cyan-700 dark:text-cyan-300"
+                                        : "text-slate-800 dark:text-slate-200"
+                                    }`}
+                                >
                                   {field.value === ""
                                     ? `""`
                                     : String(field.value)}
@@ -1852,19 +1895,14 @@ export default function GuiEditorPanel() {
                             <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                               Move field destination
                             </span>
-                            <select
+                            <CustomSelect
                               value={moveToPath}
-                              onChange={(e) => setMoveToPath(e.target.value)}
-                              className="w-full text-xs px-2 py-1 bg-white dark:bg-[#090d16] border border-slate-200 dark:border-slate-800 rounded text-slate-700 dark:text-slate-300"
-                            >
-                              {objectPaths.map((op) => (
-                                <option key={op.path} value={op.path}>
-                                  {op.label === "root"
-                                    ? "root (Top level)"
-                                    : op.label}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={setMoveToPath}
+                              options={objectPaths.map((op) => ({ value: op.path, label: op.label }))}
+                              searchable
+                              className="w-full"
+                              placeholder="Select a destination..."
+                            />
                             <div className="flex items-center gap-1 mt-1 justify-end">
                               <button
                                 onClick={handleMoveField}

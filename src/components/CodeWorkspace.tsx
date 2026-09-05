@@ -65,6 +65,7 @@ import {
 import { ProgrammingKeyboard } from "../programming-assistant/components/ProgrammingKeyboard";
 import { getMediaType } from "./NodeRenderer";
 import FileExplorerPanel from "./FileExplorerPanel";
+import WorkspaceSash from "./WorkspaceSash";
 import {
   JavaScriptIcon,
   TypeScriptIcon,
@@ -74,6 +75,11 @@ import {
 } from "./FileIcons";
 import { getValueAtPath } from "../utils/pathUtils";
 import { editorThemes } from "../utils/editorThemes";
+import {
+  buildShellPalette,
+  buildMonacoColors,
+  DEFAULT_SHELL,
+} from "../utils/vscShellTheme";
 import { renderClickableErrorText } from "../utils/errorParser";
 
 function CopyButton({ text }: { text: string }) {
@@ -88,7 +94,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={handleCopy}
       type="button"
-      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer shrink-0"
+      className="p-1 hover:bg-[var(--vsc-hover)] rounded-[4px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] transition-colors cursor-pointer shrink-0"
       title={copied ? "Copied" : "Copy error text"}
     >
       {copied ? (
@@ -447,6 +453,21 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     () => getCleanName(currentFilePath),
     [currentFilePath],
   );
+
+  // Breadcrumb trail under the tab bar, mirroring the VS Code editor header.
+  const breadcrumbs = useMemo(() => {
+    if (typeof currentFilePath !== "string") return [];
+    const parts = currentFilePath.split(".").filter(Boolean);
+    return parts.map((part, i) => {
+      const segPath = parts.slice(0, i + 1).join(".");
+      return {
+        path: segPath,
+        label: i === parts.length - 1 ? getCleanName(segPath) : part,
+        isFile: i === parts.length - 1,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFilePath]);
 
   // Run button visibility check: Show ONLY for .js, .ts, .py files
   const isExecutable = useMemo(() => {
@@ -1078,6 +1099,20 @@ declare const console: {
     }
   };
 
+  // Patch a single setting from the latest state. Sash drags fire many times a
+  // second, so they must not close over a stale `settings` object.
+  const updateSettings = useCallback((patch: Partial<WorkspaceSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      try {
+        localStorage.setItem("workspace_layout_settings", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
   const [isLayoutSettingsOpen, setIsLayoutSettingsOpen] = useState(false);
   const [panelSize, setPanelSize] = useState<number>(() => {
     try {
@@ -1105,6 +1140,39 @@ declare const console: {
     setWordWrap(next);
     saveSettings({ ...settings, wordWrap: next });
   };
+
+  const [cursorPos, setCursorPos] = useState({
+    line: 1,
+    column: 1,
+    selected: 0,
+  });
+
+  // Viewport tracking: the three panes have to stay usable down to phone width.
+  const [viewport, setViewport] = useState(() => ({
+    w: typeof window === "undefined" ? 1280 : window.innerWidth,
+    h: typeof window === "undefined" ? 800 : window.innerHeight,
+  }));
+
+  useEffect(() => {
+    const onResize = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
+  const isMobile = viewport.w < 768;
+  // A side-by-side console needs real estate, so narrow screens always stack it.
+  const effectiveLayout: "bottom" | "right" =
+    viewport.w < 1024 ? "bottom" : layoutMode;
+  const sidebarOpen = settings.isSidebarOpen !== false;
+  const sidebarWidth = Math.max(
+    170,
+    Math.min(settings.sidebarWidth || 260, 640),
+  );
 
   const terminalInputRef = useRef<HTMLInputElement>(null);
   const currentPrompt = activePrompts[currentFilePath];
@@ -1252,85 +1320,181 @@ declare const console: {
     };
   }, [settings, appTheme, wordWrap]);
 
-  // Resizing hooks and listeners
+  // --- Pane resizing -------------------------------------------------------
+  // Every splitter is a <WorkspaceSash>: pointer (mouse/touch/pen) drag,
+  // arrow-key nudges and double-click reset. The corner sash drives both the
+  // sidebar and the panel at once.
   const consolePanelRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const isResizing = useRef(false);
+  const workspaceBodyRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseDown = useCallback(() => {
-    isResizing.current = true;
-    document.body.style.cursor =
-      layoutMode === "bottom" ? "row-resize" : "col-resize";
-    document.body.style.userSelect = "none";
-  }, [layoutMode]);
+  const panelSizeRef = useRef(panelSize);
+  panelSizeRef.current = panelSize;
 
-  const handleTouchStart = useCallback(() => {
-    isResizing.current = true;
-  }, []);
+  const clampSidebar = useCallback(
+    (w: number) => {
+      const available = workspaceBodyRef.current?.clientWidth || viewport.w;
+      return Math.round(
+        Math.max(170, Math.min(w, Math.max(200, available - 240))),
+      );
+    },
+    [viewport.w],
+  );
 
-  const handleDoubleClickSplitter = useCallback(() => {
-    setPanelSize(320);
+  const clampPanel = useCallback(
+    (v: number) => {
+      const box = workspaceBodyRef.current;
+      if (effectiveLayout === "bottom") {
+        const h = box?.clientHeight || viewport.h;
+        return Math.round(Math.max(90, Math.min(v, Math.max(120, h - 140))));
+      }
+      const w =
+        (box?.clientWidth || viewport.w) -
+        (sidebarOpen && !isMobile ? sidebarWidth : 0);
+      return Math.round(Math.max(180, Math.min(v, Math.max(220, w - 260))));
+    },
+    [effectiveLayout, viewport.h, viewport.w, sidebarOpen, isMobile, sidebarWidth],
+  );
+
+  const writePanelSize = useCallback((v: number) => {
     try {
-      localStorage.setItem("workspace_panel_size", "320");
-    } catch { }
+      localStorage.setItem("workspace_panel_size", String(v));
+    } catch {
+      // ignore
+    }
   }, []);
 
+  // Keep both panes inside the frame when the window rotates or resizes.
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current) return;
-      let newSize = 320;
-      if (layoutMode === "bottom") {
-        const h = window.innerHeight;
-        newSize = Math.max(100, Math.min(h - 120, h - e.clientY));
-      } else {
-        const w = window.innerWidth;
-        newSize = Math.max(180, Math.min(w - 300, w - e.clientX));
+    setPanelSize((prev) => {
+      const next = clampPanel(prev);
+      return next === prev ? prev : next;
+    });
+    const current = settings.sidebarWidth || 260;
+    const nextSidebar = clampSidebar(current);
+    if (nextSidebar !== current) updateSettings({ sidebarWidth: nextSidebar });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewport.w, viewport.h, effectiveLayout]);
+
+  const dragBase = useRef({ sidebar: 260, panel: 320 });
+  const liveSidebar = useRef(260);
+  const livePanel = useRef(320);
+
+  const beginPaneDrag = useCallback(() => {
+    dragBase.current = {
+      sidebar: settings.sidebarWidth || 260,
+      panel: panelSizeRef.current,
+    };
+    liveSidebar.current = dragBase.current.sidebar;
+    livePanel.current = dragBase.current.panel;
+  }, [settings.sidebarWidth]);
+
+  // Drags write straight to the DOM - a React round trip per pointermove would
+  // re-render Monaco and the log list on every frame.
+  const resizeSidebar = useCallback(
+    (dx: number) => {
+      const w = clampSidebar(dragBase.current.sidebar + dx);
+      liveSidebar.current = w;
+      sidebarRef.current?.style.setProperty("--sidebar-width", `${w}px`);
+      workspaceBodyRef.current?.style.setProperty("--sash-x", `${w}px`);
+    },
+    [clampSidebar],
+  );
+
+  const endSidebarDrag = useCallback(() => {
+    updateSettings({ sidebarWidth: liveSidebar.current });
+  }, [updateSettings]);
+
+  const resizePanel = useCallback(
+    (dx: number, dy: number) => {
+      // The sash sits before the panel, so dragging towards it shrinks the pane.
+      const delta = effectiveLayout === "bottom" ? -dy : -dx;
+      const v = clampPanel(dragBase.current.panel + delta);
+      livePanel.current = v;
+      const el = consolePanelRef.current;
+      if (el) {
+        if (effectiveLayout === "bottom") {
+          el.style.height = `${v}px`;
+        } else {
+          el.style.width = `${v}px`;
+        }
       }
-      setPanelSize(newSize);
-      try {
-        localStorage.setItem("workspace_panel_size", String(newSize));
-      } catch { }
-    };
+      workspaceBodyRef.current?.style.setProperty("--sash-y", `${v}px`);
+    },
+    [clampPanel, effectiveLayout],
+  );
 
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!isResizing.current || !e.touches[0]) return;
-      const t = e.touches[0];
-      let newSize = 320;
-      if (layoutMode === "bottom") {
-        const h = window.innerHeight;
-        newSize = Math.max(100, Math.min(h - 120, h - t.clientY));
-      } else {
-        const w = window.innerWidth;
-        newSize = Math.max(180, Math.min(w - 300, w - t.clientX));
-      }
-      setPanelSize(newSize);
-    };
+  const endPanelDrag = useCallback(() => {
+    setPanelSize(livePanel.current);
+    writePanelSize(livePanel.current);
+  }, [writePanelSize]);
 
-    const handleMouseUp = () => {
-      if (isResizing.current) {
-        isResizing.current = false;
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      }
-    };
+  const resizeBoth = useCallback(
+    (dx: number, dy: number) => {
+      resizeSidebar(dx);
+      resizePanel(dx, dy);
+    },
+    [resizeSidebar, resizePanel],
+  );
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("touchmove", handleTouchMove, { passive: true });
-    document.addEventListener("touchend", handleMouseUp);
+  const endBothDrag = useCallback(() => {
+    endSidebarDrag();
+    endPanelDrag();
+  }, [endSidebarDrag, endPanelDrag]);
 
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", handleMouseUp);
-    };
-  }, [layoutMode]);
+  const resetSidebar = useCallback(() => {
+    updateSettings({ sidebarWidth: 260 });
+  }, [updateSettings]);
+
+  const resetPanel = useCallback(() => {
+    const next = clampPanel(320);
+    setPanelSize(next);
+    writePanelSize(next);
+  }, [clampPanel, writePanelSize]);
+
+  const resetLayout = useCallback(() => {
+    resetSidebar();
+    resetPanel();
+  }, [resetSidebar, resetPanel]);
+
 
   // Go to Line functionality
   const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
   const [goToLineValue, setGoToLineValue] = useState("");
   const editorRef = useRef<any>(null);
+
+  const handleFormatDocument = async () => {
+    if (!editorRef.current) return;
+    try {
+      if (editorLanguage === "python") {
+        const current = editorRef.current.getValue();
+        const formatted = formatPythonCode(current);
+        if (formatted !== current) {
+          const model = editorRef.current.getModel();
+          if (model) {
+            editorRef.current.executeEdits("python-formatter", [
+              { range: model.getFullModelRange(), text: formatted },
+            ]);
+            editorRef.current.pushUndoStop();
+          }
+        }
+      } else {
+        await editorRef.current
+          .getAction("editor.action.formatDocument")
+          ?.run();
+      }
+    } catch (err) {
+      console.warn("Monaco document formatting error:", err);
+    }
+  };
+
+  const handleCopyContents = () => {
+    navigator.clipboard.writeText(
+      editorRef.current ? editorRef.current.getValue() : code,
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleExecuteGoToLine = () => {
     if (!goToLineValue.trim()) return;
@@ -1419,98 +1583,143 @@ declare const console: {
         base: "vs-dark",
         inherit: true,
         rules: [],
-        colors: {
-          "editor.background": "#0d1117",
-          "editor.lineHighlightBackground": "#161b22",
-        },
+        colors: buildMonacoColors(DEFAULT_SHELL.dark.bg, DEFAULT_SHELL.dark.fg),
       });
       m.editor.defineTheme("customLight", {
         base: "vs",
         inherit: true,
         rules: [],
-        colors: {
-          "editor.background": "#ffffff",
-          "editor.lineHighlightBackground": "#f1f5f9",
-        },
+        colors: buildMonacoColors(
+          DEFAULT_SHELL.light.bg,
+          DEFAULT_SHELL.light.fg,
+        ),
       });
       Object.entries(editorThemes).forEach(([id, themeData]) => {
-        m.editor.defineTheme(id, themeData);
+        const colors = (themeData as any)?.colors || {};
+        m.editor.defineTheme(id, {
+          ...(themeData as any),
+          colors: {
+            ...buildMonacoColors(
+              colors["editor.background"],
+              colors["editor.foreground"],
+            ),
+            ...colors,
+          },
+        });
       });
     } catch {
       // ignores already defined
     }
   };
 
+  // The shell (side bar, tabs, panel, status bar) is tinted from the active
+  // editor theme, so the chrome never clashes with the code surface.
+  const shellBase = useMemo(() => {
+    const chosen = settings.editorTheme;
+    if (chosen && chosen !== "default") {
+      const colors = (editorThemes as any)[chosen]?.colors;
+      if (colors?.["editor.background"] && colors?.["editor.foreground"]) {
+        return {
+          bg: colors["editor.background"] as string,
+          fg: colors["editor.foreground"] as string,
+        };
+      }
+    }
+    return appTheme === "dark" ? DEFAULT_SHELL.dark : DEFAULT_SHELL.light;
+  }, [settings.editorTheme, appTheme]);
+
+  const shellPalette = useMemo(
+    () => buildShellPalette(shellBase.bg, shellBase.fg),
+    [shellBase],
+  );
+
+  // Dialogs that portal to document.body (proxy settings, alerts) sit outside
+  // this subtree, so publish the palette on the document root while the
+  // workspace is open and take it back down on close.
+  useEffect(() => {
+    const root = document.documentElement;
+    Object.entries(shellPalette).forEach(([key, value]) =>
+      root.style.setProperty(key, value),
+    );
+    return () => {
+      Object.keys(shellPalette).forEach((key) =>
+        root.style.removeProperty(key),
+      );
+    };
+  }, [shellPalette]);
+
+  // Shared VS Code style control classes
+  const iconBtn =
+    "p-1.5 rounded-[4px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer shrink-0 outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)]";
+  const iconBtnOn = "bg-[var(--vsc-active)] text-[var(--vsc-fg)]";
+  const menuItem =
+    "w-full text-left px-3 py-1.5 hover:bg-[var(--vsc-hover)] flex justify-between items-center gap-3 transition-colors cursor-pointer";
+  const panelTab = (active: boolean) =>
+    `relative flex items-center gap-1.5 px-1 text-[11px] font-medium uppercase tracking-wide whitespace-nowrap shrink-0 transition-colors cursor-pointer outline-none border-b-2 ${active
+      ? "text-[var(--vsc-fg)] border-[var(--vsc-accent)]"
+      : "text-[var(--vsc-fg-muted)] border-transparent hover:text-[var(--vsc-fg)]"
+    }`;
+
   return createPortal(
-    <div className="fixed inset-0 z-[1000] bg-white dark:bg-[#0d1117] flex items-center justify-center p-0 nodrag">
+    <div
+      style={shellPalette as React.CSSProperties}
+      className="vsc-root fixed inset-0 z-[1000] bg-[var(--vsc-editor)] text-[var(--vsc-fg)] flex items-center justify-center p-0 nodrag"
+    >
       <div
-        className="w-full h-full flex flex-col overflow-hidden animate-in zoom-in-100 duration-200"
+        className="w-full h-full flex flex-col overflow-hidden animate-in fade-in duration-150"
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
-        <div className="flex justify-between items-center px-3 md:px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] select-none shrink-0">
-          <div className="flex items-center gap-2 md:gap-3 overflow-hidden mr-2">
-            <div className="p-1 px-1.5 bg-[#fbd38d]/20 text-[#dd6b20] dark:bg-yellow-500/10 dark:text-yellow-400 rounded border border-yellow-200/30 font-mono text-xs hidden md:flex items-center gap-1 shrink-0">
+        <div className="flex justify-between items-center gap-1 px-2 md:px-3 min-h-[38px] border-b border-[var(--vsc-border)] bg-[var(--vsc-titlebar)] select-none shrink-0">
+          {/* Workspace identity */}
+          <div className="flex items-center gap-2 min-w-0 flex-1 basis-0">
+            <div className="hidden md:flex items-center gap-1.5 px-1.5 py-0.5 rounded-[4px] text-[11px] font-medium text-[var(--vsc-fg-muted)] bg-[var(--vsc-hover)] shrink-0">
               <FolderOpen size={13} />
               <span>Workspace</span>
             </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1 text-slate-700 dark:text-slate-200 font-mono text-xs md:text-sm font-semibold truncate">
-                <span>{mainCleanName}</span>
-                {isEditingOtherFile && (
-                  <>
-                    <ChevronRight
-                      size={14}
-                      className="text-slate-400 shrink-0"
-                    />
-                    <span className="text-blue-500 font-medium truncate">
-                      {activeCleanName}
-                    </span>
-                  </>
-                )}
-              </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 hidden sm:inline truncate">
-                {currentFilePath}
-              </span>
+            <div
+              className="flex items-center gap-1 min-w-0 text-[13px] text-[var(--vsc-fg)]"
+              title={currentFilePath}
+            >
+              <span className="truncate font-medium">{mainCleanName}</span>
+              {isEditingOtherFile && (
+                <>
+                  <ChevronRight
+                    size={13}
+                    className="text-[var(--vsc-fg-muted)] shrink-0"
+                  />
+                  <span className="truncate text-[var(--vsc-accent)]">
+                    {activeCleanName}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
-            {/* Sidebar Toggle Button */}
-            <button
-              onClick={() =>
-                saveSettings({
-                  ...settings,
-                  isSidebarOpen:
-                    settings.isSidebarOpen === false ? true : false,
-                })
-              }
-              className={`p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors ${settings.isSidebarOpen !== false ? "bg-slate-200/50 dark:bg-slate-800/80 text-blue-500 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"}`}
-              title="Toggle Sidebar"
-            >
-              <PanelLeft size={15} />
-            </button>
+          {/* Command centre: shows the open file, opens Go to Line */}
+          <button
+            onClick={() => {
+              setIsGoToLineOpen(true);
+              setGoToLineValue("");
+            }}
+            title={`${currentFilePath} - Go to Line (Ctrl+G)`}
+            className="hidden lg:flex items-center justify-center gap-2 h-[26px] flex-[0_1_440px] min-w-0 px-3 mx-2 rounded-[6px] border border-[var(--vsc-border-strong)] bg-[var(--vsc-input)] text-[var(--vsc-fg-muted)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
+          >
+            {getTabIcon(currentFilePath, true)}
+            <span className="shrink-0 text-[12px] text-[var(--vsc-fg)]">
+              {activeCleanName}
+            </span>
+            <span className="truncate min-w-0 text-[11px] text-[var(--vsc-fg-muted)]">
+              {currentFilePath}
+            </span>
+          </button>
 
-            {/* Terminal Toggle Button */}
-            <button
-              onClick={() =>
-                setTerminalState(
-                  terminalState === "hidden" ? "normal" : "hidden",
-                )
-              }
-              className={`p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors ${terminalState !== "hidden" ? "bg-slate-200/50 dark:bg-slate-800/80 text-blue-500 dark:text-blue-400" : ""}`}
-              title="Toggle Terminal Panel"
-            >
-              <TerminalIcon size={15} />
-            </button>
-
-            <div className="w-px h-5 bg-slate-300 dark:bg-slate-700 hidden sm:block mx-0.5" />
-
+          <div className="flex items-center justify-end gap-1 flex-1 basis-0">
             {/* Run Button (Executable files only) */}
             {isExecutable && (
-              <div className="flex items-center rounded-md bg-slate-200/60 dark:bg-slate-800/80 p-0.5 border border-slate-300 dark:border-slate-700">
+              <div className="flex items-center rounded-[4px] bg-[var(--vsc-hover)] p-0.5 mr-1">
                 <button
                   disabled={isLoading}
                   onClick={() =>
@@ -1518,27 +1727,23 @@ declare const console: {
                       editorRef.current ? editorRef.current.getValue() : code,
                     )
                   }
-                  className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded cursor-pointer transition-colors whitespace-nowrap ${isLoading
-                    ? "bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
-                    : "bg-[#2ea44f] text-white hover:bg-[#2c974b] active:bg-[#2a8f47]"
+                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-[3px] cursor-pointer transition-colors whitespace-nowrap ${isLoading
+                    ? "text-[var(--vsc-fg-muted)] cursor-not-allowed"
+                    : "bg-[var(--vsc-accent)] text-[var(--vsc-accent-fg)] hover:opacity-90"
                     }`}
+                  title="Run (Ctrl+Enter)"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2
-                        size={13}
-                        className="animate-spin text-white shrink-0"
-                      />
-                      <span>Running...</span>
+                      <Loader2 size={13} className="animate-spin shrink-0" />
+                      <span className="hidden sm:inline">Running...</span>
                     </>
                   ) : (
                     <>
-                      <Play
-                        size={13}
-                        fill="currentColor"
-                        className="shrink-0"
-                      />
-                      <span>{isApi ? "Fetch" : "Run"}</span>
+                      <Play size={12} fill="currentColor" className="shrink-0" />
+                      <span className="hidden sm:inline">
+                        {isApi ? "Fetch" : "Run"}
+                      </span>
                     </>
                   )}
                 </button>
@@ -1547,275 +1752,342 @@ declare const console: {
                   <button
                     disabled={!isLoading}
                     onClick={onAbort}
-                    className={`p-1 rounded ml-1 transition-colors cursor-pointer ${isLoading
-                      ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
-                      : "text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                    className={`p-1 rounded-[3px] ml-0.5 transition-colors cursor-pointer ${isLoading
+                      ? "text-red-500 hover:bg-red-500/15"
+                      : "text-[var(--vsc-fg-muted)] opacity-50 cursor-not-allowed"
                       }`}
                     title="Stop Execution"
                   >
-                    <Square
-                      size={13}
-                      fill={isLoading ? "currentColor" : "none"}
-                    />
+                    <Square size={12} fill={isLoading ? "currentColor" : "none"} />
                   </button>
                 )}
               </div>
             )}
 
-            {/* Layout Customizer Buttons */}
-            <div className="flex items-center border-l border-slate-300 dark:border-slate-700 pl-2 gap-1">
-              {/* Go to Line Shortcut button */}
+            {/* Editor actions - folded into the settings menu on phones */}
+            <button
+              onClick={() => {
+                setIsGoToLineOpen(true);
+                setGoToLineValue("");
+              }}
+              className={`${iconBtn} hidden sm:block text-xs font-mono font-semibold`}
+              title="Go to line (Ctrl+G)"
+            >
+              Line
+            </button>
+
+            <button
+              onClick={handleFormatDocument}
+              className={`${iconBtn} hidden sm:block text-xs font-semibold`}
+              title="Format Document (Shift+Alt+F)"
+            >
+              Format
+            </button>
+
+            <button
+              onClick={handleCopyContents}
+              className={`${iconBtn} hidden sm:flex items-center justify-center min-w-[28px]`}
+              title="Copy Contents"
+            >
+              {copied ? (
+                <Check size={14} className="text-emerald-500" />
+              ) : (
+                <Copy size={14} />
+              )}
+            </button>
+
+            {/* Advanced Minimap/Editor Config */}
+            <div className="relative shrink-0">
               <button
-                onClick={() => {
-                  setIsGoToLineOpen(true);
-                  setGoToLineValue("");
-                }}
-                className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer text-xs font-mono font-bold transition-colors hidden sm:block"
-                title="Go to line (Ctrl+G)"
+                ref={minimapBtnRef}
+                onClick={() => setIsMinimapMenuOpen(!isMinimapMenuOpen)}
+                className={`${iconBtn} ${isMinimapMenuOpen ? iconBtnOn : ""}`}
+                title="Editor Options & Themes"
               >
-                Line
+                <Settings2 size={14} />
               </button>
 
-              <button
-                onClick={async () => {
-                  if (editorRef.current) {
-                    try {
-                      if (editorLanguage === "python") {
-                        const current = editorRef.current.getValue();
-                        const formatted = formatPythonCode(current);
-                        if (formatted !== current) {
-                          const model = editorRef.current.getModel();
-                          if (model) {
-                            editorRef.current.executeEdits("python-formatter", [
-                              {
-                                range: model.getFullModelRange(),
-                                text: formatted,
-                              },
-                            ]);
-                            editorRef.current.pushUndoStop();
-                          }
-                        }
-                      } else {
-                        await editorRef.current
-                          .getAction("editor.action.formatDocument")
-                          ?.run();
-                      }
-                    } catch (err) {
-                      console.warn("Monaco document formatting error:", err);
-                    }
-                  }
-                }}
-                className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer text-xs font-bold transition-colors"
-                title="Format Document (Shift+Alt+F)"
-              >
-                Format
-              </button>
-
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    editorRef.current ? editorRef.current.getValue() : code,
-                  );
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="p-1.5 flex items-center justify-center min-w-[28px] rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
-                title="Copy Contents"
-              >
-                {copied ? (
-                  <Check size={14} className="text-emerald-500" />
-                ) : (
-                  <Copy size={14} />
-                )}
-              </button>
-
-              {/* Advanced Minimap/Editor Config */}
-              <div className="relative shrink-0">
-                <button
-                  ref={minimapBtnRef}
-                  onClick={() => setIsMinimapMenuOpen(!isMinimapMenuOpen)}
-                  className={`p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors ${isMinimapMenuOpen ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200" : ""}`}
-                  title="Editor Options & Themes"
+              {isMinimapMenuOpen && (
+                <div
+                  ref={minimapMenuRef}
+                  className="absolute right-0 mt-1.5 w-60 bg-[var(--vsc-widget)] border border-[var(--vsc-border-strong)] shadow-[0_4px_18px_var(--vsc-widget-shadow)] rounded-[6px] py-1 z-50 animate-in fade-in slide-in-from-top-1 text-xs select-none"
                 >
-                  <Settings2 size={14} />
-                </button>
-
-                {isMinimapMenuOpen && (
-                  <div
-                    ref={minimapMenuRef}
-                    className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-[#161b22] border border-slate-300 dark:border-slate-800 shadow-xl rounded-md pt-1 pb-1 z-50 animate-in fade-in slide-in-from-top-1 text-xs select-none"
-                  >
-                    <div className="px-3 py-1.5 font-bold border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase text-slate-500 select-none">
-                      Editor Preferences
+                  {/* Phone-only duplicates of the toolbar actions */}
+                  <div className="sm:hidden">
+                    <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-[var(--vsc-fg-muted)]">
+                      Actions
                     </div>
-
-                    <button
-                      onClick={() =>
-                        saveSettings({
-                          ...settings,
-                          enabled: !settings.enabled,
-                        })
-                      }
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
-                    >
-                      <span>Show Minimap</span>
-                      {settings.enabled && (
-                        <Check size={12} className="text-blue-500" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        saveSettings({
-                          ...settings,
-                          renderCharacters: !settings.renderCharacters,
-                        })
-                      }
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
-                    >
-                      <span>Show Whitespace</span>
-                      {settings.renderCharacters && (
-                        <Check size={12} className="text-blue-500" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => toggleWordWrap()}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
-                      title="Toggle Text Wrap (Alt+Z)"
-                    >
-                      <span>Text Wrap</span>
-                      {wordWrap === "on" && (
-                        <Check size={12} className="text-blue-500" />
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
-                    >
-                      <span>Programming Keyboard</span>
-                      {isAssistantEnabled && (
-                        <Check size={12} className="text-blue-500" />
-                      )}
-                    </button>
-
                     <button
                       onClick={() => {
                         setIsMinimapMenuOpen(false);
-                        setIsProxyModalOpen(true);
+                        setIsGoToLineOpen(true);
+                        setGoToLineValue("");
                       }}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors text-blue-600 dark:text-blue-400 font-medium"
+                      className={menuItem}
                     >
-                      <span>Manage Proxy Servers...</span>
+                      <span>Go to Line...</span>
+                      <span className="text-[10px] text-[var(--vsc-fg-muted)]">
+                        Ctrl+G
+                      </span>
                     </button>
-
-                    {(isTs || isJs) && (
-                      <button
-                        onClick={() => {
-                          setIsMinimapMenuOpen(false);
-                          setGlobalAlert({
-                            title: "Async / Fetch Guidelines for JS/TS Nodes",
-                            message: "Since the entire node's code runs inside an asynchronous wrapper function, you MUST use `await` for any async operations like `fetch()` or `setTimeout()`.\n\nIf you use `.then().catch()` without `await`ing or returning the Promise, the main execution function will finish and clean up immediately, terminating your background network requests before they complete!",
-                            codeSnippet: "await fetch(\"https://jsonplaceholder.typicode.com/todos/1\")\n  .then(res => res.json())\n  .then(data => console.log(data))\n  .catch(console.log);"
-                          });
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-900/30 flex items-center transition-colors text-amber-600 dark:text-amber-400 font-medium border-t border-amber-200 dark:border-amber-900/50"
-                      >
-                        <Info size={14} className="mr-2" />
-                        <span>Async / Fetch Rules</span>
-                      </button>
-                    )}
-
-                    <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
-                    <div className="px-3 py-1.5 font-bold text-[10px] uppercase text-slate-500 select-none">
-                      Appearance
-                    </div>
-
                     <button
-                      onClick={() =>
-                        setAppTheme(appTheme === "dark" ? "light" : "dark")
-                      }
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors"
+                      onClick={() => {
+                        setIsMinimapMenuOpen(false);
+                        handleFormatDocument();
+                      }}
+                      className={menuItem}
                     >
-                      <div className="flex items-center gap-2">
-                        {appTheme === "dark" ? (
-                          <Sun size={12} />
-                        ) : (
-                          <Moon size={12} />
-                        )}
-                        <span>
-                          {appTheme === "dark"
-                            ? "Switch to Light Mode"
-                            : "Switch to Dark Mode"}
-                        </span>
-                      </div>
+                      <span>Format Document</span>
                     </button>
-
-                    {/* Editor Themes Nested Options */}
-                    <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
                     <button
-                      onClick={() =>
-                        setActiveSubmenu(
-                          activeSubmenu === "theme" ? null : "theme",
-                        )
-                      }
-                      className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800/50 flex justify-between items-center transition-colors font-medium text-blue-600 dark:text-blue-400"
+                      onClick={() => {
+                        setIsMinimapMenuOpen(false);
+                        handleCopyContents();
+                      }}
+                      className={menuItem}
                     >
-                      <span>Select Theme</span>
-                      <ChevronRight
-                        size={13}
-                        className={`transform transition-transform ${activeSubmenu === "theme" ? "rotate-90" : ""}`}
-                      />
+                      <span>Copy Contents</span>
                     </button>
-
-                    {activeSubmenu === "theme" && (
-                      <div className="bg-slate-50 dark:bg-[#0d1117] border-y border-slate-200 dark:border-slate-800/80 max-h-40 overflow-auto scrollbar-thin">
-                        {(
-                          [
-                            "default",
-                            "one-dark-pro",
-                            "dracula",
-                            "night-owl",
-                            "github-dark",
-                            "synthwave-84",
-                          ] as const
-                        ).map((t) => (
-                          <button
-                            key={t}
-                            onClick={() =>
-                              saveSettings({ ...settings, editorTheme: t })
-                            }
-                            className="w-full text-left px-4 py-1.5 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 flex justify-between items-center transition-colors font-mono text-[10px]"
-                          >
-                            <span>{t}</span>
-                            {settings.editorTheme === t && (
-                              <Check size={10} className="text-blue-500" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
-                    <button
-                      onClick={handleClearAllCode}
-                      className="w-full text-left px-3 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center justify-between transition-colors text-red-600 dark:text-red-400 font-medium"
-                      title="Clear all code in current tab (Ctrl+Z to undo)"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Trash2 size={12} className="text-red-500 shrink-0" />
-                        <span>Clear All Code</span>
-                      </div>
-                    </button>
+                    <div className="border-t border-[var(--vsc-border)] my-1" />
                   </div>
-                )}
-              </div>
+
+                  <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-[var(--vsc-fg-muted)]">
+                    Editor Preferences
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      saveSettings({
+                        ...settings,
+                        enabled: !settings.enabled,
+                      })
+                    }
+                    className={menuItem}
+                  >
+                    <span>Show Minimap</span>
+                    {settings.enabled && (
+                      <Check size={12} className="text-[var(--vsc-accent)]" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      saveSettings({
+                        ...settings,
+                        renderCharacters: !settings.renderCharacters,
+                      })
+                    }
+                    className={menuItem}
+                  >
+                    <span>Show Whitespace</span>
+                    {settings.renderCharacters && (
+                      <Check size={12} className="text-[var(--vsc-accent)]" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => toggleWordWrap()}
+                    className={menuItem}
+                  >
+                    <span>Text Wrap</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-[10px] text-[var(--vsc-fg-muted)]">
+                        Alt+Z
+                      </span>
+                      {wordWrap === "on" && (
+                        <Check size={12} className="text-[var(--vsc-accent)]" />
+                      )}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
+                    className={menuItem}
+                  >
+                    <span>Programming Keyboard</span>
+                    {isAssistantEnabled && (
+                      <Check size={12} className="text-[var(--vsc-accent)]" />
+                    )}
+                  </button>
+
+                  <div className="border-t border-[var(--vsc-border)] my-1" />
+                  <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-[var(--vsc-fg-muted)]">
+                    Layout
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setLayoutMode(layoutMode === "bottom" ? "right" : "bottom")
+                    }
+                    className={menuItem}
+                    title={
+                      viewport.w < 1024
+                        ? "Applies on wider screens - narrow layouts always stack the panel"
+                        : undefined
+                    }
+                  >
+                    <span>
+                      {layoutMode === "bottom"
+                        ? "Move Panel Right"
+                        : "Move Panel Bottom"}
+                    </span>
+                    {layoutMode === "bottom" ? (
+                      <PanelRight size={12} />
+                    ) : (
+                      <PanelBottom size={12} />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      resetLayout();
+                      setIsMinimapMenuOpen(false);
+                    }}
+                    className={menuItem}
+                  >
+                    <span>Reset Panel Sizes</span>
+                  </button>
+
+                  <div className="border-t border-[var(--vsc-border)] my-1" />
+                  <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-[var(--vsc-fg-muted)]">
+                    Tools
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsMinimapMenuOpen(false);
+                      setIsProxyModalOpen(true);
+                    }}
+                    className={`${menuItem} text-[var(--vsc-accent)] font-medium`}
+                  >
+                    <span>Manage Proxy Servers...</span>
+                  </button>
+
+                  {(isTs || isJs) && (
+                    <button
+                      onClick={() => {
+                        setIsMinimapMenuOpen(false);
+                        setGlobalAlert({
+                          title: "Async / Fetch Guidelines for JS/TS Nodes",
+                          message: "Since the entire node's code runs inside an asynchronous wrapper function, you MUST use `await` for any async operations like `fetch()` or `setTimeout()`.\n\nIf you use `.then().catch()` without `await`ing or returning the Promise, the main execution function will finish and clean up immediately, terminating your background network requests before they complete!",
+                          codeSnippet: "await fetch(\"https://jsonplaceholder.typicode.com/todos/1\")\n  .then(res => res.json())\n  .then(data => console.log(data))\n  .catch(console.log);"
+                        });
+                      }}
+                      className={`${menuItem} text-amber-600 dark:text-amber-400 font-medium`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Info size={13} />
+                        Async / Fetch Rules
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={handleClearAllCode}
+                    className={`${menuItem} text-red-600 dark:text-red-400 font-medium`}
+                    title="Clear all code in current tab (Ctrl+Z to undo)"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Trash2 size={12} className="shrink-0" />
+                      Clear All Code
+                    </span>
+                  </button>
+
+                  <div className="border-t border-[var(--vsc-border)] my-1" />
+                  <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-[var(--vsc-fg-muted)]">
+                    Appearance
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setAppTheme(appTheme === "dark" ? "light" : "dark")
+                    }
+                    className={menuItem}
+                  >
+                    <div className="flex items-center gap-2">
+                      {appTheme === "dark" ? <Sun size={12} /> : <Moon size={12} />}
+                      <span>
+                        {appTheme === "dark"
+                          ? "Switch to Light Mode"
+                          : "Switch to Dark Mode"}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      setActiveSubmenu(activeSubmenu === "theme" ? null : "theme")
+                    }
+                    className={`${menuItem} text-[var(--vsc-accent)] font-medium`}
+                  >
+                    <span>Color Theme</span>
+                    <ChevronRight
+                      size={13}
+                      className={`transform transition-transform ${activeSubmenu === "theme" ? "rotate-90" : ""}`}
+                    />
+                  </button>
+
+                  {activeSubmenu === "theme" && (
+                    <div className="bg-[var(--vsc-hover)] border-y border-[var(--vsc-border)] max-h-40 overflow-auto custom-scrollbar">
+                      {(
+                        [
+                          "default",
+                          "one-dark-pro",
+                          "dracula",
+                          "night-owl",
+                          "github-dark",
+                          "synthwave-84",
+                        ] as const
+                      ).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() =>
+                            saveSettings({ ...settings, editorTheme: t })
+                          }
+                          className="w-full text-left px-4 py-1.5 hover:bg-[var(--vsc-active)] flex justify-between items-center transition-colors font-mono text-[10px] cursor-pointer"
+                        >
+                          <span>{t}</span>
+                          {settings.editorTheme === t && (
+                            <Check size={10} className="text-[var(--vsc-accent)]" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            <div className="w-px h-5 bg-[var(--vsc-border)] mx-0.5" />
+
+            {/* Layout toggles, mirroring the VS Code title bar */}
+            <button
+              onClick={() =>
+                saveSettings({ ...settings, isSidebarOpen: !sidebarOpen })
+              }
+              className={`${iconBtn} ${sidebarOpen ? iconBtnOn : ""}`}
+              title="Toggle Primary Side Bar (Explorer)"
+            >
+              <PanelLeft size={15} />
+            </button>
+
+            <button
+              onClick={() =>
+                setTerminalState(terminalState === "hidden" ? "normal" : "hidden")
+              }
+              className={`${iconBtn} ${terminalState !== "hidden" ? iconBtnOn : ""}`}
+              title="Toggle Panel (Ctrl+`)"
+            >
+              {effectiveLayout === "bottom" ? (
+                <PanelBottom size={15} />
+              ) : (
+                <PanelRight size={15} />
+              )}
+            </button>
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md hover:bg-red-500 hover:text-white text-slate-500 dark:text-slate-400 cursor-pointer transition-colors ml-1"
+              className={`${iconBtn} hover:!bg-red-500 hover:!text-white`}
               title="Close Workspace"
             >
               <X size={15} />
@@ -1824,36 +2096,68 @@ declare const console: {
         </div>
 
         {/* Workspace Panels Main body */}
-        <div className="flex-1 flex overflow-hidden min-h-0 bg-slate-100 dark:bg-[#0c0f16] relative">
+        <div
+          ref={workspaceBodyRef}
+          style={
+            {
+              "--sash-x": `${sidebarWidth}px`,
+              "--sash-y": `${panelSize}px`,
+            } as React.CSSProperties
+          }
+          className="flex-1 flex overflow-hidden min-h-0 bg-[var(--vsc-editor)] relative"
+        >
           {/* Mobile Sidebar Backdrop */}
-          {settings.isSidebarOpen !== false && (
+          {sidebarOpen && isMobile && (
             <div
-              className="absolute inset-0 bg-black/50 z-30 md:hidden"
-              onClick={() =>
-                saveSettings({ ...settings, isSidebarOpen: false })
-              }
+              className="absolute inset-0 bg-black/50 z-40 animate-in fade-in duration-150"
+              onClick={() => saveSettings({ ...settings, isSidebarOpen: false })}
             />
           )}
 
           {/* Side Drawer Panel */}
-          {settings.isSidebarOpen !== false && (
+          {sidebarOpen && (
             <div
               ref={(el) => { (sidebarRef as React.MutableRefObject<HTMLDivElement | null>).current = el; }}
-              style={{ "--sidebar-width": `${settings.sidebarWidth || 260}px` } as React.CSSProperties}
-              className="absolute md:relative top-0 bottom-0 left-0 w-full md:w-[var(--sidebar-width)] max-w-full md:max-w-none border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex flex-col overflow-hidden select-none shrink-0 z-40 md:z-30"
+              style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+              className={`bg-[var(--vsc-sidebar)] flex flex-col overflow-hidden select-none shrink-0 ${isMobile
+                ? "absolute top-0 bottom-0 left-0 z-50 w-[min(320px,85vw)] border-r border-[var(--vsc-border)] shadow-2xl animate-in slide-in-from-left duration-200"
+                : "relative z-20 w-[var(--sidebar-width)]"
+                }`}
             >
-              {/* Python: small tab switcher inside content area */}
+              {/* View title, as in the VS Code side bar */}
+              <div className="flex items-center justify-between gap-2 h-[35px] pl-5 pr-2 shrink-0">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--vsc-fg)] truncate">
+                  Explorer
+                </span>
+                <button
+                  onClick={() =>
+                    saveSettings({ ...settings, isSidebarOpen: false })
+                  }
+                  className={iconBtn}
+                  title="Hide Explorer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Explorer / Packages switch for Python workspaces */}
               {isPy && (
-                <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 p-2 bg-slate-100/50 dark:bg-[#161b22]/50 shrink-0 select-none">
+                <div className="flex items-center gap-1 px-2 pb-2 shrink-0">
                   <button
                     onClick={() => setSidebarTab("files")}
-                    className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "files" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                    className={`flex-1 px-3 py-1 text-[11px] font-medium rounded-[4px] transition-colors cursor-pointer ${sidebarTab === "files"
+                      ? "bg-[var(--vsc-active)] text-[var(--vsc-fg)]"
+                      : "text-[var(--vsc-fg-muted)] hover:bg-[var(--vsc-hover)]"
+                      }`}
                   >
                     Files
                   </button>
                   <button
                     onClick={() => setSidebarTab("packages")}
-                    className={`flex-1 px-3 py-1.5 text-[11px] font-semibold tracking-wide rounded-md transition ${sidebarTab === "packages" ? "bg-white dark:bg-[#21262d] text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                    className={`flex-1 px-3 py-1 text-[11px] font-medium rounded-[4px] transition-colors cursor-pointer ${sidebarTab === "packages"
+                      ? "bg-[var(--vsc-active)] text-[var(--vsc-fg)]"
+                      : "text-[var(--vsc-fg-muted)] hover:bg-[var(--vsc-hover)]"
+                      }`}
                   >
                     Packages
                   </button>
@@ -1868,65 +2172,36 @@ declare const console: {
                 )}
               </div>
 
-              {/* Draggable Resizer */}
-              <div
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const startX = e.clientX;
-                  const startWidth = settings.sidebarWidth || 260;
-
-                  // Add a full-screen overlay to prevent iframe/editor stealing mouse events
-                  const overlay = document.createElement('div');
-                  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:col-resize;user-select:none;';
-                  document.body.appendChild(overlay);
-                  document.body.style.cursor = "col-resize";
-                  document.body.style.userSelect = "none";
-
-                  let lastWidth = startWidth;
-
-                  const handleMouseMove = (moveEvent: MouseEvent) => {
-                    const delta = moveEvent.clientX - startX;
-                    const newWidth = Math.max(160, Math.min(600, startWidth + delta));
-                    lastWidth = newWidth;
-                    // Directly set the CSS variable on the DOM element — no React re-render
-                    if (sidebarRef.current) {
-                      sidebarRef.current.style.setProperty('--sidebar-width', `${newWidth}px`);
-                    }
-                  };
-
-                  const handleMouseUp = () => {
-                    document.removeEventListener("mousemove", handleMouseMove);
-                    document.removeEventListener("mouseup", handleMouseUp);
-                    overlay.remove();
-                    document.body.style.cursor = "";
-                    document.body.style.userSelect = "";
-                    // Persist final width to React state + localStorage only once
-                    saveSettings({ ...settings, sidebarWidth: lastWidth });
-                  };
-
-                  document.addEventListener("mousemove", handleMouseMove);
-                  document.addEventListener("mouseup", handleMouseUp);
-                }}
-                className="absolute top-0 right-0 bottom-0 w-1.5 bg-transparent hover:bg-blue-500/70 cursor-col-resize z-50 transition-colors"
-              />
             </div>
+          )}
+
+          {/* Explorer / editor sash */}
+          {sidebarOpen && !isMobile && (
+            <WorkspaceSash
+              orientation="vertical"
+              label="Resize explorer"
+              onStart={beginPaneDrag}
+              onDelta={(dx) => resizeSidebar(dx)}
+              onEnd={endSidebarDrag}
+              onReset={resetSidebar}
+            />
           )}
 
           {/* Code Editor and Output Split Panels Area */}
           <div
-            className={`flex-1 flex overflow-hidden h-full relative ${layoutMode === "bottom" ? "flex-col" : "flex-col lg:flex-row"}`}
+            className={`flex-1 flex overflow-hidden h-full relative min-w-0 ${effectiveLayout === "bottom" ? "flex-col" : "flex-row"}`}
           >
             <div
-              className={`flex-1 z-10 relative min-w-[200px] min-h-[100px] flex flex-col bg-white dark:bg-[#0d1117] overflow-hidden ${terminalState === "maximized" ? "hidden" : "flex"}`}
+              className={`flex-1 z-10 relative min-w-[120px] min-h-[80px] flex-col bg-[var(--vsc-editor)] overflow-hidden ${terminalState === "maximized" ? "hidden" : "flex"}`}
             >
               {/* Tabs list (Editor header) */}
-              <div className="flex items-center border-b border-slate-200 dark:border-slate-800 bg-[#f8fafc]/80 dark:bg-[#0c0f16]/40 overflow-x-auto select-none shrink-0 scrollbar-none">
+              <div className="flex items-stretch bg-[var(--vsc-tabbar)] overflow-x-auto select-none shrink-0 scrollbar-none h-[35px] border-b border-[var(--vsc-border)]">
                 {workspaceTabs.length === 0 && (
-                  <div className="px-4 py-2 text-xs font-mono text-slate-400 dark:text-slate-500 italic">
+                  <div className="px-4 flex items-center text-xs font-mono text-[var(--vsc-fg-muted)] italic">
                     No files open
                   </div>
                 )}
+
                 {workspaceTabs.map((tab, idx) => {
                   const isActive = currentFilePath === tab.path;
                   const cleanName = getCleanName(tab.path);
@@ -2019,14 +2294,14 @@ declare const console: {
                         }
                       }}
                       onClick={() => openWorkspaceTab(tab.path, tab.isPreview)}
-                      className={`flex items-center gap-1.5 px-4 py-2 border-r border-r-slate-200 dark:border-r-slate-800 text-xs font-mono transition-colors cursor-pointer shrink-0 group border-t-2 ${isActive
-                        ? "bg-white dark:bg-[#0d1117] !border-t-blue-500 font-semibold text-slate-800 dark:text-slate-100"
-                        : "border-t-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
+                      className={`relative flex items-center gap-1.5 px-3 h-full text-[13px] border-r border-[var(--vsc-border)] transition-colors cursor-pointer shrink-0 group ${isActive
+                        ? "bg-[var(--vsc-tab-active)] text-[var(--vsc-fg)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[var(--vsc-accent)] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-[var(--vsc-tab-active)]"
+                        : "text-[var(--vsc-tab-inactive-fg)] hover:bg-[var(--vsc-hover)]"
                         }`}
                     >
                       {getTabIcon(tab.path, isActive)}
                       <span
-                        className={`truncate max-w-[120px] ${tab.isPreview ? "italic" : ""}`}
+                        className={`truncate max-w-[100px] sm:max-w-[160px] ${tab.isPreview ? "italic" : ""}`}
                       >
                         {cleanName}
                       </span>
@@ -2036,10 +2311,10 @@ declare const console: {
                           e.stopPropagation();
                           closeWorkspaceTab(tab.path);
                         }}
-                        className={`ml-1 flex items-center justify-center w-4 h-4 rounded-md transition-colors ${tab.isDirty ? "" : "opacity-0 group-hover:opacity-100"} hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200`}
+                        className={`ml-1 flex items-center justify-center w-[18px] h-[18px] rounded-[4px] transition-colors cursor-pointer ${tab.isDirty ? "" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"} hover:bg-[var(--vsc-active)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)]`}
                       >
                         {tab.isDirty ? (
-                          <div className="w-2 h-2 rounded-full bg-blue-500 group-hover:hidden" />
+                          <div className="w-2 h-2 rounded-full bg-[var(--vsc-fg)] group-hover:hidden" />
                         ) : null}
                         <X
                           size={12}
@@ -2053,11 +2328,33 @@ declare const console: {
                 })}
               </div>
 
+              {/* Breadcrumbs */}
+              {workspaceTabs.length > 0 && (
+                <div className="flex items-center h-[22px] px-3 shrink-0 bg-[var(--vsc-editor)] text-[11px] text-[var(--vsc-fg-muted)] overflow-x-auto scrollbar-none whitespace-nowrap">
+                  {breadcrumbs.map((crumb, i) => (
+                    <span
+                      key={crumb.path}
+                      className="flex items-center gap-1 shrink-0"
+                    >
+                      {i > 0 && (
+                        <ChevronRight size={11} className="opacity-60 mx-0.5" />
+                      )}
+                      <span
+                        className={`flex items-center gap-1 ${crumb.isFile ? "text-[var(--vsc-fg)]" : ""}`}
+                      >
+                        {crumb.isFile && getTabIcon(currentFilePath, true)}
+                        {crumb.label}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Editor Component frame */}
               <div className="flex-1 relative flex flex-col min-h-0">
                 {isGoToLineOpen && (
-                  <div className="absolute top-2 right-4 z-50 bg-slate-50 dark:bg-[#161b22] border border-slate-300 dark:border-slate-700 shadow-xl rounded-md p-1.5 flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-100">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 font-mono pl-1 shrink-0">
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 w-[min(420px,92%)] bg-[var(--vsc-widget)] border border-[var(--vsc-border-strong)] shadow-[0_4px_18px_var(--vsc-widget-shadow)] rounded-[6px] p-2 flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-100">
+                    <span className="text-[11px] font-semibold text-[var(--vsc-fg-muted)] shrink-0">
                       Go to:
                     </span>
                     <input
@@ -2065,7 +2362,7 @@ declare const console: {
                       placeholder="line:col (e.g. 10:5)"
                       value={goToLineValue}
                       onChange={(e) => setGoToLineValue(e.target.value)}
-                      className="bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-100 text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono w-40"
+                      className="flex-1 min-w-0 bg-[var(--vsc-input)] text-[var(--vsc-fg)] text-xs px-2 py-1 rounded-[3px] border border-[var(--vsc-border-strong)] focus:outline-none focus:ring-1 focus:ring-[var(--vsc-accent)] font-mono"
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -2078,7 +2375,7 @@ declare const console: {
                     />
                     <button
                       onClick={handleExecuteGoToLine}
-                      className="px-3 py-1 bg-[#3178C6] hover:bg-[#2762a4] text-white text-xs font-bold rounded transition-colors whitespace-nowrap"
+                      className="px-3 py-1 bg-[var(--vsc-accent)] text-[var(--vsc-accent-fg)] hover:opacity-90 text-xs font-semibold rounded-[3px] transition-opacity whitespace-nowrap cursor-pointer"
                     >
                       Go
                     </button>
@@ -2087,7 +2384,7 @@ declare const console: {
                         setIsGoToLineOpen(false);
                         if (editorRef.current) editorRef.current.focus();
                       }}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded transition-colors block"
+                      className="p-1 hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] rounded-[3px] transition-colors block cursor-pointer"
                     >
                       <X size={12} />
                     </button>
@@ -2129,6 +2426,31 @@ declare const console: {
                       editorRef.current = editor;
                       setEditorInstance(editor);
                       registerWorkspaceIntelliSense(m, editor);
+                      try {
+                        const pos = editor.getPosition();
+                        if (pos)
+                          setCursorPos((prev) => ({
+                            ...prev,
+                            line: pos.lineNumber,
+                            column: pos.column,
+                          }));
+                        editor.onDidChangeCursorPosition((ev: any) =>
+                          setCursorPos((prev) => ({
+                            ...prev,
+                            line: ev.position.lineNumber,
+                            column: ev.position.column,
+                          })),
+                        );
+                        editor.onDidChangeCursorSelection((ev: any) => {
+                          const model = editor.getModel();
+                          const selected = model
+                            ? model.getValueInRange(ev.selection).length
+                            : 0;
+                          setCursorPos((prev) => ({ ...prev, selected }));
+                        });
+                      } catch (err) {
+                        console.warn("Could not track the caret position", err);
+                      }
                       try {
                         editor.addCommand(
                           m.KeyMod.CtrlCmd | m.KeyCode.KeyG,
@@ -2354,47 +2676,45 @@ declare const console: {
               </div>
             </div>
 
+            {/* Editor / panel sash */}
+            {terminalState === "normal" && (
+              <WorkspaceSash
+                orientation={
+                  effectiveLayout === "bottom" ? "horizontal" : "vertical"
+                }
+                label="Resize panel"
+                onStart={beginPaneDrag}
+                onDelta={resizePanel}
+                onEnd={endPanelDrag}
+                onReset={resetPanel}
+              />
+            )}
+
             {/* Output Split Console and Results Panel */}
             <div
               ref={consolePanelRef}
-              className={`${layoutMode === "bottom" ? "border-t" : "border-l"} border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22] flex-col relative z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] ${terminalState === "hidden" ? "hidden" : "flex"}`}
+              className={`bg-[var(--vsc-panel)] flex-col relative z-20 min-w-0 min-h-0 ${terminalState === "hidden" ? "hidden" : "flex"}`}
               style={
                 terminalState === "maximized"
                   ? { flex: 1, width: "100%", height: "100%" }
                   : {
-                    [layoutMode === "bottom" ? "height" : "width"]: panelSize,
+                    flex: "0 0 auto",
+                    [effectiveLayout === "bottom" ? "height" : "width"]:
+                      panelSize,
                   }
               }
             >
-              {/* Panel Resizer Drag Bar Handle */}
-              {terminalState !== "maximized" && (
-                <div
-                  className={`absolute z-30 group ${layoutMode === "bottom" ? "top-0 left-0 right-0 h-2 -translate-y-1/2 cursor-row-resize" : "left-0 top-0 bottom-0 w-2 -translate-x-1/2 cursor-col-resize"}`}
-                  onMouseDown={handleMouseDown}
-                  onTouchStart={handleTouchStart}
-                  onDoubleClick={handleDoubleClickSplitter}
-                >
-                  <div className="w-full h-full bg-transparent group-hover:bg-blue-500/30 transition-colors flex items-center justify-center">
-                    {layoutMode === "bottom" ? (
-                      <div className="w-8 h-1 bg-slate-300 dark:bg-slate-600 rounded-full group-hover:bg-blue-500 shadow-sm" />
-                    ) : (
-                      <div className="w-1 h-8 bg-slate-300 dark:bg-slate-600 rounded-full group-hover:bg-blue-500 shadow-sm" />
-                    )}
-                  </div>
-                </div>
-              )}
-
               {/* Console/Result Pane tabs header */}
-              <div className="flex justify-between items-center bg-slate-100/80 dark:bg-[#11161d] border-b border-slate-200 dark:border-slate-800 select-none shrink-0 w-full overflow-hidden">
-                <div className="flex flex-1 overflow-x-auto scrollbar-none min-w-0">
+              <div className="flex justify-between items-center gap-2 h-[35px] bg-[var(--vsc-panel)] border-b border-[var(--vsc-border)] select-none shrink-0 w-full overflow-hidden">
+                <div className="flex flex-1 items-stretch gap-4 px-3 overflow-x-auto scrollbar-none min-w-0">
                   <button
                     onClick={() => setActiveTab("console")}
-                    className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-r-slate-200 dark:border-r-slate-800 transition-colors shrink-0 flex items-center gap-1.5 ${activeTab === "console" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 border-t-2 !border-t-blue-500 font-semibold" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent hover:text-slate-800 dark:hover:text-slate-200"}`}
+                    className={panelTab(activeTab === "console")}
                   >
-                    <TerminalIcon size={13} className="shrink-0" />
+                    <TerminalIcon size={12} className="shrink-0" />
                     <span>Console</span>
                     {logCount > 0 && (
-                      <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                      <span className="bg-[var(--vsc-badge)] text-[var(--vsc-badge-fg)] text-[10px] font-semibold px-1.5 rounded-full shrink-0 normal-case">
                         {logCount}
                       </span>
                     )}
@@ -2402,14 +2722,14 @@ declare const console: {
 
                   <button
                     onClick={() => setActiveTab("result")}
-                    className={`px-3 md:px-6 py-2 md:py-2.5 text-xs md:text-sm font-medium border-r border-r-slate-200 dark:border-r-slate-800 transition-colors shrink-0 ${activeTab === "result" ? "bg-white dark:bg-[#0d1117] text-blue-600 dark:text-blue-400 border-t-2 !border-t-blue-500 font-semibold" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-t-2 border-t-transparent hover:text-slate-800 dark:hover:text-slate-200"}`}
+                    className={panelTab(activeTab === "result")}
                   >
                     Output Result
                   </button>
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center px-1.5 md:px-3 border-l border-slate-200 dark:border-slate-800 gap-1 md:gap-2 py-1 shrink-0 bg-slate-100/80 dark:bg-[#11161d]">
+                <div className="flex items-center px-1 md:px-2 gap-0.5 shrink-0">
                   {activeTab === "console" && (
                     <button
                       onClick={async () => {
@@ -2438,11 +2758,11 @@ declare const console: {
                           console.error("Failed to copy console logs", err);
                         }
                       }}
-                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${copiedConsole
-                        ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-semibold"
+                      className={`py-1 px-1.5 md:px-2 text-[11px] font-medium rounded-[4px] flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${copiedConsole
+                        ? "text-emerald-500 bg-emerald-500/10 font-semibold"
                         : logCount > 0
-                          ? "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
-                          : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                          ? "text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)]"
+                          : "text-[var(--vsc-fg-muted)] cursor-not-allowed opacity-40"
                         }`}
                       title="Copy all console logs"
                       disabled={logCount === 0}
@@ -2469,9 +2789,9 @@ declare const console: {
                           setApiNodeError(currentFilePath, null);
                         }
                       }}
-                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${logCount > 0 || lastError
-                        ? "text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/60 cursor-pointer"
-                        : "text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                      className={`py-1 px-1.5 md:px-2 text-[11px] font-medium rounded-[4px] flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 outline-none ${logCount > 0 || lastError
+                        ? "text-[var(--vsc-fg-muted)] hover:text-red-500 hover:bg-[var(--vsc-hover)] cursor-pointer"
+                        : "text-[var(--vsc-fg-muted)] cursor-not-allowed opacity-40"
                         }`}
                       title="Clear console logs and errors"
                       disabled={logCount === 0 && !lastError}
@@ -2485,9 +2805,9 @@ declare const console: {
                   {activeTab === "console" && (
                     <button
                       onClick={() => setAutoClearLogs(!autoClearLogs)}
-                      className={`py-1 px-1.5 md:px-2.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${autoClearLogs
-                        ? "text-blue-600 dark:text-blue-400 bg-blue-550/10 hover:bg-blue-550/20"
-                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/60"
+                      className={`py-1 px-1.5 md:px-2 text-[11px] font-medium rounded-[4px] flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shrink-0 outline-none ${autoClearLogs
+                        ? "text-[var(--vsc-accent)] bg-[var(--vsc-hover)]"
+                        : "text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)]"
                         }`}
                       title="Auto clear logs on execution run"
                     >
@@ -2497,7 +2817,7 @@ declare const console: {
                   )}
 
                   {/* Toggle terminal State buttons */}
-                  <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+                  <div className="h-4 w-px bg-[var(--vsc-border)] mx-1 hidden sm:block" />
 
                   <div className="flex gap-0.5 items-center">
                     <button
@@ -2506,7 +2826,7 @@ declare const console: {
                           layoutMode === "bottom" ? "right" : "bottom",
                         )
                       }
-                      className="p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors hidden sm:block outline-none"
+                      className={`${iconBtn} hidden lg:block !p-1`}
                       title={
                         layoutMode === "bottom"
                           ? "Layout to Right Side"
@@ -2527,7 +2847,7 @@ declare const console: {
                             : "maximized",
                         )
                       }
-                      className={`p-1 rounded text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors outline-none ${terminalState === "maximized" ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200" : ""}`}
+                      className={`${iconBtn} !p-1 ${terminalState === "maximized" ? iconBtnOn : ""}`}
                       title={
                         terminalState === "maximized"
                           ? "Restore Pane Size"
@@ -2538,7 +2858,7 @@ declare const console: {
                     </button>
                     <button
                       onClick={() => setTerminalState("hidden")}
-                      className="p-1 rounded text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 transition-colors outline-none"
+                      className={`${iconBtn} !p-1 hover:!bg-red-500/15 hover:!text-red-500`}
                       title="Hide Output Pane"
                     >
                       <X size={13} />
@@ -2548,7 +2868,7 @@ declare const console: {
               </div>
 
               {/* Tab views content area */}
-              <div className="flex-1 overflow-auto custom-scrollbar p-0 bg-white dark:bg-[#0d1117] relative">
+              <div className="flex-1 overflow-auto custom-scrollbar p-0 bg-[var(--vsc-panel-body)] relative">
                 {activeTab === "result" && (
                   <div className="p-4 h-full">
                     {lastError ? (
@@ -2569,7 +2889,7 @@ declare const console: {
                         />
                       </div>
                     ) : hasData ? (
-                      <pre className="font-mono text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+                      <pre className="font-mono text-[13px] text-[var(--vsc-fg)] whitespace-pre-wrap">
                         {(() => {
                           try {
                             return JSON.stringify(resultData, null, 2);
@@ -2579,7 +2899,7 @@ declare const console: {
                         })()}
                       </pre>
                     ) : (
-                      <div className="h-full flex items-center justify-center text-slate-500 dark:text-slate-600 italic text-sm">
+                      <div className="h-full flex items-center justify-center text-[var(--vsc-fg-muted)] italic text-sm">
                         Run the script to see results here.
                       </div>
                     )}
@@ -2591,11 +2911,11 @@ declare const console: {
                 >
                   <div className="flex-1 min-h-0 relative overflow-hidden">
                     {logCount === 0 && !lastError ? (
-                      <div className="h-full flex items-center justify-center text-slate-500 italic text-sm absolute inset-0">
+                      <div className="h-full flex items-center justify-center text-[var(--vsc-fg-muted)] italic text-sm absolute inset-0">
                         No console output.
                       </div>
                     ) : (
-                      <div className="font-mono text-[13px] bg-white dark:bg-[#0d1117] h-full overflow-hidden custom-scrollbar">
+                      <div className="font-mono text-[13px] bg-[var(--vsc-panel-body)] h-full overflow-hidden custom-scrollbar">
                         <Virtuoso
                           totalCount={logCount + (lastError ? 1 : 0)}
                           firstItemIndex={startOffset}
@@ -2627,14 +2947,14 @@ declare const console: {
                             const log = getLog(index);
                             if (!log) {
                               return (
-                                <div className="px-4 py-0 text-slate-400 text-xs italic">
+                                <div className="px-4 py-0 text-[var(--vsc-fg-muted)] text-xs italic">
                                   Loading...
                                 </div>
                               );
                             }
                             return (
                               <div
-                                className={`px-4 py-0.5 flex items-start gap-4 w-full group/log ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
+                                className={`px-4 py-0.5 flex items-start gap-4 w-full group/log ${log.type === "error" ? "bg-red-500/10 text-red-500" : log.type === "warn" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg)]"}`}
                               >
                                 <div className="flex-1 min-w-0 font-mono">
                                   <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
@@ -2670,7 +2990,7 @@ declare const console: {
                       onSubmit={handleTerminalSubmit}
                       className={`border-t px-4 py-2 flex items-center gap-3 font-mono text-xs shrink-0 select-text transition-colors duration-200 ${currentPrompt
                         ? "bg-amber-500/10 dark:bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20"
-                        : "bg-slate-50 dark:bg-[#161b22] border-slate-200 dark:border-slate-800 text-slate-455"
+                        : "bg-[var(--vsc-panel)] border-[var(--vsc-border)] text-[var(--vsc-fg)]"
                         }`}
                     >
                       {currentPrompt ? (
@@ -2706,7 +3026,7 @@ declare const console: {
                                   : "")
                             : "pip install <package>, pip list, clear, help, python..."
                         }
-                        className="flex-1 bg-transparent border-0 outline-none p-0 focus:outline-none focus:ring-0 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 leading-normal text-xs font-mono"
+                        className="flex-1 bg-transparent border-0 outline-none p-0 focus:outline-none focus:ring-0 text-[var(--vsc-fg)] placeholder-[var(--vsc-fg-muted)] leading-normal text-xs font-mono"
                         autoComplete="off"
                       />
 
@@ -2772,6 +3092,87 @@ declare const console: {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Corner sash: drags the explorer and the panel at the same time */}
+          {sidebarOpen &&
+            !isMobile &&
+            terminalState === "normal" &&
+            effectiveLayout === "bottom" && (
+              <WorkspaceSash
+                orientation="corner"
+                label="Resize explorer and panel together"
+                cursor="crosshair"
+                onStart={beginPaneDrag}
+                onDelta={resizeBoth}
+                onEnd={endBothDrag}
+                onReset={resetLayout}
+                style={{
+                  left: "calc(var(--sash-x) - 7px)",
+                  bottom: "calc(var(--sash-y) - 7px)",
+                }}
+                className="z-[60]"
+              />
+            )}
+        </div>
+
+        {/* Status bar */}
+        <div className="flex items-center justify-between gap-2 h-[22px] shrink-0 px-1 text-[11px] bg-[var(--vsc-statusbar)] border-t border-[var(--vsc-border)] text-[var(--vsc-fg-muted)] select-none">
+          <div className="flex items-center gap-0.5 min-w-0">
+            <button
+              onClick={() => {
+                setTerminalState("normal");
+                setActiveTab("console");
+              }}
+              className="flex items-center gap-2 px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer shrink-0"
+              title="Show console output"
+            >
+              <span
+                className={`flex items-center gap-1 ${lastError ? "text-red-500" : ""}`}
+              >
+                <X size={11} />
+                {lastError ? 1 : 0}
+              </span>
+              <span className="flex items-center gap-1">
+                <TerminalIcon size={11} />
+                {logCount}
+              </span>
+            </button>
+            {isLoading && (
+              <span className="flex items-center gap-1.5 px-1.5 text-[var(--vsc-accent)] shrink-0">
+                <Loader2 size={11} className="animate-spin" />
+                <span className="hidden sm:inline">Running</span>
+              </span>
+            )}
+            <span className="px-1.5 truncate hidden md:inline">
+              {mainCleanName}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={() => {
+                setIsGoToLineOpen(true);
+                setGoToLineValue("");
+              }}
+              className="px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer whitespace-nowrap"
+              title="Go to Line (Ctrl+G)"
+            >
+              Ln {cursorPos.line}, Col {cursorPos.column}
+              {cursorPos.selected > 0 ? ` (${cursorPos.selected} sel)` : ""}
+            </button>
+            <span className="px-1.5 hidden lg:inline">Spaces: 2</span>
+            <span className="px-1.5 hidden xl:inline">UTF-8</span>
+            <button
+              onClick={() => toggleWordWrap()}
+              className="px-1.5 h-full rounded-[3px] hover:bg-[var(--vsc-hover)] cursor-pointer whitespace-nowrap hidden sm:block"
+              title="Toggle Text Wrap (Alt+Z)"
+            >
+              Wrap: {wordWrap}
+            </button>
+            <span className="px-1.5 capitalize hidden md:inline">
+              {editorLanguage}
+            </span>
           </div>
         </div>
       </div>
