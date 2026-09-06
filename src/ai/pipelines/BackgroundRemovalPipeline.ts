@@ -7,9 +7,18 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
   protected lastTargetHeight = 1024;
   protected isNCHW = false;
 
+  // BRIA and U2-Net stretch the image into the input square; ORMBG letterboxes
+  // it. That decides how the mask is mapped back, so postprocess checks it too.
+  protected get usesStretchResize(): boolean {
+    return this.modelId === 'u2netp' || this.modelId.startsWith('bria');
+  }
+
   protected preprocess(imageData: ImageData, inputShape?: number[]): any {
     if (this.modelId === 'u2netp') {
       return this.preprocessU2netp(imageData, inputShape);
+    }
+    if (this.modelId.startsWith('bria')) {
+      return this.preprocessBria(imageData, inputShape);
     }
     return this.preprocessOrmbg(imageData, inputShape);
   }
@@ -24,9 +33,9 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
 
     let maskImageData: ImageData;
 
-    if (this.modelId === 'u2netp') {
-      // U2-Net uses stretching, not letterboxing. So the mask is already stretched.
-      // We just need to stretch it back to the original width/height.
+    if (this.usesStretchResize) {
+      // The image was stretched into the input square, so the mask is already
+      // in the original aspect ratio - stretch it back to width/height.
       maskImageData = this.postprocessU2netp(maskData);
       const outW = maskImageData.width;
       const outH = maskImageData.height;
@@ -137,6 +146,62 @@ export class BackgroundRemovalPipeline extends ImagePipeline {
       const r = resizedData.data[srcIdx] / 255.0;
       const g = resizedData.data[srcIdx + 1] / 255.0;
       const b = resizedData.data[srcIdx + 2] / 255.0;
+
+      if (this.isNCHW) {
+        float32Data[p] = r;
+        float32Data[numPixels + p] = g;
+        float32Data[numPixels * 2 + p] = b;
+      } else {
+        const dstIdx = p * 3;
+        float32Data[dstIdx] = r;
+        float32Data[dstIdx + 1] = g;
+        float32Data[dstIdx + 2] = b;
+      }
+    }
+
+    return float32Data;
+  }
+
+  private preprocessBria(imageData: ImageData, inputShape?: number[]): Float32Array {
+    let targetWidth = 1024;
+    let targetHeight = 1024;
+    this.isNCHW = false;
+
+    if (inputShape && inputShape.length === 4) {
+      if (inputShape[1] === 3 || inputShape[1] === 1) {
+        this.isNCHW = true;
+        targetHeight = inputShape[2];
+        targetWidth = inputShape[3];
+      } else {
+        targetHeight = inputShape[1];
+        targetWidth = inputShape[2];
+      }
+    }
+
+    this.lastTargetWidth = targetWidth;
+    this.lastTargetHeight = targetHeight;
+
+    // RMBG-1.4 resizes with a plain bilinear interpolate, not a letterbox.
+    const canvas = new OffscreenCanvas(targetWidth, targetHeight);
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    const origCanvas = new OffscreenCanvas(imageData.width, imageData.height);
+    origCanvas.getContext('2d')!.putImageData(imageData, 0, 0);
+    ctx.drawImage(origCanvas, 0, 0, imageData.width, imageData.height, 0, 0, targetWidth, targetHeight);
+
+    const resizedData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+
+    const float32Data = new Float32Array(targetWidth * targetHeight * 3);
+    const numPixels = targetWidth * targetHeight;
+
+    for (let p = 0; p < numPixels; p++) {
+      const srcIdx = p * 4;
+      // RMBG-1.4 normalization: val / 255 then mean 0.5 / std 1.0 -> [-0.5, 0.5]
+      const r = resizedData.data[srcIdx] / 255.0 - 0.5;
+      const g = resizedData.data[srcIdx + 1] / 255.0 - 0.5;
+      const b = resizedData.data[srcIdx + 2] / 255.0 - 0.5;
 
       if (this.isNCHW) {
         float32Data[p] = r;

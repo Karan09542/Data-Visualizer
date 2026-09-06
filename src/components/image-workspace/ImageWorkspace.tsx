@@ -49,12 +49,13 @@ import { resolveAssetUrl, importFile } from "../../utils/assetManager";
 import { getValueAtPath } from "../../utils/pathUtils";
 import {
    Type, Upload, Download,
-   Layers, MousePointer2, Brush, Circle, Minus, Edit2, Image as ImageIcon,
+   Layers, MousePointer2, Brush, Eraser, Circle, Minus, Edit2, Image as ImageIcon,
    SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, BringToFront, SendToBack, ArrowUp, ArrowDown, AlignLeft, AlignCenter, AlignRight,
    Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, Target, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
    Zap
 } from "lucide-react";
 import JSZip from "jszip";
+// @ts-ignore
 import ImageWorker from "../../utils/imageWorker?worker";
 import { ExportSettings, DEFAULT_EXPORT_SETTINGS } from "../../types/export";
 import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../../lib/imagePresets";
@@ -80,6 +81,9 @@ import { getBrushName, createPatternSource } from "./fabric/brushes";
 // Command Architecture Interfaces & Classes
 // ==========================================
 import { Command } from "./commands/base/Command";
+import { useEraser, EraseStrokeCommand } from "../../lib/eraser";
+import { createBrush, isCustomBrushType } from "../../lib/brushes";
+import type { EraseMode } from "../../lib/eraser";
 
 
 import { MacroCommand } from "./commands/base/MacroCommand";
@@ -210,6 +214,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const setNotification = useStore((state) => state.setNotification);
    const canvasRef = useRef<HTMLCanvasElement>(null);
    const fabricRef = useRef<fabric.Canvas | null>(null);
+   // Mirrors fabricRef as state so hooks needing the live canvas (the eraser)
+   // rebind when it is recreated.
+   const [canvasInstance, setCanvasInstance] = useState<fabric.Canvas | null>(null);
    const containerRef = useRef<HTMLDivElement>(null);
 
    // Artboards State
@@ -255,7 +262,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       setShapeStrokeLineCap
    } = shapeProps;
 
-   
+
    const [canvasPattern, setCanvasPattern] = useState<'flat' | 'grid' | 'dots' | 'plus' | 'squares'>(() => {
       return (localStorage.getItem('image_workspace_canvas_pattern') as any) || 'flat';
    });
@@ -285,7 +292,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       cropRect: fabric.Rect | null;
       dimRect: fabric.Rect | null;
    }>({ origObj: null, fullImg: null, cropRect: null, dimRect: null });
-   
+
    const handleCropRatioChange = (val: string) => {
       setCropRatio(val);
       const { cropRect, origObj } = cropSessionRef.current;
@@ -520,6 +527,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const activeToolRef = useRef(activeTool);
    const isSpacePressedRef = useRef(false);
    const isAltPressedRef = useRef(false);
+   const eraseModeRef = useRef<EraseMode>('erase');
+   const isPanningRef = useRef(false);
+   const cursorRingRef = useRef<HTMLDivElement | null>(null);
+   const pointerPosRef = useRef<{ clientX: number; clientY: number } | null>(null);
+   const isPointerOverCanvasRef = useRef(false);
 
    useEffect(() => {
       activeToolRef.current = activeTool;
@@ -550,8 +562,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          canvas.hoverCursor = 'grab';
          canvas.moveCursor = 'grabbing';
       } else if (activeTool === 'brush' || activeTool === 'eraser') {
-         canvas.defaultCursor = 'crosshair';
-         canvas.hoverCursor = 'crosshair';
+         canvas.defaultCursor = 'none';
+         canvas.hoverCursor = 'none';
+         (canvas as any).freeDrawingCursor = 'none';
+         if (canvas.upperCanvasEl) {
+            canvas.upperCanvasEl.style.cursor = 'none';
+         }
       } else {
          canvas.defaultCursor = 'default';
          canvas.hoverCursor = 'default';
@@ -687,6 +703,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const [brushHardness, setBrushHardness] = useState<number>(100);
    const [brushSpacing, setBrushSpacing] = useState<number>(25);
    const [brushSmoothing, setBrushSmoothing] = useState<number>(40);
+   const [eraseMode, setEraseMode] = useState<EraseMode>('erase');
+   useEffect(() => {
+      eraseModeRef.current = eraseMode;
+   }, [eraseMode]);
 
    // Dynamic Photoshop-style Brush Adjustment gesture states & refs
    const [showHud, setShowHud] = useState(false);
@@ -939,6 +959,170 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       setCommandIndex(nextIndex);
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
+
+   /**
+    * Photoshop-style eraser. The pixel work lives in src/lib/eraser so the same
+    * tool can be dropped onto any other fabric surface; this only binds it to
+    * the tool state and to the undo stack.
+    */
+   const {
+      setActive: setEraserActive,
+      setSettings: setEraserSettings,
+      refreshCursor: refreshEraserCursor,
+   } = useEraser(canvasInstance, {
+      showCursorRing: false,
+      // Space / alt drive the canvas pan gesture and must reach the existing
+      // pan handler instead of starting an erase stroke.
+      isPointerBlocked: () => isSpacePressedRef.current || isAltPressedRef.current,
+      onStrokeCommitted: (image, stroke, engine) => {
+         executeCommand(new EraseStrokeCommand(image, engine, stroke));
+      },
+   });
+
+   useEffect(() => {
+      setEraserActive(activeTool === 'eraser');
+   }, [activeTool, setEraserActive]);
+
+   useEffect(() => {
+      setEraserSettings({
+         size: brushSize,
+         hardness: brushHardness,
+         opacity: brushOpacity,
+         mode: eraseMode,
+      });
+   }, [brushSize, brushHardness, brushOpacity, eraseMode, setEraserSettings]);
+
+   const updateCursorRing = useCallback((clientX?: number, clientY?: number) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      const ring = cursorRingRef.current;
+      if (!ring) return;
+
+      const tool = activeToolRef.current;
+      const isBrushOrEraser = tool === 'brush' || tool === 'eraser';
+
+      if (
+         !isBrushOrEraser ||
+         !isPointerOverCanvasRef.current ||
+         isSpacePressedRef.current ||
+         isAltPressedRef.current ||
+         isPanningRef.current
+      ) {
+         ring.style.display = 'none';
+         return;
+      }
+
+      if (clientX !== undefined && clientY !== undefined) {
+         pointerPosRef.current = { clientX, clientY };
+      }
+
+      const point = pointerPosRef.current;
+      if (!point) {
+         ring.style.display = 'none';
+         return;
+      }
+
+      const wrapper = (canvas as any).wrapperEl as HTMLElement | undefined;
+      if (!wrapper) return;
+
+      const rect = wrapper.getBoundingClientRect();
+      const posX = point.clientX - rect.left;
+      const posY = point.clientY - rect.top;
+
+      const zoom = canvas.getZoom() || 1;
+      const currentSize = brushSizeRef.current;
+      const diameter = Math.max(2, Math.round(currentSize * zoom));
+
+      ring.style.width = `${diameter}px`;
+      ring.style.height = `${diameter}px`;
+      ring.style.left = `${posX}px`;
+      ring.style.top = `${posY}px`;
+
+      if (tool === 'eraser' && eraseModeRef.current === 'restore') {
+         ring.style.borderColor = 'rgba(96, 165, 250, 0.95)';
+      } else {
+         ring.style.borderColor = 'rgba(255, 255, 255, 0.95)';
+      }
+
+      ring.style.display = 'block';
+   }, []);
+
+   useEffect(() => {
+      updateCursorRing();
+   }, [activeTool, brushSize, eraseMode, isSpacePressed, isAltPressed, zoomPercent, updateCursorRing]);
+
+   // Attach unified circle cursor ring to canvas wrapper for brush and eraser
+   useEffect(() => {
+      const canvas = canvasInstance;
+      if (!canvas) return;
+
+      const wrapper = (canvas as any).wrapperEl as HTMLElement | undefined;
+      const upperCanvas = canvas.upperCanvasEl;
+      if (!wrapper || !upperCanvas) return;
+
+      let ring = wrapper.querySelector('[data-workspace-brush-cursor]') as HTMLDivElement | null;
+      if (!ring) {
+         ring = document.createElement('div');
+         ring.setAttribute('data-workspace-brush-cursor', '');
+         ring.style.cssText = [
+            'position: absolute',
+            'left: 0',
+            'top: 0',
+            'display: none',
+            'pointer-events: none',
+            'border-radius: 50%',
+            'border: 1.5px solid rgba(255, 255, 255, 0.95)',
+            'box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.35)',
+            'transform: translate(-50%, -50%)',
+            'will-change: left, top, width, height',
+            'z-index: 50',
+         ].join(';');
+         wrapper.appendChild(ring);
+      }
+      cursorRingRef.current = ring;
+
+      const handlePointerMove = (e: PointerEvent) => {
+         if (e.pointerType === 'touch' && !e.isPrimary) {
+            if (cursorRingRef.current) cursorRingRef.current.style.display = 'none';
+            return;
+         }
+         isPointerOverCanvasRef.current = true;
+         updateCursorRing(e.clientX, e.clientY);
+      };
+
+      const handlePointerEnter = (e: PointerEvent) => {
+         isPointerOverCanvasRef.current = true;
+         updateCursorRing(e.clientX, e.clientY);
+      };
+
+      const handlePointerLeave = () => {
+         isPointerOverCanvasRef.current = false;
+         if (cursorRingRef.current) {
+            cursorRingRef.current.style.display = 'none';
+         }
+      };
+
+      upperCanvas.addEventListener('pointermove', handlePointerMove, { passive: true });
+      upperCanvas.addEventListener('pointerenter', handlePointerEnter, { passive: true });
+      upperCanvas.addEventListener('pointerleave', handlePointerLeave, { passive: true });
+
+      const handleAfterRender = () => {
+         updateCursorRing();
+      };
+      canvas.on('after:render', handleAfterRender);
+
+      return () => {
+         upperCanvas.removeEventListener('pointermove', handlePointerMove);
+         upperCanvas.removeEventListener('pointerenter', handlePointerEnter);
+         upperCanvas.removeEventListener('pointerleave', handlePointerLeave);
+         canvas.off('after:render', handleAfterRender);
+         if (cursorRingRef.current) {
+            cursorRingRef.current.remove();
+            cursorRingRef.current = null;
+         }
+      };
+   }, [canvasInstance, updateCursorRing]);
 
    const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'distributeH' | 'distributeV' | 'center') => {
       if (!fabricRef.current) return;
@@ -1554,6 +1738,18 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
    const handleSelectionContext = useCallback((e: any) => {
       const active = fabricRef.current?.getActiveObject();
+
+      // Crop handles are ordinary Rects on the canvas, so without this the
+      // properties panel treats the crop box as a shape and offers to restyle
+      // it - fill, border, corner radius - which is the crop UI, not content.
+      if (active && (active as any).isCropHelper) {
+         parentAlignmentObjRef.current = null;
+         setParentAlignmentObj(null);
+         setSelectedLayerId(null);
+         setSelectionType(null);
+         return;
+      }
+
       if (active) {
          if (active.type === 'activeSelection') {
             const selObjects = (active as fabric.ActiveSelection).getObjects();
@@ -1676,17 +1872,17 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                const rectObj = items.find((i: any) => i.type === 'rect');
                if (rectObj) {
                   if (frameType === 'polaroid') {
-                      const contentObj = items.find((i: any) => i.type === 'image');
-                      if (contentObj) {
-                         setFrameBorderWidth(Math.round(rectObj.top - contentObj.getCenterPoint().y));
-                      }
-                      const rawFill = (rectObj.fill as string) || '#F9F9F9';
-                      setFrameColor(rawFill.startsWith('#') ? hexToRgbaString(rawFill) : rawFill);
-                   } else {
-                      setFrameBorderWidth(Math.round(rectObj.strokeWidth || 20));
-                      const rawStroke = (rectObj.stroke as string) || '#FFFFFF';
-                      setFrameColor(rawStroke.startsWith('#') ? hexToRgbaString(rawStroke) : rawStroke);
-                   }
+                     const contentObj = items.find((i: any) => i.type === 'image');
+                     if (contentObj) {
+                        setFrameBorderWidth(Math.round(rectObj.top - contentObj.getCenterPoint().y));
+                     }
+                     const rawFill = (rectObj.fill as string) || '#F9F9F9';
+                     setFrameColor(rawFill.startsWith('#') ? hexToRgbaString(rawFill) : rawFill);
+                  } else {
+                     setFrameBorderWidth(Math.round(rectObj.strokeWidth || 20));
+                     const rawStroke = (rectObj.stroke as string) || '#FFFFFF';
+                     setFrameColor(rawStroke.startsWith('#') ? hexToRgbaString(rawStroke) : rawStroke);
+                  }
                }
 
                imgObj = items.find((i: any) => i.type === 'image') || imgObj;
@@ -2746,11 +2942,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const colorWithOpacity = setOpacityOnHex(color, calculatedOpacity);
 
       if (activeTool === "eraser") {
-         const brush = new fabric.PencilBrush(fabricRef.current);
-         brush.color = '#1e1e1e';
-         brush.width = size * 2;
-         fabricRef.current.freeDrawingBrush = brush;
-         fabricRef.current.isDrawingMode = true;
+         // Not a fabric brush - FabricEraser owns pointer input and removes
+         // pixels from the image itself, so free drawing stays off.
+         fabricRef.current.isDrawingMode = false;
          return;
       }
 
@@ -2760,6 +2954,30 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
 
       fabricRef.current.isDrawingMode = true;
+      (fabricRef.current as any).freeDrawingCursor = 'none';
+      if (fabricRef.current.upperCanvasEl) {
+         fabricRef.current.upperCanvasEl.style.cursor = 'none';
+      }
+
+      // Brushes whose behaviour a stroked path cannot express - an angled
+      // calligraphy nib, a pen that thins with speed, a grid-snapped pixel
+      // brush, a genuinely soft round tip - are implemented in lib/brushes.
+      if (isCustomBrushType(type)) {
+         const custom = createBrush(type, fabricRef.current, {
+            color,
+            size,
+            opacity: opt,
+            hardness: hd,
+            flow: fl,
+            smoothing: smooth,
+            angle: 45,
+         });
+         if (custom) {
+            fabricRef.current.freeDrawingBrush = custom;
+            return;
+         }
+      }
+
       let brush: fabric.BaseBrush;
 
       if (type === 'airbrush') {
@@ -2821,8 +3039,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       } else if (type === 'highlighter') {
          const b = new fabric.PencilBrush(fabricRef.current);
          b.width = size * 1.5;
-         b.color = setOpacityOnHex(color, 40 * (fl / 100));
-         b.strokeLineCap = 'square';
+         // Full-strength ink on the path; the translucency is applied once to
+         // the finished object so the stroke cannot darken where it crosses
+         // itself, which is what a highlighter actually does.
+         b.color = setOpacityOnHex(color, 100);
+         b.strokeLineCap = 'butt';
+         b.strokeLineJoin = 'round';
          brush = b;
       } else if (type === 'calligraphy') {
          const b = new fabric.PencilBrush(fabricRef.current);
@@ -2850,8 +3072,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                offsetY: 0
             });
          } else if (type === 'marker') {
-            b.strokeLineCap = 'square';
+            // A chisel marker has flat ends, not the half-width overshoot that
+            // 'square' adds, and it lays down flat, even ink.
+            b.strokeLineCap = 'butt';
             b.strokeLineJoin = 'miter';
+            b.width = size * 1.15;
          }
          brush = b;
       }
@@ -2905,6 +3130,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          stopContextMenu: false,
       });
       fabricRef.current = canvas;
+      setCanvasInstance(canvas);
 
       // Initial load State
       isInternalChange.current = true;
@@ -3368,6 +3594,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       let initialPanX = 0;
       let initialPanY = 0;
       let initialMidpoint = { x: 0, y: 0 };
+      // Free drawing has to stand down for the duration of a pinch, or the
+      // first finger paints a stroke across the canvas while the second zooms.
+      let drawingModeBeforePinch: boolean | null = null;
+      // Pinch fires touchmove far more often than the screen repaints, and
+      // setZoomPercent re-renders this whole component, so it is coalesced
+      // to one update per frame.
+      let zoomRaf = 0;
+      let pendingZoomPercent = 0;
 
       // Dynamic brush size / opacity modification handlers
       const handleBrushAdjustMousemove = (e: MouseEvent) => {
@@ -3452,7 +3686,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       };
 
       const handleBrushAdjustMousedown = (e: MouseEvent) => {
-         const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
+         const isBrushActive = activeToolRef.current === 'brush';
          if (!isBrushActive) return;
 
          const isCtrl = e.ctrlKey || isCtrlPressedRef.current;
@@ -3487,7 +3721,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       };
 
       const touchStartHandler = (e: TouchEvent) => {
-         const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
+         const isBrushActive = activeToolRef.current === 'brush';
          const hasModifier = isCtrlPressedRef.current;
 
          if (e.touches.length === 2 && isBrushActive && hasModifier) {
@@ -3523,6 +3757,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          if (e.touches.length === 2 && canvas.viewportTransform) {
             e.preventDefault();
+            if (cursorRingRef.current) cursorRingRef.current.style.display = 'none';
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
             initialPinchDistance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
@@ -3535,6 +3770,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             initialPanX = canvas.viewportTransform[4];
             initialPanY = canvas.viewportTransform[5];
             canvas.selection = false;
+
+            if (drawingModeBeforePinch === null) {
+               drawingModeBeforePinch = canvas.isDrawingMode;
+               canvas.isDrawingMode = false;
+            }
          }
       };
 
@@ -3603,6 +3843,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          if (e.touches.length === 2 && canvas.viewportTransform) {
             e.preventDefault();
+            if (cursorRingRef.current) cursorRingRef.current.style.display = 'none';
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
             const currentDistance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
@@ -3634,7 +3875,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             newVpt[5] += (currentMidpoint.y - initialMidpoint.y);
             canvas.setViewportTransform(newVpt);
 
-            setZoomPercent(Math.round(zoom * 100));
+            pendingZoomPercent = Math.round(zoom * 100);
+            if (!zoomRaf) {
+               zoomRaf = requestAnimationFrame(() => {
+                  zoomRaf = 0;
+                  setZoomPercent(pendingZoomPercent);
+               });
+            }
 
             initialMidpoint = currentMidpoint;
          }
@@ -3660,6 +3907,16 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          if (e.touches.length < 2) {
             canvas.selection = true;
+            if (drawingModeBeforePinch !== null) {
+               canvas.isDrawingMode = drawingModeBeforePinch;
+               drawingModeBeforePinch = null;
+            }
+            if (zoomRaf) {
+               cancelAnimationFrame(zoomRaf);
+               zoomRaf = 0;
+               setZoomPercent(pendingZoomPercent);
+            }
+            updateCursorRing();
          }
          validateViewport();
       };
@@ -3721,8 +3978,35 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
       canvas.on('mouse:wheel', (opt) => {
          const e = opt.e;
-         const isBrushActive = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
-         if (isBrushActive && (e.ctrlKey || isCtrlPressedRef.current)) {
+         const isBrushActive = activeToolRef.current === 'brush';
+         const isEraserActive = activeToolRef.current === 'eraser';
+
+         // Eraser resize via Ctrl+wheel: adjust eraser brush size normally, never show HUD
+         if (isEraserActive && isCtrlPressedRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            let delta = -e.deltaY;
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+               delta = -e.deltaX;
+            }
+
+            const step = Math.sign(delta) * 1.5;
+            const currentSize = brushSizeRef.current;
+            const newSize = Math.max(1, Math.min(500, Math.round(currentSize + step)));
+            setBrushSize(newSize);
+            brushSizeRef.current = newSize;
+            setEraserSettings({ size: newSize });
+            updateCursorRing(e.clientX, e.clientY);
+            canvas.requestRenderAll();
+            return;
+         }
+
+         // A trackpad pinch is delivered as a wheel event with a synthetic
+         // ctrlKey, so e.ctrlKey alone cannot tell "resize the brush" apart
+         // from "zoom the canvas". Only a Ctrl press we saw on the keyboard
+         // counts; a synthetic one falls through to the zoom branch below.
+         if (isBrushActive && isCtrlPressedRef.current) {
             e.preventDefault();
             e.stopPropagation();
 
@@ -3748,6 +4032,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                brushHardnessRef.current,
                brushSmoothingRef.current
             );
+
+            updateCursorRing(e.clientX, e.clientY);
 
             const wrapperRect = (canvas.getElement().parentElement as HTMLElement).getBoundingClientRect();
             const posX = (e.clientX !== undefined) ? (e.clientX - wrapperRect.left) : (wrapperRect.width / 2);
@@ -3784,6 +4070,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                viewportTransformRef.current = canvas.viewportTransform!.slice();
             }
             validateViewport();
+            updateCursorRing(e.clientX, e.clientY);
          }
       });
 
@@ -3797,6 +4084,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          if (activeToolRef.current === 'pan' || e.button === 1 || isSpacePressedRef.current || isAltPressedRef.current) {
             isPanning = true;
+            isPanningRef.current = true;
+            if (cursorRingRef.current) cursorRingRef.current.style.display = 'none';
             lastX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
             lastY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
             canvas.selection = false;
@@ -3837,11 +4126,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          if (isPanning) {
             canvas.setViewportTransform(canvas.viewportTransform!);
             isPanning = false;
+            isPanningRef.current = false;
             canvas.selection = true;
 
             if (!isMobileRef.current) {
                viewportTransformRef.current = canvas.viewportTransform!.slice();
             }
+            updateCursorRing();
          }
          canvas.requestRenderAll();
          validateViewport();
@@ -4029,31 +4320,24 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             }
             pathObj.artboardId = activeArtboardIdRef.current;
 
-            // Keep visual characteristics of selected brush engine on final path object
-            if (brushType === 'marker') {
+            // Keep visual characteristics of selected brush engine on final
+            // object. Brushes built in lib/brushes already commit a finished
+            // object - re-styling those here would undo their geometry, or in
+            // the raster cases hang a Shadow off an Image.
+            if (isCustomBrushType(brushType)) {
+               // nothing to patch up
+            } else if (brushType === 'marker') {
                pathObj.set({
-                  strokeLineCap: 'square',
+                  strokeLineCap: 'butt',
                   strokeLineJoin: 'miter'
                });
             } else if (brushType === 'highlighter') {
                pathObj.set({
-                  strokeLineCap: 'square',
-                  strokeLineJoin: 'miter',
-                  opacity: 0.4
-               });
-            } else if (brushType === 'calligraphy') {
-               pathObj.set({
-                  strokeLineCap: 'square',
-                  strokeLineJoin: 'miter'
-               });
-            } else if (brushType === 'brush') {
-               pathObj.set({
-                  shadow: new fabric.Shadow({
-                     color: setOpacityOnHex(brushColor, brushOpacity * 0.3),
-                     blur: (1 - (brushHardness / 100)) * (brushSize / 2),
-                     offsetX: 0,
-                     offsetY: 0
-                  })
+                  strokeLineCap: 'butt',
+                  strokeLineJoin: 'round',
+                  // Highlighter ink darkens what it covers instead of hiding it.
+                  globalCompositeOperation: 'multiply',
+                  opacity: (brushOpacity / 100) * (brushFlow / 100) * 0.45
                });
             } else if (brushType === 'watercolor') {
                pathObj.set({
@@ -4063,15 +4347,6 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                      blur: brushSize * 0.7,
                      offsetX: 0,
                      offsetY: 0
-                  })
-               });
-            } else if (brushType === 'ink') {
-               pathObj.set({
-                  shadow: new fabric.Shadow({
-                     color: setOpacityOnHex(brushColor, brushOpacity * 0.2),
-                     blur: 1,
-                     offsetX: 0.5,
-                     offsetY: 0.5
                   })
                });
             }
@@ -4134,6 +4409,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          resizeObserver.disconnect();
          canvas.dispose();
          fabricRef.current = null;
+         setCanvasInstance(null);
       };
    }, [path, updateLayersList, handleSelectionContext, executeCommand]);
 
@@ -4235,12 +4511,45 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                   fabricRef.current.renderAll();
                }
                applyBrushSettings(brushType);
+            } else if (e.key.toLowerCase() === 'e') {
+               setActiveTool('eraser');
+               if (fabricRef.current) {
+                  fabricRef.current.isDrawingMode = false;
+                  fabricRef.current.discardActiveObject();
+                  fabricRef.current.renderAll();
+               }
             } else if (e.key.toLowerCase() === 't') {
                addText();
             } else if (e.key.toLowerCase() === 'h') {
                setActiveTool('pan');
                if (fabricRef.current) {
                   fabricRef.current.isDrawingMode = false;
+               }
+            } else if (e.key === '[' || e.key === ']') {
+               const isBrushOrEraser = activeToolRef.current === 'brush' || activeToolRef.current === 'eraser';
+               if (isBrushOrEraser) {
+                  e.preventDefault();
+                  const step = e.shiftKey ? 10 : 2;
+                  const delta = e.key === ']' ? step : -step;
+                  const currentSize = brushSizeRef.current;
+                  const newSize = Math.max(1, Math.min(500, currentSize + delta));
+                  setBrushSize(newSize);
+                  brushSizeRef.current = newSize;
+                  if (activeToolRef.current === 'eraser') {
+                     setEraserSettings({ size: newSize });
+                  } else {
+                     applyBrushSettings(
+                        brushTypeRef.current,
+                        brushColorRef.current,
+                        newSize,
+                        brushOpacityRef.current,
+                        brushFlowRef.current,
+                        brushHardnessRef.current,
+                        brushSmoothingRef.current
+                     );
+                  }
+                  updateCursorRing();
+                  return;
                }
             }
          }
@@ -4258,7 +4567,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          window.removeEventListener('keydown', handleKeyDown, { capture: true });
          window.removeEventListener('keyup', handleKeyUp, { capture: true });
       };
-   }, [performUndo, performRedo, brushType, applyBrushSettings, handleLayerOrder]);
+   }, [performUndo, performRedo, brushType, applyBrushSettings, handleLayerOrder, updateCursorRing]);
 
    const handleContextMenu = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -4285,876 +4594,72 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       });
    };
 
-   const handleImportImageClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      document.getElementById('img-upload')?.click();
-   };
-
-   const closeContextMenu = () => setActiveContextMenu(null);
-
-   useEffect(() => {
-      const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-         const target = e.target as HTMLElement;
-         if (!target) return;
-
-         // Check if click/touch was inside activeContextMenu
-         const clickedInContextMenu = target.closest('.context-menu-container');
-         const clickedImportToggleButton = target.closest('[title="Import Image"]');
-
-         if (!clickedInContextMenu && !clickedImportToggleButton) {
-            closeContextMenu();
-         }
-
-         // Check if click/touch was inside artboardDropdown
-         const clickedInArtboardDropdown = target.closest('.artboard-dropdown-container');
-         const clickedArtboardDropdownToggle = target.closest('.artboard-dropdown-toggle');
-
-         if (!clickedInArtboardDropdown && !clickedArtboardDropdownToggle) {
-            setArtboardDropdown(null);
-         }
+      const handleImportImageClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+         e.preventDefault();
+         e.stopPropagation();
+         document.getElementById('img-upload')?.click();
       };
 
-      window.addEventListener('mousedown', handleOutsideClick, true);
-      window.addEventListener('touchstart', handleOutsideClick, true);
-      return () => {
-         window.removeEventListener('mousedown', handleOutsideClick, true);
-         window.removeEventListener('touchstart', handleOutsideClick, true);
-      };
-   }, []);
-   const setTool = (tool: string) => {
-      setActiveTool(tool);
-      if (!fabricRef.current) return;
-      if (tool === "brush" || tool === "eraser") {
-         fabricRef.current.discardActiveObject();
-         fabricRef.current.renderAll();
-      } else if (tool === "crop") {
-         // Don't discard active object yet, we might be transitioning into crop with a selection
-      } else if (isCropping) {
-         cancelCrop(); // automatically exit crop when switching tools
-      }
-      fabricRef.current.isDrawingMode = (tool === "brush" || tool === "eraser");
-      applyBrushSettings(brushType);
-   };
+      const closeContextMenu = () => setActiveContextMenu(null);
 
-   const extractImageFromFrame = async (frameGroup: any) => {
-      isInternalChange.current = true;
-      const canvas = fabricRef.current;
-      if (!canvas) return null;
+      useEffect(() => {
+         const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target) return;
 
-      const artboardId = frameGroup.artboardId;
-      const layerId = frameGroup.id || frameGroup.layerId;
+            // Check if click/touch was inside activeContextMenu
+            const clickedInContextMenu = target.closest('.context-menu-container');
+            const clickedImportToggleButton = target.closest('[title="Import Image"]');
 
-      const clonedGroup = await frameGroup.clone([]);
-      canvas.add(clonedGroup);
-
-      let items: any[] = [];
-      if (typeof clonedGroup.toActiveSelection === 'function') {
-         const sel = clonedGroup.toActiveSelection();
-         items = sel.getObjects();
-      } else {
-         items = (clonedGroup as any).removeAll();
-         canvas.remove(clonedGroup);
-         items.forEach((i: any) => canvas.add(i));
-      }
-
-      const img = items.find((o: any) => o.type === 'image');
-      const rect = items.find((o: any) => o.type === 'rect');
-
-      if (rect) canvas.remove(rect);
-      if (img) canvas.remove(img);
-
-      if (img) {
-         if (artboardId) (img as any).artboardId = artboardId;
-         if (layerId) (img as any).id = layerId;
-         img.set('isFrameGroup', false);
-         img.set('frameType', undefined);
-
-         canvas.add(img);
-         canvas.setActiveObject(img);
-
-         const cmd = new MacroCommand("Remove Frame for Crop", [
-            new DeleteObjectCommand("Remove Group", [frameGroup]),
-            new AddObjectCommand("Add Extracted Image", img)
-         ]);
-         executeCommand(cmd);
-         canvas.requestRenderAll();
-         updateLayersList();
-      }
-      isInternalChange.current = false;
-      return img;
-   };
-
-   const enterCropMode = async (target?: any) => {
-      setCropRatio('free');
-      let imgTarget = target;
-      let canvas = fabricRef.current;
-      if (!canvas) return;
-
-      if (!imgTarget) {
-         let activeObj = canvas.getActiveObject();
-         if (activeObj && activeObj.get('isFrameGroup')) {
-            const img = await extractImageFromFrame(activeObj);
-            if (img) imgTarget = img as fabric.Image;
-         } else {
-            const activeObjects = activeObj ? [activeObj] : [];
-            if (activeObjects?.length === 1 && activeObjects[0].type === 'image') {
-               imgTarget = activeObjects[0] as fabric.Image;
+            if (!clickedInContextMenu && !clickedImportToggleButton) {
+               closeContextMenu();
             }
+
+            // Check if click/touch was inside artboardDropdown
+            const clickedInArtboardDropdown = target.closest('.artboard-dropdown-container');
+            const clickedArtboardDropdownToggle = target.closest('.artboard-dropdown-toggle');
+
+            if (!clickedInArtboardDropdown && !clickedArtboardDropdownToggle) {
+               setArtboardDropdown(null);
+            }
+         };
+
+         window.addEventListener('mousedown', handleOutsideClick, true);
+         window.addEventListener('touchstart', handleOutsideClick, true);
+         return () => {
+            window.removeEventListener('mousedown', handleOutsideClick, true);
+            window.removeEventListener('touchstart', handleOutsideClick, true);
+         };
+      }, []);
+      const setTool = (tool: string) => {
+         setActiveTool(tool);
+         if (!fabricRef.current) return;
+         if (tool === "brush" || tool === "eraser") {
+            fabricRef.current.discardActiveObject();
+            fabricRef.current.renderAll();
+         } else if (tool === "crop") {
+            // Don't discard active object yet, we might be transitioning into crop with a selection
+         } else if (isCropping) {
+            cancelCrop(); // automatically exit crop when switching tools
          }
-      } else {
-         if (imgTarget && imgTarget.get('isFrameGroup')) {
-            const img = await extractImageFromFrame(imgTarget);
-            if (img) imgTarget = img as fabric.Image;
-         }
-      }
-
-      if (!imgTarget || imgTarget.type !== 'image') {
-         alert("Please select a single image to crop.");
-         return;
-      }
-
-      const el = imgTarget.getElement() as HTMLImageElement;
-      if (!el) return;
-
-      imgTarget.setCoords();
-      const matrix = imgTarget.calcTransformMatrix();
-
-      const origCenterH = imgTarget.originX === 'center' ? imgTarget.width! / 2 : 0;
-      const origCenterV = imgTarget.originY === 'center' ? imgTarget.height! / 2 : 0;
-
-      const localFullTl = new fabric.Point(
-         -origCenterH - (imgTarget.cropX || 0),
-         -origCenterV - (imgTarget.cropY || 0)
-      );
-      const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
-
-      const fullImg = new fabric.Image(el, {
-         left: canvasFullTl.x,
-         top: canvasFullTl.y,
-         originX: 'left',
-         originY: 'top',
-         scaleX: imgTarget.scaleX,
-         scaleY: imgTarget.scaleY,
-         angle: imgTarget.angle,
-         opacity: 1, // Fixed: don't make the background totally transparent
-         selectable: true,
-         evented: true,
-         lockRotation: true,
-         lockScalingX: true,
-         lockScalingY: true,
-      });
-
-      (fullImg as any).isCropHelper = true;
-
-      const cropRect = new fabric.Rect({
-         left: imgTarget.left,
-         top: imgTarget.top,
-         originX: imgTarget.originX,
-         originY: imgTarget.originY,
-         width: imgTarget.width,
-         height: imgTarget.height,
-         scaleX: imgTarget.scaleX,
-         scaleY: imgTarget.scaleY,
-         angle: imgTarget.angle,
-         fill: 'transparent',
-         stroke: '#3b82f6',
-         strokeWidth: 2 / fabricRef.current!.getZoom() || 1,
-         strokeDashArray: [6, 6],
-         cornerColor: '#ffffff',
-         cornerStrokeColor: '#3b82f6',
-         cornerSize: 12,
-         transparentCorners: false,
-         lockRotation: true,
-         borderColor: '#3b82f6',
-      });
-      (cropRect as any).isCropHelper = true;
-
-      imgTarget.set('visible', false);
-
-      fabricRef.current!.add(fullImg);
-      fabricRef.current!.add(cropRect);
-      fabricRef.current!.setActiveObject(cropRect);
-      fabricRef.current!.renderAll();
-
-      cropSessionRef.current = {
-         origObj: imgTarget,
-         fullImg: fullImg,
-         cropRect: cropRect,
-         dimRect: null
+         fabricRef.current.isDrawingMode = (tool === "brush");
+         applyBrushSettings(brushType);
       };
 
-      setIsCropping(true);
-      setActiveTool('crop');
-   };
-
-   const applyCrop = () => {
-      const { origObj, fullImg, cropRect } = cropSessionRef.current;
-      if (!origObj || !fullImg || !cropRect || !fabricRef.current) {
-         cancelCrop();
-         return;
-      }
-
-      const imgEl = fullImg.getElement() as HTMLImageElement;
-      if (!imgEl) {
-         cancelCrop();
-         return;
-      }
-      const imgWidth = imgEl.width || imgEl.naturalWidth;
-      const imgHeight = imgEl.height || imgEl.naturalHeight;
-
-      // Calculate unscaled crop dimensions by mapping from canvas space back to the source image space
-      const cropWCanvas = cropRect.width! * Math.abs(cropRect.scaleX!);
-      const cropHCanvas = cropRect.height! * Math.abs(cropRect.scaleY!);
-
-      // original scale values of the full image
-      const fullImgScaleX = Math.abs(fullImg.scaleX!);
-      const fullImgScaleY = Math.abs(fullImg.scaleY!);
-
-      let cropW = cropWCanvas / fullImgScaleX;
-      let cropH = cropHCanvas / fullImgScaleY;
-
-      // Calculate center offsets in source image space using reverse projection
-      const fullImgMatrix = fullImg.calcTransformMatrix();
-      const fullImgInverse = fabric.util.invertTransform(fullImgMatrix);
-
-      const cropCenterCanvas = cropRect.getCenterPoint();
-      const fullImgCenterCanvas = fullImg.getCenterPoint();
-
-      const cropCenterLocal = fabric.util.transformPoint(cropCenterCanvas, fullImgInverse);
-      const fullImgCenterLocal = fabric.util.transformPoint(fullImgCenterCanvas, fullImgInverse);
-
-      const dx = cropCenterLocal.x - fullImgCenterLocal.x;
-      const dy = cropCenterLocal.y - fullImgCenterLocal.y;
-
-      // Compute top-left of crop in source image space
-      let cropX = (imgWidth / 2) + dx - (cropW / 2);
-      let cropY = (imgHeight / 2) + dy - (cropH / 2);
-
-      // Bounds / Safety constraints to prevent NaN or blank imagery
-      if (cropX < 0) { cropW += cropX; cropX = 0; }
-      if (cropY < 0) { cropH += cropY; cropY = 0; }
-      if (cropX + cropW > imgWidth) cropW = imgWidth - cropX;
-      if (cropY + cropH > imgHeight) cropH = imgHeight - cropY;
-
-      if (cropW <= 1 || cropH <= 1) {
-         cancelCrop();
-         return;
-      }
-
-      origObj.set('visible', true);
-
-      const beforeState = {
-         left: origObj.left,
-         top: origObj.top,
-         scaleX: origObj.scaleX,
-         scaleY: origObj.scaleY,
-         angle: origObj.angle,
-         width: origObj.width,
-         height: origObj.height,
-         cropX: origObj.cropX || 0,
-         cropY: origObj.cropY || 0,
-         originX: origObj.originX,
-         originY: origObj.originY,
-      };
-
-      const afterState = {
-         left: cropRect.left,
-         top: cropRect.top,
-         scaleX: fullImg.scaleX,
-         scaleY: fullImg.scaleY,
-         angle: cropRect.angle,
-         width: cropW,
-         height: cropH,
-         cropX: cropX,
-         cropY: cropY,
-         originX: cropRect.originX,
-         originY: cropRect.originY,
-      };
-
-      const cmd = new TransformObjectsCommand("Crop Image", [{
-         obj: origObj,
-         before: beforeState,
-         after: afterState
-      }]);
-
-      executeCommand(cmd);
-
-      fabricRef.current.remove(fullImg);
-      fabricRef.current.remove(cropRect);
-      fabricRef.current.setActiveObject(origObj);
-      fabricRef.current.renderAll();
-
-      updateLayersList();
-
-      cropSessionRef.current = { origObj: null, fullImg: null, cropRect: null, dimRect: null };
-      setIsCropping(false);
-      setActiveTool('select');
-   };
-
-   const cancelCrop = () => {
-      const { origObj, fullImg, cropRect } = cropSessionRef.current;
-      if (origObj) {
-         origObj.set('visible', true);
-         fabricRef.current?.setActiveObject(origObj);
-      }
-      if (fullImg) fabricRef.current?.remove(fullImg);
-      if (cropRect) fabricRef.current?.remove(cropRect);
-      fabricRef.current?.renderAll();
-
-      cropSessionRef.current = { origObj: null, fullImg: null, cropRect: null, dimRect: null };
-      setIsCropping(false);
-      setActiveTool('select');
-   };
-
-   const resetCrop = () => {
-      let activeObjects = fabricRef.current?.getActiveObjects();
-      if (!activeObjects || activeObjects.length !== 1) return;
-      let origObj = activeObjects[0] as any;
-
-      if (origObj.get('isFrameGroup')) {
-         const items = origObj.getObjects();
-         const img = items.find((i: any) => i.type === 'image');
-         if (img) origObj = img;
-      }
-
-      if (origObj.type !== 'image') return;
-
-      const el = origObj.getElement() as HTMLImageElement;
-      if (!el) return;
-
-      origObj.setCoords();
-      const matrix = origObj.calcTransformMatrix();
-      const origCenterH = origObj.originX === 'center' ? origObj.width! / 2 : 0;
-      const origCenterV = origObj.originY === 'center' ? origObj.height! / 2 : 0;
-
-      const localFullTl = new fabric.Point(
-         -origCenterH - (origObj.cropX || 0),
-         -origCenterV - (origObj.cropY || 0)
-      );
-      const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
-
-      const beforeState = {
-         left: origObj.left,
-         top: origObj.top,
-         scaleX: origObj.scaleX,
-         scaleY: origObj.scaleY,
-         angle: origObj.angle,
-         width: origObj.width,
-         height: origObj.height,
-         cropX: origObj.cropX || 0,
-         cropY: origObj.cropY || 0,
-         originX: origObj.originX,
-         originY: origObj.originY,
-      };
-
-      const afterState = {
-         left: canvasFullTl.x,
-         top: canvasFullTl.y,
-         scaleX: origObj.scaleX,
-         scaleY: origObj.scaleY,
-         angle: origObj.angle,
-         width: el.width,
-         height: el.height,
-         cropX: 0,
-         cropY: 0,
-         originX: 'left',
-         originY: 'top',
-      };
-
-      const cmd = new TransformObjectsCommand("Reset Crop", [{
-         obj: origObj,
-         before: beforeState,
-         after: afterState
-      }]);
-
-      executeCommand(cmd);
-      updateLayersList();
-      fabricRef.current?.setActiveObject(origObj);
-   };
-
-   const addRect = () => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
-      const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
-      const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
-
-      const rect = new fabric.Rect({
-         left: viewCenterX,
-         top: viewCenterY,
-         width: 100,
-         height: 100,
-         fill: 'transparent',
-         stroke: brushColor,
-         strokeWidth: brushSize > 0 ? brushSize : 2,
-         originX: 'center',
-         originY: 'center',
-         id: Date.now().toString() + Math.random().toString(),
-         artboardId: activeArtboardIdRef.current
-      } as any);
-      const cmd = new AddObjectCommand("Add Rectangle", rect);
-      executeCommand(cmd);
-   };
-
-   const addCircle = () => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
-      const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
-      const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
-
-      const circle = new fabric.Circle({
-         left: viewCenterX,
-         top: viewCenterY,
-         radius: 50,
-         fill: 'transparent',
-         stroke: brushColor,
-         strokeWidth: brushSize > 0 ? brushSize : 2,
-         originX: 'center',
-         originY: 'center',
-         id: Date.now().toString() + Math.random().toString(),
-         artboardId: activeArtboardIdRef.current
-      } as any);
-      const cmd = new AddObjectCommand("Add Circle", circle);
-      executeCommand(cmd);
-   };
-
-   const addTriangle = () => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
-      const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
-      const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
-
-      const triangle = new fabric.Triangle({
-         left: viewCenterX,
-         top: viewCenterY,
-         width: 100,
-         height: 100,
-         fill: 'transparent',
-         stroke: brushColor || '#00aaff',
-         strokeWidth: brushSize > 0 ? brushSize : 2,
-         originX: 'center',
-         originY: 'center',
-         id: Date.now().toString() + Math.random().toString(),
-         artboardId: activeArtboardIdRef.current
-      } as any);
-      const cmd = new AddObjectCommand("Add Triangle", triangle);
-      executeCommand(cmd);
-   };
-
-   const addLine = () => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
-      const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
-      const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
-
-      const line = new fabric.Line([viewCenterX - 50, viewCenterY, viewCenterX + 50, viewCenterY], {
-         stroke: brushColor || '#00aaff',
-         strokeWidth: brushSize > 0 ? brushSize : 2,
-         originX: 'center',
-         originY: 'center',
-         id: Date.now().toString() + Math.random().toString(),
-         artboardId: activeArtboardIdRef.current
-      } as any);
-      const cmd = new AddObjectCommand("Add Line", line);
-      executeCommand(cmd);
-   };
-
-   const addText = () => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
-      const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
-      const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
-
-      const text = new fabric.Textbox('Double-click to type...', {
-         left: viewCenterX,
-         top: viewCenterY,
-         width: 250,
-         fill: brushColor,
-         fontFamily: textProps.fontFamily,
-         fontSize: textProps.fontSize,
-         fontWeight: textProps.fontWeight,
-         fontStyle: textProps.fontStyle,
-         textAlign: textProps.textAlign,
-         underline: textProps.underline,
-         overline: textProps.overline,
-         linethrough: textProps.linethrough,
-         charSpacing: textProps.charSpacing,
-         lineHeight: textProps.lineHeight || 1.16,
-         originX: 'center',
-         originY: 'center',
-         id: Date.now().toString() + Math.random().toString(),
-         artboardId: activeArtboardIdRef.current
-      } as any);
-      const cmd = new AddObjectCommand("Add Text", text);
-      executeCommand(cmd);
-   };
-
-   const addImageFromUrl = (url: string) => {
-      fabric.Image.fromURL(url).then((img) => {
-         if (img) {
-            (img as any).id = Date.now().toString() + Math.random().toString();
-            (img as any).artboardId = activeArtboardIdRef.current;
-
-            if (fabricRef.current) {
-               const canvas = fabricRef.current;
-               const activeBoard = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
-               const left = activeBoard.x + activeBoard.width / 2;
-               const top = activeBoard.y + activeBoard.height / 2;
-
-               let scaleX = 1;
-               let scaleY = 1;
-               if (activeBoard) {
-                  if (img.width! > activeBoard.width || img.height! > activeBoard.height) {
-                     const scale = Math.min(activeBoard.width / img.width!, activeBoard.height / img.height!);
-                     scaleX = scale;
-                     scaleY = scale;
-                  }
-               }
-
-               img.set({
-                  left: left,
-                  top: top,
-                  scaleX: scaleX,
-                  scaleY: scaleY,
-                  originX: 'center',
-                  originY: 'center'
-               });
-
-               canvas.add(img);
-               canvas.setActiveObject(img);
-               canvas.renderAll();
-
-               const cmd = new AddObjectCommand("Add Image", img);
-               executeCommand(cmd);
-               setTimeout(() => {
-                  fitView();
-               }, 50);
-            }
-         }
-      }).catch(err => {
-         console.error("Failed to load image from URL:", err);
-      });
-   };
-
-   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const promises = Array.from(files).map(file => {
-         return new Promise<{ url: string, type: 'svg' | 'image', name: string }>(async (resolve) => {
-            if (file.name.toLowerCase().endsWith('.jxl') || file.type === 'image/jxl') {
-               try {
-                  const arrayBuffer = await file.arrayBuffer();
-                  const decodeJxlModule = await import('@jsquash/jxl/decode') as any;
-                  const jxlModule = await loadWasmModule("https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm");
-                  await decodeJxlModule.init(jxlModule);
-                  const decodedData = await decodeJxlModule.default(arrayBuffer);
-
-                  const canvas = document.createElement('canvas');
-                  canvas.width = decodedData.width;
-                  canvas.height = decodedData.height;
-                  const ctx = canvas.getContext('2d')!;
-                  const imgData = new ImageData(decodedData.data, decodedData.width, decodedData.height);
-                  ctx.putImageData(imgData, 0, 0);
-                  const dataUrl = canvas.toDataURL("image/png");
-                  resolve({ url: dataUrl, type: 'image', name: file.name });
-                  return;
-               } catch (err) {
-                  console.error("Failed to decode JXL file on import:", err);
-               }
-            }
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-               const dataUrl = event.target?.result as string;
-               if (file.type === 'image/svg+xml') {
-                  resolve({ url: dataUrl, type: 'svg', name: file.name });
-               } else {
-                  resolve({ url: dataUrl, type: 'image', name: file.name });
-               }
-            };
-            reader.readAsDataURL(file);
-         });
-      });
-
-      const results = await Promise.all(promises);
-
-      if (results.length > 0) {
-         importAssets(results);
-      }
-
-      e.target.value = '';
-   };
-
-   const deleteActiveObject = () => {
-      const active = fabricRef.current?.getActiveObjects();
-      if (active && active.length > 0) {
-         const cmd = new DeleteObjectCommand("Delete Layer(s)", active);
-         executeCommand(cmd);
-      }
-   };
-
-   const copyActiveObjectAsFormat = async (format: 'png' | 'jpeg' | 'svg' = 'png') => {
-      const activeObj = fabricRef.current?.getActiveObject();
-      if (!activeObj) return;
-
-      try {
-         if (format === 'svg') {
-            const clone = await activeObj.clone([]);
-            const bounds = clone.getBoundingRect();
-
-            const elElement = document.createElement('canvas');
-            const tempCanvas = new fabric.StaticCanvas(elElement, {
-               width: bounds.width,
-               height: bounds.height
-            });
-
-            clone.set({
-               left: (clone.left || 0) - bounds.left,
-               top: (clone.top || 0) - bounds.top
-            });
-            clone.setCoords();
-            tempCanvas.add(clone);
-
-            const svg = tempCanvas.toSVG();
-            tempCanvas.dispose();
-
-            await navigator.clipboard.writeText(svg);
-            setNotification({ message: 'Copied as SVG', type: 'success' });
-         } else {
-            const dataUrl = activeObj.toDataURL({ format });
-            const res = await fetch(dataUrl);
-            const blob = await res.blob();
-            await navigator.clipboard.write([
-               new ClipboardItem({ [blob.type]: blob })
-            ]);
-            setNotification({ message: `Copied as ${format.toUpperCase()}`, type: 'success' });
-         }
-      } catch (e) {
-         console.error('Failed to copy', e);
-         setNotification({ message: 'Failed to copy', type: 'error' });
-      }
-   };
-
-   const downloadActiveObjectAsFormat = async (format: 'png' | 'jpeg' | 'webp' | 'jxl' | 'svg' = 'png') => {
-      const activeObj = fabricRef.current?.getActiveObject();
-      if (!activeObj) return;
-
-      try {
-         let url = '';
-         if (format === 'svg') {
-            const clone = await activeObj.clone([]);
-            const bounds = clone.getBoundingRect();
-
-            const elElement = document.createElement('canvas');
-            const tempCanvas = new fabric.StaticCanvas(elElement, {
-               width: bounds.width,
-               height: bounds.height
-            });
-
-            clone.set({
-               left: (clone.left || 0) - bounds.left,
-               top: (clone.top || 0) - bounds.top
-            });
-            clone.setCoords();
-            tempCanvas.add(clone);
-
-            const svg = tempCanvas.toSVG();
-            tempCanvas.dispose();
-            
-            const blob = new Blob([svg], { type: 'image/svg+xml' });
-            url = URL.createObjectURL(blob);
-         } else {
-            const fabricFormat = (format === 'jxl' ? 'png' : format) as any;
-            url = activeObj.toDataURL({ format: fabricFormat });
-         }
-
-         const a = document.createElement('a');
-         a.href = url;
-         a.download = `exported-object.${format}`;
-         a.click();
-         
-         if (format === 'svg') {
-            URL.revokeObjectURL(url);
-         }
-         
-         setNotification({ message: `Downloaded as ${format.toUpperCase()}`, type: 'success' });
-      } catch (e) {
-         console.error('Failed to download', e);
-         setNotification({ message: 'Failed to download', type: 'error' });
-      }
-   };
-
-
-   const duplicateActiveObject = () => {
-      const activeObj = fabricRef.current?.getActiveObject();
-      if (activeObj) {
-         activeObj.clone(['id', 'artboardId']).then((cloned) => {
-            fabricRef.current?.discardActiveObject();
-            let newLeft = (cloned.left || 0) + 20;
-            let newTop = (cloned.top || 0) + 20;
-            const canvas = fabricRef.current;
-            if (canvas && canvas.vptCoords) {
-               const { tl, br } = canvas.vptCoords;
-               if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
-                  const center = canvas.getVpCenter();
-                  newLeft = cloned.originX === 'center' ? center.x : center.x - ((cloned.width || 0) * (cloned.scaleX || 1)) / 2;
-                  newTop = cloned.originY === 'center' ? center.y : center.y - ((cloned.height || 0) * (cloned.scaleY || 1)) / 2;
-               }
-            }
-            cloned.set({
-               left: newLeft,
-               top: newTop,
-               id: Date.now().toString() + Math.random().toString(),
-               artboardId: (activeObj as any).artboardId || activeArtboardIdRef.current
-            });
-            if (cloned.type === 'activeSelection') {
-               cloned.canvas = fabricRef.current!;
-               (cloned as any).forEachObject((obj: any) => {
-                  obj.id = Date.now().toString() + Math.random().toString();
-                  obj.artboardId = obj.artboardId || activeArtboardIdRef.current;
-                  fabricRef.current?.add(obj);
-               });
-               cloned.setCoords();
-            } else {
-               fabricRef.current?.add(cloned);
-            }
-            const cmd = new AddObjectCommand("Duplicate Layer", cloned);
-            executeCommand(cmd);
-         });
-      }
-   };
-
-   const flipX = () => {
-      const obj = fabricRef.current?.getActiveObject();
-      if (obj) {
-         const beforeVal = obj.flipX;
-         const cmd = new PropertyChangeCommand("Flip Horizontal", obj, "flipX", beforeVal, !beforeVal);
-         executeCommand(cmd);
-      }
-   };
-
-   const flipY = () => {
-      const obj = fabricRef.current?.getActiveObject();
-      if (obj) {
-         const beforeVal = obj.flipY;
-         const cmd = new PropertyChangeCommand("Flip Vertical", obj, "flipY", beforeVal, !beforeVal);
-         executeCommand(cmd);
-      }
-   };
-
-   const updateFrameColor = (color: string) => {
-      setFrameColor(color);
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const activeObj = canvas.getActiveObject();
-
-      if (activeObj && activeObj.get('isFrameGroup')) {
-         const frameType = activeObj.get('frameType');
-         const group = activeObj as fabric.Group;
-         const items = group.getObjects();
-         const rectObj = items.find((i: any) => i.type === 'rect');
-
-         if (rectObj) {
-            if (frameType === 'polaroid') {
-               rectObj.set('fill', color);
-            } else {
-               rectObj.set('stroke', color);
-            }
-
-            (group as any).setDirty?.();
-            group.fire('modified');
-            canvas.requestRenderAll();
-         }
-      }
-   };
-
-   const updateFrameBorderWidth = (width: number) => {
-      setFrameBorderWidth(width);
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      const activeObj = canvas.getActiveObject();
-
-      if (activeObj && activeObj.get('isFrameGroup')) {
-         const frameType = activeObj.get('frameType');
-         const group = activeObj as fabric.Group;
-         const items = group.getObjects();
-         const rectObj = items.find((i: any) => i.type === 'rect');
-         const imgObj = items.find((i: any) => i.type === 'image');
-
-         if (rectObj && imgObj) {
-            if (frameType === 'polaroid') {
-               const w = imgObj.getScaledWidth();
-               const h = imgObj.getScaledHeight();
-
-               let cx = imgObj.left!;
-               let cy = imgObj.top!;
-
-               if (imgObj.originX !== 'center') cx += w / 2;
-               if (imgObj.originY !== 'center') cy += h / 2;
-
-               rectObj.set({
-                  left: cx,
-                  top: cy + width,
-                  width: w + (width * 2),
-                  height: h + (width * 4)
-               });
-            } else {
-               rectObj.set('strokeWidth', width);
-            }
-
-            // Re-calculate group bounds properly to prevent visual tearing / selection box issues
-            const groupAny = group as any;
-            if (groupAny.removeWithUpdate && groupAny.addWithUpdate) {
-               groupAny.removeWithUpdate(rectObj);
-               groupAny.removeWithUpdate(imgObj);
-               groupAny.addWithUpdate(rectObj);
-               groupAny.addWithUpdate(imgObj);
-            } else {
-               group.remove(rectObj);
-               group.remove(imgObj);
-               group.add(rectObj);
-               group.add(imgObj);
-            }
-
-            groupAny.setDirty?.();
-            group.fire('modified');
-            canvas.requestRenderAll();
-         }
-      }
-   };
-
-   const applyFrame = async (frameType: string, customWidth?: number) => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      let activeObj = canvas.getActiveObject();
-
-      if (!activeObj) {
-         alert("Please select an image to apply a frame.");
-         return;
-      }
-
-      isInternalChange.current = true;
-
-      let baseImageObj: any = activeObj;
-      let objectToRemove: any = activeObj;
-
-      if (activeObj.get('isFrameGroup')) {
-         const prevFrameType = activeObj.get('frameType');
-
-         // Safely clone the group to extract the image without destroying the original (for history undo)
-         const clonedGroup = await activeObj.clone([]);
+      const extractImageFromFrame = async (frameGroup: any) => {
+         isInternalChange.current = true;
+         const canvas = fabricRef.current;
+         if (!canvas) return null;
+
+         const artboardId = frameGroup.artboardId;
+         const layerId = frameGroup.id || frameGroup.layerId;
+
+         const clonedGroup = await frameGroup.clone([]);
          canvas.add(clonedGroup);
 
          let items: any[] = [];
-         const groupAsAny = clonedGroup as any;
-         if (typeof groupAsAny.toActiveSelection === 'function') {
-            const sel = groupAsAny.toActiveSelection();
+         if (typeof clonedGroup.toActiveSelection === 'function') {
+            const sel = clonedGroup.toActiveSelection();
             items = sel.getObjects();
          } else {
             items = (clonedGroup as any).removeAll();
@@ -5165,2066 +4670,2868 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          const img = items.find((o: any) => o.type === 'image');
          const rect = items.find((o: any) => o.type === 'rect');
 
-         if (rect) canvas.remove(rect); // Clean up temp rect
-         if (img) canvas.remove(img);   // Temporarily remove temp img
+         if (rect) canvas.remove(rect);
+         if (img) canvas.remove(img);
 
-         if (!img) {
-            alert("Could not extract image from frame.");
-            isInternalChange.current = false;
-            return;
-         }
+         if (img) {
+            if (artboardId) (img as any).artboardId = artboardId;
+            if (layerId) (img as any).id = layerId;
+            img.set('isFrameGroup', false);
+            img.set('frameType', undefined);
 
-         baseImageObj = img;
+            canvas.add(img);
+            canvas.setActiveObject(img);
 
-         if (prevFrameType === frameType && customWidth === undefined) {
-            // Toggle off identical frame
-            canvas.add(baseImageObj);
-            canvas.setActiveObject(baseImageObj);
-
-            const cmd = new MacroCommand("Remove Frame", [
-               new DeleteObjectCommand("Remove Group", [objectToRemove]),
-               new AddObjectCommand("Add Extracted Image", baseImageObj)
+            const cmd = new MacroCommand("Remove Frame for Crop", [
+               new DeleteObjectCommand("Remove Group", [frameGroup]),
+               new AddObjectCommand("Add Extracted Image", img)
             ]);
             executeCommand(cmd);
             canvas.requestRenderAll();
             updateLayersList();
+         }
+         isInternalChange.current = false;
+         return img;
+      };
+
+      const enterCropMode = async (target?: any) => {
+         setCropRatio('free');
+         let imgTarget = target;
+         let canvas = fabricRef.current;
+         if (!canvas) return;
+
+         if (!imgTarget) {
+            let activeObj = canvas.getActiveObject();
+            if (activeObj && activeObj.get('isFrameGroup')) {
+               const img = await extractImageFromFrame(activeObj);
+               if (img) imgTarget = img as fabric.Image;
+            } else {
+               const activeObjects = activeObj ? [activeObj] : [];
+               if (activeObjects?.length === 1 && activeObjects[0].type === 'image') {
+                  imgTarget = activeObjects[0] as fabric.Image;
+               }
+            }
+         } else {
+            if (imgTarget && imgTarget.get('isFrameGroup')) {
+               const img = await extractImageFromFrame(imgTarget);
+               if (img) imgTarget = img as fabric.Image;
+            }
+         }
+
+         if (!imgTarget || imgTarget.type !== 'image') {
+            alert("Please select a single image to crop.");
+            return;
+         }
+
+         const el = imgTarget.getElement() as HTMLImageElement;
+         if (!el) return;
+
+         imgTarget.setCoords();
+         const matrix = imgTarget.calcTransformMatrix();
+
+         const origCenterH = imgTarget.originX === 'center' ? imgTarget.width! / 2 : 0;
+         const origCenterV = imgTarget.originY === 'center' ? imgTarget.height! / 2 : 0;
+
+         const localFullTl = new fabric.Point(
+            -origCenterH - (imgTarget.cropX || 0),
+            -origCenterV - (imgTarget.cropY || 0)
+         );
+         const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
+
+         const fullImg = new fabric.Image(el, {
+            left: canvasFullTl.x,
+            top: canvasFullTl.y,
+            originX: 'left',
+            originY: 'top',
+            scaleX: imgTarget.scaleX,
+            scaleY: imgTarget.scaleY,
+            angle: imgTarget.angle,
+            opacity: 1, // Fixed: don't make the background totally transparent
+            selectable: true,
+            evented: true,
+            lockRotation: true,
+            lockScalingX: true,
+            lockScalingY: true,
+         });
+
+         (fullImg as any).isCropHelper = true;
+
+         const cropRect = new fabric.Rect({
+            left: imgTarget.left,
+            top: imgTarget.top,
+            originX: imgTarget.originX,
+            originY: imgTarget.originY,
+            width: imgTarget.width,
+            height: imgTarget.height,
+            scaleX: imgTarget.scaleX,
+            scaleY: imgTarget.scaleY,
+            angle: imgTarget.angle,
+            fill: 'transparent',
+            stroke: '#3b82f6',
+            strokeWidth: 2 / fabricRef.current!.getZoom() || 1,
+            strokeDashArray: [6, 6],
+            cornerColor: '#ffffff',
+            cornerStrokeColor: '#3b82f6',
+            cornerSize: 12,
+            transparentCorners: false,
+            lockRotation: true,
+            borderColor: '#3b82f6',
+         });
+         (cropRect as any).isCropHelper = true;
+
+         imgTarget.set('visible', false);
+
+         fabricRef.current!.add(fullImg);
+         fabricRef.current!.add(cropRect);
+         fabricRef.current!.setActiveObject(cropRect);
+         fabricRef.current!.renderAll();
+
+         cropSessionRef.current = {
+            origObj: imgTarget,
+            fullImg: fullImg,
+            cropRect: cropRect,
+            dimRect: null
+         };
+
+         setIsCropping(true);
+         setActiveTool('crop');
+      };
+
+      const applyCrop = () => {
+         const { origObj, fullImg, cropRect } = cropSessionRef.current;
+         if (!origObj || !fullImg || !cropRect || !fabricRef.current) {
+            cancelCrop();
+            return;
+         }
+
+         const imgEl = fullImg.getElement() as HTMLImageElement;
+         if (!imgEl) {
+            cancelCrop();
+            return;
+         }
+         const imgWidth = imgEl.width || imgEl.naturalWidth;
+         const imgHeight = imgEl.height || imgEl.naturalHeight;
+
+         // Calculate unscaled crop dimensions by mapping from canvas space back to the source image space
+         const cropWCanvas = cropRect.width! * Math.abs(cropRect.scaleX!);
+         const cropHCanvas = cropRect.height! * Math.abs(cropRect.scaleY!);
+
+         // original scale values of the full image
+         const fullImgScaleX = Math.abs(fullImg.scaleX!);
+         const fullImgScaleY = Math.abs(fullImg.scaleY!);
+
+         let cropW = cropWCanvas / fullImgScaleX;
+         let cropH = cropHCanvas / fullImgScaleY;
+
+         // Calculate center offsets in source image space using reverse projection
+         const fullImgMatrix = fullImg.calcTransformMatrix();
+         const fullImgInverse = fabric.util.invertTransform(fullImgMatrix);
+
+         const cropCenterCanvas = cropRect.getCenterPoint();
+         const fullImgCenterCanvas = fullImg.getCenterPoint();
+
+         const cropCenterLocal = fabric.util.transformPoint(cropCenterCanvas, fullImgInverse);
+         const fullImgCenterLocal = fabric.util.transformPoint(fullImgCenterCanvas, fullImgInverse);
+
+         const dx = cropCenterLocal.x - fullImgCenterLocal.x;
+         const dy = cropCenterLocal.y - fullImgCenterLocal.y;
+
+         // Compute top-left of crop in source image space
+         let cropX = (imgWidth / 2) + dx - (cropW / 2);
+         let cropY = (imgHeight / 2) + dy - (cropH / 2);
+
+         // Bounds / Safety constraints to prevent NaN or blank imagery
+         if (cropX < 0) { cropW += cropX; cropX = 0; }
+         if (cropY < 0) { cropH += cropY; cropY = 0; }
+         if (cropX + cropW > imgWidth) cropW = imgWidth - cropX;
+         if (cropY + cropH > imgHeight) cropH = imgHeight - cropY;
+
+         if (cropW <= 1 || cropH <= 1) {
+            cancelCrop();
+            return;
+         }
+
+         origObj.set('visible', true);
+
+         const beforeState = {
+            left: origObj.left,
+            top: origObj.top,
+            scaleX: origObj.scaleX,
+            scaleY: origObj.scaleY,
+            angle: origObj.angle,
+            width: origObj.width,
+            height: origObj.height,
+            cropX: origObj.cropX || 0,
+            cropY: origObj.cropY || 0,
+            originX: origObj.originX,
+            originY: origObj.originY,
+         };
+
+         const afterState = {
+            left: cropRect.left,
+            top: cropRect.top,
+            scaleX: fullImg.scaleX,
+            scaleY: fullImg.scaleY,
+            angle: cropRect.angle,
+            width: cropW,
+            height: cropH,
+            cropX: cropX,
+            cropY: cropY,
+            originX: cropRect.originX,
+            originY: cropRect.originY,
+         };
+
+         const cmd = new TransformObjectsCommand("Crop Image", [{
+            obj: origObj,
+            before: beforeState,
+            after: afterState
+         }]);
+
+         executeCommand(cmd);
+
+         fabricRef.current.remove(fullImg);
+         fabricRef.current.remove(cropRect);
+         fabricRef.current.setActiveObject(origObj);
+         fabricRef.current.renderAll();
+
+         updateLayersList();
+
+         cropSessionRef.current = { origObj: null, fullImg: null, cropRect: null, dimRect: null };
+         setIsCropping(false);
+         setActiveTool('select');
+      };
+
+      const cancelCrop = () => {
+         const { origObj, fullImg, cropRect } = cropSessionRef.current;
+         if (origObj) {
+            origObj.set('visible', true);
+            fabricRef.current?.setActiveObject(origObj);
+         }
+         if (fullImg) fabricRef.current?.remove(fullImg);
+         if (cropRect) fabricRef.current?.remove(cropRect);
+         fabricRef.current?.renderAll();
+
+         cropSessionRef.current = { origObj: null, fullImg: null, cropRect: null, dimRect: null };
+         setIsCropping(false);
+         setActiveTool('select');
+      };
+
+      const resetCrop = () => {
+         let activeObjects = fabricRef.current?.getActiveObjects();
+         if (!activeObjects || activeObjects.length !== 1) return;
+         let origObj = activeObjects[0] as any;
+
+         if (origObj.get('isFrameGroup')) {
+            const items = origObj.getObjects();
+            const img = items.find((i: any) => i.type === 'image');
+            if (img) origObj = img;
+         }
+
+         if (origObj.type !== 'image') return;
+
+         const el = origObj.getElement() as HTMLImageElement;
+         if (!el) return;
+
+         origObj.setCoords();
+         const matrix = origObj.calcTransformMatrix();
+         const origCenterH = origObj.originX === 'center' ? origObj.width! / 2 : 0;
+         const origCenterV = origObj.originY === 'center' ? origObj.height! / 2 : 0;
+
+         const localFullTl = new fabric.Point(
+            -origCenterH - (origObj.cropX || 0),
+            -origCenterV - (origObj.cropY || 0)
+         );
+         const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
+
+         const beforeState = {
+            left: origObj.left,
+            top: origObj.top,
+            scaleX: origObj.scaleX,
+            scaleY: origObj.scaleY,
+            angle: origObj.angle,
+            width: origObj.width,
+            height: origObj.height,
+            cropX: origObj.cropX || 0,
+            cropY: origObj.cropY || 0,
+            originX: origObj.originX,
+            originY: origObj.originY,
+         };
+
+         const afterState = {
+            left: canvasFullTl.x,
+            top: canvasFullTl.y,
+            scaleX: origObj.scaleX,
+            scaleY: origObj.scaleY,
+            angle: origObj.angle,
+            width: el.width,
+            height: el.height,
+            cropX: 0,
+            cropY: 0,
+            originX: 'left',
+            originY: 'top',
+         };
+
+         const cmd = new TransformObjectsCommand("Reset Crop", [{
+            obj: origObj,
+            before: beforeState,
+            after: afterState
+         }]);
+
+         executeCommand(cmd);
+         updateLayersList();
+         fabricRef.current?.setActiveObject(origObj);
+      };
+
+      const addRect = () => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+         const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+         const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+         const rect = new fabric.Rect({
+            left: viewCenterX,
+            top: viewCenterY,
+            width: 100,
+            height: 100,
+            fill: 'transparent',
+            stroke: brushColor,
+            strokeWidth: brushSize > 0 ? brushSize : 2,
+            originX: 'center',
+            originY: 'center',
+            id: Date.now().toString() + Math.random().toString(),
+            artboardId: activeArtboardIdRef.current
+         } as any);
+         const cmd = new AddObjectCommand("Add Rectangle", rect);
+         executeCommand(cmd);
+      };
+
+      const addCircle = () => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+         const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+         const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+         const circle = new fabric.Circle({
+            left: viewCenterX,
+            top: viewCenterY,
+            radius: 50,
+            fill: 'transparent',
+            stroke: brushColor,
+            strokeWidth: brushSize > 0 ? brushSize : 2,
+            originX: 'center',
+            originY: 'center',
+            id: Date.now().toString() + Math.random().toString(),
+            artboardId: activeArtboardIdRef.current
+         } as any);
+         const cmd = new AddObjectCommand("Add Circle", circle);
+         executeCommand(cmd);
+      };
+
+      const addTriangle = () => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+         const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+         const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+         const triangle = new fabric.Triangle({
+            left: viewCenterX,
+            top: viewCenterY,
+            width: 100,
+            height: 100,
+            fill: 'transparent',
+            stroke: brushColor || '#00aaff',
+            strokeWidth: brushSize > 0 ? brushSize : 2,
+            originX: 'center',
+            originY: 'center',
+            id: Date.now().toString() + Math.random().toString(),
+            artboardId: activeArtboardIdRef.current
+         } as any);
+         const cmd = new AddObjectCommand("Add Triangle", triangle);
+         executeCommand(cmd);
+      };
+
+      const addLine = () => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+         const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+         const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+         const line = new fabric.Line([viewCenterX - 50, viewCenterY, viewCenterX + 50, viewCenterY], {
+            stroke: brushColor || '#00aaff',
+            strokeWidth: brushSize > 0 ? brushSize : 2,
+            originX: 'center',
+            originY: 'center',
+            id: Date.now().toString() + Math.random().toString(),
+            artboardId: activeArtboardIdRef.current
+         } as any);
+         const cmd = new AddObjectCommand("Add Line", line);
+         executeCommand(cmd);
+      };
+
+      const addText = () => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const vpt = canvas.viewportTransform || ([1, 0, 0, 1, 0, 0] as any);
+         const viewCenterX = (canvas.getWidth() / 2 - vpt[4]) / vpt[0];
+         const viewCenterY = (canvas.getHeight() / 2 - vpt[5]) / vpt[3];
+
+         const text = new fabric.Textbox('Double-click to type...', {
+            left: viewCenterX,
+            top: viewCenterY,
+            width: 250,
+            fill: brushColor,
+            fontFamily: textProps.fontFamily,
+            fontSize: textProps.fontSize,
+            fontWeight: textProps.fontWeight,
+            fontStyle: textProps.fontStyle,
+            textAlign: textProps.textAlign,
+            underline: textProps.underline,
+            overline: textProps.overline,
+            linethrough: textProps.linethrough,
+            charSpacing: textProps.charSpacing,
+            lineHeight: textProps.lineHeight || 1.16,
+            originX: 'center',
+            originY: 'center',
+            id: Date.now().toString() + Math.random().toString(),
+            artboardId: activeArtboardIdRef.current
+         } as any);
+         const cmd = new AddObjectCommand("Add Text", text);
+         executeCommand(cmd);
+      };
+
+      const addImageFromUrl = (url: string) => {
+         fabric.Image.fromURL(url).then((img) => {
+            if (img) {
+               (img as any).id = Date.now().toString() + Math.random().toString();
+               (img as any).artboardId = activeArtboardIdRef.current;
+
+               if (fabricRef.current) {
+                  const canvas = fabricRef.current;
+                  const activeBoard = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
+                  const left = activeBoard.x + activeBoard.width / 2;
+                  const top = activeBoard.y + activeBoard.height / 2;
+
+                  let scaleX = 1;
+                  let scaleY = 1;
+                  if (activeBoard) {
+                     if (img.width! > activeBoard.width || img.height! > activeBoard.height) {
+                        const scale = Math.min(activeBoard.width / img.width!, activeBoard.height / img.height!);
+                        scaleX = scale;
+                        scaleY = scale;
+                     }
+                  }
+
+                  img.set({
+                     left: left,
+                     top: top,
+                     scaleX: scaleX,
+                     scaleY: scaleY,
+                     originX: 'center',
+                     originY: 'center'
+                  });
+
+                  canvas.add(img);
+                  canvas.setActiveObject(img);
+                  canvas.renderAll();
+
+                  const cmd = new AddObjectCommand("Add Image", img);
+                  executeCommand(cmd);
+                  setTimeout(() => {
+                     fitView();
+                  }, 50);
+               }
+            }
+         }).catch(err => {
+            console.error("Failed to load image from URL:", err);
+         });
+      };
+
+      const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+         const files = e.target.files;
+         if (!files || files.length === 0) return;
+
+         const promises = Array.from(files).map(file => {
+            return new Promise<{ url: string, type: 'svg' | 'image', name: string }>(async (resolve) => {
+               if (file.name.toLowerCase().endsWith('.jxl') || file.type === 'image/jxl') {
+                  try {
+                     const arrayBuffer = await file.arrayBuffer();
+                     const decodeJxlModule = await import('@jsquash/jxl/decode') as any;
+                     const jxlModule = await loadWasmModule("https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm");
+                     await decodeJxlModule.init(jxlModule);
+                     const decodedData = await decodeJxlModule.default(arrayBuffer);
+
+                     const canvas = document.createElement('canvas');
+                     canvas.width = decodedData.width;
+                     canvas.height = decodedData.height;
+                     const ctx = canvas.getContext('2d')!;
+                     const imgData = new ImageData(decodedData.data, decodedData.width, decodedData.height);
+                     ctx.putImageData(imgData, 0, 0);
+                     const dataUrl = canvas.toDataURL("image/png");
+                     resolve({ url: dataUrl, type: 'image', name: file.name });
+                     return;
+                  } catch (err) {
+                     console.error("Failed to decode JXL file on import:", err);
+                  }
+               }
+
+               const reader = new FileReader();
+               reader.onload = (event) => {
+                  const dataUrl = event.target?.result as string;
+                  if (file.type === 'image/svg+xml') {
+                     resolve({ url: dataUrl, type: 'svg', name: file.name });
+                  } else {
+                     resolve({ url: dataUrl, type: 'image', name: file.name });
+                  }
+               };
+               reader.readAsDataURL(file);
+            });
+         });
+
+         const results = await Promise.all(promises);
+
+         if (results.length > 0) {
+            importAssets(results);
+         }
+
+         e.target.value = '';
+      };
+
+      const deleteActiveObject = () => {
+         const active = fabricRef.current?.getActiveObjects();
+         if (active && active.length > 0) {
+            const cmd = new DeleteObjectCommand("Delete Layer(s)", active);
+            executeCommand(cmd);
+         }
+      };
+
+      const copyActiveObjectAsFormat = async (format: 'png' | 'jpeg' | 'svg' = 'png') => {
+         const activeObj = fabricRef.current?.getActiveObject();
+         if (!activeObj) return;
+
+         try {
+            if (format === 'svg') {
+               const clone = await activeObj.clone([]);
+               const bounds = clone.getBoundingRect();
+
+               const elElement = document.createElement('canvas');
+               const tempCanvas = new fabric.StaticCanvas(elElement, {
+                  width: bounds.width,
+                  height: bounds.height
+               });
+
+               clone.set({
+                  left: (clone.left || 0) - bounds.left,
+                  top: (clone.top || 0) - bounds.top
+               });
+               clone.setCoords();
+               tempCanvas.add(clone);
+
+               const svg = tempCanvas.toSVG();
+               tempCanvas.dispose();
+
+               await navigator.clipboard.writeText(svg);
+               setNotification({ message: 'Copied as SVG', type: 'success' });
+            } else {
+               const dataUrl = activeObj.toDataURL({ format });
+               const res = await fetch(dataUrl);
+               const blob = await res.blob();
+               await navigator.clipboard.write([
+                  new ClipboardItem({ [blob.type]: blob })
+               ]);
+               setNotification({ message: `Copied as ${format.toUpperCase()}`, type: 'success' });
+            }
+         } catch (e) {
+            console.error('Failed to copy', e);
+            setNotification({ message: 'Failed to copy', type: 'error' });
+         }
+      };
+
+      const downloadActiveObjectAsFormat = async (format: 'png' | 'jpeg' | 'webp' | 'jxl' | 'svg' = 'png') => {
+         const activeObj = fabricRef.current?.getActiveObject();
+         if (!activeObj) return;
+
+         try {
+            let url = '';
+            if (format === 'svg') {
+               const clone = await activeObj.clone([]);
+               const bounds = clone.getBoundingRect();
+
+               const elElement = document.createElement('canvas');
+               const tempCanvas = new fabric.StaticCanvas(elElement, {
+                  width: bounds.width,
+                  height: bounds.height
+               });
+
+               clone.set({
+                  left: (clone.left || 0) - bounds.left,
+                  top: (clone.top || 0) - bounds.top
+               });
+               clone.setCoords();
+               tempCanvas.add(clone);
+
+               const svg = tempCanvas.toSVG();
+               tempCanvas.dispose();
+
+               const blob = new Blob([svg], { type: 'image/svg+xml' });
+               url = URL.createObjectURL(blob);
+            } else {
+               const fabricFormat = (format === 'jxl' ? 'png' : format) as any;
+               url = activeObj.toDataURL({ format: fabricFormat });
+            }
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `exported-object.${format}`;
+            a.click();
+
+            if (format === 'svg') {
+               URL.revokeObjectURL(url);
+            }
+
+            setNotification({ message: `Downloaded as ${format.toUpperCase()}`, type: 'success' });
+         } catch (e) {
+            console.error('Failed to download', e);
+            setNotification({ message: 'Failed to download', type: 'error' });
+         }
+      };
+
+
+      const duplicateActiveObject = () => {
+         const activeObj = fabricRef.current?.getActiveObject();
+         if (activeObj) {
+            activeObj.clone(['id', 'artboardId']).then((cloned) => {
+               fabricRef.current?.discardActiveObject();
+               let newLeft = (cloned.left || 0) + 20;
+               let newTop = (cloned.top || 0) + 20;
+               const canvas = fabricRef.current;
+               if (canvas && canvas.vptCoords) {
+                  const { tl, br } = canvas.vptCoords;
+                  if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                     const center = canvas.getVpCenter();
+                     newLeft = cloned.originX === 'center' ? center.x : center.x - ((cloned.width || 0) * (cloned.scaleX || 1)) / 2;
+                     newTop = cloned.originY === 'center' ? center.y : center.y - ((cloned.height || 0) * (cloned.scaleY || 1)) / 2;
+                  }
+               }
+               cloned.set({
+                  left: newLeft,
+                  top: newTop,
+                  id: Date.now().toString() + Math.random().toString(),
+                  artboardId: (activeObj as any).artboardId || activeArtboardIdRef.current
+               });
+               if (cloned.type === 'activeSelection') {
+                  cloned.canvas = fabricRef.current!;
+                  (cloned as any).forEachObject((obj: any) => {
+                     obj.id = Date.now().toString() + Math.random().toString();
+                     obj.artboardId = obj.artboardId || activeArtboardIdRef.current;
+                     fabricRef.current?.add(obj);
+                  });
+                  cloned.setCoords();
+               } else {
+                  fabricRef.current?.add(cloned);
+               }
+               const cmd = new AddObjectCommand("Duplicate Layer", cloned);
+               executeCommand(cmd);
+            });
+         }
+      };
+
+      const flipX = () => {
+         const obj = fabricRef.current?.getActiveObject();
+         if (obj) {
+            const beforeVal = obj.flipX;
+            const cmd = new PropertyChangeCommand("Flip Horizontal", obj, "flipX", beforeVal, !beforeVal);
+            executeCommand(cmd);
+         }
+      };
+
+      const flipY = () => {
+         const obj = fabricRef.current?.getActiveObject();
+         if (obj) {
+            const beforeVal = obj.flipY;
+            const cmd = new PropertyChangeCommand("Flip Vertical", obj, "flipY", beforeVal, !beforeVal);
+            executeCommand(cmd);
+         }
+      };
+
+      const updateFrameColor = (color: string) => {
+         setFrameColor(color);
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const activeObj = canvas.getActiveObject();
+
+         if (activeObj && activeObj.get('isFrameGroup')) {
+            const frameType = activeObj.get('frameType');
+            const group = activeObj as fabric.Group;
+            const items = group.getObjects();
+            const rectObj = items.find((i: any) => i.type === 'rect');
+
+            if (rectObj) {
+               if (frameType === 'polaroid') {
+                  rectObj.set('fill', color);
+               } else {
+                  rectObj.set('stroke', color);
+               }
+
+               (group as any).setDirty?.();
+               group.fire('modified');
+               canvas.requestRenderAll();
+            }
+         }
+      };
+
+      const updateFrameBorderWidth = (width: number) => {
+         setFrameBorderWidth(width);
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         const activeObj = canvas.getActiveObject();
+
+         if (activeObj && activeObj.get('isFrameGroup')) {
+            const frameType = activeObj.get('frameType');
+            const group = activeObj as fabric.Group;
+            const items = group.getObjects();
+            const rectObj = items.find((i: any) => i.type === 'rect');
+            const imgObj = items.find((i: any) => i.type === 'image');
+
+            if (rectObj && imgObj) {
+               if (frameType === 'polaroid') {
+                  const w = imgObj.getScaledWidth();
+                  const h = imgObj.getScaledHeight();
+
+                  let cx = imgObj.left!;
+                  let cy = imgObj.top!;
+
+                  if (imgObj.originX !== 'center') cx += w / 2;
+                  if (imgObj.originY !== 'center') cy += h / 2;
+
+                  rectObj.set({
+                     left: cx,
+                     top: cy + width,
+                     width: w + (width * 2),
+                     height: h + (width * 4)
+                  });
+               } else {
+                  rectObj.set('strokeWidth', width);
+               }
+
+               // Re-calculate group bounds properly to prevent visual tearing / selection box issues
+               const groupAny = group as any;
+               if (groupAny.removeWithUpdate && groupAny.addWithUpdate) {
+                  groupAny.removeWithUpdate(rectObj);
+                  groupAny.removeWithUpdate(imgObj);
+                  groupAny.addWithUpdate(rectObj);
+                  groupAny.addWithUpdate(imgObj);
+               } else {
+                  group.remove(rectObj);
+                  group.remove(imgObj);
+                  group.add(rectObj);
+                  group.add(imgObj);
+               }
+
+               groupAny.setDirty?.();
+               group.fire('modified');
+               canvas.requestRenderAll();
+            }
+         }
+      };
+
+      const applyFrame = async (frameType: string, customWidth?: number) => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         let activeObj = canvas.getActiveObject();
+
+         if (!activeObj) {
+            alert("Please select an image to apply a frame.");
+            return;
+         }
+
+         isInternalChange.current = true;
+
+         let baseImageObj: any = activeObj;
+         let objectToRemove: any = activeObj;
+
+         if (activeObj.get('isFrameGroup')) {
+            const prevFrameType = activeObj.get('frameType');
+
+            // Safely clone the group to extract the image without destroying the original (for history undo)
+            const clonedGroup = await activeObj.clone([]);
+            canvas.add(clonedGroup);
+
+            let items: any[] = [];
+            const groupAsAny = clonedGroup as any;
+            if (typeof groupAsAny.toActiveSelection === 'function') {
+               const sel = groupAsAny.toActiveSelection();
+               items = sel.getObjects();
+            } else {
+               items = (clonedGroup as any).removeAll();
+               canvas.remove(clonedGroup);
+               items.forEach((i: any) => canvas.add(i));
+            }
+
+            const img = items.find((o: any) => o.type === 'image');
+            const rect = items.find((o: any) => o.type === 'rect');
+
+            if (rect) canvas.remove(rect); // Clean up temp rect
+            if (img) canvas.remove(img);   // Temporarily remove temp img
+
+            if (!img) {
+               alert("Could not extract image from frame.");
+               isInternalChange.current = false;
+               return;
+            }
+
+            baseImageObj = img;
+
+            if (prevFrameType === frameType && customWidth === undefined) {
+               // Toggle off identical frame
+               canvas.add(baseImageObj);
+               canvas.setActiveObject(baseImageObj);
+
+               const cmd = new MacroCommand("Remove Frame", [
+                  new DeleteObjectCommand("Remove Group", [objectToRemove]),
+                  new AddObjectCommand("Add Extracted Image", baseImageObj)
+               ]);
+               executeCommand(cmd);
+               canvas.requestRenderAll();
+               updateLayersList();
+               isInternalChange.current = false;
+               return;
+            }
+         }
+
+         if (baseImageObj.type !== 'image') {
+            alert("Please select an image to apply a frame.");
             isInternalChange.current = false;
             return;
          }
-      }
 
-      if (baseImageObj.type !== 'image') {
-         alert("Please select an image to apply a frame.");
+         // Default Frame Settings
+         let strokeColor = "#ffffff";
+         let strokeWidth = customWidth !== undefined ? customWidth : 20;
+         let strokeUniform = true;
+
+         switch (frameType) {
+            case 'polaroid':
+               strokeColor = "#F9F9F9";
+               if (customWidth === undefined) strokeWidth = 30; // base boundary
+               break;
+            case 'black':
+               strokeColor = "#111111";
+               if (customWidth === undefined) strokeWidth = 15;
+               break;
+            case 'white':
+               strokeColor = "#FFFFFF";
+               if (customWidth === undefined) strokeWidth = 15;
+               break;
+            case 'metallic':
+               strokeColor = "#D4AF37";
+               if (customWidth === undefined) strokeWidth = 12;
+               break;
+            case 'vintage':
+               strokeColor = "#8B5A2B";
+               if (customWidth === undefined) strokeWidth = 20;
+               break;
+         }
+
+         const originalAngle = baseImageObj.angle || 0;
+         baseImageObj.set({ angle: 0 }); // temporarily straighten to get clean bounds
+         baseImageObj.setCoords();
+
+         const center = baseImageObj.getCenterPoint();
+         const w = baseImageObj.getScaledWidth();
+         const h = baseImageObj.getScaledHeight();
+
+         const rect = new fabric.Rect({
+            originX: 'center',
+            originY: 'center',
+            left: center.x,
+            top: center.y + (frameType === 'polaroid' ? strokeWidth : 0),
+            width: w + (frameType === 'polaroid' ? strokeWidth * 2 : 0),
+            height: h + (frameType === 'polaroid' ? strokeWidth * 3.5 : 0),
+            fill: 'transparent',
+            stroke: strokeColor,
+            strokeWidth: frameType === 'polaroid' ? 0 : strokeWidth,
+            strokeUniform: strokeUniform,
+            shadow: new fabric.Shadow({
+               color: 'rgba(0,0,0,0.3)',
+               blur: 10,
+               offsetX: 5,
+               offsetY: 5
+            }),
+            evented: true,
+            selectable: true,
+            artboardId: (baseImageObj as any).artboardId
+         });
+
+         if (frameType === 'polaroid') {
+            rect.set('fill', '#F9F9F9');
+            rect.set('strokeWidth', 0);
+         }
+
+         // Group them
+         const objs = frameType === 'polaroid' ? [rect, baseImageObj] : [baseImageObj, rect];
+         const group = new fabric.Group(objs);
+
+         group.set({
+            id: `frame_${Date.now()}`,
+            customName: `${frameType.charAt(0).toUpperCase() + frameType.slice(1)} Frame`,
+            artboardId: (baseImageObj as any).artboardId,
+            angle: originalAngle, // restore original angle
+            isFrameGroup: true, // special flag to allow formats and quick actions to identify this
+            frameType: frameType
+         } as any);
+
+         // We add the newly created frame group, and delete the original object/group
+         canvas.discardActiveObject();
+         canvas.add(group);
+         canvas.setActiveObject(group);
+
+         const macroCmd = new MacroCommand(
+            `Apply ${frameType} frame`,
+            [
+               new DeleteObjectCommand("Remove Base", [objectToRemove]),
+               new AddObjectCommand("Add Frame Group", group)
+            ]
+         );
+
+         executeCommand(macroCmd);
+         canvas.requestRenderAll();
+         updateLayersList();
          isInternalChange.current = false;
-         return;
-      }
-
-      // Default Frame Settings
-      let strokeColor = "#ffffff";
-      let strokeWidth = customWidth !== undefined ? customWidth : 20;
-      let strokeUniform = true;
-
-      switch (frameType) {
-         case 'polaroid':
-            strokeColor = "#F9F9F9";
-            if (customWidth === undefined) strokeWidth = 30; // base boundary
-            break;
-         case 'black':
-            strokeColor = "#111111";
-            if (customWidth === undefined) strokeWidth = 15;
-            break;
-         case 'white':
-            strokeColor = "#FFFFFF";
-            if (customWidth === undefined) strokeWidth = 15;
-            break;
-         case 'metallic':
-            strokeColor = "#D4AF37";
-            if (customWidth === undefined) strokeWidth = 12;
-            break;
-         case 'vintage':
-            strokeColor = "#8B5A2B";
-            if (customWidth === undefined) strokeWidth = 20;
-            break;
-      }
-
-      const originalAngle = baseImageObj.angle || 0;
-      baseImageObj.set({ angle: 0 }); // temporarily straighten to get clean bounds
-      baseImageObj.setCoords();
-
-      const center = baseImageObj.getCenterPoint();
-      const w = baseImageObj.getScaledWidth();
-      const h = baseImageObj.getScaledHeight();
-
-      const rect = new fabric.Rect({
-         originX: 'center',
-         originY: 'center',
-         left: center.x,
-         top: center.y + (frameType === 'polaroid' ? strokeWidth : 0),
-         width: w + (frameType === 'polaroid' ? strokeWidth * 2 : 0),
-         height: h + (frameType === 'polaroid' ? strokeWidth * 3.5 : 0),
-         fill: 'transparent',
-         stroke: strokeColor,
-         strokeWidth: frameType === 'polaroid' ? 0 : strokeWidth,
-         strokeUniform: strokeUniform,
-         shadow: new fabric.Shadow({
-            color: 'rgba(0,0,0,0.3)',
-            blur: 10,
-            offsetX: 5,
-            offsetY: 5
-         }),
-         evented: true,
-         selectable: true,
-         artboardId: (baseImageObj as any).artboardId
-      });
-
-      if (frameType === 'polaroid') {
-         rect.set('fill', '#F9F9F9');
-         rect.set('strokeWidth', 0);
-      }
-
-      // Group them
-      const objs = frameType === 'polaroid' ? [rect, baseImageObj] : [baseImageObj, rect];
-      const group = new fabric.Group(objs);
-
-      group.set({
-         id: `frame_${Date.now()}`,
-         customName: `${frameType.charAt(0).toUpperCase() + frameType.slice(1)} Frame`,
-         artboardId: (baseImageObj as any).artboardId,
-         angle: originalAngle, // restore original angle
-         isFrameGroup: true, // special flag to allow formats and quick actions to identify this
-         frameType: frameType
-      } as any);
-
-      // We add the newly created frame group, and delete the original object/group
-      canvas.discardActiveObject();
-      canvas.add(group);
-      canvas.setActiveObject(group);
-
-      const macroCmd = new MacroCommand(
-         `Apply ${frameType} frame`,
-         [
-            new DeleteObjectCommand("Remove Base", [objectToRemove]),
-            new AddObjectCommand("Add Frame Group", group)
-         ]
-      );
-
-      executeCommand(macroCmd);
-      canvas.requestRenderAll();
-      updateLayersList();
-      isInternalChange.current = false;
-   };
-
-   const changeTextProp = (property: string, value: any, actionName: string) => {
-      setTextProps(p => ({ ...p, [property]: value }));
-      const active = fabricRef.current?.getActiveObject();
-      if (active && (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox')) {
-         const before = active.get(property as any);
-         active.set(property as any, value);
-
-         active.dirty = true;
-         if (typeof active.setCoords === 'function') {
-            active.setCoords();
-         }
-         fabricRef.current?.renderAll();
-
-         const cmd = new PropertyChangeCommand(actionName, active, property, before, value);
-         executeCommand(cmd);
-      }
-   };
-
-   // Layer CRUD
-   const changeCurrentColor = (newColor: string) => {
-      setBrushColor(newColor);
-
-      // Sync alpha with brushOpacity if newColor is RGBA
-      if (newColor.startsWith('rgba(')) {
-         const parts = newColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/);
-         if (parts && parts[4]) {
-            const alphaNum = Math.round(parseFloat(parts[4]) * 100);
-            setBrushOpacity(alphaNum);
-         }
-      }
-
-      if (activeTool === 'brush' && fabricRef.current?.freeDrawingBrush) {
-         fabricRef.current.freeDrawingBrush.color = newColor;
-      }
-      const active = fabricRef.current?.getActiveObject();
-      if (active) {
-         if (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox') {
-            const cmd = new PropertyChangeCommand("Change Text Color", active, "fill", active.get('fill'), newColor);
-            executeCommand(cmd);
-         } else if (active.type === 'path') {
-            const cmd = new PropertyChangeCommand("Change Path Color", active, "stroke", active.get('stroke'), newColor);
-            executeCommand(cmd);
-         } else if (active.type !== 'image') {
-            const cmd = new StyleChangeCommand(
-               "Change Shape Color",
-               active,
-               { fill: active.get('fill'), stroke: active.get('stroke') },
-               { fill: newColor, stroke: newColor }
-            );
-            executeCommand(cmd);
-         }
-      }
-   };
-
-   // Advanced Filters
-   const getTargetImageForFilters = () => {
-      let obj = fabricRef.current?.getActiveObject() as any;
-      if (obj && obj.get('isFrameGroup')) {
-         // Find the image inside the group
-         const items = obj.getObjects();
-         obj = items.find((i: any) => i.type === 'image') || obj;
-      }
-      return obj;
-   };
-
-
-   const addFilterToPipeline = (type: string) => {
-      // Dummy function to prevent TS errors in QuickTab
-      // This will be properly extracted when QuickTab is extracted
-   };
-
-
-
-
-   const applyFilter = (filterType: string, value: number) => {
-      const obj = getTargetImageForFilters();
-      if (obj && (obj.type === 'image' || obj.isCollageBlock)) {
-         const filters = (fabric as any).Image?.filters || (fabric as any).filters;
-         if (!filters) return;
-
-
-         let filterIndex = -1;
-         let beforeValue = 0;
-         if (filterType === 'brightness') {
-            filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Brightness);
-            if (filterIndex >= 0) beforeValue = obj.filters[filterIndex].brightness;
-         } else if (filterType === 'contrast') {
-            filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Contrast);
-            if (filterIndex >= 0) beforeValue = obj.filters[filterIndex].contrast;
-         } else if (filterType === 'saturation') {
-            filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Saturation);
-            if (filterIndex >= 0) beforeValue = obj.filters[filterIndex].saturation;
-         } else if (filterType === 'grayscale') {
-            filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Saturation);
-            if (filterIndex >= 0) beforeValue = -obj.filters[filterIndex].saturation;
-         }
-
-         const cmd = new FilterChangeCommand(`Apply ${filterType} Filter`, obj, filterType, beforeValue, value);
-         executeCommand(cmd);
-      }
-   };
-
-   // Filter Studio Pipeline Controls
-   // jSquash Export Pipeline running on a high-compatibility Background Web Worker
-   const [isExporting, setIsExporting] = useState(false);
-
-   const generateArtboardPixelBuffer = async (board: Artboard): Promise<{ buffer: ArrayBuffer, width: number, height: number }> => {
-      if (!fabricRef.current) throw new Error("Canvas not ready");
-
-      // Create an offscreen canvas of the exact artboard dimensions
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = board.width;
-      tempCanvas.height = board.height;
-      const ctx = tempCanvas.getContext('2d')!;
-
-      // 1. Draw background
-      if (!board.transparent) {
-         ctx.fillStyle = board.backgroundColor || "#ffffff";
-         ctx.fillRect(0, 0, board.width, board.height);
-      } else {
-         ctx.clearRect(0, 0, board.width, board.height);
-      }
-
-      // 2. Draw elements assigned to this artboard
-      ctx.save();
-      ctx.translate(-board.x, -board.y);
-
-      const objs = fabricRef.current.getObjects();
-      objs.forEach((obj) => {
-         if (!obj.visible || obj.type === 'activeSelection') return;
-
-         const assignedId = (obj as any).artboardId;
-         if (assignedId === board.id) {
-            obj.render(ctx);
-         }
-      });
-
-      ctx.restore();
-
-      const imgData = ctx.getImageData(0, 0, board.width, board.height);
-      return {
-         buffer: imgData.data.buffer,
-         width: board.width,
-         height: board.height
       };
-   };
 
-   const optimizePixelBuffer = async (
-      pixelBuffer: ArrayBuffer,
-      width: number,
-      height: number,
-      settings: ExportSettings,
-      isLivePreview: boolean = false
-   ): Promise<{ buffer: ArrayBuffer, psnr?: number, decodedPixels?: ArrayBuffer, decodedWidth?: number, decodedHeight?: number }> => {
-      const hasSimdResult = await hasSimd();
-      const hasThreadsResult = await hasThreads();
+      const changeTextProp = (property: string, value: any, actionName: string) => {
+         setTextProps(p => ({ ...p, [property]: value }));
+         const active = fabricRef.current?.getActiveObject();
+         if (active && (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox')) {
+            const before = active.get(property as any);
+            active.set(property as any, value);
 
-      const worker = new ImageWorker();
-
-      return await new Promise<{ buffer: ArrayBuffer, psnr?: number, decodedPixels?: ArrayBuffer, decodedWidth?: number, decodedHeight?: number }>((resolve, reject) => {
-         worker.onmessage = (e) => {
-            if (e.data.success) {
-               resolve({ buffer: e.data.resultBuffer, psnr: e.data.psnr, decodedPixels: e.data.decodedPixels, decodedWidth: e.data.decodedWidth, decodedHeight: e.data.decodedHeight });
-            } else {
-               reject(new Error(e.data.error || "Background processing failed"));
+            active.dirty = true;
+            if (typeof active.setCoords === 'function') {
+               active.setCoords();
             }
-            worker.terminate();
-         };
-         worker.onerror = (err) => {
-            reject(err);
-            worker.terminate();
-         };
+            fabricRef.current?.renderAll();
 
-         worker.postMessage({
-            pixelBuffer,
-            width,
-            height,
-            exportWidth: settings.resize.enabled ? settings.resize.width : width,
-            exportHeight: settings.resize.enabled ? settings.resize.height : height,
-            exportResizeMethod: settings.resize.method,
-            exportResizePremul: settings.resize.premul,
-            exportResizeLinearRGB: settings.resize.linearRGB,
-            exportFormat: settings.format,
-            exportQuality: settings.format === 'jpeg' ? settings.mozjpeg.quality : settings.webp.quality,
+            const cmd = new PropertyChangeCommand(actionName, active, property, before, value);
+            executeCommand(cmd);
+         }
+      };
 
-            calculateMetrics: isLivePreview,
+      // Layer CRUD
+      const changeCurrentColor = (newColor: string) => {
+         setBrushColor(newColor);
 
-            wasmUrls: {
-               png: pngWasmUrl,
-               jpeg: jpegWasmUrl,
-               webp: webpWasmUrl,
-               webpSimd: webpSimdWasmUrl,
-               avif: avifWasmUrl,
-               avifMt: avifMtWasmUrl,
-               resize: resizeWasmUrl,
-               jxl: jxlWasmUrl,
-               // Decoder URLs
-               jpegDecode: "https://unpkg.com/@jsquash/jpeg@1.6.0/codec/dec/mozjpeg_dec.wasm",
-               webpDecode: "https://unpkg.com/@jsquash/webp@1.5.0/codec/dec/webp_dec.wasm",
-               avifDecode: "https://unpkg.com/@jsquash/avif@2.1.1/codec/dec/avif_dec.wasm",
-               jxlDecode: "https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm",
-            },
-            hasSimdResult,
-            hasThreadsResult,
-
-            // Advanced Settings
-            mozjpeg: settings.mozjpeg,
-            webp: settings.webp,
-            avif: settings.avif,
-            jxl: settings.jxl,
-            targetSize: settings.targetSize,
-            pngLevel: settings.png.level,
-            pngInterlace: settings.png.interlace,
-            paletteReduction: settings.png.paletteReduction,
-            paletteColors: settings.png.paletteColors,
-            ditherLevel: settings.png.ditherLevel,
-         }, [pixelBuffer]);
-      });
-   };
-
-   const handleExport = async () => {
-      if (!fabricRef.current || artboards.length === 0) return;
-      setIsExporting(true);
-      try {
-         let targets: Artboard[] = [];
-         if (exportTarget === "current") {
-            const curr = artboards.find(b => b.id === activeArtboardId) || artboards[0];
-            targets = [curr];
-         } else if (exportTarget === "selected") {
-            targets = artboards.filter(b => selectedExportIds[b.id]);
-            if (targets.length === 0) {
-               alert("No artboards selected to export!");
-               setIsExporting(false);
-               return;
+         // Sync alpha with brushOpacity if newColor is RGBA
+         if (newColor.startsWith('rgba(')) {
+            const parts = newColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/);
+            if (parts && parts[4]) {
+               const alphaNum = Math.round(parseFloat(parts[4]) * 100);
+               setBrushOpacity(alphaNum);
             }
-         } else {
-            targets = artboards;
          }
 
-         if (targets.length === 1) {
-            const board = targets[0];
-            const { buffer, width, height } = await generateArtboardPixelBuffer(board);
+         if (activeTool === 'brush' && fabricRef.current?.freeDrawingBrush) {
+            fabricRef.current.freeDrawingBrush.color = newColor;
+         }
+         const active = fabricRef.current?.getActiveObject();
+         if (active) {
+            if (active.type === 'i-text' || active.type === 'text' || active.type === 'textbox') {
+               const cmd = new PropertyChangeCommand("Change Text Color", active, "fill", active.get('fill'), newColor);
+               executeCommand(cmd);
+            } else if (active.type === 'path') {
+               const cmd = new PropertyChangeCommand("Change Path Color", active, "stroke", active.get('stroke'), newColor);
+               executeCommand(cmd);
+            } else if (active.type !== 'image') {
+               const cmd = new StyleChangeCommand(
+                  "Change Shape Color",
+                  active,
+                  { fill: active.get('fill'), stroke: active.get('stroke') },
+                  { fill: newColor, stroke: newColor }
+               );
+               executeCommand(cmd);
+            }
+         }
+      };
 
-            const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
-            const blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
+      // Advanced Filters
+      const getTargetImageForFilters = () => {
+         let obj = fabricRef.current?.getActiveObject() as any;
+         if (obj && obj.get('isFrameGroup')) {
+            // Find the image inside the group
+            const items = obj.getObjects();
+            obj = items.find((i: any) => i.type === 'image') || obj;
+         }
+         return obj;
+      };
 
-            let fileName = board.name.toLowerCase().replace(/\s+/g, '_');
-            if (exportSettings.askForFilename) {
-               const custom = window.prompt("Enter filename for export:", fileName);
-               if (custom) fileName = custom.replace(/\s+/g, '_');
-            } else {
-               fileName = Math.random().toString(36).substring(2, 10);
+
+      const addFilterToPipeline = (type: string) => {
+         // Dummy function to prevent TS errors in QuickTab
+         // This will be properly extracted when QuickTab is extracted
+      };
+
+
+
+
+      const applyFilter = (filterType: string, value: number) => {
+         const obj = getTargetImageForFilters();
+         if (obj && (obj.type === 'image' || obj.isCollageBlock)) {
+            const filters = (fabric as any).Image?.filters || (fabric as any).filters;
+            if (!filters) return;
+
+
+            let filterIndex = -1;
+            let beforeValue = 0;
+            if (filterType === 'brightness') {
+               filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Brightness);
+               if (filterIndex >= 0) beforeValue = obj.filters[filterIndex].brightness;
+            } else if (filterType === 'contrast') {
+               filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Contrast);
+               if (filterIndex >= 0) beforeValue = obj.filters[filterIndex].contrast;
+            } else if (filterType === 'saturation') {
+               filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Saturation);
+               if (filterIndex >= 0) beforeValue = obj.filters[filterIndex].saturation;
+            } else if (filterType === 'grayscale') {
+               filterIndex = obj.filters.findIndex((f: any) => f instanceof filters.Saturation);
+               if (filterIndex >= 0) beforeValue = -obj.filters[filterIndex].saturation;
             }
 
-            a.download = `${fileName}.${exportSettings.format}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            const cmd = new FilterChangeCommand(`Apply ${filterType} Filter`, obj, filterType, beforeValue, value);
+            executeCommand(cmd);
+         }
+      };
+
+      // Filter Studio Pipeline Controls
+      // jSquash Export Pipeline running on a high-compatibility Background Web Worker
+      const [isExporting, setIsExporting] = useState(false);
+
+      const generateArtboardPixelBuffer = async (board: Artboard): Promise<{ buffer: ArrayBuffer, width: number, height: number }> => {
+         if (!fabricRef.current) throw new Error("Canvas not ready");
+
+         // Create an offscreen canvas of the exact artboard dimensions
+         const tempCanvas = document.createElement('canvas');
+         tempCanvas.width = board.width;
+         tempCanvas.height = board.height;
+         const ctx = tempCanvas.getContext('2d')!;
+
+         // 1. Draw background
+         if (!board.transparent) {
+            ctx.fillStyle = board.backgroundColor || "#ffffff";
+            ctx.fillRect(0, 0, board.width, board.height);
          } else {
-            const zip = new JSZip();
-            for (const board of targets) {
+            ctx.clearRect(0, 0, board.width, board.height);
+         }
+
+         // 2. Draw elements assigned to this artboard
+         ctx.save();
+         ctx.translate(-board.x, -board.y);
+
+         const objs = fabricRef.current.getObjects();
+         objs.forEach((obj) => {
+            if (!obj.visible || obj.type === 'activeSelection') return;
+
+            const assignedId = (obj as any).artboardId;
+            if (assignedId === board.id) {
+               obj.render(ctx);
+            }
+         });
+
+         ctx.restore();
+
+         const imgData = ctx.getImageData(0, 0, board.width, board.height);
+         return {
+            buffer: imgData.data.buffer as ArrayBuffer,
+            width: board.width,
+            height: board.height
+         };
+      };
+
+      const optimizePixelBuffer = async (
+         pixelBuffer: ArrayBuffer,
+         width: number,
+         height: number,
+         settings: ExportSettings,
+         isLivePreview: boolean = false
+      ): Promise<{ buffer: ArrayBuffer, psnr?: number, decodedPixels?: ArrayBuffer, decodedWidth?: number, decodedHeight?: number }> => {
+         const hasSimdResult = await hasSimd();
+         const hasThreadsResult = await hasThreads();
+
+         const worker = new ImageWorker();
+
+         return await new Promise<{ buffer: ArrayBuffer, psnr?: number, decodedPixels?: ArrayBuffer, decodedWidth?: number, decodedHeight?: number }>((resolve, reject) => {
+            worker.onmessage = (e) => {
+               if (e.data.success) {
+                  resolve({ buffer: e.data.resultBuffer, psnr: e.data.psnr, decodedPixels: e.data.decodedPixels, decodedWidth: e.data.decodedWidth, decodedHeight: e.data.decodedHeight });
+               } else {
+                  reject(new Error(e.data.error || "Background processing failed"));
+               }
+               worker.terminate();
+            };
+            worker.onerror = (err) => {
+               reject(err);
+               worker.terminate();
+            };
+
+            worker.postMessage({
+               pixelBuffer,
+               width,
+               height,
+               exportWidth: settings.resize.enabled ? settings.resize.width : width,
+               exportHeight: settings.resize.enabled ? settings.resize.height : height,
+               exportResizeMethod: settings.resize.method,
+               exportResizePremul: settings.resize.premul,
+               exportResizeLinearRGB: settings.resize.linearRGB,
+               exportFormat: settings.format,
+               exportQuality: settings.format === 'jpeg' ? settings.mozjpeg.quality : settings.webp.quality,
+
+               calculateMetrics: isLivePreview,
+
+               wasmUrls: {
+                  png: pngWasmUrl,
+                  jpeg: jpegWasmUrl,
+                  webp: webpWasmUrl,
+                  webpSimd: webpSimdWasmUrl,
+                  avif: avifWasmUrl,
+                  avifMt: avifMtWasmUrl,
+                  resize: resizeWasmUrl,
+                  jxl: jxlWasmUrl,
+                  // Decoder URLs
+                  jpegDecode: "https://unpkg.com/@jsquash/jpeg@1.6.0/codec/dec/mozjpeg_dec.wasm",
+                  webpDecode: "https://unpkg.com/@jsquash/webp@1.5.0/codec/dec/webp_dec.wasm",
+                  avifDecode: "https://unpkg.com/@jsquash/avif@2.1.1/codec/dec/avif_dec.wasm",
+                  jxlDecode: "https://unpkg.com/@jsquash/jxl@1.3.0/codec/dec/jxl_dec.wasm",
+               },
+               hasSimdResult,
+               hasThreadsResult,
+
+               // Advanced Settings
+               mozjpeg: settings.mozjpeg,
+               webp: settings.webp,
+               avif: settings.avif,
+               jxl: settings.jxl,
+               targetSize: settings.targetSize,
+               pngLevel: settings.png.level,
+               pngInterlace: settings.png.interlace,
+               paletteReduction: settings.png.paletteReduction,
+               paletteColors: settings.png.paletteColors,
+               ditherLevel: settings.png.ditherLevel,
+            }, [pixelBuffer]);
+         });
+      };
+
+      const handleExport = async () => {
+         if (!fabricRef.current || artboards.length === 0) return;
+         setIsExporting(true);
+         try {
+            let targets: Artboard[] = [];
+            if (exportTarget === "current") {
+               const curr = artboards.find(b => b.id === activeArtboardId) || artboards[0];
+               targets = [curr];
+            } else if (exportTarget === "selected") {
+               targets = artboards.filter(b => selectedExportIds[b.id]);
+               if (targets.length === 0) {
+                  alert("No artboards selected to export!");
+                  setIsExporting(false);
+                  return;
+               }
+            } else {
+               targets = artboards;
+            }
+
+            if (targets.length === 1) {
+               const board = targets[0];
                const { buffer, width, height } = await generateArtboardPixelBuffer(board);
-               // In batch mode, we disable custom resize per image for consistency unless explicitly architecture changed
-               const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, {
-                  ...exportSettings,
-                  resize: { ...exportSettings.resize, enabled: false }
-               });
+
+               const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
+               const blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement('a');
+               a.href = url;
 
                let fileName = board.name.toLowerCase().replace(/\s+/g, '_');
                if (exportSettings.askForFilename) {
-                  const custom = window.prompt(`Enter filename for artboard '${board.name}':`, fileName);
+                  const custom = window.prompt("Enter filename for export:", fileName);
                   if (custom) fileName = custom.replace(/\s+/g, '_');
                } else {
                   fileName = Math.random().toString(36).substring(2, 10);
                }
 
-               zip.file(`${fileName}.${exportSettings.format}`, rawBuffer);
-            }
-            const zipContent = await zip.generateAsync({ type: "blob" });
-            const url = URL.createObjectURL(zipContent);
-            const a = document.createElement('a');
-            a.href = url;
-
-            let zipName = "artboards_export";
-            if (exportSettings.askForFilename) {
-               const customZip = window.prompt("Enter filename for ZIP archive:", zipName);
-               if (customZip) zipName = customZip.replace(/\s+/g, '_');
+               a.download = `${fileName}.${exportSettings.format}`;
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
             } else {
-               zipName = "export_" + Math.random().toString(36).substring(2, 10);
+               const zip = new JSZip();
+               for (const board of targets) {
+                  const { buffer, width, height } = await generateArtboardPixelBuffer(board);
+                  // In batch mode, we disable custom resize per image for consistency unless explicitly architecture changed
+                  const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, {
+                     ...exportSettings,
+                     resize: { ...exportSettings.resize, enabled: false }
+                  });
+
+                  let fileName = board.name.toLowerCase().replace(/\s+/g, '_');
+                  if (exportSettings.askForFilename) {
+                     const custom = window.prompt(`Enter filename for artboard '${board.name}':`, fileName);
+                     if (custom) fileName = custom.replace(/\s+/g, '_');
+                  } else {
+                     fileName = Math.random().toString(36).substring(2, 10);
+                  }
+
+                  zip.file(`${fileName}.${exportSettings.format}`, rawBuffer);
+               }
+               const zipContent = await zip.generateAsync({ type: "blob" });
+               const url = URL.createObjectURL(zipContent);
+               const a = document.createElement('a');
+               a.href = url;
+
+               let zipName = "artboards_export";
+               if (exportSettings.askForFilename) {
+                  const customZip = window.prompt("Enter filename for ZIP archive:", zipName);
+                  if (customZip) zipName = customZip.replace(/\s+/g, '_');
+               } else {
+                  zipName = "export_" + Math.random().toString(36).substring(2, 10);
+               }
+
+               a.download = `${zipName}.zip`;
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+            }
+         } catch (err) {
+            console.error("Export Failed", err);
+         } finally {
+            setIsExporting(false);
+         }
+      };
+
+      // Helper to format bytes cleanly
+      const formatBytes = (bytes: number): string => formatFileSize(bytes, 'B', 1);
+
+      // Live preview generator for Squoosh-like image comparison
+      const generateLivePreview = async () => {
+         if (!fabricRef.current || artboards.length === 0) return;
+
+         const board = artboards.find(b => b.id === activeArtboardId) || artboards[0];
+         if (!board) return;
+
+         setIsGeneratingPreview(true);
+         setCurrentPreviewOp("Extracting active composite elements...");
+
+         try {
+            // 1. Get raw pixel buffer
+            const { buffer, width, height } = await generateArtboardPixelBuffer(board);
+
+            // 1. Determine Preview Resolutions
+            // The Original ALWAYS uses the active artboard bounds (board.width, board.height).
+            let origTargetW = board.width;
+            let origTargetH = board.height;
+
+            // The Optimized ALWAYS uses the final output bounds (taking resize into account).
+            let optTargetW = origTargetW;
+            let optTargetH = origTargetH;
+            if (exportTarget === "current" && exportSettings.resize.enabled) {
+               optTargetW = exportSettings.resize.width;
+               optTargetH = exportSettings.resize.height;
             }
 
-            a.download = `${zipName}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-         }
-      } catch (err) {
-         console.error("Export Failed", err);
-      } finally {
-         setIsExporting(false);
-      }
-   };
+            setOriginalPreviewDims({ w: origTargetW, h: origTargetH });
+            setOptimizedPreviewDims({ w: optTargetW, h: optTargetH });
 
-   // Helper to format bytes cleanly
-   const formatBytes = (bytes: number): string => formatFileSize(bytes, 'B', 1);
-
-   // Live preview generator for Squoosh-like image comparison
-   const generateLivePreview = async () => {
-      if (!fabricRef.current || artboards.length === 0) return;
-
-      const board = artboards.find(b => b.id === activeArtboardId) || artboards[0];
-      if (!board) return;
-
-      setIsGeneratingPreview(true);
-      setCurrentPreviewOp("Extracting active composite elements...");
-
-      try {
-         // 1. Get raw pixel buffer
-         const { buffer, width, height } = await generateArtboardPixelBuffer(board);
-
-         // 1. Determine Preview Resolutions
-         // The Original ALWAYS uses the active artboard bounds (board.width, board.height).
-         let origTargetW = board.width;
-         let origTargetH = board.height;
-
-         // The Optimized ALWAYS uses the final output bounds (taking resize into account).
-         let optTargetW = origTargetW;
-         let optTargetH = origTargetH;
-         if (exportTarget === "current" && exportSettings.resize.enabled) {
-            optTargetW = exportSettings.resize.width;
-            optTargetH = exportSettings.resize.height;
-         }
-
-         setOriginalPreviewDims({ w: origTargetW, h: origTargetH });
-         setOptimizedPreviewDims({ w: optTargetW, h: optTargetH });
-
-         // We downscale ONLY for internal preview performance if dimensions are massive,
-         // but we maintain the relative scale between Original and Optimized.
-         let previewScale = 1;
-         const maxTargetDim = Math.max(origTargetW, origTargetH, optTargetW, optTargetH);
-         if (maxTargetDim > 1200) {
-            previewScale = 1200 / maxTargetDim;
-         }
-
-         const origPreviewW = Math.max(1, Math.round(origTargetW * previewScale));
-         const origPreviewH = Math.max(1, Math.round(origTargetH * previewScale));
-
-         const optPreviewW = Math.max(1, Math.round(optTargetW * previewScale));
-         const optPreviewH = Math.max(1, Math.round(optTargetH * previewScale));
-
-         // 2. Original URL extraction & original lossless blob measurement
-         setCurrentPreviewOp("Rendering before/after viewport...");
-         const originalCanvas = document.createElement('canvas');
-         originalCanvas.width = origPreviewW;
-         originalCanvas.height = origPreviewH;
-         const oCtx = originalCanvas.getContext('2d')!;
-
-         const sourceImage = new ImageData(new Uint8ClampedArray(buffer), width, height); // width/height is board.width/height
-         const offscreenOriginal = document.createElement('canvas');
-         offscreenOriginal.width = width;
-         offscreenOriginal.height = height;
-         offscreenOriginal.getContext('2d')!.putImageData(sourceImage, 0, 0);
-         oCtx.drawImage(offscreenOriginal, 0, 0, origPreviewW, origPreviewH);
-
-         const originalUrl = originalCanvas.toDataURL("image/png");
-         setOriginalImageUrl(originalUrl);
-
-         // Measure real original file size by generating a PNG blob
-         setCurrentPreviewOp("Analyzing baseline image color & size...");
-         const originalBlob = await new Promise<Blob | null>(r => offscreenOriginal.toBlob(r, 'image/png'));
-         const origSize = originalBlob ? originalBlob.size : buffer.byteLength;
-         setOriginalSize(origSize);
-
-         // 3. Run WASM optimization
-         const formatLabel = exportSettings.format.toUpperCase();
-         setCurrentPreviewOp(`Running jSquash WASM optimization (${formatLabel})...`);
-
-         const previewSettings: ExportSettings = {
-            ...exportSettings,
-            resize: {
-               ...exportSettings.resize,
-               enabled: true,
-               width: optPreviewW,
-               height: optPreviewH
+            // We downscale ONLY for internal preview performance if dimensions are massive,
+            // but we maintain the relative scale between Original and Optimized.
+            let previewScale = 1;
+            const maxTargetDim = Math.max(origTargetW, origTargetH, optTargetW, optTargetH);
+            if (maxTargetDim > 1200) {
+               previewScale = 1200 / maxTargetDim;
             }
-         };
 
-         const { buffer: optimizedBuffer, psnr: calculatedPsnr, decodedPixels, decodedWidth, decodedHeight } = await optimizePixelBuffer(
-            buffer.slice(0),
-            width,
-            height,
-            previewSettings,
-            true
-         );
+            const origPreviewW = Math.max(1, Math.round(origTargetW * previewScale));
+            const origPreviewH = Math.max(1, Math.round(origTargetH * previewScale));
 
-         const optimizedBlob = new Blob([optimizedBuffer], { type: `image/${exportSettings.format}` });
+            const optPreviewW = Math.max(1, Math.round(optTargetW * previewScale));
+            const optPreviewH = Math.max(1, Math.round(optTargetH * previewScale));
 
-         // Calculate projected optimized size since we might have downscaled for preview performance
-         const projectedOptimizedSize = previewScale < 1 ? Math.round(optimizedBlob.size / (previewScale * previewScale)) : optimizedBlob.size;
-         setOptimizedSize(projectedOptimizedSize);
-         setPsnr(calculatedPsnr);
+            // 2. Original URL extraction & original lossless blob measurement
+            setCurrentPreviewOp("Rendering before/after viewport...");
+            const originalCanvas = document.createElement('canvas');
+            originalCanvas.width = origPreviewW;
+            originalCanvas.height = origPreviewH;
+            const oCtx = originalCanvas.getContext('2d')!;
 
-         let optUrl = '';
-         if (decodedPixels && decodedWidth && decodedHeight) {
-            const rawCanvas = document.createElement('canvas');
-            rawCanvas.width = decodedWidth;
-            rawCanvas.height = decodedHeight;
-            const rctx = rawCanvas.getContext('2d')!;
-            const imgData = new ImageData(new Uint8ClampedArray(decodedPixels), decodedWidth, decodedHeight);
-            rctx.putImageData(imgData, 0, 0);
-            optUrl = rawCanvas.toDataURL("image/png");
+            const sourceImage = new ImageData(new Uint8ClampedArray(buffer), width, height); // width/height is board.width/height
+            const offscreenOriginal = document.createElement('canvas');
+            offscreenOriginal.width = width;
+            offscreenOriginal.height = height;
+            offscreenOriginal.getContext('2d')!.putImageData(sourceImage, 0, 0);
+            oCtx.drawImage(offscreenOriginal, 0, 0, origPreviewW, origPreviewH);
+
+            const originalUrl = originalCanvas.toDataURL("image/png");
+            setOriginalImageUrl(originalUrl);
+
+            // Measure real original file size by generating a PNG blob
+            setCurrentPreviewOp("Analyzing baseline image color & size...");
+            const originalBlob = await new Promise<Blob | null>(r => offscreenOriginal.toBlob(r, 'image/png'));
+            const origSize = originalBlob ? originalBlob.size : buffer.byteLength;
+            setOriginalSize(origSize);
+
+            // 3. Run WASM optimization
+            const formatLabel = exportSettings.format.toUpperCase();
+            setCurrentPreviewOp(`Running jSquash WASM optimization (${formatLabel})...`);
+
+            const previewSettings: ExportSettings = {
+               ...exportSettings,
+               resize: {
+                  ...exportSettings.resize,
+                  enabled: true,
+                  width: optPreviewW,
+                  height: optPreviewH
+               }
+            };
+
+            const { buffer: optimizedBuffer, psnr: calculatedPsnr, decodedPixels, decodedWidth, decodedHeight } = await optimizePixelBuffer(
+               buffer.slice(0),
+               width,
+               height,
+               previewSettings,
+               true
+            );
+
+            const optimizedBlob = new Blob([optimizedBuffer], { type: `image/${exportSettings.format}` });
+
+            // Calculate projected optimized size since we might have downscaled for preview performance
+            const projectedOptimizedSize = previewScale < 1 ? Math.round(optimizedBlob.size / (previewScale * previewScale)) : optimizedBlob.size;
+            setOptimizedSize(projectedOptimizedSize);
+            setPsnr(calculatedPsnr);
+
+            let optUrl = '';
+            if (decodedPixels && decodedWidth && decodedHeight) {
+               const rawCanvas = document.createElement('canvas');
+               rawCanvas.width = decodedWidth;
+               rawCanvas.height = decodedHeight;
+               const rctx = rawCanvas.getContext('2d')!;
+               const imgData = new ImageData(new Uint8ClampedArray(decodedPixels), decodedWidth, decodedHeight);
+               rctx.putImageData(imgData, 0, 0);
+               optUrl = rawCanvas.toDataURL("image/png");
+            } else {
+               optUrl = URL.createObjectURL(optimizedBlob);
+            }
+            setOptimizedImageUrl(prev => {
+               if (prev) URL.revokeObjectURL(prev);
+               return optUrl;
+            });
+
+         } catch (err: any) {
+            console.error("Live comparison preview optimization failed:", err);
+         } finally {
+            setIsGeneratingPreview(false);
+            setCurrentPreviewOp("");
+         }
+      };
+
+      // Sync tab open/close to active comparison mode
+      useEffect(() => {
+         if (activeTab === "export") {
+            setComparisonMode(true);
+            generateLivePreview();
          } else {
-            optUrl = URL.createObjectURL(optimizedBlob);
+            setComparisonMode(false);
          }
-         setOptimizedImageUrl(prev => {
-            if (prev) URL.revokeObjectURL(prev);
-            return optUrl;
+      }, [activeTab]);
+
+      // Debounced live regeneration hook responding to setting changes
+      useEffect(() => {
+         if (!comparisonMode) return;
+
+         setCurrentPreviewOp("Throttling live settings changes...");
+         const timer = setTimeout(() => {
+            generateLivePreview();
+         }, 250);
+
+         return () => clearTimeout(timer);
+      }, [
+         comparisonMode,
+         activeArtboardId,
+         exportTarget,
+         exportSettings.format,
+         exportSettings.resize,
+         exportSettings.mozjpeg,
+         exportSettings.webp,
+         exportSettings.avif,
+         exportSettings.png,
+         exportSettings.jxl,
+         exportSettings.targetSize
+      ]);
+
+      // Hide objects of inactive artboards on mobile
+      useEffect(() => {
+         if (!fabricRef.current) return;
+         const canvas = fabricRef.current;
+         if (!canvas) return;
+         const objects = canvas.getObjects();
+         let madeChanges = false;
+
+         objects.forEach(obj => {
+            // Don't hide crop overlays etc.
+            if ((obj as any).id === 'crop-overlay' || (obj as any).id === 'crop-dimmask') return;
+
+            const objArtboardId = (obj as any).artboardId;
+            if (!objArtboardId) return; // skip if no artboard
+
+            const shouldBeVisible = isMobile ? objArtboardId === activeArtboardId : true;
+            if (obj.visible !== shouldBeVisible) {
+               obj.visible = shouldBeVisible;
+               madeChanges = true;
+            }
          });
 
-      } catch (err: any) {
-         console.error("Live comparison preview optimization failed:", err);
-      } finally {
-         setIsGeneratingPreview(false);
-         setCurrentPreviewOp("");
-      }
-   };
-
-   // Sync tab open/close to active comparison mode
-   useEffect(() => {
-      if (activeTab === "export") {
-         setComparisonMode(true);
-         generateLivePreview();
-      } else {
-         setComparisonMode(false);
-      }
-   }, [activeTab]);
-
-   // Debounced live regeneration hook responding to setting changes
-   useEffect(() => {
-      if (!comparisonMode) return;
-
-      setCurrentPreviewOp("Throttling live settings changes...");
-      const timer = setTimeout(() => {
-         generateLivePreview();
-      }, 250);
-
-      return () => clearTimeout(timer);
-   }, [
-      comparisonMode,
-      activeArtboardId,
-      exportTarget,
-      exportSettings.format,
-      exportSettings.resize,
-      exportSettings.mozjpeg,
-      exportSettings.webp,
-      exportSettings.avif,
-      exportSettings.png,
-      exportSettings.jxl,
-      exportSettings.targetSize
-   ]);
-
-   // Hide objects of inactive artboards on mobile
-   useEffect(() => {
-      if (!fabricRef.current) return;
-      const canvas = fabricRef.current;
-      if (!canvas) return;
-      const objects = canvas.getObjects();
-      let madeChanges = false;
-
-      objects.forEach(obj => {
-         // Don't hide crop overlays etc.
-         if ((obj as any).id === 'crop-overlay' || (obj as any).id === 'crop-dimmask') return;
-
-         const objArtboardId = (obj as any).artboardId;
-         if (!objArtboardId) return; // skip if no artboard
-
-         const shouldBeVisible = isMobile ? objArtboardId === activeArtboardId : true;
-         if (obj.visible !== shouldBeVisible) {
-            obj.visible = shouldBeVisible;
-            madeChanges = true;
+         if (madeChanges) {
+            canvas.requestRenderAll();
          }
-      });
 
-      if (madeChanges) {
-         canvas.requestRenderAll();
-      }
+         // Fit to screen on mobile whenever active artboard changes, or restore desktop state on return
+         if (isMobile) {
+            const activeBoard = artboards.find(b => b.id === activeArtboardId) || artboards[0];
+            if (activeBoard) {
+               const cw = canvas.width!;
+               const ch = canvas.height!;
+               if (cw > 0 && ch > 0) {
+                  const padding = 32;
+                  const zoom = Math.min(cw / (activeBoard.width + padding), ch / (activeBoard.height + padding), 2.5);
+                  canvas.setZoom(zoom);
 
-      // Fit to screen on mobile whenever active artboard changes, or restore desktop state on return
-      if (isMobile) {
-         const activeBoard = artboards.find(b => b.id === activeArtboardId) || artboards[0];
-         if (activeBoard) {
-            const cw = canvas.width!;
-            const ch = canvas.height!;
-            if (cw > 0 && ch > 0) {
-               const padding = 32;
-               const zoom = Math.min(cw / (activeBoard.width + padding), ch / (activeBoard.height + padding), 2.5);
-               canvas.setZoom(zoom);
-
-               const vpt = canvas.viewportTransform!;
-               const newVpt = vpt.slice() as any;
-               newVpt[4] = cw / 2 - (activeBoard.x + activeBoard.width / 2) * zoom;
-               newVpt[5] = ch / 2 - (activeBoard.y + activeBoard.height / 2) * zoom;
-               canvas.setViewportTransform(newVpt);
+                  const vpt = canvas.viewportTransform!;
+                  const newVpt = vpt.slice() as any;
+                  newVpt[4] = cw / 2 - (activeBoard.x + activeBoard.width / 2) * zoom;
+                  newVpt[5] = ch / 2 - (activeBoard.y + activeBoard.height / 2) * zoom;
+                  canvas.setViewportTransform(newVpt);
+                  setZoomPercent(Math.round(zoom * 100));
+               }
+            }
+         } else {
+            if (viewportTransformRef.current) {
+               canvas.setViewportTransform(viewportTransformRef.current.slice() as any);
+               const zoom = canvas.getZoom();
                setZoomPercent(Math.round(zoom * 100));
+               canvas.requestRenderAll();
+            } else {
+               fitView();
             }
          }
-      } else {
-         if (viewportTransformRef.current) {
-            canvas.setViewportTransform(viewportTransformRef.current.slice() as any);
-            const zoom = canvas.getZoom();
-            setZoomPercent(Math.round(zoom * 100));
-            canvas.requestRenderAll();
-         } else {
-            fitView();
-         }
-      }
-   }, [isMobile, activeArtboardId, artboards]);
+      }, [isMobile, activeArtboardId, artboards]);
 
-   return (
-      <CollageConfigProvider value={collageProps}>
-         <AIProvider>
-            <ShapePropertiesProvider value={shapeProps}>
-               <ToolProvider value={{
-                  activeTool, setTool, brushColor, changeCurrentColor,
-                  brushSize, setBrushSize, brushOpacity, setBrushOpacity,
-                  brushHardness, setBrushHardness, brushFlow, setBrushFlow,
-                  brushSmoothing, setBrushSmoothing, brushType, setBrushType,
-                  textProps, setTextProps
-               }}>
-                  <CanvasProvider value={{
-                     fabricRef, enterCropMode, resetCrop, addText, addRect, addCircle, addTriangle, addLine,
-                     flipX, flipY, addAlignedCollageText, updateSelectedShapeProperty, changeTextProp,
-                     applyFilter, alignSelection, duplicateActiveObject, deleteActiveObject,
-                     updateArtboardPropDirect, generateSmartCollage, generateBleed,
-                     updateCollageBlockStyleProperty, fillCollageBlockWithImage, fitCollageToArtboard,
-                     setZoomPercent
+      return (
+         <CollageConfigProvider value={collageProps}>
+            <AIProvider>
+               <ShapePropertiesProvider value={shapeProps}>
+                  <ToolProvider value={{
+                     activeTool, setTool, brushColor, changeCurrentColor,
+                     brushSize, setBrushSize, brushOpacity, setBrushOpacity,
+                     brushHardness, setBrushHardness, brushFlow, setBrushFlow,
+                     brushSmoothing, setBrushSmoothing, brushType, setBrushType,
+                     eraseMode, setEraseMode,
+                     textProps, setTextProps
                   }}>
-                     <SelectionProvider value={{
-                        activeObj: fabricRef.current?.getActiveObject() || null,
-                        activeObjs: fabricRef.current?.getActiveObjects() || [],
-                        activeSelection: !!fabricRef.current?.getActiveObject(),
-                        isCollageBlock: fabricRef.current?.getActiveObject()?.type === 'rect' && (fabricRef.current?.getActiveObject() as any)?.id?.startsWith('collage-block-'),
-                        isCollageSelected: !!fabricRef.current?.getActiveObject() && ((fabricRef.current?.getActiveObject() as any)?.isCollageBlock || (fabricRef.current?.getActiveObject()?.type === 'activeSelection' && (fabricRef.current?.getActiveObject() as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))),
-                        parentAlignmentObj, setParentAlignmentObj,
-                        selectionType, setSelectionType,
-                        textObj: fabricRef.current?.getActiveObject() as any,
-                        textContent: (fabricRef.current?.getActiveObject() as any)?.text || ''
+                     <CanvasProvider value={{
+                        fabricRef, enterCropMode, resetCrop, addText, addRect, addCircle, addTriangle, addLine,
+                        flipX, flipY, addAlignedCollageText, updateSelectedShapeProperty, changeTextProp,
+                        applyFilter, alignSelection, duplicateActiveObject, deleteActiveObject,
+                        updateArtboardPropDirect, generateSmartCollage, generateBleed,
+                        updateCollageBlockStyleProperty, fillCollageBlockWithImage, fitCollageToArtboard,
+                        setZoomPercent
                      }}>
-                        <HistoryProvider value={{ commandIndex, historyNames, performUndo, performRedo, executeCommand }}>
-                           <WorkspaceUIProvider value={{
-                              isMobile, setShowShortcuts, setActiveTab, handleImportImageClick, handleFileUpload,
-                              artboards, setArtboards, activeArtboardId, setActiveArtboardId,
-                              imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
-                              createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
-                              updateArtboardProp, onArtboardPropStart, onArtboardPropCommit
-                           }}>
-                              <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, moveLayerUp, moveLayerDown }}>
-                                 <div
-                                    className="w-full h-full flex flex-col bg-slate-100 dark:bg-[#121212] text-slate-800 dark:text-[#E0E0E0] select-none"
-                                    ref={containerRef}
-                                 >
+                        <SelectionProvider value={{
+                           activeObj: fabricRef.current?.getActiveObject() || null,
+                           activeObjs: fabricRef.current?.getActiveObjects() || [],
+                           activeSelection: !!fabricRef.current?.getActiveObject(),
+                           isCollageBlock: fabricRef.current?.getActiveObject()?.type === 'rect' && (fabricRef.current?.getActiveObject() as any)?.id?.startsWith('collage-block-'),
+                           isCollageSelected: !!fabricRef.current?.getActiveObject() && ((fabricRef.current?.getActiveObject() as any)?.isCollageBlock || (fabricRef.current?.getActiveObject()?.type === 'activeSelection' && (fabricRef.current?.getActiveObject() as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))),
+                           parentAlignmentObj, setParentAlignmentObj,
+                           selectionType, setSelectionType,
+                           textObj: fabricRef.current?.getActiveObject() as any,
+                           textContent: (fabricRef.current?.getActiveObject() as any)?.text || ''
+                        }}>
+                           <HistoryProvider value={{ commandIndex, historyNames, performUndo, performRedo, executeCommand }}>
+                              <WorkspaceUIProvider value={{
+                                 isMobile, setShowShortcuts, setActiveTab, handleImportImageClick, handleFileUpload,
+                                 artboards, setArtboards, activeArtboardId, setActiveArtboardId,
+                                 imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
+                                 createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
+                                 updateArtboardProp, onArtboardPropStart, onArtboardPropCommit
+                              }}>
+                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, moveLayerUp, moveLayerDown }}>
+                                    <div
+                                       className="w-full h-full flex flex-col bg-slate-100 dark:bg-[#121212] text-slate-800 dark:text-[#E0E0E0] select-none"
+                                       ref={containerRef}
+                                    >
 
-                                    {/* Top Toolbar */}
-                                    <WorkspaceHeader />
+                                       {/* Top Toolbar */}
+                                       <WorkspaceHeader />
 
-                                    <div className="flex flex-col md:flex-row flex-1 overflow-hidden relative">
+                                       <div className="flex flex-col md:flex-row flex-1 overflow-hidden relative">
 
-                                       {/* Left Toolbar - Tools (Desktop) */}
-                                       <LeftToolbar />
+                                          {/* Left Toolbar - Tools (Desktop) */}
+                                          <LeftToolbar />
 
-                                       {/* Center Canvas & Artboard Area */}
-                                       <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#121212] overflow-hidden relative">
+                                          {/* Center Canvas & Artboard Area */}
+                                          <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#121212] overflow-hidden relative">
 
-                                          {/* Artboard Bar */}
-                                          {activeTab !== 'export' && !isMobile && (
-                                             <div className="h-10 bg-slate-200/80 dark:bg-[#1E1E1E] border-b border-slate-300/80 dark:border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
-                                                {isMobile && (
-                                                   <button
-                                                      onClick={() => setShowMobileArtboardsGallery(true)}
-                                                      className="h-[30px] w-[30px] shrink-0 sticky left-0 z-10 bg-[#292929] border border-[#3C3C3C] shadow flex items-center justify-center rounded-md mr-1 text-[#C0C0C0] hover:text-white"
-                                                   >
-                                                      <SquareDashed size={14} />
-                                                   </button>
-                                                )}
-                                                {artboards.map(b => {
-                                                   const isActive = b.id === activeArtboardId;
-                                                   return (
-                                                      <div
-                                                         key={b.id}
-                                                         className={`h-[30px] flex items-center gap-1.5 px-3 rounded-md cursor-pointer transition-all border border-transparent group ${isActive ? 'bg-white dark:bg-[#292929] border-slate-300 dark:border-[#3C3C3C] text-slate-900 dark:text-[#E0E0E0] shadow-sm' : 'hover:bg-slate-200/80 dark:hover:bg-[#202020] text-slate-600 dark:text-[#808080]'}`}
-                                                         onClick={() => {
-                                                            setActiveArtboardId(b.id);
-                                                            if (fabricRef.current) {
-                                                               const cw = fabricRef.current.width!;
-                                                               const ch = fabricRef.current.height!;
-                                                               const vpt = fabricRef.current.viewportTransform!;
-                                                               const newVpt = vpt.slice() as any;
-                                                               newVpt[4] = cw / 2 - (b.x + b.width / 2) * newVpt[0];
-                                                               newVpt[5] = ch / 2 - (b.y + b.height / 2) * newVpt[3];
-                                                               fabricRef.current.setViewportTransform(newVpt);
-                                                            }
-                                                         }}
-                                                         onContextMenu={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            setArtboardDropdown({ id: b.id, x: e.clientX, y: e.clientY });
-                                                         }}
+                                             {/* Artboard Bar */}
+                                             {activeTab !== 'export' && !isMobile && (
+                                                <div className="h-10 bg-slate-200/80 dark:bg-[#1E1E1E] border-b border-slate-300/80 dark:border-[#2C2C2C] flex items-center px-1.5 shrink-0 overflow-x-auto no-scrollbar gap-1 relative z-20 shadow-sm select-none">
+                                                   {isMobile && (
+                                                      <button
+                                                         onClick={() => setShowMobileArtboardsGallery(true)}
+                                                         className="h-[30px] w-[30px] shrink-0 sticky left-0 z-10 bg-[#292929] border border-[#3C3C3C] shadow flex items-center justify-center rounded-md mr-1 text-[#C0C0C0] hover:text-white"
                                                       >
-                                                         <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-slate-900 dark:text-[#E0E0E0]' : ''}`}>
-                                                            {isActive && <div className="w-[4px] h-[4px] rounded-full bg-blue-500" />}
-                                                            {b.name}
-                                                         </span>
-
-                                                         <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button
-                                                               className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-[#3A3A3A] text-slate-400 dark:text-[#A0A0A0] transition-colors artboard-dropdown-toggle"
-                                                               onClick={(e) => {
-                                                                  e.stopPropagation();
-                                                                  const rect = e.currentTarget.getBoundingClientRect();
-                                                                  setArtboardDropdown(artboardDropdown?.id === b.id ? null : { id: b.id, x: rect.left, y: rect.bottom + 6 });
-                                                               }}
-                                                            >
-                                                               <MoreHorizontal size={12} />
-                                                            </button>
-                                                         </div>
-                                                      </div>
-                                                   );
-                                                })}
-
-                                                <div className="w-px h-5 bg-slate-300 dark:bg-[#333] mx-1 shrink-0" />
-
-                                                <button
-                                                   className="h-[30px] px-3 flex items-center gap-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-[#252525] text-slate-500 dark:text-[#808080] hover:text-slate-900 dark:hover:text-[#C0C0C0] transition-colors shrink-0"
-                                                   onClick={() => createArtboard()}
-                                                >
-                                                   <Plus size={13} />
-                                                   <span className="text-[11px] font-semibold">New</span>
-                                                </button>
-                                             </div>
-                                          )}
-
-                                          {/* Dropdown Menu Portal */}
-                                          {artboardDropdown && (
-                                             <div
-                                                className="fixed inset-0 z-50 pointer-events-auto"
-                                                onClick={() => setArtboardDropdown(null)}
-                                             >
-                                                <div
-                                                   onClick={(e) => e.stopPropagation()}
-                                                   style={{ left: Math.min(artboardDropdown.x, window.innerWidth - 180), top: artboardDropdown.y }}
-                                                   className="absolute bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-lg shadow-2xl py-1 min-w-[170px] artboard-dropdown-container"
-                                                >
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-[#666] border-b border-slate-100 dark:border-[#252525] mb-1">Artboard</div>
-                                                   <ContextMenuItem icon={Type} label="Rename Artboard" onClick={() => {
-                                                      const board = artboards.find(b => b.id === artboardDropdown.id);
-                                                      if (board) {
-                                                         setRenamingArtboard({ id: board.id, name: board.name });
-                                                      }
-                                                      setArtboardDropdown(null);
-                                                   }} />
-                                                   <ContextMenuItem icon={Copy} label="Duplicate Artboard" onClick={() => {
-                                                      const board = artboards.find(b => b.id === artboardDropdown.id);
-                                                      if (board) {
-                                                         createArtboard(board.name + " Copy", board.width, board.height);
-                                                      }
-                                                      setArtboardDropdown(null);
-                                                   }} />
-                                                   <ContextMenuItem icon={Expand} label="Resize Options" onClick={() => {
-                                                      setActiveArtboardId(artboardDropdown.id);
-                                                      setActiveTab("artboards");
-                                                      setArtboardDropdown(null);
-                                                   }} />
-                                                   <ContextMenuItem icon={Download} label="Export Artboard" onClick={() => {
-                                                      setActiveArtboardId(artboardDropdown.id);
-                                                      setExportTarget("current");
-                                                      setActiveTab("export");
-                                                      setArtboardDropdown(null);
-                                                   }} />
-                                                   {artboards.length > 1 && (
-                                                      <>
-                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                         <ContextMenuItem icon={Trash2} label="Delete Artboard" danger onClick={() => {
-                                                            deleteArtboard(artboardDropdown.id);
-                                                            setArtboardDropdown(null);
-                                                         }} />
-                                                      </>
+                                                         <SquareDashed size={14} />
+                                                      </button>
                                                    )}
+                                                   {artboards.map(b => {
+                                                      const isActive = b.id === activeArtboardId;
+                                                      return (
+                                                         <div
+                                                            key={b.id}
+                                                            className={`h-[30px] flex items-center gap-1.5 px-3 rounded-md cursor-pointer transition-all border border-transparent group ${isActive ? 'bg-white dark:bg-[#292929] border-slate-300 dark:border-[#3C3C3C] text-slate-900 dark:text-[#E0E0E0] shadow-sm' : 'hover:bg-slate-200/80 dark:hover:bg-[#202020] text-slate-600 dark:text-[#808080]'}`}
+                                                            onClick={() => {
+                                                               setActiveArtboardId(b.id);
+                                                               if (fabricRef.current) {
+                                                                  const cw = fabricRef.current.width!;
+                                                                  const ch = fabricRef.current.height!;
+                                                                  const vpt = fabricRef.current.viewportTransform!;
+                                                                  const newVpt = vpt.slice() as any;
+                                                                  newVpt[4] = cw / 2 - (b.x + b.width / 2) * newVpt[0];
+                                                                  newVpt[5] = ch / 2 - (b.y + b.height / 2) * newVpt[3];
+                                                                  fabricRef.current.setViewportTransform(newVpt);
+                                                               }
+                                                            }}
+                                                            onContextMenu={(e) => {
+                                                               e.preventDefault();
+                                                               e.stopPropagation();
+                                                               setArtboardDropdown({ id: b.id, x: e.clientX, y: e.clientY });
+                                                            }}
+                                                         >
+                                                            <span className={`text-[11px] font-semibold whitespace-nowrap outline-none flex items-center gap-1.5 ${isActive ? 'text-slate-900 dark:text-[#E0E0E0]' : ''}`}>
+                                                               {isActive && <div className="w-[4px] h-[4px] rounded-full bg-blue-500" />}
+                                                               {b.name}
+                                                            </span>
+
+                                                            <div className="flex items-center gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                               <button
+                                                                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-200 dark:hover:bg-[#3A3A3A] text-slate-400 dark:text-[#A0A0A0] transition-colors artboard-dropdown-toggle"
+                                                                  onClick={(e) => {
+                                                                     e.stopPropagation();
+                                                                     const rect = e.currentTarget.getBoundingClientRect();
+                                                                     setArtboardDropdown(artboardDropdown?.id === b.id ? null : { id: b.id, x: rect.left, y: rect.bottom + 6 });
+                                                                  }}
+                                                               >
+                                                                  <MoreHorizontal size={12} />
+                                                               </button>
+                                                            </div>
+                                                         </div>
+                                                      );
+                                                   })}
+
+                                                   <div className="w-px h-5 bg-slate-300 dark:bg-[#333] mx-1 shrink-0" />
+
+                                                   <button
+                                                      className="h-[30px] px-3 flex items-center gap-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-[#252525] text-slate-500 dark:text-[#808080] hover:text-slate-900 dark:hover:text-[#C0C0C0] transition-colors shrink-0"
+                                                      onClick={() => createArtboard()}
+                                                   >
+                                                      <Plus size={13} />
+                                                      <span className="text-[11px] font-semibold">New</span>
+                                                   </button>
                                                 </div>
-                                             </div>
-                                          )}
+                                             )}
 
-                                          {/* Canvas Container */}
-                                          <div
-                                             className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-slate-100 dark:bg-[#121212]"
-                                             onContextMenu={handleContextMenu}
-                                             onPointerDown={(e) => {
-                                                // Mobile panel is now a permanent split view, no tap-to-close needed
-                                             }}
-                                             onDragEnter={(e) => { e.preventDefault(); }}
-                                             onDragLeave={(e) => { e.preventDefault(); }}
-                                             onDragOver={(e) => { e.preventDefault(); }}
-                                             onDrop={async (e) => {
-                                                e.preventDefault();
-                                                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                                                   const files = Array.from(e.dataTransfer.files);
-                                                   const imageFiles = files.filter(f => f.type.startsWith('image/'));
+                                             {/* Dropdown Menu Portal */}
+                                             {artboardDropdown && (
+                                                <div
+                                                   className="fixed inset-0 z-50 pointer-events-auto"
+                                                   onClick={() => setArtboardDropdown(null)}
+                                                >
+                                                   <div
+                                                      onClick={(e) => e.stopPropagation()}
+                                                      style={{ left: Math.min(artboardDropdown.x, window.innerWidth - 180), top: artboardDropdown.y }}
+                                                      className="absolute bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-lg shadow-2xl py-1 min-w-[170px] artboard-dropdown-container"
+                                                   >
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-[#666] border-b border-slate-100 dark:border-[#252525] mb-1">Artboard</div>
+                                                      <ContextMenuItem icon={Type} label="Rename Artboard" onClick={() => {
+                                                         const board = artboards.find(b => b.id === artboardDropdown.id);
+                                                         if (board) {
+                                                            setRenamingArtboard({ id: board.id, name: board.name });
+                                                         }
+                                                         setArtboardDropdown(null);
+                                                      }} />
+                                                      <ContextMenuItem icon={Copy} label="Duplicate Artboard" onClick={() => {
+                                                         const board = artboards.find(b => b.id === artboardDropdown.id);
+                                                         if (board) {
+                                                            createArtboard(board.name + " Copy", board.width, board.height);
+                                                         }
+                                                         setArtboardDropdown(null);
+                                                      }} />
+                                                      <ContextMenuItem icon={Expand} label="Resize Options" onClick={() => {
+                                                         setActiveArtboardId(artboardDropdown.id);
+                                                         setActiveTab("artboards");
+                                                         setArtboardDropdown(null);
+                                                      }} />
+                                                      <ContextMenuItem icon={Download} label="Export Artboard" onClick={() => {
+                                                         setActiveArtboardId(artboardDropdown.id);
+                                                         setExportTarget("current");
+                                                         setActiveTab("export");
+                                                         setArtboardDropdown(null);
+                                                      }} />
+                                                      {artboards.length > 1 && (
+                                                         <>
+                                                            <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                            <ContextMenuItem icon={Trash2} label="Delete Artboard" danger onClick={() => {
+                                                               deleteArtboard(artboardDropdown.id);
+                                                               setArtboardDropdown(null);
+                                                            }} />
+                                                         </>
+                                                      )}
+                                                   </div>
+                                                </div>
+                                             )}
 
-                                                   // Check if dropped over a collage block
-                                                   const canvas = fabricRef.current;
-                                                   let droppedOnBlock = false;
+                                             {/* Canvas Container */}
+                                             <div
+                                                className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-slate-100 dark:bg-[#121212]"
+                                                onContextMenu={handleContextMenu}
+                                                onPointerDown={(e) => {
+                                                   // Mobile panel is now a permanent split view, no tap-to-close needed
+                                                }}
+                                                onDragEnter={(e) => { e.preventDefault(); }}
+                                                onDragLeave={(e) => { e.preventDefault(); }}
+                                                onDragOver={(e) => { e.preventDefault(); }}
+                                                onDrop={async (e) => {
+                                                   e.preventDefault();
+                                                   if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                                                      const files = Array.from(e.dataTransfer.files);
+                                                      const imageFiles = files.filter(f => f.type.startsWith('image/'));
 
-                                                   if (canvas && imageFiles.length > 0) {
-                                                      const target = canvas.findTarget(e.nativeEvent as any);
-                                                      if (target && (target as any).isCollageBlock) {
-                                                         const file = imageFiles[0];
-                                                         const reader = new FileReader();
-                                                         reader.onload = (event) => {
-                                                            const dataUrl = event.target?.result as string;
-                                                            const beforeState = { collageImageSrc: (target as any).collageImageSrc };
-                                                            const afterState = { collageImageSrc: dataUrl };
-                                                            (target as any).collageImageSrc = dataUrl;
-                                                            canvas.requestRenderAll();
+                                                      // Check if dropped over a collage block
+                                                      const canvas = fabricRef.current;
+                                                      let droppedOnBlock = false;
 
-                                                            const cmd = new StyleChangeCommand("Fill Block with Image", target as unknown as fabric.Object, beforeState, afterState);
-                                                            executeCommand(cmd);
-                                                         };
-                                                         reader.readAsDataURL(file);
-                                                         droppedOnBlock = true;
-                                                      }
-                                                   }
-
-                                                   if (!droppedOnBlock) {
-                                                      const promises = imageFiles.map(file => {
-                                                         return new Promise<{ url: string, type: 'svg' | 'image', name: string }>((resolve) => {
+                                                      if (canvas && imageFiles.length > 0) {
+                                                         const target = canvas.findTarget(e.nativeEvent as any);
+                                                         if (target && (target as any).isCollageBlock) {
+                                                            const file = imageFiles[0];
                                                             const reader = new FileReader();
                                                             reader.onload = (event) => {
                                                                const dataUrl = event.target?.result as string;
-                                                               if (file.type === 'image/svg+xml') {
-                                                                  resolve({ url: dataUrl, type: 'svg', name: file.name });
-                                                               } else {
-                                                                  resolve({ url: dataUrl, type: 'image', name: file.name });
-                                                               }
+                                                               const beforeState = { collageImageSrc: (target as any).collageImageSrc };
+                                                               const afterState = { collageImageSrc: dataUrl };
+                                                               (target as any).collageImageSrc = dataUrl;
+                                                               canvas.requestRenderAll();
+
+                                                               const cmd = new StyleChangeCommand("Fill Block with Image", target as unknown as fabric.Object, beforeState, afterState);
+                                                               executeCommand(cmd);
                                                             };
                                                             reader.readAsDataURL(file);
-                                                         });
-                                                      });
+                                                            droppedOnBlock = true;
+                                                         }
+                                                      }
 
-                                                      const results = await Promise.all(promises);
-                                                      if (results.length > 0) {
-                                                         importAssets(results);
+                                                      if (!droppedOnBlock) {
+                                                         const promises = imageFiles.map(file => {
+                                                            return new Promise<{ url: string, type: 'svg' | 'image', name: string }>((resolve) => {
+                                                               const reader = new FileReader();
+                                                               reader.onload = (event) => {
+                                                                  const dataUrl = event.target?.result as string;
+                                                                  if (file.type === 'image/svg+xml') {
+                                                                     resolve({ url: dataUrl, type: 'svg', name: file.name });
+                                                                  } else {
+                                                                     resolve({ url: dataUrl, type: 'image', name: file.name });
+                                                                  }
+                                                               };
+                                                               reader.readAsDataURL(file);
+                                                            });
+                                                         });
+
+                                                         const results = await Promise.all(promises);
+                                                         if (results.length > 0) {
+                                                            importAssets(results);
+                                                         }
                                                       }
                                                    }
-                                                }
-                                             }}
-                                          >
-                                             {/* subtle grid background */}
-                                             <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-
-                                             {/* Main Fabric Canvas Wrapper (hidden during comparison mode) */}
-                                             <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
-                                                <canvas ref={canvasRef} className="block" />
-                                             </div>
-
-                                             {/* Dynamic Photoshop-style Brush Adjustment floating HUD and diameter preview */}
-                                             {showHud && hudPosition && (() => {
-                                                const getRgba = (hex: string, alpha: number) => {
-                                                   let c = hex.replace('#', '');
-                                                   if (c.length === 3) {
-                                                      c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
-                                                   }
-                                                   const r = parseInt(c.substring(0, 2), 16) || 0;
-                                                   const g = parseInt(c.substring(2, 4), 16) || 0;
-                                                   const b = parseInt(c.substring(4, 6), 16) || 0;
-                                                   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                                                };
-
-                                                const zoom = fabricRef.current?.getZoom() || 1;
-                                                const size = brushSize * zoom;
-
-                                                const strokeWidth = 3;
-                                                const ringDiameter = Math.max(size, 48);
-                                                const radius = (ringDiameter / 2) + 6;
-                                                const padding = 12;
-                                                const svgSize = ringDiameter + (padding * 2);
-                                                const center = svgSize / 2;
-                                                const circumference = 2 * Math.PI * radius;
-
-                                                let percentage = 100;
-                                                let strokeColor = '#3b82f6'; // Size: Blue
-
-                                                if (activeBrushProperty === 'opacity') {
-                                                   percentage = brushOpacity;
-                                                   strokeColor = '#a855f7'; // Opacity: Purple/Magenta
-                                                } else if (activeBrushProperty === 'hardness') {
-                                                   percentage = brushHardness;
-                                                   strokeColor = '#f59e0b'; // Hardness: Amber/Yellow
-                                                } else {
-                                                   percentage = (brushSize / 500) * 100;
-                                                   strokeColor = '#3b82f6'; // Size: Blue
-                                                }
-
-                                                const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-                                                let previewStyle: React.CSSProperties = {
-                                                   width: `${size}px`,
-                                                   height: `${size}px`,
-                                                   maxWidth: '450px',
-                                                   maxHeight: '450px',
-                                                   minWidth: '6px',
-                                                   minHeight: '6px',
-                                                   borderRadius: '9999px',
-                                                   border: '1.5px solid rgba(255, 255, 255, 0.9)',
-                                                   boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.45)',
-                                                   display: 'flex',
-                                                   alignItems: 'center',
-                                                   justifyContent: 'center',
-                                                   overflow: 'hidden',
-                                                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' width='8' height='8' fill='%230D0F13'/%3E%3Crect y='8' width='8' height='8' fill='%230D0F13'/%3E%3C/svg%3E")`,
-                                                   boxSizing: 'border-box',
-                                                   transition: 'width 75ms ease-out, height 75ms ease-out'
-                                                };
-
-                                                const baseColor = brushColor || '#ef4444';
-                                                const opacity = brushOpacity / 100;
-                                                const hPercent = brushHardness;
-
-                                                const previewCoreStyle: React.CSSProperties = {
-                                                   width: '100%',
-                                                   height: '100%',
-                                                   borderRadius: '9999px',
-                                                   background: `radial-gradient(circle, ${getRgba(baseColor, opacity)} 0%, ${getRgba(baseColor, opacity * (hPercent / 100))} ${hPercent}%, transparent 100%)`,
-                                                   transition: 'all 50ms ease-out'
-                                                };
-
-                                                return (
-                                                   <div
-                                                      id="brush-hud-overlay"
-                                                      className="absolute pointer-events-none z-[100] flex flex-col items-center justify-center select-none"
-                                                      style={{
-                                                         left: hudPosition.x,
-                                                         top: hudPosition.y,
-                                                         transform: `translate(-50%, -50%) scale(${hudFadingOut ? 0.92 : 1})`,
-                                                         opacity: hudFadingOut ? 0 : 1,
-                                                         transition: 'opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.16, 1, 0.3, 1)',
-                                                      }}
-                                                   >
-                                                      {/* Circle Wrapper with SVG Progress Dial */}
-                                                      <div className="relative flex items-center justify-center" style={{ width: `${svgSize}px`, height: `${svgSize}px` }}>
-
-                                                         <svg
-                                                            width={svgSize}
-                                                            height={svgSize}
-                                                            className="absolute top-0 left-0 pointer-events-none"
-                                                         >
-                                                            {/* Contrast dark dropshadow circle */}
-                                                            <circle
-                                                               cx={center}
-                                                               cy={center}
-                                                               r={radius}
-                                                               fill="none"
-                                                               stroke="rgba(0, 0, 0, 0.5)"
-                                                               strokeWidth={strokeWidth + 2}
-                                                            />
-                                                            {/* Empty track */}
-                                                            <circle
-                                                               cx={center}
-                                                               cy={center}
-                                                               r={radius}
-                                                               fill="none"
-                                                               stroke="rgba(255, 255, 255, 0.15)"
-                                                               strokeWidth={strokeWidth}
-                                                            />
-                                                            {/* Dynamic trace progress segment */}
-                                                            <circle
-                                                               cx={center}
-                                                               cy={center}
-                                                               r={radius}
-                                                               fill="none"
-                                                               stroke={strokeColor}
-                                                               strokeWidth={strokeWidth}
-                                                               strokeDasharray={circumference}
-                                                               strokeDashoffset={strokeDashoffset}
-                                                               strokeLinecap="round"
-                                                               transform={`rotate(-90 ${center} ${center})`}
-                                                               className="transition-[stroke-dashoffset] duration-75 ease"
-                                                               style={{
-                                                                  filter: `drop-shadow(0 0 3px ${strokeColor}cc)`,
-                                                               }}
-                                                            />
-                                                         </svg>
-
-                                                         {/* Center circle brush tip container with checkerboard bg */}
-                                                         <div style={previewStyle as React.CSSProperties}>
-                                                            <div style={previewCoreStyle} />
-                                                         </div>
-                                                      </div>
-
-                                                      {/* Floating HUD Information Pill */}
-                                                      <div className="mt-4 bg-[#0B0D13]/95 backdrop-blur-xl border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.6)] rounded-full px-5 py-2.5 flex items-center gap-3 select-none animate-in fade-in duration-100 ease-out">
-                                                         {activeBrushProperty === 'size' && (
-                                                            <>
-                                                               <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
-                                                                  <Brush size={12} className="text-blue-400" />
-                                                                  <span>Size</span>
-                                                               </div>
-                                                               <div className="w-px h-3.5 bg-white/15" />
-                                                               <div className="text-sm font-mono font-extrabold text-white">
-                                                                  {brushSize}px
-                                                               </div>
-                                                            </>
-                                                         )}
-                                                         {activeBrushProperty === 'opacity' && (
-                                                            <>
-                                                               <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
-                                                                  <Droplets size={12} className="text-purple-400" />
-                                                                  <span>Opacity</span>
-                                                               </div>
-                                                               <div className="w-px h-3.5 bg-white/15" />
-                                                               <div className="text-sm font-mono font-extrabold text-white">
-                                                                  {brushOpacity}%
-                                                               </div>
-                                                            </>
-                                                         )}
-                                                         {activeBrushProperty === 'hardness' && (
-                                                            <>
-                                                               <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
-                                                                  <Circle size={12} className="text-amber-400 fill-amber-400/10" />
-                                                                  <span>Hardness</span>
-                                                               </div>
-                                                               <div className="w-px h-3.5 bg-white/15" />
-                                                               <div className="text-sm font-mono font-extrabold text-white">
-                                                                  {brushHardness}%
-                                                               </div>
-                                                            </>
-                                                         )}
-                                                      </div>
-                                                   </div>
-                                                );
-                                             })()}
-
-                                             {/* Empty State Overlay */}
-                                             {isLoaded && artboards.length === 0 && (
-                                                <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-100/80 dark:bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
-                                                   <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
-                                                      <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(45deg,transparent_25%,white_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]" />
-                                                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 shadow-inner relative z-10 ring-1 ring-blue-500/20">
-                                                         <SquareDashed size={24} className="w-5 h-5 md:w-7 md:h-7" />
-                                                      </div>
-                                                      <div className="relative z-10 w-full">
-                                                         <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white mb-1.5 md:mb-2">No active project</h3>
-                                                         <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 leading-relaxed px-2">Create a new artboard to start placing elements and building your composition.</p>
-                                                      </div>
-                                                      <button
-                                                         onClick={() => createArtboard()}
-                                                         className="relative z-10 w-full flex items-center justify-center gap-2 px-5 md:px-6 h-10 md:h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition shadow-lg shadow-blue-600/20 active:scale-95"
-                                                      >
-                                                         <Plus size={16} /> Create Artboard
-                                                      </button>
-                                                   </div>
-                                                </div>
-                                             )}
-
-                                             {isCropping && (
-                                                <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm sm:max-w-none sm:w-auto z-[50] animate-in fade-in slide-in-from-top-3 duration-150">
-                                                   <div className="bg-white/95 dark:bg-[#1E1E1E]/95 text-slate-800 dark:text-white backdrop-blur-xl border border-slate-200 dark:border-[#2D2D2D] p-1.5 px-3 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12)] dark:shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center justify-between sm:justify-start gap-2.5 select-none">
-                                                      <div className="hidden sm:flex items-center gap-1.5 border-r border-slate-200 dark:border-[#333] pr-3 shrink-0">
-                                                         <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                                                            <Crop size={14} />
-                                                         </div>
-                                                         <span className="text-xs font-bold text-slate-800 dark:text-slate-100">Crop Image</span>
-                                                      </div>
-
-                                                      <div className="w-44 sm:w-52 shrink-0">
-                                                         <ModernSelect
-                                                            value={cropRatio}
-                                                            onChange={handleCropRatioChange}
-                                                            groups={CROP_RATIO_GROUPS}
-                                                         />
-                                                      </div>
-
-                                                      <div className="hidden sm:block h-4 w-px bg-slate-200 dark:bg-[#333]" />
-
-                                                      <div className="flex items-center gap-1.5 shrink-0">
-                                                         <button
-                                                            onClick={applyCrop}
-                                                            className="px-3.5 h-9 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-[11px] font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-md shadow-blue-600/20 active:scale-95"
-                                                         >
-                                                            <Check size={14} /> <span className="hidden sm:inline">Apply</span>
-                                                         </button>
-                                                         <button
-                                                            onClick={cancelCrop}
-                                                            className="px-3 h-9 bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2A2A] dark:hover:bg-[#333] text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap active:scale-95 border border-slate-200 dark:border-transparent"
-                                                         >
-                                                            <X size={14} /> <span className="hidden sm:inline">Cancel</span>
-                                                         </button>
-                                                      </div>
-                                                   </div>
-                                                </div>
-                                             )}
-
-                                             {/* Squoosh-like image comparison viewer component */}
-                                             <React.Suspense fallback={null}>
-                                                <ExportLiveComparisonViewer
-                                                   comparisonMode={comparisonMode}
-                                                   isMobile={isMobile}
-                                                   activeTab={activeTab}
-                                                   setActiveTab={setActiveTab}
-                                                   handleExport={handleExport}
-                                                   comparisonPreviewMode={comparisonPreviewMode}
-                                                   setComparisonPreviewMode={setComparisonPreviewMode}
-                                                   comparisonZoom={comparisonZoom}
-                                                   setComparisonZoom={setComparisonZoom}
-                                                   transformComponentRef={transformComponentRef}
-                                                   sliderRef={sliderRef}
-                                                   handlePointerMove={handlePointerMove}
-                                                   handlePointerUp={handlePointerUp}
-                                                   handleKeyDown={handleKeyDown}
-                                                   artboards={artboards}
-                                                   activeArtboardId={activeArtboardId}
-                                                   isDraggingDivider={isDraggingDivider}
-                                                   originalPreviewDims={originalPreviewDims}
-                                                   optimizedPreviewDims={optimizedPreviewDims}
-                                                   optimizedImageUrl={optimizedImageUrl}
-                                                   originalImageUrl={originalImageUrl}
-                                                   comparisonDivider={comparisonDivider}
-                                                   handlePointerDown={handlePointerDown}
-                                                   setComparisonDivider={setComparisonDivider}
-                                                   showDiagnostics={showDiagnostics}
-                                                   setShowDiagnostics={setShowDiagnostics}
-                                                   originalSize={originalSize}
-                                                   optimizedSize={optimizedSize}
-                                                   exportSettings={exportSettings}
-                                                   setExportSettings={setExportSettings}
-                                                   exportTarget={exportTarget}
-                                                   psnr={psnr}
-                                                   isGeneratingPreview={isGeneratingPreview}
-                                                   currentPreviewOp={currentPreviewOp}
-                                                   showMobileCompareSwitcher={showMobileCompareSwitcher}
-                                                   setShowMobileCompareSwitcher={setShowMobileCompareSwitcher}
-                                                   showMobileDiagnosticsSheet={showMobileDiagnosticsSheet}
-                                                   setShowMobileDiagnosticsSheet={setShowMobileDiagnosticsSheet}
-                                                   mobileDetailsExpanded={mobileDetailsExpanded}
-                                                   setMobileDetailsExpanded={setMobileDetailsExpanded}
-                                                />
-                                             </React.Suspense>
-
-                                             {/* Floating Canvas Navigation & Zoom Controller */}
-                                             <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-white/90 dark:bg-[#1A1A1A]/90 hover:bg-white dark:hover:bg-[#1A1A1A] text-slate-700 dark:text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
-                                                <button
-                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                   onClick={() => {
-                                                      if (!fabricRef.current) return;
-                                                      let z = fabricRef.current.getZoom();
-                                                      z = Math.max(0.1, z - 0.15);
-                                                      fabricRef.current.setZoom(z);
-                                                      setZoomPercent(Math.round(z * 100));
-                                                      fabricRef.current.requestRenderAll();
-                                                   }}
-                                                   title="Zoom Out"
-                                                >
-                                                   <Minus size={13} />
-                                                </button>
-
-                                                <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-800 dark:text-slate-200">
-                                                   {zoomPercent}%
-                                                </span>
-
-                                                <button
-                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                   onClick={() => {
-                                                      if (!fabricRef.current) return;
-                                                      let z = fabricRef.current.getZoom();
-                                                      z = Math.min(10, z + 0.15);
-                                                      fabricRef.current.setZoom(z);
-                                                      setZoomPercent(Math.round(z * 100));
-                                                      fabricRef.current.requestRenderAll();
-                                                   }}
-                                                   title="Zoom In"
-                                                >
-                                                   <Plus size={13} />
-                                                </button>
-
-                                                <div className="w-px h-4 bg-slate-200 dark:bg-[#2D2D2D]" />
-
-                                                <button
-                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                   onClick={() => {
-                                                      if (!fabricRef.current) return;
-                                                      const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
-                                                      if (!activeB) return;
-                                                      const vpt = fabricRef.current.viewportTransform!;
-                                                      const newVpt = vpt.slice() as any;
-                                                      newVpt[0] = 1.0;
-                                                      newVpt[3] = 1.0;
-                                                      const cw = fabricRef.current.width!;
-                                                      const ch = fabricRef.current.height!;
-                                                      newVpt[4] = cw / 2 - (activeB.x + activeB.width / 2);
-                                                      newVpt[5] = ch / 2 - (activeB.y + activeB.height / 2);
-                                                      fabricRef.current.setViewportTransform(newVpt);
-                                                      setZoomPercent(100);
-                                                   }}
-                                                   title="Recenter Camera on Active Artboard"
-                                                >
-                                                   <Target size={14} />
-                                                </button>
-
-                                                <button
-                                                   className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                   onClick={() => {
-                                                      if (!fabricRef.current || artboardsRef.current.length === 0) return;
-                                                      let minX = Infinity, minY = Infinity;
-                                                      let maxX = -Infinity, maxY = -Infinity;
-                                                      artboardsRef.current.forEach(b => {
-                                                         minX = Math.min(minX, b.x);
-                                                         minY = Math.min(minY, b.y);
-                                                         maxX = Math.max(maxX, b.x + b.width);
-                                                         maxY = Math.max(maxY, b.y + b.height);
-                                                      });
-                                                      minX -= 60; minY -= 60;
-                                                      maxX += 60; maxY += 60;
-
-                                                      const w = maxX - minX;
-                                                      const h = maxY - minY;
-                                                      const cw = fabricRef.current.width!;
-                                                      const ch = fabricRef.current.height!;
-
-                                                      const zoom = Math.max(0.1, Math.min(4, Math.min(cw / w, ch / h)));
-                                                      const vpt = fabricRef.current.viewportTransform!;
-                                                      const newVpt = vpt.slice() as any;
-                                                      newVpt[0] = zoom;
-                                                      newVpt[3] = zoom;
-                                                      newVpt[4] = cw / 2 - zoom * (minX + w / 2);
-                                                      newVpt[5] = ch / 2 - zoom * (minY + h / 2);
-
-                                                      fabricRef.current.setViewportTransform(newVpt);
-                                                      setZoomPercent(Math.round(zoom * 100));
-                                                   }}
-                                                   title="Fit All Artboards in Viewport"
-                                                >
-                                                   <Expand size={14} />
-                                                </button>
-                                             </div>
-                                          </div>
-                                       </div>
-
-                                       {/* Resize Handle (Desktop Only) */}
-                                       {(!isMobile) && (
-                                          <div
-                                             onPointerDown={(e) => {
-                                                setIsResizingPanel(true);
-                                                e.preventDefault();
-                                             }}
-                                             className="relative z-20 w-1.5 -ml-[1px] -mr-[5px] h-full cursor-col-resize flex items-stretch justify-center group"
-                                          >
-                                             <div className={`h-full w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-x-150' : 'bg-[#2C2C2C] group-hover:bg-blue-500'}`} />
-                                          </div>
-                                       )}
-
-                                       {/* Mobile Filter / Bottom Bar */}
-                                       {isMobile && !showMobilePanel && (
-                                          <div className="flex h-14 bg-[#1A1A1A] border-t border-[#2C2C2C] z-30 shrink-0 w-full px-2 items-center justify-between overflow-x-auto no-scrollbar relative shadow-[0_-4px_24px_rgba(0,0,0,0.5)]">
-                                             <ToolBtn icon={MousePointer2} tool="select" current={activeTool} set={setTool} title="Move" />
-                                             <ToolBtn icon={Hand} tool="pan" current={activeTool} set={setTool} title="Pan" />
-                                             <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush" />
-                                             <ToolBtn icon={Type} tool="text" current={activeTool} set={addText} title="Text" />
-                                             <ToolBtn icon={Crop} tool="crop" current={activeTool} set={() => enterCropMode()} title="Crop" />
-
-                                             <div className="flex-1" />
-
-                                             <div className="relative shrink-0 flex items-center justify-center w-10">
-                                                <ColorPickerTrigger
-                                                   color={brushColor || "#ffffff"}
-                                                   onChange={changeCurrentColor}
-                                                   className="w-7 h-7 rounded-full border border-white/20 shadow-inner relative overflow-hidden"
-                                                />
-                                             </div>
-
-                                             <div className="w-px h-8 bg-[#3A3A3A] mx-2 shrink-0" />
-
-                                             <button
-                                                onClick={() => setShowMobilePanel(true)}
-                                                className="h-10 w-10 shrink-0 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl flex items-center justify-center transition-colors shadow-sm ml-auto"
-                                             >
-                                                <Layers size={18} />
-                                             </button>
-                                          </div>
-                                       )}
-
-
-
-                                       {/* Right Sidebar / Bottom Panel - Logic Panels */}
-                                       {(!isMobile || showMobilePanel) && (
-                                          <div
-                                             ref={panelDOMRef}
-                                             style={isMobile ? {
-                                                width: '100%',
-                                                height: `${mobilePanelHeight}vh`,
-                                             } : { width: `${panelWidth}px` }}
-                                             className={`border-t md:border-t-0 md:border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-slate-200 dark:border-[#2C2C2C]'} bg-slate-50 dark:bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden md:shadow-[-4px_0_12px_rgba(0,0,0,0.08)] dark:md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150 relative`}
-                                          >
-                                             {/* Mobile Resize Pill Handle */}
-                                             {isMobile && (
-                                                <div
-                                                   className="w-full h-8 bg-slate-100 dark:bg-[#1A1A1A] flex items-center justify-center shrink-0 cursor-row-resize z-10 active:bg-slate-200/80 dark:active:bg-[#1A1A1A]/80 transition-colors touch-none select-none"
-                                                   onPointerDown={(e) => {
-                                                      e.currentTarget.setPointerCapture(e.pointerId);
-                                                      setIsResizingPanel(true);
-                                                      e.preventDefault();
-                                                      e.stopPropagation();
-                                                   }}
-                                                >
-                                                   <div className={`w-14 h-1.5 rounded-full transition-colors ${isResizingPanel ? 'bg-blue-500' : 'bg-slate-300 dark:bg-[#555] hover:bg-slate-400 dark:hover:bg-[#777]'}`} />
-                                                </div>
-                                             )}
-
-                                             <div
-                                                className="flex w-full bg-slate-100 dark:bg-[#1A1A1A] border-b border-slate-200 dark:border-[#2C2C2C] select-none shrink-0 relative"
-                                                onTouchStart={(e) => {
-                                                   if (!isMobile) return;
-                                                   const startY = e.touches[0].clientY;
-                                                   const handleEnd = (eEnd: TouchEvent) => {
-                                                      if (eEnd.changedTouches[0].clientY - startY > 50) setShowMobilePanel(false);
-                                                      document.removeEventListener('touchend', handleEnd);
-                                                   };
-                                                   document.addEventListener('touchend', handleEnd);
                                                 }}
                                              >
-                                                <div className={`flex-1 overflow-x-auto flex no-scrollbar ${isMobile ? 'pr-10' : ''}`}>
-                                                   <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
-                                                   <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
-                                                   <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
-                                                   <TabBtn tab="ai" active={activeTab} set={setActiveTab} label="AI Tools" icon={Zap} />
-                                                   <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
-                                                   <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
-                                                   <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
-                                                   <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
+                                                {/* subtle grid background */}
+                                                <div className="absolute inset-0 opacity-[0.05] dark:opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+
+                                                {/* Main Fabric Canvas Wrapper (hidden during comparison mode) */}
+                                                <div className={`shadow-2xl ring-1 ring-white/5 relative ${comparisonMode ? 'hidden' : 'block'}`}>
+                                                   <canvas ref={canvasRef} className="block" />
                                                 </div>
-                                                {isMobile && (
-                                                   <button
-                                                      onClick={() => setShowMobilePanel(false)}
-                                                      className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center bg-slate-100 dark:bg-[#1A1A1A] border-l border-slate-200 dark:border-[#2C2C2C] text-slate-400 dark:text-[#8C8C8C] hover:text-slate-700 dark:hover:text-white shadow-[-4px_0_8px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_8px_rgba(0,0,0,0.2)] z-10"
-                                                   >
-                                                      <ChevronDown size={18} />
-                                                   </button>
-                                                )}
-                                             </div>
 
-                                             <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                                                <React.Suspense fallback={<div className="p-4 text-center text-sm text-[#8A8A8A]">Loading panel...</div>}>
-                                                   {/* PROPERTIES PANEL */}
-                                                   {activeTab === 'properties' && (
-                                                      <PropertiesTab />
-                                                   )}
-                                                   {/* ARTBOARDS PANEL */}
-                                                   {activeTab === 'artboards' && (
-                                                      <ArtboardsTab />
+                                                {/* Dynamic Photoshop-style Brush Adjustment floating HUD and diameter preview */}
+                                                {showHud && activeTool === 'brush' && hudPosition && (() => {
+                                                   const zoom = fabricRef.current?.getZoom() || 1;
+                                                   const size = brushSize * zoom;
 
-                                                   )}
-                                                   {/* QUICK ACTIONS PANEL */}
-                                                   {activeTab === 'quick' && (
-                                                      <QuickActionsTab
-                                                         selectionType={selectionType}
-                                                         addFilterToPipeline={addFilterToPipeline}
-                                                         applyFilter={applyFilter}
-                                                         resetCrop={resetCrop}
-                                                         alignSelection={alignSelection}
-                                                         applyFrame={applyFrame}
-                                                         frameBorderWidth={frameBorderWidth}
-                                                         updateFrameBorderWidth={updateFrameBorderWidth}
-                                                         frameColor={frameColor}
-                                                         updateFrameColor={updateFrameColor}
-                                                         createArtboardFromPreset={createArtboardFromPreset}
-                                                      />
-                                                   )}
+                                                   const strokeWidth = 3;
+                                                   const ringDiameter = Math.max(size, 48);
+                                                   const radius = (ringDiameter / 2) + 6;
+                                                   const padding = 12;
+                                                   const svgSize = ringDiameter + (padding * 2);
+                                                   const center = svgSize / 2;
+                                                   const circumference = 2 * Math.PI * radius;
 
-                                                   {/* AI PANEL */}
-                                                   {(activeTab as string) === 'ai' && (
-                                                      <AIToolsPanel
-                                                         selectionType={selectionType}
-                                                         executeCommand={executeCommand}
-                                                      />
-                                                   )}
+                                                   let percentage = 100;
+                                                   let strokeColor = '#3b82f6'; // Size: Blue
 
-                                                   {/* FILTERS PANEL */}
-                                                   {activeTab === 'filters' && <FilterStudioTab />}
+                                                   if (activeBrushProperty === 'opacity') {
+                                                      percentage = brushOpacity;
+                                                      strokeColor = '#a855f7'; // Opacity: Purple/Magenta
+                                                   } else if (activeBrushProperty === 'hardness') {
+                                                      percentage = brushHardness;
+                                                      strokeColor = '#f59e0b'; // Hardness: Amber/Yellow
+                                                   } else {
+                                                      percentage = (brushSize / 500) * 100;
+                                                      strokeColor = '#3b82f6'; // Size: Blue
+                                                   }
 
-                                                   {/* LAYERS PANEL */}
-                                                   {activeTab === 'layers' && <LayersTab />}
+                                                   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
-                                                   {/* HISTORY PANEL */}
-                                                   {activeTab === 'history' && (
-                                                      <div className="p-2">
-                                                         <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 ml-2 mt-2">Action History</div>
-                                                         <div className="space-y-1">
-                                                            {historyNames.map((name, idx) => {
-                                                               const isCurrent = idx === commandIndex;
-                                                               const isFuture = idx > commandIndex;
-                                                               return (
-                                                                  <div key={idx} onClick={() => jumpToHistory(idx)} className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-xs transition-colors ${isCurrent ? 'bg-blue-600/20 text-blue-300 font-medium' : isFuture ? 'text-[#6A6A6A] hover:bg-[#2C2C2C]' : 'text-[#C0C0C0] hover:bg-[#2C2C2C]'}`}>
-                                                                     <div className={`w-2 h-2 rounded-full mr-3 ${isCurrent ? 'bg-blue-500' : isFuture ? 'bg-[#3A3A3A]' : 'bg-[#6A6A6A]'}`} />
-                                                                     {name}
-                                                                  </div>
-                                                               );
-                                                            })}
-                                                            {historyNames.length === 0 && (
-                                                               <div className="p-4 text-xs text-[#8A8A8A] text-center italic mt-10">No history track found.</div>
-                                                            )}
-                                                         </div>
-                                                      </div>
-                                                   )}
+                                                   let previewStyle: React.CSSProperties = {
+                                                      width: `${size}px`,
+                                                      height: `${size}px`,
+                                                      maxWidth: '450px',
+                                                      maxHeight: '450px',
+                                                      minWidth: '6px',
+                                                      minHeight: '6px',
+                                                      borderRadius: '9999px',
+                                                      border: '1.5px solid rgba(255, 255, 255, 0.9)',
+                                                      boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.45)',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center',
+                                                      overflow: 'hidden',
+                                                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%231D1E24'/%3E%3Crect x='8' width='8' height='8' fill='%230D0F13'/%3E%3Crect y='8' width='8' height='8' fill='%230D0F13'/%3E%3C/svg%3E")`,
+                                                      boxSizing: 'border-box',
+                                                      transition: 'width 75ms ease-out, height 75ms ease-out'
+                                                   };
 
-                                                   {/* EXPORT WORKSPACE (jSquash with Artboards) */}
-                                                   {activeTab === 'export' && (
-                                                      <ExportStudio
-                                                         settings={exportSettings}
-                                                         onChange={setExportSettings}
-                                                         onExport={handleExport}
-                                                         isExporting={isExporting}
-                                                         originalSize={originalSize}
-                                                         optimizedSize={optimizedSize}
-                                                         originalWidth={artboards.find(b => b.id === activeArtboardId)?.width || 800}
-                                                         originalHeight={artboards.find(b => b.id === activeArtboardId)?.height || 600}
-                                                         psnr={psnr}
-                                                         artboards={artboards}
-                                                         activeArtboardId={activeArtboardId}
-                                                         setActiveArtboardId={setActiveArtboardId}
-                                                         exportTarget={exportTarget}
-                                                         setExportTarget={setExportTarget}
-                                                         selectedExportIds={selectedExportIds}
-                                                         setSelectedExportIds={setSelectedExportIds}
-                                                      />
-                                                   )}
-                                                </React.Suspense>
-                                             </div>
-                                          </div>
-                                       )}
+                                                   const baseColor = brushColor || '#ef4444';
+                                                   const opacity = brushOpacity / 100;
+                                                   const hPercent = brushHardness;
 
-                                       {/* Context Menu Portal */}
-                                       {activeContextMenu && createPortal(
-                                          <div
-                                             ref={contextMenuRef}
-                                             className="fixed z-[9999] w-52 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] shadow-2xl rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] p-1 context-menu-container text-slate-800 dark:text-white"
-                                             style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
-                                             onClick={(e) => e.stopPropagation()}
-                                          >
-                                             {activeContextMenu.obj ? (
-                                                <>
-                                                   {(activeContextMenu.obj as any)?.isCollageBlock && (
-                                                      <>
-                                                         <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-blue-500 border-b border-[#252525] mb-1">Smart Collage</div>
-                                                         <ContextMenuItem icon={LucideImage} label={(activeContextMenu.obj as any).collageImageSrc ? "Replace Image..." : "Add Image..."} onClick={() => {
-                                                            const input = document.createElement('input');
-                                                            input.type = 'file';
-                                                            input.accept = 'image/*';
-                                                            input.onchange = (e: any) => {
-                                                               const file = e.target.files?.[0];
-                                                               if (file) {
-                                                                  fabricRef.current?.setActiveObject(activeContextMenu.obj!);
-                                                                  fillCollageBlockWithImage(file);
-                                                               }
-                                                            };
-                                                            input.click();
-                                                            closeContextMenu();
-                                                         }} />
-                                                         {(activeContextMenu.obj as any).collageImageSrc && (
-                                                            <ContextMenuItem icon={Trash2} label="Remove Image" onClick={() => {
-                                                               const rect = activeContextMenu.obj as fabric.Rect;
-                                                               const beforeState = { collageImageSrc: (rect as any).collageImageSrc };
-                                                               const afterState = { collageImageSrc: null };
-                                                               (rect as any).collageImageSrc = null;
-                                                               fabricRef.current?.requestRenderAll();
-                                                               executeCommand(new StyleChangeCommand("Remove Image", rect, beforeState, afterState));
-                                                               closeContextMenu();
-                                                            }} />
-                                                         )}
-                                                         <ContextMenuItem icon={Copy} label="Duplicate Block" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
-                                                         <ContextMenuItem icon={Trash2} label="Delete Block" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
-                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                      </>
-                                                   )}
-                                                   {(activeContextMenu.targets?.filter(t => (t as any).isCollageBlock).length > 0 && activeContextMenu.targets?.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length > 0) && (
-                                                      <>
-                                                         <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-green-500 border-b border-[#252525] mb-1">Bulk Assignment</div>
-                                                         {activeContextMenu.targets.filter(t => (t as any).isCollageBlock).length === 1 && activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length === 1 ? (
-                                                            <ContextMenuItem icon={LucideImage} label="Fit Image into Block" onClick={() => {
-                                                               const block = activeContextMenu.targets.find(t => (t as any).isCollageBlock) as fabric.Rect;
-                                                               const img = activeContextMenu.targets.find(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image;
+                                                   const previewCoreStyle: React.CSSProperties = {
+                                                      width: '100%',
+                                                      height: '100%',
+                                                      borderRadius: '9999px',
+                                                      background: `radial-gradient(circle, ${setOpacityOnHex(baseColor, opacity * 100)} 0%, ${setOpacityOnHex(baseColor, opacity * hPercent)} ${hPercent}%, transparent 100%)`,
+                                                      transition: 'all 50ms ease-out'
+                                                   };
 
-                                                               const beforeState = { collageImageSrc: (block as any).collageImageSrc };
-                                                               const afterState = { collageImageSrc: img.getSrc() };
-                                                               (block as any).collageImageSrc = img.getSrc();
-                                                               fabricRef.current?.requestRenderAll();
-                                                               executeCommand(new StyleChangeCommand("Fit Image into Block", block, beforeState, afterState));
-                                                               closeContextMenu();
-                                                            }} />
-                                                         ) : (
-                                                            <>
-                                                               <ContextMenuItem icon={LucideImage} label="Fill Blocks Sequentially" onClick={() => {
-                                                                  const blocks = activeContextMenu.targets.filter(t => (t as any).isCollageBlock);
-                                                                  const imgs = activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image[];
-                                                                  const commands: Command[] = [];
-                                                                  blocks.forEach((block, i) => {
-                                                                     const img = imgs[i % imgs.length];
-                                                                     const beforeState = { collageImageSrc: (block as any).collageImageSrc };
-                                                                     const afterState = { collageImageSrc: img.getSrc() };
-                                                                     (block as any).collageImageSrc = img.getSrc();
-                                                                     commands.push(new StyleChangeCommand("Fill Block", block as fabric.Object, beforeState, afterState));
-                                                                  });
-                                                                  fabricRef.current?.requestRenderAll();
-                                                                  executeCommand(new MacroCommand("Fill Blocks Sequentially", commands));
-                                                                  closeContextMenu();
-                                                               }} />
-                                                               <ContextMenuItem icon={LucideImage} label="Fill Blocks Randomly" onClick={() => {
-                                                                  const blocks = activeContextMenu.targets.filter(t => (t as any).isCollageBlock);
-                                                                  const imgs = activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image[];
-                                                                  const commands: Command[] = [];
-                                                                  blocks.forEach((block) => {
-                                                                     const img = imgs[Math.floor(Math.random() * imgs.length)];
-                                                                     const beforeState = { collageImageSrc: (block as any).collageImageSrc };
-                                                                     const afterState = { collageImageSrc: img.getSrc() };
-                                                                     (block as any).collageImageSrc = img.getSrc();
-                                                                     commands.push(new StyleChangeCommand("Fill Block", block as fabric.Object, beforeState, afterState));
-                                                                  });
-                                                                  fabricRef.current?.requestRenderAll();
-                                                                  executeCommand(new MacroCommand("Fill Blocks Randomly", commands));
-                                                                  closeContextMenu();
-                                                               }} />
-                                                            </>
-                                                         )}
-                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                      </>
-                                                   )}
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
-                                                   {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
-                                                      <>
-                                                         <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
-                                                         <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                      </>
-                                                   )}
-                                                   <ContextMenuItem icon={AlignLeft} label="Align Left" onClick={() => { alignSelection('left'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={AlignCenter} label="Align Center H" onClick={() => { alignSelection('centerH'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={AlignRight} label="Align Right" onClick={() => { alignSelection('right'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                   <ContextMenuItem icon={Move} label="Fit To Artboard" onClick={() => { alignSelection('fit'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={SquareDashed} label="Fill Artboard" onClick={() => { alignSelection('fill'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Expand} label="Stretch to Artboard" onClick={() => { alignSelection('stretch'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                   <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                   <ContextMenuItem icon={Crop} label="Resize Artboard to Selection" onClick={() => { resizeArtboardToSelection('both'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Crop} label="Resize Artboard Width to Selection" onClick={() => { resizeArtboardToSelection('width'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                   <ContextSubMenu icon={Download} label="Download">
-                                                      <ContextMenuItem label="PNG" onClick={() => { downloadActiveObjectAsFormat('png'); closeContextMenu(); }} />
-                                                      <ContextMenuItem label="JPEG" onClick={() => { downloadActiveObjectAsFormat('jpeg'); closeContextMenu(); }} />
-                                                      <ContextMenuItem label="WEBP" onClick={() => { downloadActiveObjectAsFormat('webp'); closeContextMenu(); }} />
-                                                      <ContextMenuItem label="JXL" onClick={() => { downloadActiveObjectAsFormat('jxl'); closeContextMenu(); }} />
-                                                      {activeContextMenu.obj?.type !== 'image' && (
-                                                         <ContextMenuItem label="SVG" onClick={() => { downloadActiveObjectAsFormat('svg'); closeContextMenu(); }} />
-                                                      )}
-                                                   </ContextSubMenu>
-                                                   <ContextMenuItem icon={Copy} label="Copy to Clipboard (PNG)" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
-                                                   {activeContextMenu.obj?.type !== 'image' && (
-                                                      <ContextMenuItem icon={Copy} label="Copy to Clipboard (SVG)" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
-                                                   )}
-                                                   <ContextMenuItem icon={Copy} label="Copy Object" shortcut="Ctrl+C" onClick={() => {
-                                                      const active = fabricRef.current?.getActiveObject();
-                                                      if (active) {
-                                                         active.clone(['id', 'artboardId']).then((cloned) => {
-                                                            (window as any)._fabricInternalClipboard = cloned;
-                                                            setNotification({ message: 'Object copied', type: 'success' });
-                                                         });
-                                                      }
-                                                      closeContextMenu();
-                                                   }} />
-                                                   <ContextMenuItem icon={Clipboard} label="Paste Object" shortcut="Ctrl+V" onClick={() => {
-                                                      const cloned = (window as any)._fabricInternalClipboard;
-                                                      if (cloned) {
-                                                         cloned.clone().then((clonedObj: any) => {
-                                                            fabricRef.current?.discardActiveObject();
-                                                            let newLeft = (clonedObj.left || 0) + 20;
-                                                            let newTop = (clonedObj.top || 0) + 20;
-                                                            const canvas = fabricRef.current;
-                                                            if (canvas && canvas.vptCoords) {
-                                                               const { tl, br } = canvas.vptCoords;
-                                                               if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
-                                                                  const center = canvas.getVpCenter();
-                                                                  newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
-                                                                  newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
-                                                               }
-                                                            }
-                                                            clonedObj.set({
-                                                               left: newLeft,
-                                                               top: newTop,
-                                                               id: Date.now().toString() + Math.random().toString(),
-                                                               evented: true,
-                                                            });
-                                                            if (clonedObj.type === 'activeSelection') {
-                                                               clonedObj.canvas = fabricRef.current;
-                                                               clonedObj.forEachObject((obj: any) => {
-                                                                  obj.id = Date.now().toString() + Math.random().toString();
-                                                                  fabricRef.current?.add(obj);
-                                                               });
-                                                               clonedObj.setCoords();
-                                                            } else {
-                                                               fabricRef.current?.add(clonedObj);
-                                                            }
-                                                            fabricRef.current?.setActiveObject(clonedObj);
-                                                            fabricRef.current?.requestRenderAll();
-                                                            updateLayersList();
-                                                         });
-                                                      }
-                                                      closeContextMenu();
-                                                   }} />
-                                                   <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
-                                                   {activeContextMenu.obj?.type === 'group' && (
-                                                      <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => {
-                                                         const group = activeContextMenu.obj as any;
-                                                         if (group && typeof group.toActiveSelection === 'function') {
-                                                            const sel = group.toActiveSelection();
-                                                            fabricRef.current?.setActiveObject(sel);
-                                                         } else {
-                                                            const items = (group as any).removeAll();
-                                                            fabricRef.current?.remove(group as fabric.Group);
-                                                            items.forEach(i => fabricRef.current?.add(i));
-                                                            const sel = new fabric.ActiveSelection(items, { canvas: fabricRef.current });
-                                                            fabricRef.current?.setActiveObject(sel);
-                                                         }
-                                                         fabricRef.current?.requestRenderAll();
-                                                         updateLayersList();
-                                                         closeContextMenu();
-                                                      }} />
-                                                   )}
-                                                   <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-
-                                                   {(() => {
-                                                      let maxIdx = -1;
-                                                      let minIdx = Number.MAX_SAFE_INTEGER;
-                                                      const totalObjs = fabricRef.current?.getObjects().length || 0;
-                                                      activeContextMenu.targets.forEach(t => {
-                                                         const idx = fabricRef.current?.getObjects().indexOf(t) ?? -1;
-                                                         if (idx > maxIdx) maxIdx = idx;
-                                                         if (idx !== -1 && idx < minIdx) minIdx = idx;
-                                                      });
-                                                      const canBringForward = maxIdx !== -1 && maxIdx < totalObjs - 1;
-                                                      const canSendBackward = minIdx !== -1 && minIdx > 0;
-
-                                                      return (
-                                                         <>
-                                                            <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Layer Order</div>
-                                                            <ContextMenuItem icon={BringToFront} label="Bring to Front" shortcut="Ctrl+Shift+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('front'); closeContextMenu(); }} />
-                                                            <ContextMenuItem icon={ArrowUp} label="Bring Forward" shortcut="Ctrl+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('forward'); closeContextMenu(); }} />
-                                                            <ContextMenuItem icon={ArrowDown} label="Send Backward" shortcut="Ctrl+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('backward'); closeContextMenu(); }} />
-                                                            <ContextMenuItem icon={SendToBack} label="Send to Back" shortcut="Ctrl+Shift+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('back'); closeContextMenu(); }} />
-                                                            <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                         </>
-                                                      );
-                                                   })()}
-
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Move To Artboard</div>
-                                                   {artboards.map(b => (
-                                                      <ContextMenuItem
-                                                         key={b.id}
-                                                         icon={SquareDashed}
-                                                         label={b.name}
-                                                         onClick={() => {
-                                                            if (!fabricRef.current) return;
-                                                            const activeSelection = fabricRef.current.getActiveObject();
-                                                            if (!activeSelection) return;
-
-                                                            let objectsToProcess: any[] = [];
-                                                            if (activeSelection.type === 'activeSelection') {
-                                                               objectsToProcess = (activeSelection as any).getObjects();
-                                                               fabricRef.current.discardActiveObject();
-                                                            } else {
-                                                               objectsToProcess = [activeSelection];
-                                                            }
-
-                                                            objectsToProcess.forEach(obj => {
-                                                               const prevArtboardId = obj.artboardId;
-                                                               if (prevArtboardId !== b.id) {
-                                                                  const prevBoard = artboards.find(x => x.id === prevArtboardId) || artboards[0];
-                                                                  const dx = b.x - prevBoard.x;
-                                                                  const dy = b.y - prevBoard.y;
-
-                                                                  obj.artboardId = b.id;
-                                                                  if (typeof obj.set === 'function') {
-                                                                     obj.set({
-                                                                        left: (obj.left ?? 0) + dx,
-                                                                        top: (obj.top ?? 0) + dy
-                                                                     });
-                                                                     if (typeof obj.setCoords === 'function') obj.setCoords();
-                                                                  }
-                                                               }
-                                                            });
-
-                                                            if (objectsToProcess.length > 1) {
-                                                               const sel = new fabric.ActiveSelection(objectsToProcess, { canvas: fabricRef.current });
-                                                               fabricRef.current.setActiveObject(sel);
-                                                            } else if (objectsToProcess.length === 1) {
-                                                               fabricRef.current.setActiveObject(objectsToProcess[0]);
-                                                            }
-
-                                                            fabricRef.current.renderAll();
-                                                            updateLayersList();
-                                                            closeContextMenu();
-                                                         }}
-                                                      />
-                                                   ))}
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
-                                                   <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
-                                                      try {
-                                                         const items = await navigator.clipboard.read();
-                                                         const results = await processPasteEvent({ clipboardData: { items: items as any } } as any);
-                                                         if (results.length > 0) importAssets(results);
-                                                      } catch (e) { }
-                                                      closeContextMenu();
-                                                   }} />
-                                                   <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
-                                                      setShowUrlPrompt(true);
-                                                      closeContextMenu();
-                                                   }} />
-                                                </>
-                                             ) : (
-                                                <>
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Canvas Actions</div>
-                                                   <ContextMenuItem icon={Plus} label="New Artboard" onClick={() => { createArtboard(); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Type} label="Add Text" onClick={() => { addText(); closeContextMenu(); }} />
-                                                   <ContextSubMenu icon={Grid} label={`Background: ${canvasPattern === 'flat' ? 'Flat Color' : canvasPattern === 'grid' ? 'Linear Grid' : canvasPattern === 'dots' ? 'Dots' : canvasPattern === 'plus' ? 'Plus Crosses' : 'Checkerboard'}`}>
-                                                       <ContextMenuItem icon={canvasPattern === 'flat' ? Check : undefined} label="Flat Color (Solid)" onClick={() => { changeCanvasPattern('flat'); closeContextMenu(); }} />
-                                                       <ContextMenuItem icon={canvasPattern === 'grid' ? Check : undefined} label="Linear Grid" onClick={() => { changeCanvasPattern('grid'); closeContextMenu(); }} />
-                                                       <ContextMenuItem icon={canvasPattern === 'dots' ? Check : undefined} label="Dots Pattern" onClick={() => { changeCanvasPattern('dots'); closeContextMenu(); }} />
-                                                       <ContextMenuItem icon={canvasPattern === 'plus' ? Check : undefined} label="Plus Crosses (+)" onClick={() => { changeCanvasPattern('plus'); closeContextMenu(); }} />
-                                                       <ContextMenuItem icon={canvasPattern === 'squares' ? Check : undefined} label="Checkerboard" onClick={() => { changeCanvasPattern('squares'); closeContextMenu(); }} />
-                                                    </ContextSubMenu>
-                                                   <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
-                                                   <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
-                                                   <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
-                                                      try {
-                                                         const items = await navigator.clipboard.read();
-                                                         // This uses a hacky adapter to pass to our processPasteEvent which expects a standard PasteEvent
-                                                         const dataItems = Array.from(items).flatMap((item: any) =>
-                                                            item.types.map((type: string) => ({
-                                                               type,
-                                                               getType: () => item.getType(type),
-                                                            }))
-                                                         );
-                                                         // We actually already have a processClipboardItems function for exactly this!
-                                                         const { processClipboardItems } = await import('../image-import/clipboard/clipboardImporter');
-                                                         const results = await processClipboardItems(items as any);
-                                                         if (results.length > 0) importAssets(results);
-                                                      } catch (e) { }
-                                                      closeContextMenu();
-                                                   }} />
-                                                   <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
-                                                   <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
-                                                      setShowUrlPrompt(true);
-                                                      closeContextMenu();
-                                                   }} />
-                                                </>
-                                             )}
-                                          </div>,
-                                          document.body
-                                       )}
-
-                                       {/* Mobile Artboard Gallery Modal */}
-                                       {isMobile && showMobileArtboardsGallery && (
-                                          <div className="fixed inset-0 z-[100] bg-[#121212] overflow-y-auto w-full h-full animate-in fade-in zoom-in-95 duration-200">
-                                             <div className="sticky top-0 bg-[#1A1A1A] border-b border-[#2C2C2C] p-4 flex justify-between items-center z-10 shadow-md">
-                                                <h2 className="text-white font-bold tracking-tight text-lg flex items-center gap-2">
-                                                   <SquareDashed size={18} className="text-blue-500" />
-                                                   Select Artboard
-                                                </h2>
-                                                <button
-                                                   onClick={() => setShowMobileArtboardsGallery(false)}
-                                                   className="w-8 h-8 flex items-center justify-center rounded-full bg-[#333] text-white hover:bg-[#444]"
-                                                >
-                                                   <X size={18} />
-                                                </button>
-                                             </div>
-
-                                             <div className="p-4 grid grid-cols-2 gap-4 pb-20">
-                                                {artboards.map(b => {
-                                                   const isActive = b.id === activeArtboardId;
                                                    return (
                                                       <div
-                                                         key={b.id}
-                                                         onClick={() => {
-                                                            setActiveArtboardId(b.id);
-                                                            setShowMobileArtboardsGallery(false);
+                                                         id="brush-hud-overlay"
+                                                         className="absolute pointer-events-none z-[100] flex flex-col items-center justify-center select-none"
+                                                         style={{
+                                                            left: hudPosition.x,
+                                                            top: hudPosition.y,
+                                                            transform: `translate(-50%, -50%) scale(${hudFadingOut ? 0.92 : 1})`,
+                                                            opacity: hudFadingOut ? 0 : 1,
+                                                            transition: 'opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.16, 1, 0.3, 1)',
                                                          }}
-                                                         className={`flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-blue-600/10 border-blue-500' : 'bg-[#1E1E1E] border-[#333] hover:border-gray-500'}`}
                                                       >
-                                                         <div className="w-full aspect-square bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner">
-                                                            <div
-                                                               className="w-16 h-16 rounded-sm shadow-sm opacity-80"
-                                                               style={{
-                                                                  backgroundColor: b.backgroundColor || '#fff',
-                                                                  aspectRatio: `${b.width}/${b.height}`,
-                                                                  width: b.orientation === 'landscape' ? '60%' : undefined,
-                                                                  height: b.orientation === 'portrait' ? '60%' : undefined,
-                                                                  ...(b.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
-                                                               }}
-                                                            />
-                                                            {isActive && (
-                                                               <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+                                                         {/* Circle Wrapper with SVG Progress Dial */}
+                                                         <div className="relative flex items-center justify-center" style={{ width: `${svgSize}px`, height: `${svgSize}px` }}>
+
+                                                            <svg
+                                                               width={svgSize}
+                                                               height={svgSize}
+                                                               className="absolute top-0 left-0 pointer-events-none"
+                                                            >
+                                                               {/* Contrast dark dropshadow circle */}
+                                                               <circle
+                                                                  cx={center}
+                                                                  cy={center}
+                                                                  r={radius}
+                                                                  fill="none"
+                                                                  stroke="rgba(0, 0, 0, 0.5)"
+                                                                  strokeWidth={strokeWidth + 2}
+                                                               />
+                                                               {/* Empty track */}
+                                                               <circle
+                                                                  cx={center}
+                                                                  cy={center}
+                                                                  r={radius}
+                                                                  fill="none"
+                                                                  stroke="rgba(255, 255, 255, 0.15)"
+                                                                  strokeWidth={strokeWidth}
+                                                               />
+                                                               {/* Dynamic trace progress segment */}
+                                                               <circle
+                                                                  cx={center}
+                                                                  cy={center}
+                                                                  r={radius}
+                                                                  fill="none"
+                                                                  stroke={strokeColor}
+                                                                  strokeWidth={strokeWidth}
+                                                                  strokeDasharray={circumference}
+                                                                  strokeDashoffset={strokeDashoffset}
+                                                                  strokeLinecap="round"
+                                                                  transform={`rotate(-90 ${center} ${center})`}
+                                                                  className="transition-[stroke-dashoffset] duration-75 ease"
+                                                                  style={{
+                                                                     filter: `drop-shadow(0 0 3px ${strokeColor}cc)`,
+                                                                  }}
+                                                               />
+                                                            </svg>
+
+                                                            {/* Center circle brush tip container with checkerboard bg */}
+                                                            <div style={previewStyle as React.CSSProperties}>
+                                                               <div style={previewCoreStyle} />
+                                                            </div>
+                                                         </div>
+
+                                                         {/* Floating HUD Information Pill */}
+                                                         <div className="mt-4 bg-[#0B0D13]/95 backdrop-blur-xl border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.6)] rounded-full px-5 py-2.5 flex items-center gap-3 select-none animate-in fade-in duration-100 ease-out">
+                                                            {activeBrushProperty === 'size' && (
+                                                               <>
+                                                                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                                                     <Brush size={12} className="text-blue-400" />
+                                                                     <span>Size</span>
+                                                                  </div>
+                                                                  <div className="w-px h-3.5 bg-white/15" />
+                                                                  <div className="text-sm font-mono font-extrabold text-white">
+                                                                     {brushSize}px
+                                                                  </div>
+                                                               </>
+                                                            )}
+                                                            {activeBrushProperty === 'opacity' && (
+                                                               <>
+                                                                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                                                     <Droplets size={12} className="text-purple-400" />
+                                                                     <span>Opacity</span>
+                                                                  </div>
+                                                                  <div className="w-px h-3.5 bg-white/15" />
+                                                                  <div className="text-sm font-mono font-extrabold text-white">
+                                                                     {brushOpacity}%
+                                                                  </div>
+                                                               </>
+                                                            )}
+                                                            {activeBrushProperty === 'hardness' && (
+                                                               <>
+                                                                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 uppercase tracking-widest font-black">
+                                                                     <Circle size={12} className="text-amber-400 fill-amber-400/10" />
+                                                                     <span>Hardness</span>
+                                                                  </div>
+                                                                  <div className="w-px h-3.5 bg-white/15" />
+                                                                  <div className="text-sm font-mono font-extrabold text-white">
+                                                                     {brushHardness}%
+                                                                  </div>
+                                                               </>
                                                             )}
                                                          </div>
-                                                         <div className="flex flex-col">
-                                                            <span className={`text-sm font-bold truncate ${isActive ? 'text-blue-400' : 'text-white'}`}>{b.name}</span>
-                                                            <span className="text-[10px] text-gray-500 font-mono tracking-tighter">{b.width} × {b.height}</span>
+                                                      </div>
+                                                   );
+                                                })()}
+
+                                                {/* Empty State Overlay */}
+                                                {isLoaded && artboards.length === 0 && (
+                                                   <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-100/80 dark:bg-[#121212]/80 backdrop-blur-sm pointer-events-auto p-4 md:p-6">
+                                                      <div className="flex flex-col items-center gap-3 md:gap-4 p-5 md:p-8 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-2xl shadow-2xl w-full max-w-[320px] md:max-w-sm text-center mx-auto relative overflow-hidden">
+                                                         <div className="absolute inset-0 opacity-[0.03] bg-[linear-gradient(45deg,transparent_25%,white_50%,transparent_75%,transparent_100%)] bg-[length:20px_20px]" />
+                                                         <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-500 mb-1 shadow-inner relative z-10 ring-1 ring-blue-500/20">
+                                                            <SquareDashed size={24} className="w-5 h-5 md:w-7 md:h-7" />
+                                                         </div>
+                                                         <div className="relative z-10 w-full">
+                                                            <h3 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-slate-800 dark:text-white mb-1.5 md:mb-2">No active project</h3>
+                                                            <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 leading-relaxed px-2">Create a new artboard to start placing elements and building your composition.</p>
+                                                         </div>
+                                                         <button
+                                                            onClick={() => createArtboard()}
+                                                            className="relative z-10 w-full flex items-center justify-center gap-2 px-5 md:px-6 h-10 md:h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition shadow-lg shadow-blue-600/20 active:scale-95"
+                                                         >
+                                                            <Plus size={16} /> Create Artboard
+                                                         </button>
+                                                      </div>
+                                                   </div>
+                                                )}
+
+                                                {/* Anchored to the bottom: at the top it sat on the crop
+                                                    box's own top edge and covered the resize handles that
+                                                    have to stay reachable while cropping. */}
+                                                {isCropping && (
+                                                   <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] sm:w-auto max-w-[440px] sm:max-w-none z-[50] animate-in fade-in slide-in-from-bottom-3 duration-150">
+                                                      <div className="bg-white/95 dark:bg-[#1E1E1E]/95 text-slate-800 dark:text-white backdrop-blur-xl border border-slate-200 dark:border-[#2D2D2D] p-1.5 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12)] dark:shadow-[0_16px_32px_rgba(0,0,0,0.6)] flex items-center gap-1.5 sm:gap-2.5 select-none">
+                                                         <div className="hidden md:flex items-center gap-1.5 border-r border-slate-200 dark:border-[#333] pl-1.5 pr-3 shrink-0">
+                                                            <div className="w-6 h-6 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                                                               <Crop size={14} />
+                                                            </div>
+                                                            <span className="text-xs font-bold text-slate-800 dark:text-slate-100">Crop</span>
+                                                         </div>
+
+                                                         {/* Takes the leftover width on a phone rather than a
+                                                             fixed size that squeezed out the buttons. */}
+                                                         <div className="flex-1 min-w-0 sm:flex-none sm:w-52">
+                                                            <ModernSelect
+                                                               value={cropRatio}
+                                                               onChange={handleCropRatioChange}
+                                                               groups={CROP_RATIO_GROUPS}
+                                                            />
+                                                         </div>
+
+                                                         <div className="h-5 w-px bg-slate-200 dark:bg-[#333] shrink-0" />
+
+                                                         <div className="flex items-center gap-1.5 shrink-0">
+                                                            <button
+                                                               onClick={cancelCrop}
+                                                               title="Cancel crop (Esc)"
+                                                               className="w-9 sm:w-auto sm:px-3 h-9 bg-slate-100 hover:bg-slate-200 dark:bg-[#2A2A2A] dark:hover:bg-[#333] text-slate-600 dark:text-slate-300 rounded-xl text-[11px] font-semibold transition flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-slate-200 dark:border-transparent"
+                                                            >
+                                                               <X size={14} /> <span className="hidden sm:inline">Cancel</span>
+                                                            </button>
+                                                            <button
+                                                               onClick={applyCrop}
+                                                               title="Apply crop (Enter)"
+                                                               className="w-9 sm:w-auto sm:px-3.5 h-9 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-[11px] font-bold transition flex items-center justify-center gap-1.5 whitespace-nowrap shadow-md shadow-blue-600/20 active:scale-95"
+                                                            >
+                                                               <Check size={14} /> <span className="hidden sm:inline">Apply</span>
+                                                            </button>
                                                          </div>
                                                       </div>
-                                                   )
-                                                })}
-
-                                                <div
-                                                   onClick={() => {
-                                                      createArtboard();
-                                                      setShowMobileArtboardsGallery(false);
-                                                   }}
-                                                   className="flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all bg-[#1E1E1E] border border-dashed border-[#444] hover:border-gray-400 items-center justify-center group"
-                                                >
-                                                   <div className="w-10 h-10 rounded-full bg-blue-600 group-hover:bg-blue-500 flex items-center justify-center text-white shadow-lg transition-colors">
-                                                      <Plus size={20} />
                                                    </div>
-                                                   <span className="text-xs font-bold text-gray-400 group-hover:text-white mt-1">New Artboard</span>
+                                                )}
+
+                                                {/* Squoosh-like image comparison viewer component */}
+                                                <React.Suspense fallback={null}>
+                                                   <ExportLiveComparisonViewer
+                                                      comparisonMode={comparisonMode}
+                                                      isMobile={isMobile}
+                                                      activeTab={activeTab}
+                                                      setActiveTab={setActiveTab}
+                                                      handleExport={handleExport}
+                                                      comparisonPreviewMode={comparisonPreviewMode}
+                                                      setComparisonPreviewMode={setComparisonPreviewMode}
+                                                      comparisonZoom={comparisonZoom}
+                                                      setComparisonZoom={setComparisonZoom}
+                                                      transformComponentRef={transformComponentRef}
+                                                      sliderRef={sliderRef}
+                                                      handlePointerMove={handlePointerMove}
+                                                      handlePointerUp={handlePointerUp}
+                                                      handleKeyDown={handleKeyDown}
+                                                      artboards={artboards}
+                                                      activeArtboardId={activeArtboardId}
+                                                      isDraggingDivider={isDraggingDivider}
+                                                      originalPreviewDims={originalPreviewDims}
+                                                      optimizedPreviewDims={optimizedPreviewDims}
+                                                      optimizedImageUrl={optimizedImageUrl}
+                                                      originalImageUrl={originalImageUrl}
+                                                      comparisonDivider={comparisonDivider}
+                                                      handlePointerDown={handlePointerDown}
+                                                      setComparisonDivider={setComparisonDivider}
+                                                      showDiagnostics={showDiagnostics}
+                                                      setShowDiagnostics={setShowDiagnostics}
+                                                      originalSize={originalSize}
+                                                      optimizedSize={optimizedSize}
+                                                      exportSettings={exportSettings}
+                                                      setExportSettings={setExportSettings}
+                                                      exportTarget={exportTarget}
+                                                      psnr={psnr}
+                                                      isGeneratingPreview={isGeneratingPreview}
+                                                      currentPreviewOp={currentPreviewOp}
+                                                      showMobileCompareSwitcher={showMobileCompareSwitcher}
+                                                      setShowMobileCompareSwitcher={setShowMobileCompareSwitcher}
+                                                      showMobileDiagnosticsSheet={showMobileDiagnosticsSheet}
+                                                      setShowMobileDiagnosticsSheet={setShowMobileDiagnosticsSheet}
+                                                      mobileDetailsExpanded={mobileDetailsExpanded}
+                                                      setMobileDetailsExpanded={setMobileDetailsExpanded}
+                                                   />
+                                                </React.Suspense>
+
+                                                {/* Floating Canvas Navigation & Zoom Controller */}
+                                                <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-white/90 dark:bg-[#1A1A1A]/90 hover:bg-white dark:hover:bg-[#1A1A1A] text-slate-700 dark:text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
+                                                   <button
+                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
+                                                      onClick={() => {
+                                                         if (!fabricRef.current) return;
+                                                         let z = fabricRef.current.getZoom();
+                                                         z = Math.max(0.1, z - 0.15);
+                                                         fabricRef.current.setZoom(z);
+                                                         setZoomPercent(Math.round(z * 100));
+                                                         fabricRef.current.requestRenderAll();
+                                                      }}
+                                                      title="Zoom Out"
+                                                   >
+                                                      <Minus size={13} />
+                                                   </button>
+
+                                                   <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-800 dark:text-slate-200">
+                                                      {zoomPercent}%
+                                                   </span>
+
+                                                   <button
+                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
+                                                      onClick={() => {
+                                                         if (!fabricRef.current) return;
+                                                         let z = fabricRef.current.getZoom();
+                                                         z = Math.min(10, z + 0.15);
+                                                         fabricRef.current.setZoom(z);
+                                                         setZoomPercent(Math.round(z * 100));
+                                                         fabricRef.current.requestRenderAll();
+                                                      }}
+                                                      title="Zoom In"
+                                                   >
+                                                      <Plus size={13} />
+                                                   </button>
+
+                                                   <div className="w-px h-4 bg-slate-200 dark:bg-[#2D2D2D]" />
+
+                                                   <button
+                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
+                                                      onClick={() => {
+                                                         if (!fabricRef.current) return;
+                                                         const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
+                                                         if (!activeB) return;
+                                                         const vpt = fabricRef.current.viewportTransform!;
+                                                         const newVpt = vpt.slice() as any;
+                                                         newVpt[0] = 1.0;
+                                                         newVpt[3] = 1.0;
+                                                         const cw = fabricRef.current.width!;
+                                                         const ch = fabricRef.current.height!;
+                                                         newVpt[4] = cw / 2 - (activeB.x + activeB.width / 2);
+                                                         newVpt[5] = ch / 2 - (activeB.y + activeB.height / 2);
+                                                         fabricRef.current.setViewportTransform(newVpt);
+                                                         setZoomPercent(100);
+                                                      }}
+                                                      title="Recenter Camera on Active Artboard"
+                                                   >
+                                                      <Target size={14} />
+                                                   </button>
+
+                                                   <button
+                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
+                                                      onClick={() => {
+                                                         if (!fabricRef.current || artboardsRef.current.length === 0) return;
+                                                         let minX = Infinity, minY = Infinity;
+                                                         let maxX = -Infinity, maxY = -Infinity;
+                                                         artboardsRef.current.forEach(b => {
+                                                            minX = Math.min(minX, b.x);
+                                                            minY = Math.min(minY, b.y);
+                                                            maxX = Math.max(maxX, b.x + b.width);
+                                                            maxY = Math.max(maxY, b.y + b.height);
+                                                         });
+                                                         minX -= 60; minY -= 60;
+                                                         maxX += 60; maxY += 60;
+
+                                                         const w = maxX - minX;
+                                                         const h = maxY - minY;
+                                                         const cw = fabricRef.current.width!;
+                                                         const ch = fabricRef.current.height!;
+
+                                                         const zoom = Math.max(0.1, Math.min(4, Math.min(cw / w, ch / h)));
+                                                         const vpt = fabricRef.current.viewportTransform!;
+                                                         const newVpt = vpt.slice() as any;
+                                                         newVpt[0] = zoom;
+                                                         newVpt[3] = zoom;
+                                                         newVpt[4] = cw / 2 - zoom * (minX + w / 2);
+                                                         newVpt[5] = ch / 2 - zoom * (minY + h / 2);
+
+                                                         fabricRef.current.setViewportTransform(newVpt);
+                                                         setZoomPercent(Math.round(zoom * 100));
+                                                      }}
+                                                      title="Fit All Artboards in Viewport"
+                                                   >
+                                                      <Expand size={14} />
+                                                   </button>
                                                 </div>
                                              </div>
                                           </div>
-                                       )}
 
-                                       {/* Rename Artboard Modal Dialog */}
-                                       {renamingArtboard && createPortal(
-                                          <div
-                                             className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-                                             onClick={() => setRenamingArtboard(null)}
-                                          >
+                                          {/* Resize Handle (Desktop Only) */}
+                                          {(!isMobile) && (
                                              <div
-                                                className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl shadow-[0_24px_64px_rgba(0,0,0,0.85)] w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 cursor-default"
+                                                onPointerDown={(e) => {
+                                                   setIsResizingPanel(true);
+                                                   e.preventDefault();
+                                                }}
+                                                className="relative z-20 w-1.5 -ml-[1px] -mr-[5px] h-full cursor-col-resize flex items-stretch justify-center group"
+                                             >
+                                                <div className={`h-full w-[2px] transition-colors duration-150 ${isResizingPanel ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] scale-x-150' : 'bg-[#2C2C2C] group-hover:bg-blue-500'}`} />
+                                             </div>
+                                          )}
+
+                                          {/* Mobile Filter / Bottom Bar */}
+                                          {isMobile && !showMobilePanel && (
+                                             <div className="flex h-14 bg-[#1A1A1A] border-t border-[#2C2C2C] z-30 shrink-0 w-full px-2 items-center justify-between overflow-x-auto no-scrollbar relative shadow-[0_-4px_24px_rgba(0,0,0,0.5)]">
+                                                <ToolBtn icon={MousePointer2} tool="select" current={activeTool} set={setTool} title="Move" />
+                                                <ToolBtn icon={Hand} tool="pan" current={activeTool} set={setTool} title="Pan" />
+                                                <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush" />
+                                                <ToolBtn icon={Eraser} tool="eraser" current={activeTool} set={setTool} title="Eraser" />
+                                                <ToolBtn icon={Type} tool="text" current={activeTool} set={addText} title="Text" />
+                                                <ToolBtn icon={Crop} tool="crop" current={activeTool} set={() => enterCropMode()} title="Crop" />
+
+                                                <div className="flex-1" />
+
+                                                <div className="relative shrink-0 flex items-center justify-center w-10">
+                                                   <ColorPickerTrigger
+                                                      color={brushColor || "#ffffff"}
+                                                      onChange={changeCurrentColor}
+                                                      className="w-7 h-7 rounded-full border border-white/20 shadow-inner relative overflow-hidden"
+                                                   />
+                                                </div>
+
+                                                <div className="w-px h-8 bg-[#3A3A3A] mx-2 shrink-0" />
+
+                                                <button
+                                                   onClick={() => setShowMobilePanel(true)}
+                                                   className="h-10 w-10 shrink-0 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl flex items-center justify-center transition-colors shadow-sm ml-auto"
+                                                >
+                                                   <Layers size={18} />
+                                                </button>
+                                             </div>
+                                          )}
+
+
+
+                                          {/* Right Sidebar / Bottom Panel - Logic Panels */}
+                                          {(!isMobile || showMobilePanel) && (
+                                             <div
+                                                ref={panelDOMRef}
+                                                style={isMobile ? {
+                                                   width: '100%',
+                                                   height: `${mobilePanelHeight}vh`,
+                                                } : { width: `${panelWidth}px` }}
+                                                className={`border-t md:border-t-0 md:border-l ${isResizingPanel ? 'border-blue-500/50' : 'border-slate-200 dark:border-[#2C2C2C]'} bg-slate-50 dark:bg-[#1E1E1E] flex flex-col shrink-0 overflow-hidden md:shadow-[-4px_0_12px_rgba(0,0,0,0.08)] dark:md:shadow-[-4px_0_12px_rgba(0,0,0,0.2)] transition-colors duration-150 relative`}
+                                             >
+                                                {/* Mobile Resize Pill Handle */}
+                                                {isMobile && (
+                                                   <div
+                                                      className="w-full h-8 bg-slate-100 dark:bg-[#1A1A1A] flex items-center justify-center shrink-0 cursor-row-resize z-10 active:bg-slate-200/80 dark:active:bg-[#1A1A1A]/80 transition-colors touch-none select-none"
+                                                      onPointerDown={(e) => {
+                                                         e.currentTarget.setPointerCapture(e.pointerId);
+                                                         setIsResizingPanel(true);
+                                                         e.preventDefault();
+                                                         e.stopPropagation();
+                                                      }}
+                                                   >
+                                                      <div className={`w-14 h-1.5 rounded-full transition-colors ${isResizingPanel ? 'bg-blue-500' : 'bg-slate-300 dark:bg-[#555] hover:bg-slate-400 dark:hover:bg-[#777]'}`} />
+                                                   </div>
+                                                )}
+
+                                                <div
+                                                   className="flex w-full bg-slate-100 dark:bg-[#1A1A1A] border-b border-slate-200 dark:border-[#2C2C2C] select-none shrink-0 relative"
+                                                   onTouchStart={(e) => {
+                                                      if (!isMobile) return;
+                                                      const startY = e.touches[0].clientY;
+                                                      const handleEnd = (eEnd: TouchEvent) => {
+                                                         if (eEnd.changedTouches[0].clientY - startY > 50) setShowMobilePanel(false);
+                                                         document.removeEventListener('touchend', handleEnd);
+                                                      };
+                                                      document.addEventListener('touchend', handleEnd);
+                                                   }}
+                                                >
+                                                   <div className={`flex-1 overflow-x-auto flex no-scrollbar ${isMobile ? 'pr-10' : ''}`}>
+                                                      <TabBtn tab="properties" active={activeTab} set={setActiveTab} label="Props" icon={Settings} />
+                                                      <TabBtn tab="artboards" active={activeTab} set={setActiveTab} label="Boards" icon={SquareDashed} />
+                                                      <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
+                                                      <TabBtn tab="ai" active={activeTab} set={setActiveTab} label="AI Tools" icon={Zap} />
+                                                      <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
+                                                      <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
+                                                      <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
+                                                      <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
+                                                   </div>
+                                                   {isMobile && (
+                                                      <button
+                                                         onClick={() => setShowMobilePanel(false)}
+                                                         className="absolute right-0 top-0 bottom-0 w-12 flex items-center justify-center bg-slate-100 dark:bg-[#1A1A1A] border-l border-slate-200 dark:border-[#2C2C2C] text-slate-400 dark:text-[#8C8C8C] hover:text-slate-700 dark:hover:text-white shadow-[-4px_0_8px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_8px_rgba(0,0,0,0.2)] z-10"
+                                                      >
+                                                         <ChevronDown size={18} />
+                                                      </button>
+                                                   )}
+                                                </div>
+
+                                                <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                                                   <React.Suspense fallback={<div className="p-4 text-center text-sm text-[#8A8A8A]">Loading panel...</div>}>
+                                                      {/* PROPERTIES PANEL */}
+                                                      {activeTab === 'properties' && (
+                                                         <PropertiesTab />
+                                                      )}
+                                                      {/* ARTBOARDS PANEL */}
+                                                      {activeTab === 'artboards' && (
+                                                         <ArtboardsTab />
+
+                                                      )}
+                                                      {/* QUICK ACTIONS PANEL */}
+                                                      {activeTab === 'quick' && (
+                                                         <QuickActionsTab
+                                                            selectionType={selectionType}
+                                                            addFilterToPipeline={addFilterToPipeline}
+                                                            applyFilter={applyFilter}
+                                                            resetCrop={resetCrop}
+                                                            alignSelection={alignSelection}
+                                                            applyFrame={applyFrame}
+                                                            frameBorderWidth={frameBorderWidth}
+                                                            updateFrameBorderWidth={updateFrameBorderWidth}
+                                                            frameColor={frameColor}
+                                                            updateFrameColor={updateFrameColor}
+                                                            createArtboardFromPreset={createArtboardFromPreset}
+                                                         />
+                                                      )}
+
+                                                      {/* AI PANEL */}
+                                                      {(activeTab as string) === 'ai' && (
+                                                         <AIToolsPanel
+                                                            selectionType={selectionType}
+                                                            executeCommand={executeCommand}
+                                                         />
+                                                      )}
+
+                                                      {/* FILTERS PANEL */}
+                                                      {activeTab === 'filters' && <FilterStudioTab />}
+
+                                                      {/* LAYERS PANEL */}
+                                                      {activeTab === 'layers' && <LayersTab />}
+
+                                                      {/* HISTORY PANEL */}
+                                                      {activeTab === 'history' && (
+                                                         <div className="p-2">
+                                                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#A0A0A0] mb-3 ml-2 mt-2">Action History</div>
+                                                            <div className="space-y-1">
+                                                               {historyNames.map((name, idx) => {
+                                                                  const isCurrent = idx === commandIndex;
+                                                                  const isFuture = idx > commandIndex;
+                                                                  return (
+                                                                     <div key={idx} onClick={() => jumpToHistory(idx)} className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-xs transition-colors ${isCurrent ? 'bg-blue-600/20 text-blue-300 font-medium' : isFuture ? 'text-[#6A6A6A] hover:bg-[#2C2C2C]' : 'text-[#C0C0C0] hover:bg-[#2C2C2C]'}`}>
+                                                                        <div className={`w-2 h-2 rounded-full mr-3 ${isCurrent ? 'bg-blue-500' : isFuture ? 'bg-[#3A3A3A]' : 'bg-[#6A6A6A]'}`} />
+                                                                        {name}
+                                                                     </div>
+                                                                  );
+                                                               })}
+                                                               {historyNames.length === 0 && (
+                                                                  <div className="p-4 text-xs text-[#8A8A8A] text-center italic mt-10">No history track found.</div>
+                                                               )}
+                                                            </div>
+                                                         </div>
+                                                      )}
+
+                                                      {/* EXPORT WORKSPACE (jSquash with Artboards) */}
+                                                      {activeTab === 'export' && (
+                                                         <ExportStudio
+                                                            settings={exportSettings}
+                                                            onChange={setExportSettings}
+                                                            onExport={handleExport}
+                                                            isExporting={isExporting}
+                                                            originalSize={originalSize}
+                                                            optimizedSize={optimizedSize}
+                                                            originalWidth={artboards.find(b => b.id === activeArtboardId)?.width || 800}
+                                                            originalHeight={artboards.find(b => b.id === activeArtboardId)?.height || 600}
+                                                            psnr={psnr}
+                                                            artboards={artboards}
+                                                            activeArtboardId={activeArtboardId}
+                                                            setActiveArtboardId={setActiveArtboardId}
+                                                            exportTarget={exportTarget}
+                                                            setExportTarget={setExportTarget}
+                                                            selectedExportIds={selectedExportIds}
+                                                            setSelectedExportIds={setSelectedExportIds}
+                                                         />
+                                                      )}
+                                                   </React.Suspense>
+                                                </div>
+                                             </div>
+                                          )}
+
+                                          {/* Context Menu Portal */}
+                                          {activeContextMenu && createPortal(
+                                             <div
+                                                ref={contextMenuRef}
+                                                className="fixed z-[9999] w-52 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] shadow-2xl rounded-xl overflow-y-auto custom-scrollbar max-h-[85vh] p-1 context-menu-container text-slate-800 dark:text-white"
+                                                style={{ left: activeContextMenu.x, top: activeContextMenu.y, visibility: 'hidden' }}
                                                 onClick={(e) => e.stopPropagation()}
                                              >
-                                                <div className="px-5 py-4 border-b border-[#2C2C2C] flex items-center justify-between">
-                                                   <h3 className="text-sm font-semibold text-[#E0E0E0] flex items-center gap-2">
-                                                      <Edit2 size={14} className="text-blue-500" />
-                                                      Rename Artboard
-                                                   </h3>
+                                                {activeContextMenu.obj ? (
+                                                   <>
+                                                      {(activeContextMenu.obj as any)?.isCollageBlock && (
+                                                         <>
+                                                            <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-blue-500 border-b border-[#252525] mb-1">Smart Collage</div>
+                                                            <ContextMenuItem icon={LucideImage} label={(activeContextMenu.obj as any).collageImageSrc ? "Replace Image..." : "Add Image..."} onClick={() => {
+                                                               const input = document.createElement('input');
+                                                               input.type = 'file';
+                                                               input.accept = 'image/*';
+                                                               input.onchange = (e: any) => {
+                                                                  const file = e.target.files?.[0];
+                                                                  if (file) {
+                                                                     fabricRef.current?.setActiveObject(activeContextMenu.obj!);
+                                                                     fillCollageBlockWithImage(file);
+                                                                  }
+                                                               };
+                                                               input.click();
+                                                               closeContextMenu();
+                                                            }} />
+                                                            {(activeContextMenu.obj as any).collageImageSrc && (
+                                                               <ContextMenuItem icon={Trash2} label="Remove Image" onClick={() => {
+                                                                  const rect = activeContextMenu.obj as fabric.Rect;
+                                                                  const beforeState = { collageImageSrc: (rect as any).collageImageSrc };
+                                                                  const afterState = { collageImageSrc: null };
+                                                                  (rect as any).collageImageSrc = null;
+                                                                  fabricRef.current?.requestRenderAll();
+                                                                  executeCommand(new StyleChangeCommand("Remove Image", rect, beforeState, afterState));
+                                                                  closeContextMenu();
+                                                               }} />
+                                                            )}
+                                                            <ContextMenuItem icon={Copy} label="Duplicate Block" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
+                                                            <ContextMenuItem icon={Trash2} label="Delete Block" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
+                                                            <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                         </>
+                                                      )}
+                                                      {(activeContextMenu.targets?.filter(t => (t as any).isCollageBlock).length > 0 && activeContextMenu.targets?.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length > 0) && (
+                                                         <>
+                                                            <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-green-500 border-b border-[#252525] mb-1">Bulk Assignment</div>
+                                                            {activeContextMenu.targets.filter(t => (t as any).isCollageBlock).length === 1 && activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock).length === 1 ? (
+                                                               <ContextMenuItem icon={LucideImage} label="Fit Image into Block" onClick={() => {
+                                                                  const block = activeContextMenu.targets.find(t => (t as any).isCollageBlock) as fabric.Rect;
+                                                                  const img = activeContextMenu.targets.find(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image;
+
+                                                                  const beforeState = { collageImageSrc: (block as any).collageImageSrc };
+                                                                  const afterState = { collageImageSrc: img.getSrc() };
+                                                                  (block as any).collageImageSrc = img.getSrc();
+                                                                  fabricRef.current?.requestRenderAll();
+                                                                  executeCommand(new StyleChangeCommand("Fit Image into Block", block, beforeState, afterState));
+                                                                  closeContextMenu();
+                                                               }} />
+                                                            ) : (
+                                                               <>
+                                                                  <ContextMenuItem icon={LucideImage} label="Fill Blocks Sequentially" onClick={() => {
+                                                                     const blocks = activeContextMenu.targets.filter(t => (t as any).isCollageBlock);
+                                                                     const imgs = activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image[];
+                                                                     const commands: Command[] = [];
+                                                                     blocks.forEach((block, i) => {
+                                                                        const img = imgs[i % imgs.length];
+                                                                        const beforeState = { collageImageSrc: (block as any).collageImageSrc };
+                                                                        const afterState = { collageImageSrc: img.getSrc() };
+                                                                        (block as any).collageImageSrc = img.getSrc();
+                                                                        commands.push(new StyleChangeCommand("Fill Block", block as fabric.Object, beforeState, afterState));
+                                                                     });
+                                                                     fabricRef.current?.requestRenderAll();
+                                                                     executeCommand(new MacroCommand("Fill Blocks Sequentially", commands));
+                                                                     closeContextMenu();
+                                                                  }} />
+                                                                  <ContextMenuItem icon={LucideImage} label="Fill Blocks Randomly" onClick={() => {
+                                                                     const blocks = activeContextMenu.targets.filter(t => (t as any).isCollageBlock);
+                                                                     const imgs = activeContextMenu.targets.filter(t => t.type === 'image' && !(t as any).isCollageBlock) as fabric.Image[];
+                                                                     const commands: Command[] = [];
+                                                                     blocks.forEach((block) => {
+                                                                        const img = imgs[Math.floor(Math.random() * imgs.length)];
+                                                                        const beforeState = { collageImageSrc: (block as any).collageImageSrc };
+                                                                        const afterState = { collageImageSrc: img.getSrc() };
+                                                                        (block as any).collageImageSrc = img.getSrc();
+                                                                        commands.push(new StyleChangeCommand("Fill Block", block as fabric.Object, beforeState, afterState));
+                                                                     });
+                                                                     fabricRef.current?.requestRenderAll();
+                                                                     executeCommand(new MacroCommand("Fill Blocks Randomly", commands));
+                                                                     closeContextMenu();
+                                                                  }} />
+                                                               </>
+                                                            )}
+                                                            <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                         </>
+                                                      )}
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Align To Artboard</div>
+                                                      {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
+                                                         <>
+                                                            <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
+                                                            <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                         </>
+                                                      )}
+                                                      <ContextMenuItem icon={AlignLeft} label="Align Left" onClick={() => { alignSelection('left'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={AlignCenter} label="Align Center H" onClick={() => { alignSelection('centerH'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={AlignRight} label="Align Right" onClick={() => { alignSelection('right'); closeContextMenu(); }} />
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                      <ContextMenuItem icon={Move} label="Fit To Artboard" onClick={() => { alignSelection('fit'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={SquareDashed} label="Fill Artboard" onClick={() => { alignSelection('fill'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Expand} label="Stretch to Artboard" onClick={() => { alignSelection('stretch'); closeContextMenu(); }} />
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                      <ContextMenuItem icon={ImageIcon} label="Fit Width" onClick={() => { alignSelection('fitWidth'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={ImageIcon} label="Fit Height" onClick={() => { alignSelection('fitHeight'); closeContextMenu(); }} />
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                      <ContextMenuItem icon={Crop} label="Resize Artboard to Selection" onClick={() => { resizeArtboardToSelection('both'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Crop} label="Resize Artboard Width to Selection" onClick={() => { resizeArtboardToSelection('width'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Crop} label="Resize Artboard Height to Selection" onClick={() => { resizeArtboardToSelection('height'); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Crop} label="Resize Artboard to Selection Bounds" onClick={() => { resizeArtboardToSelection('bounds'); closeContextMenu(); }} />
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                      <ContextSubMenu icon={Download} label="Download">
+                                                         <ContextMenuItem label="PNG" onClick={() => { downloadActiveObjectAsFormat('png'); closeContextMenu(); }} />
+                                                         <ContextMenuItem label="JPEG" onClick={() => { downloadActiveObjectAsFormat('jpeg'); closeContextMenu(); }} />
+                                                         <ContextMenuItem label="WEBP" onClick={() => { downloadActiveObjectAsFormat('webp'); closeContextMenu(); }} />
+                                                         <ContextMenuItem label="JXL" onClick={() => { downloadActiveObjectAsFormat('jxl'); closeContextMenu(); }} />
+                                                         {activeContextMenu.obj?.type !== 'image' && (
+                                                            <ContextMenuItem label="SVG" onClick={() => { downloadActiveObjectAsFormat('svg'); closeContextMenu(); }} />
+                                                         )}
+                                                      </ContextSubMenu>
+                                                      <ContextMenuItem icon={Copy} label="Copy to Clipboard (PNG)" onClick={() => { copyActiveObjectAsFormat('png'); closeContextMenu(); }} />
+                                                      {activeContextMenu.obj?.type !== 'image' && (
+                                                         <ContextMenuItem icon={Copy} label="Copy to Clipboard (SVG)" onClick={() => { copyActiveObjectAsFormat('svg'); closeContextMenu(); }} />
+                                                      )}
+                                                      <ContextMenuItem icon={Copy} label="Copy Object" shortcut="Ctrl+C" onClick={() => {
+                                                         const active = fabricRef.current?.getActiveObject();
+                                                         if (active) {
+                                                            active.clone(['id', 'artboardId']).then((cloned) => {
+                                                               (window as any)._fabricInternalClipboard = cloned;
+                                                               setNotification({ message: 'Object copied', type: 'success' });
+                                                            });
+                                                         }
+                                                         closeContextMenu();
+                                                      }} />
+                                                      <ContextMenuItem icon={Clipboard} label="Paste Object" shortcut="Ctrl+V" onClick={() => {
+                                                         const cloned = (window as any)._fabricInternalClipboard;
+                                                         if (cloned) {
+                                                            cloned.clone().then((clonedObj: any) => {
+                                                               fabricRef.current?.discardActiveObject();
+                                                               let newLeft = (clonedObj.left || 0) + 20;
+                                                               let newTop = (clonedObj.top || 0) + 20;
+                                                               const canvas = fabricRef.current;
+                                                               if (canvas && canvas.vptCoords) {
+                                                                  const { tl, br } = canvas.vptCoords;
+                                                                  if (newLeft < tl.x || newLeft > br.x || newTop < tl.y || newTop > br.y) {
+                                                                     const center = canvas.getVpCenter();
+                                                                     newLeft = clonedObj.originX === 'center' ? center.x : center.x - ((clonedObj.width || 0) * (clonedObj.scaleX || 1)) / 2;
+                                                                     newTop = clonedObj.originY === 'center' ? center.y : center.y - ((clonedObj.height || 0) * (clonedObj.scaleY || 1)) / 2;
+                                                                  }
+                                                               }
+                                                               clonedObj.set({
+                                                                  left: newLeft,
+                                                                  top: newTop,
+                                                                  id: Date.now().toString() + Math.random().toString(),
+                                                                  evented: true,
+                                                               });
+                                                               if (clonedObj.type === 'activeSelection') {
+                                                                  clonedObj.canvas = fabricRef.current;
+                                                                  clonedObj.forEachObject((obj: any) => {
+                                                                     obj.id = Date.now().toString() + Math.random().toString();
+                                                                     fabricRef.current?.add(obj);
+                                                                  });
+                                                                  clonedObj.setCoords();
+                                                               } else {
+                                                                  fabricRef.current?.add(clonedObj);
+                                                               }
+                                                               fabricRef.current?.setActiveObject(clonedObj);
+                                                               fabricRef.current?.requestRenderAll();
+                                                               updateLayersList();
+                                                            });
+                                                         }
+                                                         closeContextMenu();
+                                                      }} />
+                                                      <ContextMenuItem icon={Copy} label="Duplicate" shortcut="Ctrl+D" onClick={() => { duplicateActiveObject(); closeContextMenu(); }} />
+                                                      {activeContextMenu.obj?.type === 'group' && (
+                                                         <ContextMenuItem icon={Images} label="Ungroup Frame" onClick={() => {
+                                                            const group = activeContextMenu.obj as any;
+                                                            if (group && typeof group.toActiveSelection === 'function') {
+                                                               const sel = group.toActiveSelection();
+                                                               fabricRef.current?.setActiveObject(sel);
+                                                            } else {
+                                                               const items = (group as any).removeAll();
+                                                               fabricRef.current?.remove(group as fabric.Group);
+                                                               items.forEach(i => fabricRef.current?.add(i));
+                                                               const sel = new fabric.ActiveSelection(items, { canvas: fabricRef.current });
+                                                               fabricRef.current?.setActiveObject(sel);
+                                                            }
+                                                            fabricRef.current?.requestRenderAll();
+                                                            updateLayersList();
+                                                            closeContextMenu();
+                                                         }} />
+                                                      )}
+                                                      <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+
+                                                      {(() => {
+                                                         let maxIdx = -1;
+                                                         let minIdx = Number.MAX_SAFE_INTEGER;
+                                                         const totalObjs = fabricRef.current?.getObjects().length || 0;
+                                                         activeContextMenu.targets.forEach(t => {
+                                                            const idx = fabricRef.current?.getObjects().indexOf(t) ?? -1;
+                                                            if (idx > maxIdx) maxIdx = idx;
+                                                            if (idx !== -1 && idx < minIdx) minIdx = idx;
+                                                         });
+                                                         const canBringForward = maxIdx !== -1 && maxIdx < totalObjs - 1;
+                                                         const canSendBackward = minIdx !== -1 && minIdx > 0;
+
+                                                         return (
+                                                            <>
+                                                               <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Layer Order</div>
+                                                               <ContextMenuItem icon={BringToFront} label="Bring to Front" shortcut="Ctrl+Shift+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('front'); closeContextMenu(); }} />
+                                                               <ContextMenuItem icon={ArrowUp} label="Bring Forward" shortcut="Ctrl+]" disabled={!canBringForward} onClick={() => { handleLayerOrder('forward'); closeContextMenu(); }} />
+                                                               <ContextMenuItem icon={ArrowDown} label="Send Backward" shortcut="Ctrl+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('backward'); closeContextMenu(); }} />
+                                                               <ContextMenuItem icon={SendToBack} label="Send to Back" shortcut="Ctrl+Shift+[" disabled={!canSendBackward} onClick={() => { handleLayerOrder('back'); closeContextMenu(); }} />
+                                                               <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                            </>
+                                                         );
+                                                      })()}
+
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Move To Artboard</div>
+                                                      {artboards.map(b => (
+                                                         <ContextMenuItem
+                                                            key={b.id}
+                                                            icon={SquareDashed}
+                                                            label={b.name}
+                                                            onClick={() => {
+                                                               if (!fabricRef.current) return;
+                                                               const activeSelection = fabricRef.current.getActiveObject();
+                                                               if (!activeSelection) return;
+
+                                                               let objectsToProcess: any[] = [];
+                                                               if (activeSelection.type === 'activeSelection') {
+                                                                  objectsToProcess = (activeSelection as any).getObjects();
+                                                                  fabricRef.current.discardActiveObject();
+                                                               } else {
+                                                                  objectsToProcess = [activeSelection];
+                                                               }
+
+                                                               objectsToProcess.forEach(obj => {
+                                                                  const prevArtboardId = obj.artboardId;
+                                                                  if (prevArtboardId !== b.id) {
+                                                                     const prevBoard = artboards.find(x => x.id === prevArtboardId) || artboards[0];
+                                                                     const dx = b.x - prevBoard.x;
+                                                                     const dy = b.y - prevBoard.y;
+
+                                                                     obj.artboardId = b.id;
+                                                                     if (typeof obj.set === 'function') {
+                                                                        obj.set({
+                                                                           left: (obj.left ?? 0) + dx,
+                                                                           top: (obj.top ?? 0) + dy
+                                                                        });
+                                                                        if (typeof obj.setCoords === 'function') obj.setCoords();
+                                                                     }
+                                                                  }
+                                                               });
+
+                                                               if (objectsToProcess.length > 1) {
+                                                                  const sel = new fabric.ActiveSelection(objectsToProcess, { canvas: fabricRef.current });
+                                                                  fabricRef.current.setActiveObject(sel);
+                                                               } else if (objectsToProcess.length === 1) {
+                                                                  fabricRef.current.setActiveObject(objectsToProcess[0]);
+                                                               }
+
+                                                               fabricRef.current.renderAll();
+                                                               updateLayersList();
+                                                               closeContextMenu();
+                                                            }}
+                                                         />
+                                                      ))}
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
+                                                      <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
+                                                         try {
+                                                            const items = await navigator.clipboard.read();
+                                                            const results = await processPasteEvent({ clipboardData: { items: items as any } } as any);
+                                                            if (results.length > 0) importAssets(results);
+                                                         } catch (e) { }
+                                                         closeContextMenu();
+                                                      }} />
+                                                      <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
+                                                         setShowUrlPrompt(true);
+                                                         closeContextMenu();
+                                                      }} />
+                                                   </>
+                                                ) : (
+                                                   <>
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Canvas Actions</div>
+                                                      <ContextMenuItem icon={Plus} label="New Artboard" onClick={() => { createArtboard(); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Type} label="Add Text" onClick={() => { addText(); closeContextMenu(); }} />
+                                                      <ContextSubMenu icon={Grid} label={`Background: ${canvasPattern === 'flat' ? 'Flat Color' : canvasPattern === 'grid' ? 'Linear Grid' : canvasPattern === 'dots' ? 'Dots' : canvasPattern === 'plus' ? 'Plus Crosses' : 'Checkerboard'}`}>
+                                                         <ContextMenuItem icon={canvasPattern === 'flat' ? Check : undefined} label="Flat Color (Solid)" onClick={() => { changeCanvasPattern('flat'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={canvasPattern === 'grid' ? Check : undefined} label="Linear Grid" onClick={() => { changeCanvasPattern('grid'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={canvasPattern === 'dots' ? Check : undefined} label="Dots Pattern" onClick={() => { changeCanvasPattern('dots'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={canvasPattern === 'plus' ? Check : undefined} label="Plus Crosses (+)" onClick={() => { changeCanvasPattern('plus'); closeContextMenu(); }} />
+                                                         <ContextMenuItem icon={canvasPattern === 'squares' ? Check : undefined} label="Checkerboard" onClick={() => { changeCanvasPattern('squares'); closeContextMenu(); }} />
+                                                      </ContextSubMenu>
+                                                      <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
+                                                      <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 border-b border-[#252525] mb-1">Import</div>
+                                                      <ContextMenuItem icon={Upload} label="Upload Files..." onClick={() => { document.getElementById('img-upload')?.click(); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Clipboard} label="Paste from Clipboard" onClick={async () => {
+                                                         try {
+                                                            const items = await navigator.clipboard.read();
+                                                            // This uses a hacky adapter to pass to our processPasteEvent which expects a standard PasteEvent
+                                                            const dataItems = Array.from(items).flatMap((item: any) =>
+                                                               item.types.map((type: string) => ({
+                                                                  type,
+                                                                  getType: () => item.getType(type),
+                                                               }))
+                                                            );
+                                                            // We actually already have a processClipboardItems function for exactly this!
+                                                            const { processClipboardItems } = await import('../image-import/clipboard/clipboardImporter');
+                                                            const results = await processClipboardItems(items as any);
+                                                            if (results.length > 0) importAssets(results);
+                                                         } catch (e) { }
+                                                         closeContextMenu();
+                                                      }} />
+                                                      <ContextMenuItem icon={Library} label="Import Local Assets..." onClick={() => { setShowAssetGallery(true); closeContextMenu(); }} />
+                                                      <ContextMenuItem icon={Link} label="Import from URL..." onClick={() => {
+                                                         setShowUrlPrompt(true);
+                                                         closeContextMenu();
+                                                      }} />
+                                                   </>
+                                                )}
+                                             </div>,
+                                             document.body
+                                          )}
+
+                                          {/* Mobile Artboard Gallery Modal */}
+                                          {isMobile && showMobileArtboardsGallery && (
+                                             <div className="fixed inset-0 z-[100] bg-[#121212] overflow-y-auto w-full h-full animate-in fade-in zoom-in-95 duration-200">
+                                                <div className="sticky top-0 bg-[#1A1A1A] border-b border-[#2C2C2C] p-4 flex justify-between items-center z-10 shadow-md">
+                                                   <h2 className="text-white font-bold tracking-tight text-lg flex items-center gap-2">
+                                                      <SquareDashed size={18} className="text-blue-500" />
+                                                      Select Artboard
+                                                   </h2>
                                                    <button
-                                                      onClick={() => setRenamingArtboard(null)}
-                                                      className="text-gray-500 hover:text-white transition-colors"
+                                                      onClick={() => setShowMobileArtboardsGallery(false)}
+                                                      className="w-8 h-8 flex items-center justify-center rounded-full bg-[#333] text-white hover:bg-[#444]"
                                                    >
-                                                      <X size={16} />
+                                                      <X size={18} />
                                                    </button>
                                                 </div>
-                                                <div className="p-5 space-y-4">
-                                                   <div className="space-y-1.5">
-                                                      <label className="text-[10px] font-semibold text-[#8A8A8A] uppercase tracking-wider">Artboard Name</label>
-                                                      <input
-                                                         type="text"
-                                                         autoFocus
-                                                         className="w-full h-9 bg-black border border-[#2C2C2C] rounded-lg px-3 text-xs text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
-                                                         value={renamingArtboard.name}
-                                                         onChange={(e) => setRenamingArtboard({ ...renamingArtboard, name: e.target.value })}
-                                                         onKeyDown={(e) => {
-                                                            if (e.key === "Enter") {
+
+                                                <div className="p-4 grid grid-cols-2 gap-4 pb-20">
+                                                   {artboards.map(b => {
+                                                      const isActive = b.id === activeArtboardId;
+                                                      return (
+                                                         <div
+                                                            key={b.id}
+                                                            onClick={() => {
+                                                               setActiveArtboardId(b.id);
+                                                               setShowMobileArtboardsGallery(false);
+                                                            }}
+                                                            className={`flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-blue-600/10 border-blue-500' : 'bg-[#1E1E1E] border-[#333] hover:border-gray-500'}`}
+                                                         >
+                                                            <div className="w-full aspect-square bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner">
+                                                               <div
+                                                                  className="w-16 h-16 rounded-sm shadow-sm opacity-80"
+                                                                  style={{
+                                                                     backgroundColor: b.backgroundColor || '#fff',
+                                                                     aspectRatio: `${b.width}/${b.height}`,
+                                                                     width: b.orientation === 'landscape' ? '60%' : undefined,
+                                                                     height: b.orientation === 'portrait' ? '60%' : undefined,
+                                                                     ...(b.transparent ? { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVORK5CYII=")' } : {})
+                                                                  }}
+                                                               />
+                                                               {isActive && (
+                                                                  <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+                                                               )}
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                               <span className={`text-sm font-bold truncate ${isActive ? 'text-blue-400' : 'text-white'}`}>{b.name}</span>
+                                                               <span className="text-[10px] text-gray-500 font-mono tracking-tighter">{b.width} × {b.height}</span>
+                                                            </div>
+                                                         </div>
+                                                      )
+                                                   })}
+
+                                                   <div
+                                                      onClick={() => {
+                                                         createArtboard();
+                                                         setShowMobileArtboardsGallery(false);
+                                                      }}
+                                                      className="flex flex-col gap-2 p-3 rounded-xl cursor-pointer transition-all bg-[#1E1E1E] border border-dashed border-[#444] hover:border-gray-400 items-center justify-center group"
+                                                   >
+                                                      <div className="w-10 h-10 rounded-full bg-blue-600 group-hover:bg-blue-500 flex items-center justify-center text-white shadow-lg transition-colors">
+                                                         <Plus size={20} />
+                                                      </div>
+                                                      <span className="text-xs font-bold text-gray-400 group-hover:text-white mt-1">New Artboard</span>
+                                                   </div>
+                                                </div>
+                                             </div>
+                                          )}
+
+                                          {/* Rename Artboard Modal Dialog */}
+                                          {renamingArtboard && createPortal(
+                                             <div
+                                                className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+                                                onClick={() => setRenamingArtboard(null)}
+                                             >
+                                                <div
+                                                   className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-xl shadow-[0_24px_64px_rgba(0,0,0,0.85)] w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 cursor-default"
+                                                   onClick={(e) => e.stopPropagation()}
+                                                >
+                                                   <div className="px-5 py-4 border-b border-[#2C2C2C] flex items-center justify-between">
+                                                      <h3 className="text-sm font-semibold text-[#E0E0E0] flex items-center gap-2">
+                                                         <Edit2 size={14} className="text-blue-500" />
+                                                         Rename Artboard
+                                                      </h3>
+                                                      <button
+                                                         onClick={() => setRenamingArtboard(null)}
+                                                         className="text-gray-500 hover:text-white transition-colors"
+                                                      >
+                                                         <X size={16} />
+                                                      </button>
+                                                   </div>
+                                                   <div className="p-5 space-y-4">
+                                                      <div className="space-y-1.5">
+                                                         <label className="text-[10px] font-semibold text-[#8A8A8A] uppercase tracking-wider">Artboard Name</label>
+                                                         <input
+                                                            type="text"
+                                                            autoFocus
+                                                            className="w-full h-9 bg-black border border-[#2C2C2C] rounded-lg px-3 text-xs text-white placeholder-gray-600 outline-none focus:border-blue-500 transition-colors"
+                                                            value={renamingArtboard.name}
+                                                            onChange={(e) => setRenamingArtboard({ ...renamingArtboard, name: e.target.value })}
+                                                            onKeyDown={(e) => {
+                                                               if (e.key === "Enter") {
+                                                                  const trimmed = renamingArtboard.name.trim();
+                                                                  if (trimmed) {
+                                                                     updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
+                                                                  }
+                                                                  setRenamingArtboard(null);
+                                                               } else if (e.key === "Escape") {
+                                                                  setRenamingArtboard(null);
+                                                               }
+                                                            }}
+                                                         />
+                                                      </div>
+                                                      <div className="flex justify-end gap-2 pt-1">
+                                                         <button
+                                                            onClick={() => setRenamingArtboard(null)}
+                                                            className="h-8 px-4 text-xs font-semibold border border-[#2D2D2D] text-[#808080] hover:text-white rounded-lg transition-colors"
+                                                         >
+                                                            Cancel
+                                                         </button>
+                                                         <button
+                                                            onClick={() => {
                                                                const trimmed = renamingArtboard.name.trim();
                                                                if (trimmed) {
                                                                   updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
                                                                }
                                                                setRenamingArtboard(null);
-                                                            } else if (e.key === "Escape") {
-                                                               setRenamingArtboard(null);
-                                                            }
-                                                         }}
-                                                      />
+                                                            }}
+                                                            className="h-8 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                                                         >
+                                                            Save
+                                                         </button>
+                                                      </div>
                                                    </div>
-                                                   <div className="flex justify-end gap-2 pt-1">
-                                                      <button
-                                                         onClick={() => setRenamingArtboard(null)}
-                                                         className="h-8 px-4 text-xs font-semibold border border-[#2D2D2D] text-[#808080] hover:text-white rounded-lg transition-colors"
-                                                      >
-                                                         Cancel
+                                                </div>
+                                             </div>,
+                                             document.body
+                                          )}
+
+                                          {showShortcuts && createPortal(
+                                             <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowShortcuts(false)}>
+                                                <div className="bg-[#181818] border border-[#2c2c2c] rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                                                   <div className="flex items-center justify-between p-4 border-b border-[#2c2c2c] bg-[#1a1a1a]">
+                                                      <div className="font-semibold text-sm text-white flex items-center gap-2">
+                                                         <Keyboard size={16} className="text-blue-400" /> Image Node Shortcuts
+                                                      </div>
+                                                      <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white transition">
+                                                         <X size={16} />
                                                       </button>
-                                                      <button
-                                                         onClick={() => {
-                                                            const trimmed = renamingArtboard.name.trim();
-                                                            if (trimmed) {
-                                                               updateArtboardPropDirect(renamingArtboard.id, "name", trimmed, true);
-                                                            }
-                                                            setRenamingArtboard(null);
-                                                         }}
-                                                         className="h-8 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-                                                      >
-                                                         Save
-                                                      </button>
+                                                   </div>
+                                                   <div className="p-4 space-y-3">
+                                                      <div className="flex items-center justify-between">
+                                                         <span className="text-xs text-slate-300">Bring Forward</span>
+                                                         <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
+                                                      </div>
+                                                      <div className="flex items-center justify-between">
+                                                         <span className="text-xs text-slate-300">Send Backward</span>
+                                                         <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
+                                                      </div>
+                                                      <div className="flex items-center justify-between">
+                                                         <span className="text-xs text-slate-300">Bring to Front</span>
+                                                         <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
+                                                      </div>
+                                                      <div className="flex items-center justify-between">
+                                                         <span className="text-xs text-slate-300">Send to Back</span>
+                                                         <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
+                                                      </div>
+                                                      <div className="flex items-center justify-between">
+                                                         <span className="text-xs text-slate-300">Context Menu (Mobile)</span>
+                                                         <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">2-Finger Hold</span></div>
+                                                      </div>
+                                                   </div>
+                                                </div>
+                                             </div>,
+                                             document.body
+                                          )}
+
+                                          {showUrlPrompt && (
+                                             <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowUrlPrompt(false)}>
+                                                <div className="bg-[#111] border border-[#222] rounded-xl w-full max-w-md p-6 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                                   <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+                                                      <Link size={18} className="text-blue-500" />
+                                                      Import from URL
+                                                   </h3>
+                                                   <div className="space-y-4">
+                                                      <div>
+                                                         <label className="text-xs text-[#8A8A8A] font-bold uppercase tracking-wider mb-2 block">Image or SVG URL</label>
+                                                         <input
+                                                            type="text"
+                                                            value={urlInput}
+                                                            onChange={e => setUrlInput(e.target.value)}
+                                                            placeholder="https://example.com/image.png"
+                                                            className="w-full bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
+                                                            autoFocus
+                                                            onKeyDown={(e) => {
+                                                               if (e.key === 'Enter' && urlInput) {
+                                                                  importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
+                                                                  setShowUrlPrompt(false);
+                                                                  setUrlInput("");
+                                                               } else if (e.key === 'Escape') {
+                                                                  setShowUrlPrompt(false);
+                                                               }
+                                                            }}
+                                                         />
+                                                      </div>
+                                                      <div className="flex justify-end gap-3 pt-2">
+                                                         <button
+                                                            onClick={() => setShowUrlPrompt(false)}
+                                                            className="px-4 py-2 rounded-lg text-sm font-medium text-[#A0A0A0] hover:text-white hover:bg-[#222] transition-colors"
+                                                         >
+                                                            Cancel
+                                                         </button>
+                                                         <button
+                                                            onClick={() => {
+                                                               if (urlInput) {
+                                                                  importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
+                                                                  setShowUrlPrompt(false);
+                                                                  setUrlInput("");
+                                                               }
+                                                            }}
+                                                            disabled={!urlInput}
+                                                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                         >
+                                                            Import
+                                                         </button>
+                                                      </div>
                                                    </div>
                                                 </div>
                                              </div>
-                                          </div>,
-                                          document.body
-                                       )}
+                                          )}
 
-                                       {showShortcuts && createPortal(
-                                          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowShortcuts(false)}>
-                                             <div className="bg-[#181818] border border-[#2c2c2c] rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                                                <div className="flex items-center justify-between p-4 border-b border-[#2c2c2c] bg-[#1a1a1a]">
-                                                   <div className="font-semibold text-sm text-white flex items-center gap-2">
-                                                      <Keyboard size={16} className="text-blue-400" /> Image Node Shortcuts
-                                                   </div>
-                                                   <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-white transition">
-                                                      <X size={16} />
-                                                   </button>
-                                                </div>
-                                                <div className="p-4 space-y-3">
-                                                   <div className="flex items-center justify-between">
-                                                      <span className="text-xs text-slate-300">Bring Forward</span>
-                                                      <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
-                                                   </div>
-                                                   <div className="flex items-center justify-between">
-                                                      <span className="text-xs text-slate-300">Send Backward</span>
-                                                      <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
-                                                   </div>
-                                                   <div className="flex items-center justify-between">
-                                                      <span className="text-xs text-slate-300">Bring to Front</span>
-                                                      <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">]</span></div>
-                                                   </div>
-                                                   <div className="flex items-center justify-between">
-                                                      <span className="text-xs text-slate-300">Send to Back</span>
-                                                      <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">Ctrl+Shift</span><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">[</span></div>
-                                                   </div>
-                                                   <div className="flex items-center justify-between">
-                                                      <span className="text-xs text-slate-300">Context Menu (Mobile)</span>
-                                                      <div className="flex gap-1"><span className="px-1.5 py-0.5 bg-[#2c2c2c] rounded text-[10px] font-mono border border-[#3a3a3a] text-slate-300">2-Finger Hold</span></div>
-                                                   </div>
-                                                </div>
-                                             </div>
-                                          </div>,
-                                          document.body
-                                       )}
-
-                                       {showUrlPrompt && (
-                                          <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowUrlPrompt(false)}>
-                                             <div className="bg-[#111] border border-[#222] rounded-xl w-full max-w-md p-6 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                                                <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
-                                                   <Link size={18} className="text-blue-500" />
-                                                   Import from URL
-                                                </h3>
-                                                <div className="space-y-4">
-                                                   <div>
-                                                      <label className="text-xs text-[#8A8A8A] font-bold uppercase tracking-wider mb-2 block">Image or SVG URL</label>
-                                                      <input
-                                                         type="text"
-                                                         value={urlInput}
-                                                         onChange={e => setUrlInput(e.target.value)}
-                                                         placeholder="https://example.com/image.png"
-                                                         className="w-full bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-                                                         autoFocus
-                                                         onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && urlInput) {
-                                                               importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
-                                                               setShowUrlPrompt(false);
-                                                               setUrlInput("");
-                                                            } else if (e.key === 'Escape') {
-                                                               setShowUrlPrompt(false);
-                                                            }
-                                                         }}
-                                                      />
-                                                   </div>
-                                                   <div className="flex justify-end gap-3 pt-2">
-                                                      <button
-                                                         onClick={() => setShowUrlPrompt(false)}
-                                                         className="px-4 py-2 rounded-lg text-sm font-medium text-[#A0A0A0] hover:text-white hover:bg-[#222] transition-colors"
-                                                      >
-                                                         Cancel
-                                                      </button>
-                                                      <button
-                                                         onClick={() => {
-                                                            if (urlInput) {
-                                                               importAssets([{ url: urlInput, type: urlInput.includes('.svg') ? 'svg' : 'image', name: 'URL Import' }]);
-                                                               setShowUrlPrompt(false);
-                                                               setUrlInput("");
-                                                            }
-                                                         }}
-                                                         disabled={!urlInput}
-                                                         className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                      >
-                                                         Import
-                                                      </button>
-                                                   </div>
-                                                </div>
-                                             </div>
-                                          </div>
-                                       )}
-
-                                       {showAssetGallery && (
-                                          <React.Suspense fallback={null}>
-                                             <AssetGallery
-                                                onClose={() => setShowAssetGallery(false)}
-                                                onImport={(assets) => {
-                                                   importAssets(assets);
-                                                   setShowAssetGallery(false);
-                                                }}
-                                             />
-                                          </React.Suspense>
-                                       )}
-                                       <AIProgressModal />
+                                          {showAssetGallery && (
+                                             <React.Suspense fallback={null}>
+                                                <AssetGallery
+                                                   onClose={() => setShowAssetGallery(false)}
+                                                   onImport={(assets) => {
+                                                      importAssets(assets);
+                                                      setShowAssetGallery(false);
+                                                   }}
+                                                />
+                                             </React.Suspense>
+                                          )}
+                                          <AIProgressModal />
+                                       </div>
                                     </div>
-                                 </div>
-                              </LayersProvider>
-                           </WorkspaceUIProvider>
-                        </HistoryProvider>
-                     </SelectionProvider>
-                  </CanvasProvider>
-               </ToolProvider>
-            </ShapePropertiesProvider>
-         </AIProvider>
+                                 </LayersProvider>
+                              </WorkspaceUIProvider>
+                           </HistoryProvider>
+                        </SelectionProvider>
+                     </CanvasProvider>
+                  </ToolProvider>
+               </ShapePropertiesProvider>
+            </AIProvider>
 
-      </CollageConfigProvider >
-   );
+         </CollageConfigProvider >
+      );
 
-}
+   }

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Plus, Minus, Move, Layers, Square, Circle, Triangle, Trash2, Edit2, Check, X, Sliders, Play, SquareDashed } from 'lucide-react';
 import { RgbaStringColorPicker } from 'react-colorful';
 
-export const BrushPreview = ({ type, color, size, opacity, hardness, flow }: any) => {
+export const BrushPreview = ({ type, color, size, opacity, hardness, flow, smoothing }: any) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -44,7 +44,9 @@ export const BrushPreview = ({ type, color, size, opacity, hardness, flow }: any
     gVal = Number.isNaN(gVal) ? 0 : gVal;
     bVal = Number.isNaN(bVal) ? 0 : bVal;
 
-    const alpha = (opacity || 100) / 100;
+    // applyBrushSettings paints at (opacity/100) * (flow/100); the preview has
+    // to use the same figure or the two disagree.
+    const alpha = ((opacity || 100) / 100) * ((flow ?? 100) / 100);
 
     ctx.save();
 
@@ -98,7 +100,7 @@ export const BrushPreview = ({ type, color, size, opacity, hardness, flow }: any
          }
        }
     } else if (type === 'highlighter') {
-       ctx.fillStyle = `rgba(${rVal}, ${gVal}, ${bVal}, 0.3)`;
+       ctx.fillStyle = `rgba(${rVal}, ${gVal}, ${bVal}, ${0.4 * ((flow ?? 100) / 100)})`;
        const hSize = Math.min(30, size * 1.5);
        ctx.fillRect(centerX - 25, centerY - hSize / 2, 50, hSize);
     } else if (type === 'watercolor') {
@@ -111,18 +113,53 @@ export const BrushPreview = ({ type, color, size, opacity, hardness, flow }: any
        ctx.arc(centerX, centerY, Math.min(30, r * 1.5), 0, Math.PI * 2);
        ctx.fill();
     } else {
-       const gradient = ctx.createRadialGradient(centerX, centerY, Math.max(0, r * (hardness / 100) - 1), centerX, centerY, Math.max(1, r));
-       gradient.addColorStop(0, `rgba(${rVal}, ${gVal}, ${bVal}, ${alpha})`);
-       gradient.addColorStop(1, `rgba(${rVal}, ${gVal}, ${bVal}, 0)`);
-       
-       ctx.fillStyle = hardness < 100 ? gradient : `rgba(${rVal}, ${gVal}, ${bVal}, ${alpha})`;
-       ctx.beginPath();
-       ctx.arc(centerX, centerY, Math.min(20, r), 0, Math.PI * 2);
-       ctx.fill();
+       const dabRadius = Math.max(1, Math.min(18, r));
+       const hardnessFactor = Math.max(0, Math.min(100, hardness ?? 100)) / 100;
+       const smoothFactor = Math.max(0, Math.min(100, smoothing ?? 0)) / 100;
+
+       // Smoothing irons the wobble out of a stroke, so the sample path goes
+       // from shaky at 0% to near straight at 100%.
+       const amplitude = (1 - smoothFactor) * 10;
+       const halfSpan = Math.max(18, Math.min(44, canvas.width / 2 - dabRadius - 4));
+       const steps = 64;
+
+       // Stamped dabs overlap heavily, so they are laid down at full alpha on
+       // their own layer and composited once - otherwise a 20% brush previews
+       // as solid wherever the dabs pile up.
+       const layer = document.createElement('canvas');
+       layer.width = canvas.width;
+       layer.height = canvas.height;
+       const layerCtx = layer.getContext('2d');
+
+       if (layerCtx) {
+          for (let i = 0; i <= steps; i++) {
+             const t = i / steps;
+             const x = centerX - halfSpan + halfSpan * 2 * t;
+             // Taper the wobble at both ends so the stroke reads as one gesture.
+             const y = centerY + Math.sin(t * Math.PI * 4) * amplitude * Math.sin(t * Math.PI);
+
+             if (hardnessFactor >= 0.999) {
+                layerCtx.fillStyle = `rgb(${rVal}, ${gVal}, ${bVal})`;
+             } else {
+                const g = layerCtx.createRadialGradient(x, y, dabRadius * hardnessFactor, x, y, dabRadius);
+                g.addColorStop(0, `rgb(${rVal}, ${gVal}, ${bVal})`);
+                g.addColorStop(1, `rgba(${rVal}, ${gVal}, ${bVal}, 0)`);
+                layerCtx.fillStyle = g;
+             }
+
+             layerCtx.beginPath();
+             layerCtx.arc(x, y, dabRadius, 0, Math.PI * 2);
+             layerCtx.fill();
+          }
+
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(layer, 0, 0);
+          ctx.globalAlpha = 1;
+       }
     }
 
     ctx.restore();
-  }, [type, color, size, opacity, hardness, flow]);
+  }, [type, color, size, opacity, hardness, flow, smoothing]);
 
   return (
     <div className="flex flex-col items-center bg-slate-50 dark:bg-[#151515] p-3 rounded-xl border border-slate-200 dark:border-[#2C2C2C] space-y-1.5 w-full shadow-sm">

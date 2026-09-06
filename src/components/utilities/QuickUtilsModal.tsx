@@ -12,10 +12,12 @@ import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
 import { ImageSlicerUtil } from "./ImageSlicerUtil";
 import { PdfMergeUtil } from "./PdfMergeUtil";
-import { StickerMakerUtil } from "./StickerMakerUtil";
 import CustomSelect from "../CustomSelect";
 
 const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
+// Split out: it pulls in the AI runtime, the eraser engine and d3, none of
+// which are needed unless the Sticker Maker tab is actually opened.
+const StickerMakerUtil = lazy(() => import("./StickerMakerUtil").then(m => ({ default: m.StickerMakerUtil })));
 
 const TABS = [
   { id: "passport", label: "Passport Studio", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },
@@ -189,7 +191,11 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               {activeTab === "csv2json" && <CsvToJsonConverter />}
               {activeTab === "jwt" && <JwtDecoder />}
               {activeTab === "colorthief" && <ImageColorExtractor />}
-              {activeTab === "stickermaker" && <StickerMakerUtil />}
+              {activeTab === "stickermaker" && (
+                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Sticker Maker...</div>}>
+                  <StickerMakerUtil />
+                </Suspense>
+              )}
             </div>
           </motion.div>
         </div>

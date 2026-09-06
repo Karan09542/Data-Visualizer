@@ -17,8 +17,20 @@ interface ModernSelectProps {
    groups: SelectGroup[];
 }
 
+/** Tallest the menu is ever allowed to be. */
+const MAX_MENU_HEIGHT = 300;
+/** Breathing room kept between the menu and the edge of the window. */
+const VIEWPORT_MARGIN = 12;
+
 export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, groups }) => {
    const [isOpen, setIsOpen] = useState(false);
+   // Where the menu opens is decided per-open from the space actually
+   // available: a select near the bottom of the window - the crop bar, say -
+   // would otherwise drop its list straight off the screen.
+   const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number }>({
+      up: false,
+      maxHeight: MAX_MENU_HEIGHT,
+   });
    const containerRef = useRef<HTMLDivElement>(null);
 
    useEffect(() => {
@@ -30,6 +42,28 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, gro
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
    }, []);
+
+   const toggle = () => {
+      if (isOpen) {
+         setIsOpen(false);
+         return;
+      }
+
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+         const below = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
+         const above = rect.top - VIEWPORT_MARGIN;
+         // Flip only when it genuinely helps, so the menu keeps dropping
+         // downwards in the ordinary case.
+         const up = below < Math.min(MAX_MENU_HEIGHT, above) && above > below;
+         setPlacement({
+            up,
+            maxHeight: Math.max(120, Math.min(MAX_MENU_HEIGHT, up ? above : below)),
+         });
+      }
+
+      setIsOpen(true);
+   };
 
    const getSelectedLabel = () => {
       for (const group of groups) {
@@ -43,7 +77,7 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, gro
       <div className="relative w-full" ref={containerRef}>
          <button
             type="button"
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={toggle}
             className={`w-full h-9 flex items-center justify-between bg-slate-100 dark:bg-[#111] border ${
                isOpen ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
             } rounded-lg text-[11px] px-3 outline-none text-slate-900 dark:text-white transition-all shadow-sm`}
@@ -53,7 +87,12 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, gro
          </button>
 
          {isOpen && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#18181B] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col max-h-[300px]">
+            <div
+               className={`absolute z-50 left-0 right-0 bg-white dark:bg-[#18181B] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col ${
+                  placement.up ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+               }`}
+               style={{ maxHeight: placement.maxHeight }}
+            >
                <div className="overflow-y-auto overflow-x-hidden custom-scrollbar py-1">
                   {groups.map((group, groupIdx) => (
                      <div key={group.label} className={groupIdx > 0 ? 'mt-1 pt-1 border-t border-slate-100 dark:border-white/5' : ''}>

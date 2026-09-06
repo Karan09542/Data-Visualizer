@@ -38,6 +38,26 @@
     ]
   },
   {
+    "id": "bria_isnet14",
+    "version": "1.4.0",
+    "task": "background-removal",
+    "name": "BRIA RMBG-1.4 (IS-Net)",
+    "description": "IS-Net general matting - highest quality, large download",
+    "size": 176179720,
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/0karan1/bria-rmbg-1.4-lite-rt/resolve/main/bria_isnet14.tflite?download=true"
+      }
+    ],
+    "supports": [
+      "remove",
+      "portrait",
+      "passport",
+      "change-bg"
+    ]
+  },
+  {
     "id": "vdsr",
     "version": "2.0.1",
     "task": "upscale",

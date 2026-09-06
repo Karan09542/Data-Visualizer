@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  MousePointer2, Move, Crop, Brush, Type, Square, Circle, Triangle, Minus
+  MousePointer2, Move, Crop, Brush, Eraser, Type, Square, Circle, Triangle, Minus
 } from 'lucide-react';
 import { useTool } from '../../contexts/ToolContext';
 import { useCanvas } from '../../contexts/CanvasContext';
@@ -17,6 +17,7 @@ export const LeftToolbar: React.FC = () => {
         <ToolBtn icon={Move} tool="pan" current={activeTool} set={setTool} title="Pan Canvas (H / Hold Space)"/>
         <ToolBtn icon={Crop} tool="crop" current={activeTool} set={() => enterCropMode()} title="Crop Image (C)"/>
         <ToolBtn icon={Brush} tool="brush" current={activeTool} set={setTool} title="Brush (B)"/>
+        <ToolBtn icon={Eraser} tool="eraser" current={activeTool} set={setTool} title="Eraser (E)"/>
         
         <div className="w-8 h-px bg-slate-200 dark:bg-[#3A3A3A] my-2" />
         

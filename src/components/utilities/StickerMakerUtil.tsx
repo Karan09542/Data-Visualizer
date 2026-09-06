@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Sticker,
   ImagePlus,
@@ -18,6 +18,8 @@ import {
   Maximize2,
   Scissors,
   Undo2,
+  Redo2,
+  Eraser,
   Check,
   X,
   ChevronUp,
@@ -29,8 +31,17 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { ai } from '../../ai';
+import { modelRegistry } from '../../ai/registry';
+import { modelManager } from '../../ai/manager/ModelManager';
+import { formatFileSize } from '../../lib/formatFileSize';
+import { EraserEngine, BrushCursor } from '../../lib/eraser';
+import type { EraseStroke } from '../../lib/eraser';
 import { ColorPickerTrigger } from '../image-workspace/components/shared/ColorPickers';
 import * as d3 from 'd3';
+
+/** The app's range-input styling, kept in one place. */
+const SLIDER_CLASS =
+  "w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-95 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-purple-500 [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-95 [&::-moz-range-thumb]:transition-transform";
 
 export type SelectionTool = 'full' | 'pan' | 'rect' | 'circle' | 'pen';
 
@@ -80,7 +91,36 @@ export function StickerMakerUtil() {
   const [originalImage, setOriginalImage] = useState<HTMLImageElement | null>(null);
   const [maskImageData, setMaskImageData] = useState<ImageData | null>(null);
 
-  const [modelId, setModelId] = useState<'ormbg' | 'u2netp'>('ormbg');
+  const bgModels = useMemo(() => modelRegistry.getForTask('background-removal'), []);
+  const [modelId, setModelId] = useState<string>('ormbg');
+  const [isModelOpen, setIsModelOpen] = useState(false);
+  // Bumped only when a genuinely new cut-out is produced. Editing the sticker's
+  // pixels replaces maskImageData too, and the view must not jump then.
+  const [stickerKey, setStickerKey] = useState(0);
+
+  // Which models are already on disk, so the picker can say so rather than
+  // stalling on a silent multi-hundred-megabyte fetch when one is chosen.
+  const [modelReady, setModelReady] = useState<Record<string, boolean>>({});
+  const [modelDownload, setModelDownload] = useState<{ id: string; percent: number } | null>(null);
+  /** Live stage of the running job, so 'Processing...' can say what it is doing. */
+  const [aiStage, setAiStage] = useState<{ state: string; progress: number } | null>(null);
+
+  // Erase tool. The engine holds the pristine cut-out as its source and keeps
+  // every stroke as data, so undo is a replay rather than a stack of bitmaps.
+  const eraserRef = useRef<EraserEngine | null>(null);
+  const [isErasing, setIsErasing] = useState(false);
+  const [eraseSize, setEraseSize] = useState<number>(40);
+  const [eraseHardness, setEraseHardness] = useState<number>(70);
+  const [eraseMode, setEraseMode] = useState<'erase' | 'restore'>('erase');
+  const [eraseUndoCount, setEraseUndoCount] = useState(0);
+  const [eraseRedoCount, setEraseRedoCount] = useState(0);
+  const eraseRedoRef = useRef<EraseStroke[]>([]);
+  const isErasingStrokeRef = useRef(false);
+  const brushCursorRef = useRef<BrushCursor | null>(null);
+  /** The die-cut border on its own, so live erasing can redraw without d3. */
+  const borderLayerRef = useRef<HTMLCanvasElement | null>(null);
+  const erasePreviewRafRef = useRef(0);
+  const activeModel = bgModels.find((m) => m.id === modelId);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const [strokeWidth, setStrokeWidth] = useState<number>(10);
@@ -322,20 +362,24 @@ export function StickerMakerUtil() {
     }
   }, [maskImageData, strokeWidth, strokeColor, patternImage, patternScale, sizeMode, customWidth]);
 
+  // Fit the new sticker into view. Keyed on stickerKey rather than
+  // maskImageData: every erase stroke commits new pixels, and fitting on those
+  // yanked the zoom back to centre mid-edit.
   useEffect(() => {
-    if (maskImageData) {
-      const timer = setTimeout(() => {
-        setZoom(getFitZoom());
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [maskImageData]);
+    if (!maskImageData) return;
+    const timer = setTimeout(() => {
+      setZoom(getFitZoom());
+    }, 50);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stickerKey]);
 
   const handleImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) return;
     const url = URL.createObjectURL(file);
     setSelectedImage(url);
     setMaskImageData(null);
+    resetEraser();
     setSelection(null);
     setSelectionTool('full');
     setHoverPoint(null);
@@ -445,6 +489,12 @@ export function StickerMakerUtil() {
 
   const handleContainerPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input, select, [role="button"]')) {
+      return;
+    }
+    // A press that starts an erase stroke bubbles up here, and this handler
+    // pans for any sticker, which dragged the image out from under the brush.
+    // Space and middle-click still pan while erasing.
+    if (isErasing && e.button === 0 && !isSpacePressed) {
       return;
     }
     const isMiddleClick = e.button === 1;
@@ -802,8 +852,20 @@ export function StickerMakerUtil() {
 
       // Pass only the isolated selected portion to AI background removal
       const imageData = ctx.getImageData(0, 0, cropW, cropH);
-      const { promise } = ai.execute('background-removal', imageData, { modelId }, 1);
-      const result = await promise;
+      const { jobId, promise } = ai.execute('background-removal', imageData, { modelId }, 1);
+      // A first run on an uncached model spends most of its time downloading;
+      // without this the button just says "Processing..." for minutes.
+      const unsubscribe = ai.subscribe(jobId, (event) => {
+        setAiStage({ state: event.state, progress: Math.round(event.progress ?? 0) });
+      });
+
+      let result;
+      try {
+        result = await promise;
+      } finally {
+        unsubscribe();
+        setAiStage(null);
+      }
 
       if (result && result.output instanceof ImageData) {
         const finalOutput = result.output;
@@ -824,6 +886,11 @@ export function StickerMakerUtil() {
         }
 
         setMaskImageData(finalOutput);
+        // A new cut-out invalidates any strokes made against the old one.
+        initEraser(finalOutput);
+        setStickerKey((key) => key + 1);
+        // A successful run means the weights are cached now.
+        setModelReady((prev) => ({ ...prev, [modelId]: true }));
       }
     } catch (err) {
       console.error(err);
@@ -831,6 +898,209 @@ export function StickerMakerUtil() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Ask storage which of the background-removal models are already cached.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        bgModels.map(async (m) => {
+          try {
+            return [m.id, await modelManager.isDownloaded(m.id)] as const;
+          } catch {
+            return [m.id, false] as const;
+          }
+        }),
+      );
+      if (!cancelled) setModelReady(Object.fromEntries(entries));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bgModels]);
+
+  /**
+   * Fetches a model if it is not cached yet, reporting progress.
+   * Returns false when the download failed, so callers can leave the
+   * selection alone rather than pointing it at a model that will not load.
+   */
+  const ensureModelDownloaded = async (id: string): Promise<boolean> => {
+    if (modelReady[id]) return true;
+    setModelDownload({ id, percent: 0 });
+    try {
+      await modelManager.download(id, (percent) =>
+        setModelDownload({ id, percent: Math.round(percent) }),
+      );
+      setModelReady((prev) => ({ ...prev, [id]: true }));
+      return true;
+    } catch (err) {
+      console.error('Model download failed', err);
+      setToast({ type: 'error', message: 'Could not download that model.' });
+      return false;
+    } finally {
+      setModelDownload(null);
+    }
+  };
+
+  // The ring lives on the preview container, so it is not clipped by the
+  // sticker canvas and is unaffected by that canvas's zoom/pan transform.
+  useEffect(() => {
+    if (!isErasing || !previewContainerRef.current) return;
+    const cursor = new BrushCursor(previewContainerRef.current);
+    brushCursorRef.current = cursor;
+    return () => {
+      cursor.destroy();
+      brushCursorRef.current = null;
+    };
+  }, [isErasing]);
+
+  useEffect(() => {
+    brushCursorRef.current?.setColor(
+      eraseMode === 'restore' ? 'rgba(96,165,250,0.95)' : 'rgba(255,255,255,0.95)',
+    );
+  }, [eraseMode, isErasing]);
+
+  // ---------------------------------------------------------------- eraser
+
+  /** Drops the engine and both stacks. */
+  const resetEraser = () => {
+    eraserRef.current?.destroy();
+    eraserRef.current = null;
+    eraseRedoRef.current = [];
+    setEraseUndoCount(0);
+    setEraseRedoCount(0);
+    setIsErasing(false);
+  };
+
+  /**
+   * Binds a freshly cut-out sticker to a new engine. The ImageData handed in
+   * stays the engine's source and is never written to, so undo can always get
+   * back to the untouched cut-out.
+   */
+  const initEraser = (source: ImageData) => {
+    resetEraser();
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    canvas.getContext('2d')!.putImageData(source, 0, 0);
+    eraserRef.current = new EraserEngine(canvas, source.width, source.height);
+  };
+
+  /**
+   * Repaints the sticker mid-stroke from the engine's output.
+   *
+   * Two drawImage calls, so it keeps up with the pointer. The border is the
+   * one drawn for the pre-stroke shape; it is retraced from the new alpha when
+   * the stroke is committed.
+   */
+  const drawErasePreview = () => {
+    const canvas = canvasRef.current;
+    const engine = eraserRef.current;
+    if (!canvas || !engine) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const outW = canvas.width - strokeWidth * 2;
+    const outH = canvas.height - strokeWidth * 2;
+    if (outW <= 0 || outH <= 0) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (borderLayerRef.current) ctx.drawImage(borderLayerRef.current, 0, 0);
+    ctx.drawImage(engine.canvas, strokeWidth, strokeWidth, outW, outH);
+  };
+
+  /** Coalesced to one repaint per frame; pointer events outrun the display. */
+  const queueErasePreview = () => {
+    if (erasePreviewRafRef.current) return;
+    erasePreviewRafRef.current = requestAnimationFrame(() => {
+      erasePreviewRafRef.current = 0;
+      drawErasePreview();
+    });
+  };
+
+  /** Pushes the engine's current pixels back into the sticker. */
+  const commitEraser = () => {
+    const engine = eraserRef.current;
+    if (!engine) return;
+    const ctx = engine.canvas.getContext('2d');
+    if (!ctx) return;
+    setMaskImageData(ctx.getImageData(0, 0, engine.canvas.width, engine.canvas.height));
+  };
+
+  const undoErase = () => {
+    const engine = eraserRef.current;
+    if (!engine) return;
+    const strokes = engine.getStrokes();
+    if (strokes.length === 0) return;
+
+    const last = strokes[strokes.length - 1];
+    engine.removeStroke(last.id);
+    eraseRedoRef.current.push(last);
+    setEraseUndoCount(strokes.length - 1);
+    setEraseRedoCount(eraseRedoRef.current.length);
+    commitEraser();
+  };
+
+  const redoErase = () => {
+    const engine = eraserRef.current;
+    if (!engine) return;
+    const stroke = eraseRedoRef.current.pop();
+    if (!stroke) return;
+
+    engine.applyStroke(stroke);
+    setEraseUndoCount(engine.getStrokes().length);
+    setEraseRedoCount(eraseRedoRef.current.length);
+    commitEraser();
+  };
+
+  /**
+   * Screen point to a pixel in the cut-out.
+   *
+   * renderSticker draws the sticker inset by strokeWidth on each side and
+   * scaled to the chosen output size, so both have to be undone here.
+   */
+  const getErasePoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    const engine = eraserRef.current;
+    if (!canvas || !engine) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    const canvasX = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const canvasY = ((e.clientY - rect.top) / rect.height) * canvas.height;
+
+    const outW = canvas.width - strokeWidth * 2;
+    const outH = canvas.height - strokeWidth * 2;
+    if (outW <= 0 || outH <= 0) return null;
+
+    return {
+      x: ((canvasX - strokeWidth) / outW) * engine.width,
+      y: ((canvasY - strokeWidth) / outH) * engine.height,
+      /** Brush size in sticker pixels, so the on-screen ring matches. */
+      scale: engine.width / outW,
+    };
+  };
+
+  /**
+   * Puts the ring under the pointer at the size that will actually be erased.
+   *
+   * eraseSize is in the canvas's own pixels, so it is converted to screen
+   * pixels by the ratio the canvas is displayed at - the same ratio
+   * getErasePoint divides by, which is what keeps ring and stroke in step at
+   * any zoom or output size.
+   */
+  const updateBrushCursor = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const cursor = brushCursorRef.current;
+    const canvas = canvasRef.current;
+    if (!cursor || !canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || canvas.width === 0) return;
+
+    cursor.show(e.clientX, e.clientY, eraseSize * (rect.width / canvas.width));
   };
 
   const renderSticker = () => {
@@ -932,6 +1202,15 @@ export function StickerMakerUtil() {
         ctx.stroke();
       }
     }
+
+    // At this point the canvas holds the border and nothing else, so this is
+    // the moment to keep a copy of it. Live erasing redraws from this layer
+    // instead of re-running the contour trace on every pointer move.
+    const borderLayer = document.createElement('canvas');
+    borderLayer.width = canvas.width;
+    borderLayer.height = canvas.height;
+    borderLayer.getContext('2d')!.drawImage(canvas, 0, 0);
+    borderLayerRef.current = borderLayer;
 
     // Draw masked cut-out image on top
     ctx.drawImage(resizedCanvas, 0, 0);
@@ -1262,7 +1541,10 @@ export function StickerMakerUtil() {
             {maskImageData && (
               <div>
                 <button
-                  onClick={() => setMaskImageData(null)}
+                  onClick={() => {
+                    setMaskImageData(null);
+                    resetEraser();
+                  }}
                   className="w-full py-1.5 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-semibold rounded-lg text-xs transition-colors border border-purple-200 dark:border-purple-800/40 flex items-center justify-center gap-1.5"
                 >
                   <Crop size={13} /> Re-select Subject / Area
@@ -1270,33 +1552,202 @@ export function StickerMakerUtil() {
               </div>
             )}
 
+            {maskImageData && (
+              <div className="space-y-2.5 pt-3 border-t border-slate-200/80 dark:border-slate-800/80">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1 min-w-0">
+                    <Eraser size={11} className="text-purple-400 shrink-0" />
+                    <span className="truncate">Touch Up</span>
+                  </span>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={undoErase}
+                      disabled={eraseUndoCount === 0}
+                      title="Undo erase"
+                      className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 enabled:hover:text-slate-900 dark:enabled:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Undo2 size={13} />
+                    </button>
+                    <button
+                      onClick={redoErase}
+                      disabled={eraseRedoCount === 0}
+                      title="Redo erase"
+                      className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 enabled:hover:text-slate-900 dark:enabled:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Redo2 size={13} />
+                    </button>
+                    <button
+                      onClick={() => setIsErasing(!isErasing)}
+                      title={isErasing ? 'Done erasing' : 'Erase parts of the sticker'}
+                      className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-all ${isErasing
+                        ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                        : 'border-slate-300/40 dark:border-slate-800/80 bg-slate-200/70 dark:bg-black/40 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                    >
+                      {isErasing ? 'Erasing' : 'Erase'}
+                    </button>
+                  </div>
+                </div>
+
+                {isErasing && (
+                  <div className="space-y-2.5 p-2.5 rounded-lg bg-slate-100/70 dark:bg-black/30 border border-slate-200 dark:border-slate-800/80">
+                    <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-200/70 dark:bg-black/50 rounded-lg border border-slate-300/40 dark:border-slate-800/70">
+                      {(['erase', 'restore'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setEraseMode(mode)}
+                          title={mode === 'erase'
+                            ? 'Remove parts the model left behind'
+                            : 'Bring back parts the model cut away'}
+                          className={`h-6 rounded-md text-[11px] font-semibold transition-colors ${eraseMode === mode
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                            }`}
+                        >
+                          {mode === 'erase' ? 'Erase' : 'Restore'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Brush Size</label>
+                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">{eraseSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={4}
+                        max={200}
+                        value={eraseSize}
+                        onChange={(e) => setEraseSize(Number(e.target.value))}
+                        className={SLIDER_CLASS}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Hardness</label>
+                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">{eraseHardness}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={eraseHardness}
+                        onChange={(e) => setEraseHardness(Number(e.target.value))}
+                        className={SLIDER_CLASS}
+                      />
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+                      Drag on the sticker to erase. Hold Space to pan. The cut
+                      border redraws when you release.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {modelDownload && (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="truncate">Downloading model</span>
+                  <span className="font-mono shrink-0">{modelDownload.percent}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-purple-500 transition-[width] duration-150 ease-out"
+                    style={{ width: `${modelDownload.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* AI Background Removal & Generation Bar */}
             <div className="space-y-2 pt-1 border-t border-slate-200/80 dark:border-slate-800/80">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles size={11} className="text-purple-400" /> AI Removal Model
+              {/* A dropdown rather than a row of pills: the panel is narrow and
+                  the registry can hold any number of models, so a row wraps. */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1 min-w-0">
+                  <Sparkles size={11} className="text-purple-400 shrink-0" />
+                  <span className="truncate">AI Removal Model</span>
                 </span>
-                <div className="flex bg-slate-200/70 dark:bg-black/40 p-0.5 rounded-lg border border-slate-300/40 dark:border-slate-800/80">
+
+                <div className="relative shrink-0">
                   <button
-                    onClick={() => setModelId('ormbg')}
-                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${modelId === 'ormbg'
-                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    onClick={() => setIsModelOpen(!isModelOpen)}
+                    className={`flex items-center gap-1.5 max-w-[150px] px-2 py-1 text-[11px] font-semibold rounded-lg border transition-all ${isModelOpen
+                        ? 'border-purple-500/60 bg-purple-500/10 text-purple-600 dark:text-purple-300'
+                        : 'border-slate-300/40 dark:border-slate-800/80 bg-slate-200/70 dark:bg-black/40 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                       }`}
-                    title="ORMBG (High quality)"
+                    title={activeModel?.description || activeModel?.name || modelId}
                   >
-                    ORMBG
+                    <span className="truncate">
+                      {(activeModel?.name || modelId).replace(/\s*\(.*\)\s*$/, '')}
+                    </span>
+                    <ChevronDown
+                      size={11}
+                      className={`shrink-0 transition-transform ${isModelOpen ? 'rotate-180' : ''}`}
+                    />
                   </button>
-                  <button
-                    onClick={() => setModelId('u2netp')}
-                    className={`px-2 py-0.5 text-[11px] rounded font-medium transition-all ${modelId === 'u2netp'
-                        ? 'bg-purple-600 text-white shadow-sm font-semibold'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                      }`}
-                    title="U2Net-P (Fast)"
-                  >
-                    U2Net-P
-                  </button>
+
+                  {isModelOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsModelOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1.5 w-56 max-w-[75vw] bg-white dark:bg-[#111] border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl z-50 overflow-hidden">
+                        {bgModels.map((m) => (
+                          <button
+                            key={m.id}
+                            disabled={!!modelDownload}
+                            onClick={async () => {
+                              if (m.id !== modelId) {
+                                // These strokes belong to the outgoing model's
+                                // cut-out and cannot be replayed onto the next.
+                                resetEraser();
+                              }
+                              setIsModelOpen(false);
+                              // Pull the weights now, with a progress bar,
+                              // rather than during the next run where it would
+                              // look like the removal itself had hung.
+                              if (!modelReady[m.id]) {
+                                const ok = await ensureModelDownloaded(m.id);
+                                if (!ok) return;
+                              }
+                              setModelId(m.id);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-[11px] cursor-pointer transition-colors border-b border-slate-100 dark:border-slate-800/80 last:border-0 hover:bg-slate-100 dark:hover:bg-slate-800/60 ${m.id === modelId
+                                ? 'text-purple-600 dark:text-purple-400 font-bold'
+                                : 'text-slate-700 dark:text-slate-300'
+                              }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="leading-tight truncate">{m.name || m.id}</span>
+                              <span
+                                className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${modelReady[m.id]
+                                  ? 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                                  : 'text-slate-500 dark:text-slate-400 border-slate-400/30 bg-slate-500/10'
+                                  }`}
+                              >
+                                {modelReady[m.id]
+                                  ? 'Ready'
+                                  : m.size
+                                    // ModelManifest.size is in bytes, and this
+                                    // helper defaults its unit to KB.
+                                    ? formatFileSize(m.size, 'B')
+                                    : 'Download'}
+                              </span>
+                            </div>
+                            {m.description && (
+                              <div className="mt-0.5 text-[10px] font-normal text-slate-400 dark:text-slate-500 leading-snug">
+                                {m.description}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1314,7 +1765,13 @@ export function StickerMakerUtil() {
                 )}
                 <span>
                   {isProcessing
-                    ? 'Processing...'
+                    ? aiStage?.state === 'downloading'
+                      ? `Downloading model ${aiStage.progress}%`
+                      : aiStage?.state === 'loading-model'
+                        ? 'Loading model...'
+                        : aiStage?.state === 'inference'
+                          ? 'Removing background...'
+                          : 'Processing...'
                     : selectionTool === 'pen' && selection && selection.type === 'pen' && selection.points.length > 0 && selection.points.length < 3
                       ? 'Place at least 3 dots'
                       : selectionTool !== 'full' && selectionTool !== 'pan' && !selection
@@ -1340,7 +1797,7 @@ export function StickerMakerUtil() {
                   <input
                     type="range" min="0" max="100" value={strokeWidth}
                     onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-95 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-purple-500 [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-95 [&::-moz-range-thumb]:transition-transform"
+                    className={SLIDER_CLASS}
                   />
                 </div>
 
@@ -1452,7 +1909,7 @@ export function StickerMakerUtil() {
                         step="0.05"
                         value={patternScale}
                         onChange={(e) => setPatternScale(parseFloat(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-95 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-purple-500 [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-95 [&::-moz-range-thumb]:transition-transform"
+                        className={SLIDER_CLASS}
                       />
                       <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 px-0.5">
                         <span>10% (Dense)</span>
@@ -1800,12 +2257,76 @@ export function StickerMakerUtil() {
                 try {
                   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                 } catch (_) { }
+
+                // Space and middle-click stay pan, as everywhere else.
+                if (isErasing && e.button === 0 && !isSpacePressed) {
+                  e.stopPropagation();
+                  const pt = getErasePoint(e);
+                  if (!pt) return;
+                  isErasingStrokeRef.current = true;
+                  eraseRedoRef.current = [];
+                  setEraseRedoCount(0);
+                  eraserRef.current?.beginStroke(pt, {
+                    size: eraseSize * pt.scale,
+                    hardness: eraseHardness,
+                    opacity: 100,
+                    mode: eraseMode,
+                  });
+                  drawErasePreview();
+                  return;
+                }
+
                 startPan(e.clientX, e.clientY, e.pointerId);
               }}
-              onPointerMove={handleContainerPointerMove}
-              onPointerUp={handleContainerPointerUp}
-              onPointerCancel={handleContainerPointerUp}
-              className={`object-contain relative z-10 filter drop-shadow-2xl ${isPanning ? 'transition-none cursor-grabbing' : 'transition-transform duration-150 ease-out cursor-grab'} max-w-none`}
+              onPointerMove={(e) => {
+                if (isErasing) updateBrushCursor(e);
+                if (isErasingStrokeRef.current) {
+                  const pt = getErasePoint(e);
+                  if (pt) {
+                    eraserRef.current?.extendStroke(pt);
+                    queueErasePreview();
+                  }
+                  return;
+                }
+                handleContainerPointerMove(e);
+              }}
+              onPointerEnter={(e) => {
+                if (isErasing) updateBrushCursor(e);
+              }}
+              onPointerLeave={() => brushCursorRef.current?.hide()}
+              onPointerUp={(e) => {
+                if (isErasingStrokeRef.current) {
+                  isErasingStrokeRef.current = false;
+                  const engine = eraserRef.current;
+                  if (engine) {
+                    engine.endStroke();
+                    setEraseUndoCount(engine.getStrokes().length);
+                    // The die-cut border is recomputed from the new alpha, so
+                    // the sticker is only re-rendered once the stroke is done.
+                    commitEraser();
+                  }
+                  try {
+                    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                  } catch (_) { }
+                  return;
+                }
+                handleContainerPointerUp(e);
+              }}
+              onPointerCancel={(e) => {
+                if (isErasingStrokeRef.current) {
+                  isErasingStrokeRef.current = false;
+                  eraserRef.current?.cancelStroke();
+                  drawErasePreview();
+                  return;
+                }
+                handleContainerPointerUp(e);
+              }}
+              className={`object-contain relative z-10 filter drop-shadow-2xl max-w-none ${isErasing
+                ? 'cursor-none transition-none'
+                : isPanning
+                  ? 'transition-none cursor-grabbing'
+                  : 'transition-transform duration-150 ease-out cursor-grab'
+                }`}
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transformOrigin: 'center'

@@ -17,6 +17,9 @@ interface ToolContextType {
   setBrushSmoothing: (smoothing: number) => void;
   brushType: string;
   setBrushType: (type: string) => void;
+  /** 'restore' paints erased pixels back in. */
+  eraseMode: 'erase' | 'restore';
+  setEraseMode: (mode: 'erase' | 'restore') => void;
   textProps: any;
   setTextProps: (props: any) => void;
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import * as fabric from 'fabric';
 import {
-   Brush, FlipHorizontal, FlipVertical, Move, SquareDashed, Layout, Square, Palette, MousePointer2, Copy, Trash2, Crop, RotateCcw, Settings,
+   Brush, Eraser, FlipHorizontal, FlipVertical, Move, SquareDashed, Layout, Square, Palette, MousePointer2, Copy, Trash2, Crop, RotateCcw, Settings,
    Droplets, Sparkles, Printer, Plus, Minus
 } from 'lucide-react';
 import { useTool } from '../../../contexts/ToolContext';
@@ -105,6 +105,7 @@ export const PropertiesTab: React.FC = () => {
       activeTool, brushType, setBrushType, brushSize, setBrushSize,
       brushOpacity, setBrushOpacity, brushHardness, setBrushHardness,
       brushFlow, setBrushFlow, brushSmoothing, setBrushSmoothing,
+      eraseMode, setEraseMode,
       textProps, setTextProps, brushColor
    } = useTool();
 
@@ -142,7 +143,12 @@ export const PropertiesTab: React.FC = () => {
    return (
       <div className="p-4 space-y-4 font-sans max-w-full overflow-x-hidden">
          {activeTool === 'brush' || activeTool === 'eraser' ? (
-            <PanelSection title="Brush Engine" icon={<Brush size={14} className="text-blue-400" />}>
+            <PanelSection
+               title={activeTool === 'eraser' ? 'Eraser' : 'Brush Engine'}
+               icon={activeTool === 'eraser'
+                  ? <Eraser size={14} className="text-blue-400" />
+                  : <Brush size={14} className="text-blue-400" />}
+            >
                {activeTool === 'brush' && (
                   <div>
                      <Label>Brush Type</Label>
@@ -154,14 +160,38 @@ export const PropertiesTab: React.FC = () => {
                   </div>
                )}
 
+               {activeTool === 'eraser' && (
+                  <div>
+                     <Label>Mode</Label>
+                     <div className="flex gap-1 p-0.5 rounded-lg bg-slate-100 dark:bg-[#181818] border border-slate-200 dark:border-[#3A3A3A]">
+                        {(['erase', 'restore'] as const).map((mode) => (
+                           <button
+                              key={mode}
+                              onClick={() => setEraseMode(mode)}
+                              className={`flex-1 h-7 rounded-md text-[11px] font-semibold transition-colors ${eraseMode === mode
+                                 ? 'bg-blue-600 text-white shadow-sm'
+                                 : 'text-slate-500 dark:text-[#8A8A8A] hover:text-slate-900 dark:hover:text-[#E0E0E0]'
+                                 }`}
+                              title={mode === 'erase'
+                                 ? 'Remove pixels from the image under the cursor'
+                                 : 'Paint erased pixels back in'}
+                           >
+                              {mode === 'erase' ? 'Erase' : 'Restore'}
+                           </button>
+                        ))}
+                     </div>
+                  </div>
+               )}
+
                <div className="space-y-4 pt-1">
                   <RangeSlider label="Size" min="1" max="500" step="1" value={brushSize} valueDisplay={brushSize} displayUnit="px" onChange={(e) => setBrushSize(Number(e.target.value))} />
 
+                  <RangeSlider label="Opacity" min="1" max="100" step="1" value={brushOpacity} valueDisplay={brushOpacity} displayUnit="%" onChange={(e) => setBrushOpacity(Number(e.target.value))} />
+                  <RangeSlider label="Hardness" min="1" max="100" step="1" value={brushHardness} valueDisplay={brushHardness} displayUnit="%" onChange={(e) => setBrushHardness(Number(e.target.value))} />
+
                   {activeTool === 'brush' && (
                      <>
-                        <RangeSlider label="Opacity" min="1" max="100" step="1" value={brushOpacity} valueDisplay={brushOpacity} displayUnit="%" onChange={(e) => setBrushOpacity(Number(e.target.value))} />
                         <RangeSlider label="Flow" min="1" max="100" step="1" value={brushFlow} valueDisplay={brushFlow} displayUnit="%" onChange={(e) => setBrushFlow(Number(e.target.value))} />
-                        <RangeSlider label="Hardness" min="1" max="100" step="1" value={brushHardness} valueDisplay={brushHardness} displayUnit="%" onChange={(e) => setBrushHardness(Number(e.target.value))} />
                         <RangeSlider label="Smoothing" min="0" max="100" step="1" value={brushSmoothing} valueDisplay={brushSmoothing} displayUnit="%" onChange={(e) => setBrushSmoothing(Number(e.target.value))} />
                      </>
                   )}
@@ -169,7 +199,7 @@ export const PropertiesTab: React.FC = () => {
 
                {activeTool === 'brush' && (
                   <div className="pt-3 border-t border-slate-200 dark:border-white/5">
-                     <BrushPreview type={brushType} color={brushColor} size={brushSize} opacity={brushOpacity} hardness={brushHardness} flow={brushFlow} />
+                     <BrushPreview type={brushType} color={brushColor} size={brushSize} opacity={brushOpacity} hardness={brushHardness} flow={brushFlow} smoothing={brushSmoothing} />
                   </div>
                )}
             </PanelSection>
