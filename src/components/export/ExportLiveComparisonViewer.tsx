@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Download, 
-  Minus, 
-  Plus, 
-  ChevronDown, 
-  X, 
+import {
+  Download,
+  Minus,
+  Plus,
+  ChevronDown,
+  X,
   RotateCw,
 } from 'lucide-react';
 
@@ -90,15 +90,15 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   const originalImgRef = useRef<HTMLImageElement | null>(null);
   const optimizedImgRef = useRef<HTMLImageElement | null>(null);
-  
+
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [isDraggingSlider, setIsDraggingSlider] = useState(false);
-  
+
   const [showZoomMenu, setShowZoomMenu] = useState(false);
 
   const activeArtboard = artboards.find((x: any) => x.id === activeArtboardId) || artboards[0];
@@ -126,7 +126,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     if (!containerRef.current) return;
     const { width, height } = containerRef.current.getBoundingClientRect();
     const padding = 40;
-    
+
     let targetW = artboardW;
     let targetH = artboardH;
     if (comparisonPreviewMode === 'side-by-side') {
@@ -136,7 +136,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     const scaleX = (width - padding * 2) / targetW;
     const scaleY = (height - padding * 2) / targetH;
     const scale = Math.min(scaleX, scaleY, 1);
-    
+
     setComparisonZoom(scale);
     setPan({ x: width / 2, y: height / 2 });
   }, [artboardW, artboardH, comparisonPreviewMode, setComparisonZoom]);
@@ -156,7 +156,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     if (!ctx) return;
 
     const { width, height } = containerRef.current.getBoundingClientRect();
-    
+
     // Setup high-DPI canvas
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
@@ -165,7 +165,12 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
     }
-    
+
+    // Canvas paint cannot inherit CSS, so the theme is read directly here. This sits inside the
+    // per-frame render loop, so it follows a theme switch without any extra subscription. Same
+    // approach the workspace canvas already uses.
+    const isDark = document.documentElement.classList.contains('dark');
+
     ctx.save();
     ctx.scale(dpr, dpr);
     ctx.imageSmoothingEnabled = comparisonZoom <= 1;
@@ -179,15 +184,15 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
        ctx.beginPath();
        ctx.rect(x, y, w, h);
        ctx.clip();
-       
+
        const s = 16 * comparisonZoom;
-       ctx.fillStyle = '#111';
+       ctx.fillStyle = isDark ? '#111' : '#f8fafc';
        ctx.fillRect(x, y, w, h);
-       ctx.fillStyle = '#1A1A1A';
-       
+       ctx.fillStyle = isDark ? '#1A1A1A' : '#e2e8f0';
+
        const startX = Math.floor(x / s) * s;
        const startY = Math.floor(y / s) * s;
-       
+
        for (let i = startX; i < x + w; i += s) {
          for (let j = startY; j < y + h; j += s) {
            if (Math.abs((i / s) % 2) === Math.abs((j / s) % 2)) {
@@ -206,18 +211,18 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
 
       drawCheckerboard(drawX, drawY, drawW, drawH);
       ctx.drawImage(img, drawX, drawY, drawW, drawH);
-      
+
       // Outline
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.15)';
       ctx.lineWidth = 1;
       ctx.strokeRect(drawX, drawY, drawW, drawH);
-      
+
       return { drawX, drawY, drawW, drawH };
     };
 
     if (comparisonPreviewMode === 'original' && originalImgRef.current) {
       drawImageCentered(originalImgRef.current);
-    } 
+    }
     else if (comparisonPreviewMode === 'optimized' && optimizedImgRef.current) {
       drawImageCentered(optimizedImgRef.current);
     }
@@ -230,14 +235,14 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     else if (comparisonPreviewMode === 'split' && originalImgRef.current && optimizedImgRef.current) {
       // Draw optimized (after) as base
       const bounds = drawImageCentered(optimizedImgRef.current);
-      
+
       // Draw original (before) clipped
       ctx.save();
       ctx.beginPath();
       const splitX = bounds.drawX + (bounds.drawW * (comparisonDivider / 100));
       ctx.rect(bounds.drawX, bounds.drawY, splitX - bounds.drawX, bounds.drawH);
       ctx.clip();
-      
+
       ctx.drawImage(originalImgRef.current, bounds.drawX, bounds.drawY, bounds.drawW, bounds.drawH);
       ctx.restore();
 
@@ -252,14 +257,14 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       // Draw Handle
       ctx.beginPath();
       ctx.arc(splitX, height / 2, 14, 0, Math.PI * 2);
-      ctx.fillStyle = '#18181b'; // zinc-900
+      ctx.fillStyle = isDark ? '#18181b' : '#ffffff'; // zinc-900 in dark, white in light
       ctx.fill();
       ctx.strokeStyle = '#3b82f6';
       ctx.lineWidth = 2;
       ctx.stroke();
-      
+
       // Handle arrows
-      ctx.fillStyle = '#60a5fa';
+      ctx.fillStyle = isDark ? '#60a5fa' : '#2563eb';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -287,7 +292,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
 
       // Draw original
       ctx.drawImage(originalImgRef.current, drawX, drawY, drawW, drawH);
-      
+
       // Calculate difference
       ctx.globalCompositeOperation = 'difference';
       ctx.drawImage(optimizedImgRef.current, drawX, drawY, drawW, drawH);
@@ -296,19 +301,19 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       // By using 'lighter', we add the pixels to themselves, doubling the brightness 4 times (16x boost)
       ctx.globalCompositeOperation = 'lighter';
       ctx.filter = 'contrast(200%) brightness(200%)';
-      
+
       // Draw the region over itself multiple times to amplify the faint difference signals
       for (let i = 0; i < 4; i++) {
          ctx.drawImage(
-            canvasRef.current, 
+            canvasRef.current,
             drawX * dpr, drawY * dpr, drawW * dpr, drawH * dpr, // source (in physical pixels)
             drawX, drawY, drawW, drawH // dest (in logical pixels)
          );
       }
-      
+
       ctx.filter = 'none';
       ctx.globalCompositeOperation = 'source-over';
-      
+
       // Outline
       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
       ctx.lineWidth = 1;
@@ -350,20 +355,20 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       const zoomSensitivity = 0.001;
       const delta = -e.deltaY * zoomSensitivity;
       const newZoom = Math.min(Math.max(0.05, comparisonZoom * (1 + delta)), 20);
-      
+
       // Zoom to cursor
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         const cursorX = e.clientX - rect.left;
         const cursorY = e.clientY - rect.top;
-        
+
         const scaleChange = newZoom / comparisonZoom;
         setPan(prev => ({
           x: cursorX - (cursorX - prev.x) * scaleChange,
           y: cursorY - (cursorY - prev.y) * scaleChange
         }));
       }
-      
+
       setComparisonZoom(newZoom);
     } else {
       // Pan
@@ -477,31 +482,31 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
   if (!comparisonMode) return null;
 
   return (
-    <div className="absolute inset-0 z-50 bg-[#09090b] flex flex-col overflow-hidden text-slate-200 select-none font-sans">
-      
+    <div className="absolute inset-0 z-50 bg-slate-100 dark:bg-[#09090b] flex flex-col overflow-hidden text-slate-700 dark:text-slate-200 select-none font-sans">
+
       {/* --- TOP TOOLBAR --- */}
-      <div className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-white/5 bg-[#121214] shadow-sm relative z-50 gap-2">
+      <div className="h-14 shrink-0 flex items-center justify-between px-2 sm:px-4 border-b border-slate-200 dark:border-white/5 bg-white dark:bg-[#121214] shadow-sm relative z-50 gap-2">
         <div className="flex items-center gap-2 sm:gap-4 overflow-hidden flex-1 min-w-0">
-          <button 
+          <button
             onClick={() => setActiveTab('properties')}
-            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
           >
             <X size={18} />
           </button>
-          
-          <div className="h-4 w-px bg-white/10 shrink-0" />
-          
-          <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5 overflow-x-auto no-scrollbar min-w-0 mask-image-fade-edges">
+
+          <div className="h-4 w-px bg-slate-200 dark:bg-white/10 shrink-0" />
+
+          <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-black/40 p-1 rounded-xl border border-slate-200 dark:border-white/5 overflow-x-auto no-scrollbar min-w-0 mask-image-fade-edges">
             {(['original', 'split', 'side-by-side', 'overlay', 'difference'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => setComparisonPreviewMode(mode)}
-                className={`relative px-3 sm:px-4 py-1.5 text-[10px] sm:text-xs whitespace-nowrap font-semibold rounded-lg transition-colors ${comparisonPreviewMode === mode ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`relative px-3 sm:px-4 py-1.5 text-[10px] sm:text-xs whitespace-nowrap font-semibold rounded-lg transition-colors ${comparisonPreviewMode === mode ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
                 {comparisonPreviewMode === mode && (
-                  <motion.div 
+                  <motion.div
                     layoutId="active-mode-bg"
-                    className="absolute inset-0 bg-[#27272a] border border-white/10 rounded-lg -z-10 shadow-sm"
+                    className="absolute inset-0 bg-white dark:bg-[#27272a] border border-slate-200 dark:border-white/10 rounded-lg -z-10 shadow-sm"
                     transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
                   />
                 )}
@@ -512,37 +517,37 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 relative shrink-0">
-          <div className="flex items-center bg-black/40 border border-white/5 rounded-lg p-0.5">
-            <button 
+          <div className="flex items-center bg-slate-200/70 dark:bg-black/40 border border-slate-200 dark:border-white/5 rounded-lg p-0.5">
+            <button
               onClick={() => setComparisonZoom(Math.max(0.05, comparisonZoom - 0.2))}
-              className="w-8 h-7 flex items-center justify-center hover:bg-white/10 rounded-md transition-colors"
+              className="w-8 h-7 flex items-center justify-center hover:bg-slate-300/60 dark:hover:bg-white/10 rounded-md transition-colors"
             >
               <Minus size={14} />
             </button>
-            
+
             <button
               onClick={() => setShowZoomMenu(!showZoomMenu)}
-              className="px-3 h-7 text-xs font-mono font-bold hover:bg-white/10 rounded-md transition-colors flex items-center gap-1 min-w-[70px] justify-center"
+              className="px-3 h-7 text-xs font-mono font-bold hover:bg-slate-300/60 dark:hover:bg-white/10 rounded-md transition-colors flex items-center gap-1 min-w-[70px] justify-center"
             >
               {Math.round(comparisonZoom * 100)}%
               <ChevronDown size={12} className="opacity-50" />
             </button>
-            
-            <button 
+
+            <button
               onClick={() => setComparisonZoom(Math.min(20, comparisonZoom + 0.2))}
-              className="w-8 h-7 flex items-center justify-center hover:bg-white/10 rounded-md transition-colors"
+              className="w-8 h-7 flex items-center justify-center hover:bg-slate-300/60 dark:hover:bg-white/10 rounded-md transition-colors"
             >
               <Plus size={14} />
             </button>
           </div>
-          
+
           <AnimatePresence>
             {showZoomMenu && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 5, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                className="absolute top-full mt-2 right-0 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl p-1 w-32 z-50"
+                className="absolute top-full mt-2 right-0 bg-white dark:bg-[#18181b] border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl p-1 w-32 z-50"
               >
                 {[
                   { label: 'Fit', action: fitToScreen },
@@ -555,7 +560,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
                   <button
                     key={item.label}
                     onClick={() => { item.action(); setShowZoomMenu(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-md transition-colors"
                   >
                     {item.label}
                   </button>
@@ -567,7 +572,7 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       </div>
 
       {/* --- CANVAS WORKSPACE --- */}
-      <div 
+      <div
         ref={containerRef}
         className={`flex-1 relative overflow-hidden outline-none touch-none ${isSpaceDown ? 'cursor-grab' : 'cursor-default'} ${isPanning ? 'cursor-grabbing' : ''}`}
         style={{ touchAction: 'none' }}
@@ -579,20 +584,20 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
         onDoubleClick={handleDoubleClickLocal}
       >
         <canvas ref={canvasRef} className="absolute inset-0 touch-none pointer-events-none" />
-        
+
         {/* Top Badges */}
         <div className="absolute top-4 left-4 z-10 flex gap-2">
           {(!comparisonPreviewMode.includes('optimized') && comparisonPreviewMode !== 'difference' && comparisonPreviewMode !== 'overlay') || comparisonPreviewMode === 'split' || comparisonPreviewMode === 'side-by-side' ? (
-            <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-[10px] font-bold shadow-lg text-slate-300 flex items-center gap-1.5">
+            <div className="bg-white/85 dark:bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-[10px] font-bold shadow-lg text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-slate-400" />
               Original • {formatFileSize(originalSize || 0)}
             </div>
           ) : null}
         </div>
-        
+
         <div className="absolute top-4 right-4 z-10 flex gap-2">
           {comparisonPreviewMode !== 'original' ? (
-            <div className="bg-blue-900/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-blue-500/30 text-[10px] font-bold shadow-lg text-blue-200 flex items-center gap-1.5">
+            <div className="bg-blue-50/90 dark:bg-blue-900/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-500/30 text-[10px] font-bold shadow-lg text-blue-700 dark:text-blue-200 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
               {exportSettings.format.toUpperCase()} • {formatFileSize(optimizedSize || 0)}
             </div>
@@ -602,14 +607,14 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
         {/* Loading overlay */}
         <AnimatePresence>
           {isGeneratingPreview && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm"
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/70 dark:bg-black/50 backdrop-blur-sm"
             >
               <RotateCw className="w-8 h-8 text-blue-500 animate-spin mb-4" />
-              <div className="bg-[#121212] px-4 py-2 rounded-full border border-white/10 text-xs font-semibold shadow-xl">
+              <div className="bg-white dark:bg-[#121212] px-4 py-2 rounded-full border border-slate-200 dark:border-white/10 text-xs font-semibold shadow-xl">
                 {currentPreviewOp || "Optimizing..."}
               </div>
             </motion.div>
@@ -618,36 +623,36 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
       </div>
 
       {/* --- BOTTOM STATUS BAR --- */}
-      <div className="h-12 shrink-0 bg-[#121214] border-t border-white/5 flex items-center justify-between px-2 sm:px-4 z-10 gap-2">
-        <div className="flex items-center gap-3 sm:gap-6 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400 overflow-x-auto no-scrollbar min-w-0 flex-1">
+      <div className="h-12 shrink-0 bg-white dark:bg-[#121214] border-t border-slate-200 dark:border-white/5 flex items-center justify-between px-2 sm:px-4 z-10 gap-2">
+        <div className="flex items-center gap-3 sm:gap-6 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 overflow-x-auto no-scrollbar min-w-0 flex-1">
           <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-            <span className="text-slate-500 hidden sm:inline">Format</span>
-            <span className="text-white font-mono">{exportSettings.format}</span>
+            <span className="text-slate-400 dark:text-slate-500 hidden sm:inline">Format</span>
+            <span className="text-slate-900 dark:text-white font-mono">{exportSettings.format}</span>
           </div>
-          
+
           <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-            <span className="text-slate-500 hidden sm:inline">Dimensions</span>
-            <span className="text-white font-mono">
+            <span className="text-slate-400 dark:text-slate-500 hidden sm:inline">Dimensions</span>
+            <span className="text-slate-900 dark:text-white font-mono">
               {exportTarget === 'current' ? exportSettings.resize.width || artboardW : artboardW}×{exportTarget === 'current' ? exportSettings.resize.height || artboardH : artboardH}
             </span>
           </div>
-          
+
           {originalSize && optimizedSize && originalSize > optimizedSize && (
             <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-              <span className="text-slate-500 hidden sm:inline">Savings</span>
-              <span className="text-emerald-400 font-mono">
+              <span className="text-slate-400 dark:text-slate-500 hidden sm:inline">Savings</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-mono">
                 {parseFloat(((originalSize - optimizedSize) / originalSize * 100).toFixed(1))}%
               </span>
             </div>
           )}
-          
+
           <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-            <span className="text-slate-500 hidden sm:inline">PSNR</span>
-            <span className="text-blue-400 font-mono">{psnr ? `${psnr.toFixed(1)} dB` : '-'}</span>
+            <span className="text-slate-400 dark:text-slate-500 hidden sm:inline">PSNR</span>
+            <span className="text-blue-600 dark:text-blue-400 font-mono">{psnr ? `${psnr.toFixed(1)} dB` : '-'}</span>
           </div>
         </div>
-        
-        <button 
+
+        <button
           onClick={() => {
             handleExport();
           }}

@@ -58,23 +58,28 @@ function quantizeAndDither(imgData: ImageData, paletteColors: number, ditherLeve
       data[idx + 1] = ng;
       data[idx + 2] = nb;
 
-      const errR = r - nr;
-      const errG = g - ng;
-      const errB = b - nb;
+      // The accumulated error is scaled by ditherLevel when read back above, so at level 0 it
+      // contributes nothing. Skip the diffusion entirely rather than spending four writes per
+      // pixel producing a buffer that will be multiplied by zero.
+      if (ditherLevel > 0) {
+        const errR = r - nr;
+        const errG = g - ng;
+        const errB = b - nb;
 
-      const distribute = (nx: number, ny: number, weight: number) => {
-        if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
-          const nidx = ny * w + nx;
-          errorBufferR[nidx] += errR * weight;
-          errorBufferG[nidx] += errG * weight;
-          errorBufferB[nidx] += errB * weight;
-        }
-      };
+        const distribute = (nx: number, ny: number, weight: number) => {
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const nidx = ny * w + nx;
+            errorBufferR[nidx] += errR * weight;
+            errorBufferG[nidx] += errG * weight;
+            errorBufferB[nidx] += errB * weight;
+          }
+        };
 
-      distribute(x + 1, y, 7 / 16);
-      distribute(x - 1, y + 1, 3 / 16);
-      distribute(x, y + 1, 5 / 16);
-      distribute(x + 1, y + 1, 1 / 16);
+        distribute(x + 1, y, 7 / 16);
+        distribute(x - 1, y + 1, 3 / 16);
+        distribute(x, y + 1, 5 / 16);
+        distribute(x + 1, y + 1, 1 / 16);
+      }
     }
   }
   return imgData;

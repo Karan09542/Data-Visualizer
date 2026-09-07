@@ -192,7 +192,11 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
     interlace: false,
     paletteReduction: false,
     paletteColors: 256,
-    ditherLevel: 1.0,
+    // Off by default. Error-diffusion dithering trades flat regions for high-frequency noise,
+    // and PNG is a lossless entropy coder, so that noise is stored verbatim: on flat artwork it
+    // multiplies the file size instead of shrinking it. Quantising without dither compresses far
+    // better, which is the whole point of the 8-bit option.
+    ditherLevel: 0,
   },
   jxl: {
     effort: 7,

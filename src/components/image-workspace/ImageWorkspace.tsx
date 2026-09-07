@@ -6329,29 +6329,23 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             // 3. Run WASM optimization
             setCurrentPreviewOp(`Running jSquash WASM optimization (${formatLabel})...`);
 
-            const previewSettings: ExportSettings = {
-               ...exportSettings,
-               resize: {
-                  ...exportSettings.resize,
-                  enabled: true,
-                  width: optPreviewW,
-                  height: optPreviewH
-               }
-            };
-
+            // Encode at the REAL output size, with the user's own settings. This used to encode a
+            // downscaled preview and then extrapolate the byte count with /previewScale^2, while
+            // the "original" beside it was measured at full resolution with the browser's encoder.
+            // The two numbers were produced completely differently, so comparing them (and the
+            // savings %) was meaningless - a smaller image could report as larger than the source.
             const { buffer: optimizedBuffer, psnr: calculatedPsnr, decodedPixels, decodedWidth, decodedHeight } = await optimizePixelBuffer(
                buffer.slice(0),
                width,
                height,
-               previewSettings,
+               exportSettings,
                true
             );
 
             const optimizedBlob = new Blob([optimizedBuffer], { type: `image/${exportSettings.format}` });
 
-            // Calculate projected optimized size since we might have downscaled for preview performance
-            const projectedOptimizedSize = previewScale < 1 ? Math.round(optimizedBlob.size / (previewScale * previewScale)) : optimizedBlob.size;
-            setOptimizedSize(projectedOptimizedSize);
+            // Real bytes, not an extrapolation.
+            setOptimizedSize(optimizedBlob.size);
             setPsnr(calculatedPsnr);
 
             let optUrl = '';
@@ -6362,7 +6356,22 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                const rctx = rawCanvas.getContext('2d')!;
                const imgData = new ImageData(new Uint8ClampedArray(decodedPixels), decodedWidth, decodedHeight);
                rctx.putImageData(imgData, 0, 0);
-               optUrl = rawCanvas.toDataURL("image/png");
+
+               // The encode now runs at full output size, but the original beside it is still
+               // capped by previewScale. Both displayed bitmaps have to share one scale, or split
+               // mode compares a sharp image against a stretched one.
+               if (previewScale < 1) {
+                  const scaledCanvas = document.createElement('canvas');
+                  scaledCanvas.width = optPreviewW;
+                  scaledCanvas.height = optPreviewH;
+                  const sctx = scaledCanvas.getContext('2d')!;
+                  sctx.imageSmoothingEnabled = true;
+                  sctx.imageSmoothingQuality = 'high';
+                  sctx.drawImage(rawCanvas, 0, 0, optPreviewW, optPreviewH);
+                  optUrl = scaledCanvas.toDataURL("image/png");
+               } else {
+                  optUrl = rawCanvas.toDataURL("image/png");
+               }
             } else {
                optUrl = URL.createObjectURL(optimizedBlob);
             }

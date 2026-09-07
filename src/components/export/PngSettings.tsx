@@ -124,7 +124,9 @@ export const PngSettings: React.FC<Props> = ({ options, onChange, mode }) => {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] font-medium text-slate-600 dark:text-slate-400">Dithering Strength</label>
-                <span className="text-[11px] font-mono text-slate-500">{(options.ditherLevel * 100).toFixed(0)}%</span>
+                <span className={`text-[11px] font-mono ${options.ditherLevel > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}>
+                  {(options.ditherLevel * 100).toFixed(0)}%
+                </span>
               </div>
               <input
                 type="range"
@@ -135,6 +137,13 @@ export const PngSettings: React.FC<Props> = ({ options, onChange, mode }) => {
                 onChange={(e) => onChange({ ditherLevel: parseFloat(e.target.value) })}
                 className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-pink-500 border border-slate-300 dark:border-slate-600"
               />
+              {/* Dither smooths banding but replaces flat areas with noise, and PNG stores that
+                  noise losslessly. On flat artwork it can multiply the file size. */}
+              <p className={`text-[9px] leading-snug ${options.ditherLevel > 0 ? 'text-amber-600 dark:text-amber-400/80' : 'text-slate-400 dark:text-slate-500'}`}>
+                {options.ditherLevel > 0
+                  ? 'Dithering hides colour banding but adds noise that PNG cannot compress. Expect a much larger file on flat artwork.'
+                  : 'Off: quantised colours stay flat, which is what makes the file smaller.'}
+              </p>
             </div>
           </div>
         )}
