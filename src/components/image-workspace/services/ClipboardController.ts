@@ -3,6 +3,7 @@ import { Artboard } from '../types/artboards';
 import { AddObjectCommand } from '../commands/object/AddObjectCommand';
 import { DuplicateArtboardCommand } from '../commands/artboard/DuplicateArtboardCommand';
 import { processPasteEvent } from '../../image-import/clipboard/clipboardImporter';
+import { isActiveSelection } from '../../../utils/fabric-utils';
 
 export interface ClipboardDependencies {
    canvas: fabric.Canvas;
@@ -100,7 +101,7 @@ export class ClipboardController {
             artboardId: (activeObj as any).artboardId || deps.getActiveArtboardId()
          });
          
-         if (cloned.type === 'activeSelection') {
+         if (isActiveSelection(cloned)) {
             cloned.canvas = deps.canvas;
             (cloned as any).forEachObject((obj: any) => {
                obj.id = Date.now().toString() + Math.random().toString();

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { RotateCw, Trash2, LayoutGrid, MoreHorizontal, Copy, Image as ImageIcon } from 'lucide-react';
+import { RotateCw, Trash2, LayoutGrid, MoreHorizontal, Copy, Image as ImageIcon, Check, Anchor, X } from 'lucide-react';
 import { useLayers } from '../../contexts/LayersContext';
 import { useCanvas } from '../../contexts/CanvasContext';
+import { useSelection } from '../../contexts/SelectionContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { LayerThumbnail } from './LayerThumbnail';
 import { ModernSelect } from '../shared/ModernSelect';
@@ -21,8 +22,9 @@ const getPxForSize = (s: ThumbSize) => {
 };
 
 export const LayersTab: React.FC = () => {
-   const { layers, selectedLayerId, selectLayer, moveLayerUp } = useLayers();
+   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, moveLayerUp } = useLayers();
    const { deleteActiveObject } = useCanvas();
+   const { activeObjs, parentAlignmentObj, setParentAlignmentObj } = useSelection();
    const { artboards } = useWorkspaceUI();
    const setNotification = useStore((state) => state.setNotification);
    const [thumbSize, setThumbSize] = useState<ThumbSize>('standard');
@@ -74,13 +76,69 @@ export const LayersTab: React.FC = () => {
             </div>
          </div>
 
+         {activeObjs.length > 1 && (
+            <div className="mb-2 px-2.5 py-2 rounded-lg bg-blue-950/30 border border-blue-500/20 flex items-center gap-2">
+               <span className="text-[10px] font-bold text-blue-300 shrink-0">{activeObjs.length} selected</span>
+               <span className="text-[10px] text-[#8A8A8A] truncate flex-1 min-w-0">
+                  {parentAlignmentObj
+                     ? <>Parent: <span className="text-white font-semibold capitalize">{(parentAlignmentObj as any).customName || parentAlignmentObj.type}</span></>
+                     : 'Tap the anchor on a row to set the parent'}
+               </span>
+               {parentAlignmentObj && (
+                  <button
+                     type="button"
+                     onClick={() => setParentAlignmentObj(null)}
+                     title="Clear parent"
+                     className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md border border-[#3A3A3A] text-[#A0A0A0] hover:text-white hover:border-blue-500/60 active:bg-blue-600/20"
+                  >
+                     <X size={13} />
+                  </button>
+               )}
+            </div>
+         )}
+
          <div className="space-y-1 overflow-y-auto custom-scrollbar pr-1 pb-4 flex-1">
             {layers.map((layer, idx) => {
-               const isSelected = selectedLayerId === (layer as any).id;
+               const inSelection = activeObjs.includes(layer);
+               const isParent = parentAlignmentObj === layer;
+               const isSelected = inSelection || selectedLayerId === (layer as any).id;
                const sizePx = getPxForSize(thumbSize);
 
                return (
                   <div key={(layer as any).id || idx} onClick={() => selectLayer((layer as any).id)} className={`flex items-center group px-2 py-1.5 rounded-md cursor-pointer transition-colors ${isSelected ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30' : 'hover:bg-[#2C2C2C] text-[#C0C0C0] border border-transparent'}`}>
+                     {/* Tap target for building a multi-selection without a keyboard */}
+                     <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleLayerSelection((layer as any).id); }}
+                        title={inSelection ? 'Remove from selection' : 'Add to selection'}
+                        aria-pressed={inSelection}
+                        className={`w-7 h-7 mr-1.5 shrink-0 flex items-center justify-center rounded-md border transition-colors ${
+                           inSelection
+                              ? 'bg-blue-600 border-blue-400 text-white'
+                              : 'bg-transparent border-[#3A3A3A] text-transparent hover:border-blue-500/60 active:bg-blue-600/20'
+                        }`}
+                     >
+                        <Check size={13} strokeWidth={3} />
+                     </button>
+
+                     {/* Designates the key object the rest of the selection aligns to. Deliberately
+                         does not call selectLayer, which would collapse the multi-selection. */}
+                     {activeObjs.length > 1 && inSelection && (
+                        <button
+                           type="button"
+                           onClick={(e) => { e.stopPropagation(); setParentAlignmentObj(isParent ? null : layer); }}
+                           title={isParent ? 'Clear parent' : 'Set as parent'}
+                           aria-pressed={isParent}
+                           className={`w-7 h-7 mr-1.5 shrink-0 flex items-center justify-center rounded-md border transition-colors ${
+                              isParent
+                                 ? 'bg-blue-600 border-blue-400 text-white'
+                                 : 'bg-transparent border-[#3A3A3A] text-[#6A6A6A] hover:border-blue-500/60 hover:text-blue-300 active:bg-blue-600/20'
+                           }`}
+                        >
+                           <Anchor size={13} strokeWidth={2.5} />
+                        </button>
+                     )}
+
                      <div className="mr-3 shrink-0">
                         <LayerThumbnail layer={layer as any} sizePx={sizePx} />
                      </div>

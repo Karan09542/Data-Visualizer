@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Image as ImageIcon, Undo, Redo, Upload, Info, Sliders, Download
+  Image as ImageIcon, Undo, Redo, Upload, Info, Sliders, FileOutput
 } from 'lucide-react';
 import { useHistory } from '../../contexts/HistoryContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
@@ -14,7 +14,9 @@ export const WorkspaceHeader: React.FC = () => {
 
   return (
     <div className={`border-b border-slate-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E] text-slate-800 dark:text-white flex items-center px-2 md:px-4 gap-2 md:gap-3 shrink-0 overflow-x-auto no-scrollbar transition-all ${isMobile ? 'h-10' : 'h-12'}`}>
-        <ImageIcon size={18} className="text-blue-400 shrink-0 ml-1 md:ml-0" />
+        <span className={`flex items-center justify-center shrink-0 rounded-md bg-blue-500/10 border border-blue-500/25 ${isMobile ? 'h-7 w-7' : 'h-8 w-8'}`} aria-hidden="true">
+          <ImageIcon size={18} className="text-blue-400" />
+        </span>
         <span className="font-semibold text-sm text-slate-900 dark:text-white mr-2 md:mr-4 tracking-tight shrink-0 hidden sm:inline-block">Studio Editor</span>
         
         {/* Action History Tools */}
@@ -44,14 +46,18 @@ export const WorkspaceHeader: React.FC = () => {
         <button 
            onClick={() => setActiveTab('export')} 
            disabled={artboards.length === 0}
-           className={`${isMobile ? 'h-7 px-2' : 'h-8 px-3 md:px-5'} text-[10px] md:text-[11px] font-black uppercase tracking-widest text-white rounded-lg transition-all shrink-0 whitespace-nowrap flex items-center justify-center gap-2 ${
+           title="Export Studio"
+           aria-label="Export Studio"
+           className={`${isMobile ? 'h-7 px-2.5 gap-1.5 rounded-md' : 'h-8 px-3 md:px-5 rounded-lg gap-2'} text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all shrink-0 whitespace-nowrap flex items-center justify-center ${
              artboards.length > 0
-               ? 'bg-gradient-to-r from-indigo-500 via-blue-600 to-indigo-600 hover:from-indigo-400 hover:via-blue-500 hover:to-indigo-500 shadow-[0_2px_10px_rgba(79,70,229,0.25)] hover:shadow-[0_4px_16px_rgba(79,70,229,0.4)] active:scale-[0.98] border border-blue-400/20'
-               : 'bg-[#2A2A2A] text-[#666] border border-[#333] cursor-not-allowed opacity-50'
+               ? `text-white bg-gradient-to-r from-indigo-500 via-blue-600 to-indigo-600 hover:from-indigo-400 hover:via-blue-500 hover:to-indigo-500 active:scale-[0.98] border border-blue-400/20 ${isMobile ? 'shadow-sm' : 'shadow-[0_2px_10px_rgba(79,70,229,0.25)] hover:shadow-[0_4px_16px_rgba(79,70,229,0.4)]'}`
+               : 'bg-slate-200 text-slate-400 border border-slate-300 dark:bg-[#2A2A2A] dark:text-[#666] dark:border-[#333] cursor-not-allowed opacity-60'
            }`}
         >
           {artboards.length > 0 && <span className="hidden md:inline-block w-1.5 h-1.5 rounded-full bg-blue-300 animate-pulse" />}
-          {isMobile ? <Download size={14} /> : 'Export Studio'}
+          {isMobile
+            ? <><FileOutput size={13} strokeWidth={2.5} /><span>Export</span></>
+            : 'Export Studio'}
         </button>
       </div>
   );

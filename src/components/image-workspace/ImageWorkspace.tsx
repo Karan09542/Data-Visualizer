@@ -129,6 +129,7 @@ import { DeleteArtboardCommand } from "./commands/artboard/DeleteArtboardCommand
 
 
 import { ArtboardPropertyCommand } from "./commands/artboard/ArtboardPropertyCommand";
+import { isActiveSelection } from '../../utils/fabric-utils';
 
 // Modern Checkbox Component
 interface ImageWorkspaceProps {
@@ -386,6 +387,76 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    const [selectionType, setSelectionType] = useState<string | null>(null);
    const [parentAlignmentObj, setParentAlignmentObj] = useState<fabric.Object | null>(null);
    const parentAlignmentObjRef = useRef<fabric.Object | null>(null);
+   // Arrow-key nudge distances, in canvas pixels. Persisted so they survive a reload.
+   const [nudgeStep, setNudgeStep] = useState<number>(() => {
+      const stored = Number(localStorage.getItem('image_workspace_nudge_step'));
+      return Number.isFinite(stored) && stored > 0 ? stored : 1;
+   });
+   const [nudgeStepLarge, setNudgeStepLarge] = useState<number>(() => {
+      const stored = Number(localStorage.getItem('image_workspace_nudge_step_large'));
+      return Number.isFinite(stored) && stored > 0 ? stored : 5;
+   });
+   const nudgeStepRef = useRef(nudgeStep);
+   const nudgeStepLargeRef = useRef(nudgeStepLarge);
+   useEffect(() => {
+      nudgeStepRef.current = nudgeStep;
+      localStorage.setItem('image_workspace_nudge_step', String(nudgeStep));
+   }, [nudgeStep]);
+   useEffect(() => {
+      nudgeStepLargeRef.current = nudgeStepLarge;
+      localStorage.setItem('image_workspace_nudge_step_large', String(nudgeStepLarge));
+   }, [nudgeStepLarge]);
+
+   // Holding an arrow key auto-repeats, which would otherwise push one history entry per repeat.
+   // The whole burst is collected here and committed as a single command on key release.
+   const nudgeSessionRef = useRef<{ obj: fabric.Object; before: { left: number; top: number } }[] | null>(null);
+   const heldArrowsRef = useRef<Set<string>>(new Set());
+
+
+   // alignSelection reads the ref while the panels render from the state, so both have to move
+   // together. Everything that designates or clears a key object goes through here.
+   const applyParentAlignment = useCallback((obj: fabric.Object | null) => {
+      parentAlignmentObjRef.current = obj;
+      setParentAlignmentObj(obj);
+      fabricRef.current?.requestRenderAll();
+   }, []);
+
+   // Tap-driven multi-select: toggles one object in or out of the current selection. This is the
+   // only way to build a multi-selection on touch, where shift-click and rubber-band drag are
+   // unavailable.
+   const toggleLayerSelection = useCallback((id: string) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const obj = canvas.getObjects().find((o: any) => o.id === id);
+      if (!obj) return;
+
+      const active = canvas.getActiveObject();
+      let next: fabric.Object[];
+      if (!active) {
+         next = [obj];
+      } else if (isActiveSelection(active)) {
+         const current = (active as fabric.ActiveSelection).getObjects();
+         next = current.includes(obj) ? current.filter(o => o !== obj) : [...current, obj];
+      } else {
+         next = active === obj ? [] : [active, obj];
+      }
+
+      // discardActiveObject fires selection:cleared, which drops the key object. Re-apply it so
+      // adding one more object to the selection does not silently reset the parent.
+      const keepParent = parentAlignmentObjRef.current;
+
+      canvas.discardActiveObject();
+      if (next.length === 1) {
+         canvas.setActiveObject(next[0]);
+      } else if (next.length > 1) {
+         canvas.setActiveObject(new fabric.ActiveSelection(next, { canvas }));
+      }
+
+      if (keepParent && next.length > 1 && next.includes(keepParent)) {
+         applyParentAlignment(keepParent);
+      }
+      canvas.requestRenderAll();
+   }, [applyParentAlignment]);
 
    const getAbsoluteBoundingRect = (obj: fabric.Object) => {
       if (!obj.group) {
@@ -917,7 +988,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                   ctx.save();
                   ctx.translate(-activeBoard.x, -activeBoard.y);
                   fabricRef.current.getObjects().forEach((obj) => {
-                     if (!obj.visible || obj.type === 'activeSelection') return;
+                     if (!obj.visible || isActiveSelection(obj)) return;
                      if ((obj as any).artboardId === activeBoard.id) obj.render(ctx);
                   });
                   ctx.restore();
@@ -959,6 +1030,63 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       setCommandIndex(nextIndex);
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
+
+   /** Moves the selection by (dx, dy) scene pixels, starting/extending an undo burst. */
+   const nudgeSelection = useCallback((dx: number, dy: number) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const active = canvas.getActiveObject();
+      if (!active) return;
+
+      const targets = isActiveSelection(active)
+         ? (active as fabric.ActiveSelection).getObjects()
+         : [active];
+      if (targets.length === 0) return;
+
+      if (!nudgeSessionRef.current) {
+         nudgeSessionRef.current = targets.map(o => ({
+            obj: o,
+            before: { left: o.left || 0, top: o.top || 0 }
+         }));
+      }
+
+      targets.forEach(obj => {
+         // Undo the enclosing ActiveSelection's scale so the object travels dx/dy on screen
+         // rather than dx/dy in the group's stretched coordinate plane.
+         const groupScaleX = obj.group ? (obj.group.scaleX || 1) : 1;
+         const groupScaleY = obj.group ? (obj.group.scaleY || 1) : 1;
+         obj.set({
+            left: (obj.left || 0) + dx / groupScaleX,
+            top: (obj.top || 0) + dy / groupScaleY
+         });
+         obj.setCoords();
+      });
+
+      active.setCoords();
+      if (isActiveSelection(active)) {
+         (active as any)._calcBounds?.(true);
+      }
+      canvas.requestRenderAll();
+   }, []);
+
+   /** Commits the accumulated nudge burst as one undo step. */
+   const commitNudge = useCallback(() => {
+      const session = nudgeSessionRef.current;
+      nudgeSessionRef.current = null;
+      if (!session || session.length === 0) return;
+
+      const targets = session
+         .map(entry => ({
+            obj: entry.obj,
+            before: entry.before,
+            after: { left: entry.obj.left || 0, top: entry.obj.top || 0 }
+         }))
+         .filter(t => t.before.left !== t.after.left || t.before.top !== t.after.top);
+
+      if (targets.length === 0) return;
+      executeCommand(new TransformObjectsCommand("Nudge Selection", targets));
+   }, [executeCommand]);
+
 
    /**
     * Photoshop-style eraser. The pixel work lives in src/lib/eraser so the same
@@ -1124,12 +1252,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       };
    }, [canvasInstance, updateCursorRing]);
 
-   const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'distributeH' | 'distributeV' | 'center') => {
+   const alignSelection = (mode: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'matchSizeWidth' | 'matchSizeHeight' | 'matchSizeBoth' | 'distributeH' | 'distributeV' | 'center') => {
       if (!fabricRef.current) return;
       const activeObject = fabricRef.current.getActiveObject();
       if (!activeObject) return;
 
-      const objects = activeObject.type === 'activeSelection'
+      const objects = isActiveSelection(activeObject)
          ? (activeObject as fabric.ActiveSelection).getObjects()
          : [activeObject];
 
@@ -1217,7 +1345,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          if (fabricRef.current) {
             if (activeObject) {
                activeObject.setCoords();
-               if (activeObject.type === 'activeSelection') {
+               if (isActiveSelection(activeObject)) {
                   (activeObject as any)._calcBounds?.(true);
                }
             }
@@ -1242,7 +1370,156 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          return;
       }
 
+      // Resize every other selected object to the key object's width, height, or both, leaving each
+      // one exactly where it is. The existing matchWidth/matchHeight also shunt objects onto the
+      // parent's edge, which is a different intent.
+      const isMatchSizeMode = mode === 'matchSizeWidth' || mode === 'matchSizeHeight' || mode === 'matchSizeBoth';
+      if (isMatchSizeMode) {
+         if (hasParent) {
+            objects.forEach(child => {
+               if (child === parentObj) return;
+
+               const before = getAbsoluteBoundingRect(child);
+               if (before.width <= 0 || before.height <= 0) return;
+
+               // Pin the centre so growing or shrinking happens in place rather than drifting
+               // towards a corner.
+               const beforeCenterX = before.left + before.width / 2;
+               const beforeCenterY = before.top + before.height / 2;
+
+               const nextScaleX = mode === 'matchSizeHeight'
+                  ? (child.scaleX || 1)
+                  : (child.scaleX || 1) * (refW / before.width);
+               const nextScaleY = mode === 'matchSizeWidth'
+                  ? (child.scaleY || 1)
+                  : (child.scaleY || 1) * (refH / before.height);
+
+               child.set({ scaleX: nextScaleX, scaleY: nextScaleY });
+               child.setCoords();
+
+               const after = getAbsoluteBoundingRect(child);
+               const afterCenterX = after.left + after.width / 2;
+               const afterCenterY = after.top + after.height / 2;
+
+               const groupScaleX = child.group ? (child.group.scaleX || 1) : 1;
+               const groupScaleY = child.group ? (child.group.scaleY || 1) : 1;
+               child.set({
+                  left: child.left! + (beforeCenterX - afterCenterX) / groupScaleX,
+                  top: child.top! + (beforeCenterY - afterCenterY) / groupScaleY
+               });
+               child.setCoords();
+            });
+         }
+      }
+
+      // With no key object, a multi-selection has to move as ONE unit. Aligning each member to the
+      // artboard independently stacks them all on the same edge, which reads as the selection
+      // collapsing. Transform the union of the selection instead and carry every member along.
+      const alignAsSingleUnit = !isMatchSizeMode && !hasParent && objects.length > 1;
+      if (alignAsSingleUnit) {
+         let gMinX = Infinity, gMinY = Infinity, gMaxX = -Infinity, gMaxY = -Infinity;
+         objects.forEach(o => {
+            const b = getAbsoluteBoundingRect(o);
+            if (b.left < gMinX) gMinX = b.left;
+            if (b.top < gMinY) gMinY = b.top;
+            if (b.left + b.width > gMaxX) gMaxX = b.left + b.width;
+            if (b.top + b.height > gMaxY) gMaxY = b.top + b.height;
+         });
+
+         const groupW = gMaxX - gMinX;
+         const groupH = gMaxY - gMinY;
+
+         if (groupW > 0 && groupH > 0) {
+            // Resize the union. The per-mode cases mirror the single-object switch below so both
+            // paths mean the same thing.
+            let sx = 1, sy = 1;
+            switch (mode) {
+               case 'stretch': sx = board.width / groupW; sy = board.height / groupH; break;
+               case 'fill': { const s = Math.max(board.width / groupW, board.height / groupH); sx = s; sy = s; break; }
+               case 'fit':
+               case 'utils_fitInside': { const s = Math.min(board.width / groupW, board.height / groupH); sx = s; sy = s; break; }
+               case 'fitWidth': { const s = board.width / groupW; sx = s; sy = s; break; }
+               case 'fitHeight': { const s = board.height / groupH; sx = s; sy = s; break; }
+               case 'matchWidth': sx = board.width / groupW; break;
+               case 'matchHeight': sy = board.height / groupH; break;
+            }
+
+            const newW = groupW * sx;
+            const newH = groupH * sy;
+
+            let targetLeft = gMinX;
+            let targetTop = gMinY;
+
+            switch (mode) {
+               case 'left':
+               case 'stretch':
+               case 'matchWidth':
+                  targetLeft = board.x;
+                  break;
+               case 'centerH':
+               case 'center':
+               case 'fit':
+               case 'fill':
+               case 'fitWidth':
+               case 'utils_fitInside':
+               case 'utils_centerInside':
+                  targetLeft = board.x + (board.width - newW) / 2;
+                  break;
+               case 'right':
+                  targetLeft = board.x + board.width - newW;
+                  break;
+            }
+
+            switch (mode) {
+               case 'top':
+               case 'stretch':
+               case 'matchHeight':
+                  targetTop = board.y;
+                  break;
+               case 'centerV':
+               case 'center':
+               case 'fit':
+               case 'fill':
+               case 'fitHeight':
+               case 'utils_fitInside':
+               case 'utils_centerInside':
+                  targetTop = board.y + (board.height - newH) / 2;
+                  break;
+               case 'bottom':
+                  targetTop = board.y + board.height - newH;
+                  break;
+            }
+
+            objects.forEach(obj => {
+               // Each member keeps its relative place inside the selection, scaled by the same factor.
+               const before = getAbsoluteBoundingRect(obj);
+               const wantLeft = targetLeft + (before.left - gMinX) * sx;
+               const wantTop = targetTop + (before.top - gMinY) * sy;
+
+               if (sx !== 1 || sy !== 1) {
+                  obj.set({ scaleX: (obj.scaleX || 1) * sx, scaleY: (obj.scaleY || 1) * sy });
+                  obj.setCoords();
+               }
+
+               // Move by the delta of the absolute bounds, undoing the enclosing ActiveSelection's
+               // scale so left/top land correctly in the object's own coordinate plane.
+               const after = getAbsoluteBoundingRect(obj);
+               const groupScaleX = obj.group ? (obj.group.scaleX || 1) : 1;
+               const groupScaleY = obj.group ? (obj.group.scaleY || 1) : 1;
+               obj.set({
+                  left: obj.left! + (wantLeft - after.left) / groupScaleX,
+                  top: obj.top! + (wantTop - after.top) / groupScaleY
+               });
+               obj.setCoords();
+            });
+         }
+      }
+
       objects.forEach(obj => {
+         // Already handled above, as one unit or as a resize in place.
+         if (alignAsSingleUnit || isMatchSizeMode) {
+            return;
+         }
          // Skip parent object since it acts as the key reference anchor
          if (refArea && obj === parentObj) {
             return;
@@ -1364,7 +1641,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
       if (activeObject) {
          activeObject.setCoords();
-         if (activeObject.type === 'activeSelection') {
+         if (isActiveSelection(activeObject)) {
             (activeObject as any)._calcBounds?.(true);
          }
       }
@@ -1704,7 +1981,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                   artboardId: activeArtboardId || undefined
                });
 
-               if (clonedObj.type === 'activeSelection') {
+               if (isActiveSelection(clonedObj)) {
                   clonedObj.canvas = fabricRef.current;
                   clonedObj.forEachObject((obj: any) => {
                      obj.id = Date.now().toString() + Math.random().toString();
@@ -1751,7 +2028,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       }
 
       if (active) {
-         if (active.type === 'activeSelection') {
+         if (isActiveSelection(active)) {
             const selObjects = (active as fabric.ActiveSelection).getObjects();
             if (parentAlignmentObjRef.current && !selObjects.includes(parentAlignmentObjRef.current)) {
                parentAlignmentObjRef.current = null;
@@ -2177,14 +2454,21 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const createPlaceholder = (x: number, y: number, w: number, h: number) => {
          const isNone = collageBorderStyle === 'none';
          const isDashed = collageBorderStyle === 'dashed';
+         // Fabric v7 defaults originX/originY to 'center', so left/top must be pinned to the
+         // top-left for the tiling arithmetic below to mean what it reads as. The stroke is drawn
+         // centred on the path and counts towards the object's bounds, so the geometry is inset by
+         // one stroke width to keep each visible cell exactly `w` x `h`.
+         const strokeW = isNone ? 0 : collageBorderWidth;
          const rect = new fabric.Rect({
+            originX: 'left',
+            originY: 'top',
             left: board.x + padding + x,
             top: board.y + padding + y,
-            width: w,
-            height: h,
+            width: Math.max(1, w - strokeW),
+            height: Math.max(1, h - strokeW),
             fill: collageBgColor,
             stroke: isNone ? 'transparent' : collageBorderColor,
-            strokeWidth: isNone ? 0 : collageBorderWidth,
+            strokeWidth: strokeW,
             strokeDashArray: isDashed ? [5, 5] : undefined,
             rx: 0, // we use custom drawing properties
             ry: 0,
@@ -2246,18 +2530,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             canvas.add(item);
             commands.push(new AddObjectCommand("Add Collage Block", item));
          });
-         const sel = new fabric.ActiveSelection(items, { canvas });
-         canvas.setActiveObject(sel);
-         canvas.requestRenderAll();
-
-         const macro = new MacroCommand(`Generate ${type} Collage`, commands);
-         executeCommand(macro);
+         // Execute first: AddObjectCommand selects the object it adds, so running the macro after
+         // the ActiveSelection would collapse the selection down to the last block.
+         executeCommand(new MacroCommand(`Generate ${type} Collage`, commands));
          updateLayersList();
 
-         // Automatically fit collage to artboard upon generation
-         setTimeout(() => {
-            fitCollageToArtboard();
-         }, 50);
+         canvas.setActiveObject(new fabric.ActiveSelection(items, { canvas }));
+         canvas.requestRenderAll();
       }
    };
 
@@ -2265,54 +2544,75 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!fabricRef.current) return;
       const canvas = fabricRef.current;
       const active = canvas.getActiveObject();
-      if (!active || !(active as any).isCollageBlock) {
-         return;
-      }
+      if (!active) return;
 
-      const rect = active as fabric.Rect;
-      const bounds = rect.getBoundingRect();
-      const scaledW = bounds.width;
-      const scaledH = bounds.height;
-      const textWidth = Math.min(scaledW * 0.8, 200);
-      const textHeight = 30;
+      // An ActiveSelection is not itself a collage block, so a single-object check dropped every
+      // multi-cell selection on the floor. Add one heading per selected cell instead.
+      const blocks: fabric.Object[] = isActiveSelection(active)
+         ? (active as fabric.ActiveSelection).getObjects().filter(o => (o as any).isCollageBlock)
+         : ((active as any).isCollageBlock ? [active] : []);
+      if (blocks.length === 0) return;
 
-      let left = bounds.left + (scaledW - textWidth) / 2;
-      let top = bounds.top + (scaledH - textHeight) / 2;
-      let textAlign: fabric.TextboxProps['textAlign'] = 'center';
+      const commands: Command[] = [];
+      const created: fabric.Textbox[] = [];
 
-      if (alignment === 'top') {
-         top = bounds.top + scaledH * 0.15;
-      } else if (alignment === 'bottom') {
-         top = bounds.top + scaledH * 0.85 - textHeight;
-      } else if (alignment === 'left') {
-         left = bounds.left + scaledW * 0.1;
-         textAlign = 'left';
-      } else if (alignment === 'right') {
-         left = bounds.left + scaledW * 0.9 - textWidth;
-         textAlign = 'right';
-      }
+      blocks.forEach(block => {
+         // Scene-space bounds, with the enclosing ActiveSelection's transform already applied.
+         const bounds = getAbsoluteBoundingRect(block);
+         const inset = Math.min(bounds.width, bounds.height) * 0.08;
+         const boxWidth = Math.max(24, bounds.width - inset * 2);
+         const fontSize = Math.max(8, Math.min(bounds.height * 0.14, 42));
 
-      const text = new fabric.Textbox('Heading Text', {
-         left,
-         top,
-         width: textWidth,
-         fill: brushColor || '#FFFFFF',
-         fontFamily: textProps.fontFamily,
-         fontSize: Math.min(scaledH * 0.18, 24),
-         fontWeight: 'bold',
-         fontStyle: textProps.fontStyle,
-         textAlign: textAlign,
-         id: Date.now().toString() + '_' + Math.random().toString().slice(2, 6),
-         artboardId: (rect as any).artboardId
-      } as any);
+         const text = new fabric.Textbox('Heading Text', {
+            // Textbox is centre-origin by default in fabric v6+, which silently offset every
+            // heading by half its own size. The placement maths below is corner-based.
+            originX: 'left',
+            originY: 'top',
+            left: bounds.left + inset,
+            top: bounds.top + inset,
+            width: boxWidth,
+            fill: brushColor || '#FFFFFF',
+            fontFamily: textProps.fontFamily,
+            fontSize,
+            fontWeight: 'bold',
+            fontStyle: textProps.fontStyle,
+            // The box spans the cell, so horizontal placement is text alignment rather than
+            // a position - that keeps it correct however the text wraps.
+            textAlign: alignment === 'left' ? 'left' : alignment === 'right' ? 'right' : 'center',
+            id: Date.now().toString() + '_' + Math.random().toString().slice(2, 6),
+            artboardId: (block as any).artboardId
+         } as any);
 
-      canvas.add(text);
-      canvas.setActiveObject(text);
-      canvas.requestRenderAll();
+         // Height is only known once the Textbox has laid its lines out, so the vertical anchor
+         // has to be applied after construction rather than from a guessed 30px.
+         const textHeight = text.getScaledHeight();
+         let top = bounds.top + (bounds.height - textHeight) / 2;
+         if (alignment === 'top') {
+            top = bounds.top + inset;
+         } else if (alignment === 'bottom') {
+            top = bounds.top + bounds.height - textHeight - inset;
+         }
+         text.set({ top });
+         text.setCoords();
+
+         canvas.add(text);
+         created.push(text);
+         commands.push(new AddObjectCommand("Add Collage Text", text));
+      });
+
+      // Execute before selecting: AddObjectCommand selects the object it adds, so running this
+      // afterwards would collapse the selection down to the last heading.
+      executeCommand(
+         commands.length === 1
+            ? commands[0]
+            : new MacroCommand(`Add Collage Text (${commands.length})`, commands)
+      );
       updateLayersList();
 
-      const cmd = new AddObjectCommand("Add Collage Text", text);
-      executeCommand(cmd);
+      canvas.setActiveObject(
+         created.length > 1 ? new fabric.ActiveSelection(created, { canvas }) : created[0]
+      );
+      canvas.requestRenderAll();
    };
 
    const fitCollageToArtboard = () => {
@@ -2324,11 +2624,22 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const items = canvas.getObjects().filter(o => (o as any).isCollageBlock && (o as any).artboardId === activeArtboardId);
       if (items.length === 0) return;
 
+      // Objects held in an ActiveSelection carry group-relative left/top, which cannot be mixed
+      // with the scene-space bounds measured below. Drop the selection first, restore it after.
+      const previouslyActive = canvas.getActiveObject();
+      const restoreSelection = !!previouslyActive && (
+         (previouslyActive as any).isCollageBlock ||
+         (isActiveSelection(previouslyActive) &&
+            (previouslyActive as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))
+      );
+      canvas.discardActiveObject();
+      items.forEach(o => o.setCoords());
+
       const padding = Math.min(board.width, board.height) * (collagePaddingPercent / 100);
       const innerW = board.width - padding * 2;
       const innerH = board.height - padding * 2;
 
-      // Find bounding box of all collage blocks
+      // Union of the visible bounds. getBoundingRect() is scene-space and includes the stroke.
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       items.forEach(o => {
          const br = o.getBoundingRect();
@@ -2342,45 +2653,51 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const currentH = maxY - minY;
       if (currentW <= 0 || currentH <= 0) return;
 
-      const scaleX = innerW / currentW;
-      const scaleY = innerH / currentH;
-      const scale = Math.min(scaleX, scaleY);
-
+      const scale = Math.min(innerW / currentW, innerH / currentH);
       const targetCenterX = board.x + board.width / 2;
       const targetCenterY = board.y + board.height / 2;
       const currentCenterX = minX + currentW / 2;
       const currentCenterY = minY + currentH / 2;
 
-      const dx = targetCenterX - currentCenterX;
-      const dy = targetCenterY - currentCenterY;
-
       const commands: Command[] = [];
       items.forEach(item => {
          const beforeState = { left: item.left, top: item.top, scaleX: item.scaleX, scaleY: item.scaleY };
 
-         // Transform relative to current center
-         const relX = item.left - currentCenterX;
-         const relY = item.top - currentCenterY;
-
-         const newLeft = targetCenterX + relX * scale;
-         const newTop = targetCenterY + relY * scale;
-         const newScaleX = item.scaleX * scale;
-         const newScaleY = item.scaleY * scale;
-
-         const afterState = { left: newLeft, top: newTop, scaleX: newScaleX, scaleY: newScaleY };
-         item.set(afterState);
+         // Scale about the collage's centre, then re-anchor onto the artboard's centre. Working
+         // through the centre point keeps this independent of each block's originX/originY.
+         const center = item.getCenterPoint();
+         item.set({ scaleX: item.scaleX * scale, scaleY: item.scaleY * scale });
+         item.setPositionByOrigin(
+            new fabric.Point(
+               targetCenterX + (center.x - currentCenterX) * scale,
+               targetCenterY + (center.y - currentCenterY) * scale
+            ),
+            'center',
+            'center'
+         );
          item.setCoords();
 
+         const afterState = { left: item.left, top: item.top, scaleX: item.scaleX, scaleY: item.scaleY };
          commands.push(new TransformObjectsCommand(
             "Auto-Fit Collage Block",
             [{ obj: item, before: beforeState, after: afterState }]
          ));
       });
 
-      canvas.requestRenderAll();
+      // Must run while the blocks are still loose on the canvas: executeCommand re-applies the
+      // recorded state, and the left/top above are scene coordinates. Re-selecting first would put
+      // the blocks back in a group, where fabric reads left/top as group-relative, and the command
+      // would then fling them off the artboard.
       if (commands.length > 0) {
          executeCommand(new MacroCommand("Auto-Fit Collage", commands));
       }
+
+      if (restoreSelection) {
+         canvas.setActiveObject(
+            items.length > 1 ? new fabric.ActiveSelection(items, { canvas }) : items[0]
+         );
+      }
+      canvas.requestRenderAll();
    };
 
    const fillCollageBlockWithImage = (imageFile: File) => {
@@ -2415,7 +2732,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!active) return;
 
       const items: fabric.Object[] = [];
-      if (active.type === 'activeSelection') {
+      if (isActiveSelection(active)) {
          (active as fabric.ActiveSelection).getObjects().forEach(o => {
             if ((o as any).isCollageBlock) items.push(o);
          });
@@ -2545,7 +2862,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const items: fabric.Object[] = [];
       const allowedTypes = ['rect', 'circle', 'triangle', 'line', 'image', 'i-text', 'textbox', 'path'];
 
-      if (active.type === 'activeSelection') {
+      if (isActiveSelection(active)) {
          (active as fabric.ActiveSelection).getObjects().forEach(o => {
             if (allowedTypes.includes(o.type || '')) items.push(o);
          });
@@ -3534,7 +3851,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          if (parentAlignmentObjRef.current && fabricRef.current) {
             const activeObj = fabricRef.current.getActiveObject();
             // Check if the parent object is part of the current active selection
-            if (activeObj && activeObj.type === 'activeSelection' && (activeObj as fabric.ActiveSelection).getObjects().includes(parentAlignmentObjRef.current)) {
+            if (activeObj && isActiveSelection(activeObj) && (activeObj as fabric.ActiveSelection).getObjects().includes(parentAlignmentObjRef.current)) {
                ctx.save();
                ctx.transform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
 
@@ -3921,49 +4238,42 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          validateViewport();
       };
 
-      const handleMousedownCapture = (e: MouseEvent) => {
-         if (e.ctrlKey || e.metaKey) {
-            const activeObj = canvas.getActiveObject();
-            if (activeObj && activeObj.type === 'activeSelection') {
-               const pointer = (canvas as any).getPointer(e);
-               const selObjects = (activeObj as fabric.ActiveSelection).getObjects();
-               let clickedSubObject: fabric.Object | null = null;
+      // Ctrl/Cmd + Shift + click on a member of a multi-selection designates it the key
+      // ("parent") object. Align operations then resolve against that object's bounds instead of
+      // the artboard, so every other selected object moves and the key object stays put.
+      const handleKeyObjectMousedown = (e: MouseEvent) => {
+         if (!((e.ctrlKey || e.metaKey) && e.shiftKey)) return;
 
-               for (let i = selObjects.length - 1; i >= 0; i--) {
-                  const obj = selObjects[i];
+         const activeObj = canvas.getActiveObject();
+         if (!activeObj || !isActiveSelection(activeObj)) return;
 
-                  // Calculate point in local coordinates using inverse transform matrix
-                  const matrix = obj.calcTransformMatrix();
-                  const inverted = fabric.util.invertTransform(matrix);
-                  const localPt = fabric.util.transformPoint(pointer, inverted);
+         // getScenePoint is the fabric v6+ replacement for the removed getPointer(): the event
+         // position with the viewport transform backed out, i.e. the same plane getCoords() uses.
+         const scenePoint = canvas.getScenePoint(e);
+         const selObjects = (activeObj as fabric.ActiveSelection).getObjects();
 
-                  const halfW = (obj.width || 0) / 2;
-                  const halfH = (obj.height || 0) / 2;
-
-                  const inside = (localPt.x >= -halfW && localPt.x <= halfW && localPt.y >= -halfH && localPt.y <= halfH);
-
-                  if (inside) {
-                     clickedSubObject = obj;
-                     break;
-                  }
-               }
-
-               if (clickedSubObject) {
-                  e.preventDefault();
-                  e.stopPropagation();
-
-                  if (parentAlignmentObjRef.current === clickedSubObject) {
-                     parentAlignmentObjRef.current = null;
-                     setParentAlignmentObj(null);
-                  } else {
-                     parentAlignmentObjRef.current = clickedSubObject;
-                     setParentAlignmentObj(clickedSubObject);
-                  }
-
-                  canvas.requestRenderAll();
-               }
+         let clickedSubObject: fabric.Object | null = null;
+         for (let i = selObjects.length - 1; i >= 0; i--) {
+            // containsPoint tests the object's real (rotated) corners with the enclosing
+            // ActiveSelection's transform already applied.
+            if (selObjects[i].containsPoint(scenePoint)) {
+               clickedSubObject = selObjects[i];
+               break;
             }
          }
+         if (!clickedSubObject) return;
+
+         // Shift is fabric's own selectionKey, so if this event reached the canvas fabric would
+         // drop the clicked object out of the selection. Swallowing it here works only because
+         // this listener is on the wrapper in the capture phase - fabric binds mousedown directly
+         // on upperCanvasEl, and a capture listener on an ancestor is the one place that is
+         // guaranteed to run first.
+         e.preventDefault();
+         e.stopPropagation();
+
+         applyParentAlignment(
+            parentAlignmentObjRef.current === clickedSubObject ? null : clickedSubObject
+         );
       };
 
       // Attach native events to wrapper
@@ -3972,8 +4282,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          upperCanvas.addEventListener('touchstart', touchStartHandler as any, { passive: false });
          upperCanvas.addEventListener('touchmove', touchMoveHandler as any, { passive: false });
          upperCanvas.addEventListener('touchend', touchEndHandler as any);
-         upperCanvas.addEventListener('mousedown', handleMousedownCapture, true);
          upperCanvas.addEventListener('mousedown', handleBrushAdjustMousedown, true);
+      }
+      const canvasWrapperEl = canvas.wrapperEl;
+      if (canvasWrapperEl) {
+         canvasWrapperEl.addEventListener('mousedown', handleKeyObjectMousedown, true);
       }
 
       canvas.on('mouse:wheel', (opt) => {
@@ -4093,7 +4406,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       });
 
       canvas.on('mouse:dblclick', (opt) => {
-         if (opt.target && opt.target.type === 'image' && !opt.target.isType?.('activeSelection') && !(opt.target as any).isCropHelper) {
+         if (opt.target && opt.target.type === 'image' && !isActiveSelection(opt.target) && !(opt.target as any).isCropHelper) {
             enterCropMode(opt.target as fabric.Image);
          }
       });
@@ -4402,8 +4715,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             upperCanvasEl.removeEventListener('touchstart', handleTouchStart as any);
             upperCanvasEl.removeEventListener('touchmove', handleTouchMove as any);
             upperCanvasEl.removeEventListener('touchend', handleTouchEnd as any);
-            upperCanvasEl.removeEventListener('mousedown', handleMousedownCapture, true);
             upperCanvasEl.removeEventListener('mousedown', handleBrushAdjustMousedown, true);
+         }
+         if (canvasWrapperEl) {
+            canvasWrapperEl.removeEventListener('mousedown', handleKeyObjectMousedown, true);
          }
 
          resizeObserver.disconnect();
@@ -4457,6 +4772,26 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             applyCrop();
             e.preventDefault();
          }
+         const NUDGE_KEYS: Record<string, [number, number]> = {
+            ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
+         };
+         if (NUDGE_KEYS[e.key] && !ctrlOrCmd && !e.altKey) {
+            const tag = document.activeElement?.tagName;
+            const activeObj = fabricRef.current?.getActiveObject();
+            // Leave the caret alone while typing, in a form field or in a canvas text object.
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as any)?.isContentEditable) return;
+            if (!activeObj || (activeObj as any).isEditing) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            heldArrowsRef.current.add(e.key);
+            const step = e.shiftKey ? nudgeStepLargeRef.current : nudgeStepRef.current;
+            const [ux, uy] = NUDGE_KEYS[e.key];
+            nudgeSelection(ux * step, uy * step);
+            return;
+         }
+
 
          if (e.key === 'Escape') {
             if (isCropping) {
@@ -4555,6 +4890,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          }
       };
       const handleKeyUp = (e: KeyboardEvent) => {
+         if (heldArrowsRef.current.has(e.key)) {
+            heldArrowsRef.current.delete(e.key);
+            // One undo entry per burst, however long the key was held.
+            if (heldArrowsRef.current.size === 0) commitNudge();
+         }
          if (!e.altKey) setIsAltPressed(false);
          if (!e.shiftKey) setIsShiftPressed(false);
          if (!e.ctrlKey) setIsCtrlPressed(false);
@@ -4567,7 +4907,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          window.removeEventListener('keydown', handleKeyDown, { capture: true });
          window.removeEventListener('keyup', handleKeyUp, { capture: true });
       };
-   }, [performUndo, performRedo, brushType, applyBrushSettings, handleLayerOrder, updateCursorRing]);
+   }, [performUndo, performRedo, brushType, applyBrushSettings, handleLayerOrder, updateCursorRing, nudgeSelection, commitNudge]);
 
    const handleContextMenu = (e: React.MouseEvent) => {
       e.preventDefault();
@@ -5322,7 +5662,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                   id: Date.now().toString() + Math.random().toString(),
                   artboardId: (activeObj as any).artboardId || activeArtboardIdRef.current
                });
-               if (cloned.type === 'activeSelection') {
+               if (isActiveSelection(cloned)) {
                   cloned.canvas = fabricRef.current!;
                   (cloned as any).forEachObject((obj: any) => {
                      obj.id = Date.now().toString() + Math.random().toString();
@@ -5732,7 +6072,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
          const objs = fabricRef.current.getObjects();
          objs.forEach((obj) => {
-            if (!obj.visible || obj.type === 'activeSelection') return;
+            if (!obj.visible || isActiveSelection(obj)) return;
 
             const assignedId = (obj as any).artboardId;
             if (assignedId === board.id) {
@@ -6151,8 +6491,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                            activeObjs: fabricRef.current?.getActiveObjects() || [],
                            activeSelection: !!fabricRef.current?.getActiveObject(),
                            isCollageBlock: fabricRef.current?.getActiveObject()?.type === 'rect' && (fabricRef.current?.getActiveObject() as any)?.id?.startsWith('collage-block-'),
-                           isCollageSelected: !!fabricRef.current?.getActiveObject() && ((fabricRef.current?.getActiveObject() as any)?.isCollageBlock || (fabricRef.current?.getActiveObject()?.type === 'activeSelection' && (fabricRef.current?.getActiveObject() as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))),
-                           parentAlignmentObj, setParentAlignmentObj,
+                           isCollageSelected: !!fabricRef.current?.getActiveObject() && ((fabricRef.current?.getActiveObject() as any)?.isCollageBlock || (isActiveSelection(fabricRef.current?.getActiveObject()) && (fabricRef.current?.getActiveObject() as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))),
+                           parentAlignmentObj, setParentAlignmentObj: applyParentAlignment,
                            selectionType, setSelectionType,
                            textObj: fabricRef.current?.getActiveObject() as any,
                            textContent: (fabricRef.current?.getActiveObject() as any)?.text || ''
@@ -6163,9 +6503,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                  artboards, setArtboards, activeArtboardId, setActiveArtboardId,
                                  imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
                                  createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
-                                 updateArtboardProp, onArtboardPropStart, onArtboardPropCommit
+                                 updateArtboardProp, onArtboardPropStart, onArtboardPropCommit,
+                                 nudgeStep, setNudgeStep, nudgeStepLarge, setNudgeStepLarge
                               }}>
-                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, moveLayerUp, moveLayerDown }}>
+                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, moveLayerUp, moveLayerDown }}>
                                     <div
                                        className="w-full h-full flex flex-col bg-slate-100 dark:bg-[#121212] text-slate-800 dark:text-[#E0E0E0] select-none"
                                        ref={containerRef}
@@ -7106,7 +7447,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                                   id: Date.now().toString() + Math.random().toString(),
                                                                   evented: true,
                                                                });
-                                                               if (clonedObj.type === 'activeSelection') {
+                                                               if (isActiveSelection(clonedObj)) {
                                                                   clonedObj.canvas = fabricRef.current;
                                                                   clonedObj.forEachObject((obj: any) => {
                                                                      obj.id = Date.now().toString() + Math.random().toString();
@@ -7181,7 +7522,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                                if (!activeSelection) return;
 
                                                                let objectsToProcess: any[] = [];
-                                                               if (activeSelection.type === 'activeSelection') {
+                                                               if (isActiveSelection(activeSelection)) {
                                                                   objectsToProcess = (activeSelection as any).getObjects();
                                                                   fabricRef.current.discardActiveObject();
                                                                } else {

@@ -2,13 +2,13 @@ import React from 'react';
 import * as fabric from 'fabric';
 import {
    Brush, Eraser, FlipHorizontal, FlipVertical, Move, SquareDashed, Layout, Square, Palette, MousePointer2, Copy, Trash2, Crop, RotateCcw, Settings,
-   Droplets, Sparkles, Printer, Plus, Minus
+   Droplets, Sparkles, Printer, Plus, Minus, RotateCw
 } from 'lucide-react';
 import { useTool } from '../../../contexts/ToolContext';
 import { useCanvas } from '../../../contexts/CanvasContext';
 import { useWorkspaceUI } from '../../../contexts/WorkspaceUIContext';
 import { useSelection } from '../../../contexts/SelectionContext';
-import { useCollageConfig } from '../../../hooks/useCollageConfig';
+import { useCollageConfig, COLLAGE_DEFAULTS } from '../../../hooks/useCollageConfig';
 import { useShapeProperties } from '../../../hooks/useShapeProperties';
 import { ObjectDimensionsPanel } from '../ObjectDimensionsPanel';
 import { FilterSlider } from '../../shared/FilterSlider';
@@ -19,6 +19,8 @@ import { TypographyPanel } from '../TypographyPanel';
 import { SmartCollageBlockCustomizationPanel } from '../SmartCollageBlockCustomizationPanel';
 import { ArtboardAssignmentModule } from '../ArtboardAssignmentModule';
 import { ModernSelect, SelectGroup } from '../../shared/ModernSelect';
+import { PanelSection, Label, RangeSlider, GridButton, ColorField, BorderStylePicker } from '../../shared/PanelPrimitives';
+import { isActiveSelection } from '../../../../../utils/fabric-utils';
 
 const BRUSH_TYPE_GROUPS: SelectGroup[] = [
    {
@@ -60,45 +62,22 @@ const BRUSH_TYPE_GROUPS: SelectGroup[] = [
 ];
 
 // Common UI Components for the Panel
-const PanelSection: React.FC<{ title: React.ReactNode; icon?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ title, icon, children, className = '' }) => (
-   <div className={`bg-white dark:bg-[#181818] rounded-xl border border-slate-200 dark:border-[#2A2A2A] p-4 space-y-4 shadow-sm ${className}`}>
-      <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-900 dark:text-white tracking-wide uppercase">
-         {icon}
-         <span>{title}</span>
-      </div>
-      {children}
-   </div>
-);
-
-const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-   <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-zinc-500 block mb-1.5">{children}</span>
-);
-
-const RangeSlider: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label?: string; valueDisplay?: string | number; displayUnit?: string }> = ({ label, valueDisplay, displayUnit = '', ...props }) => (
-   <div>
-      {(label || valueDisplay !== undefined) && (
-         <div className="flex justify-between items-center text-[10px] text-slate-600 dark:text-zinc-400 mb-1.5 font-medium">
-            {label && <span>{label}</span>}
-            {valueDisplay !== undefined && <span className="font-mono text-slate-800 dark:text-white/90 bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/10">{valueDisplay}{displayUnit}</span>}
-         </div>
-      )}
-      <input
-         type="range"
-         {...props}
-         className={`w-full accent-blue-500 hover:accent-blue-400 h-1.5 bg-slate-200 dark:bg-[#2C2C2C] rounded-full appearance-none outline-none cursor-pointer ${props.className || ''}`}
-      />
-   </div>
-);
-
-const GridButton: React.FC<{ active?: boolean; onClick: () => void; children: React.ReactNode; className?: string }> = ({ active, onClick, children, className = '' }) => (
-   <button
-      type="button"
-      onClick={onClick}
-      className={`py-1.5 text-[10px] font-semibold rounded-md transition-all active:scale-95 ${active ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/5 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'} ${className}`}
-   >
-      {children}
-   </button>
-);
+// Miniature of each collage layout, so the preset buttons show the arrangement instead of a code.
+const CollageLayoutPreview: React.FC<{ id: string }> = ({ id }) => {
+   const cell = 'flex-1 rounded-[2px] bg-slate-300 dark:bg-zinc-600 group-hover:bg-purple-400 dark:group-hover:bg-purple-400/80 transition-colors';
+   const frame = 'w-10 h-8 flex gap-[3px] p-[3px] rounded-md bg-slate-100 dark:bg-[#0A0A0A] border border-slate-300 dark:border-zinc-700 group-hover:border-purple-400/50 transition-colors';
+   const row = 'flex flex-1 gap-[3px]';
+   const col = 'flex flex-1 flex-col gap-[3px]';
+   switch (id) {
+      case '2x':  return <div className={frame}><i className={cell} /><i className={cell} /></div>;
+      case '3x':  return <div className={frame}><i className={cell} /><i className={cell} /><i className={cell} /></div>;
+      case '4x':  return <div className={`${frame} flex-col`}><div className={row}><i className={cell} /><i className={cell} /></div><div className={row}><i className={cell} /><i className={cell} /></div></div>;
+      case '1-2': return <div className={frame}><i className={cell} /><div className={col}><i className={cell} /><i className={cell} /></div></div>;
+      case '2-1': return <div className={`${frame} flex-col`}><i className={cell} /><div className={row}><i className={cell} /><i className={cell} /></div></div>;
+      case 'film':return <div className={`${frame} flex-col`}><i className={cell} /><i className={cell} /><i className={cell} /></div>;
+      default:    return null;
+   }
+};
 
 export const PropertiesTab: React.FC = () => {
    const {
@@ -112,7 +91,7 @@ export const PropertiesTab: React.FC = () => {
    const {
       fabricRef, flipX, flipY, updateSelectedShapeProperty, applyFilter, duplicateActiveObject,
       deleteActiveObject, updateArtboardPropDirect, generateSmartCollage,
-      generateBleed, enterCropMode, resetCrop
+      generateBleed, enterCropMode, resetCrop, updateCollageBlockStyleProperty
    } = useCanvas();
 
    const { artboards, activeArtboardId } = useWorkspaceUI();
@@ -125,7 +104,7 @@ export const PropertiesTab: React.FC = () => {
       collagePaddingPercent, setCollagePaddingPercent, collageGapPercent, setCollageGapPercent,
       collageBgColor, setCollageBgColor, collageBorderColor, setCollageBorderColor,
       collageBorderWidth, setCollageBorderWidth, collageCornerRadius, setCollageCornerRadius,
-      collageBorderStyle, setCollageBorderStyle
+      collageBorderStyle, setCollageBorderStyle, resetCollageConfig
    } = useCollageConfig();
 
    const {
@@ -137,7 +116,7 @@ export const PropertiesTab: React.FC = () => {
    const activeObj = fabricRef.current?.getActiveObject();
    const isCollageSelected = activeObj && (
       (activeObj as any).isCollageBlock ||
-      (activeObj.type === 'activeSelection' && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))
+      (isActiveSelection(activeObj) && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))
    );
 
    return (
@@ -532,9 +511,28 @@ export const PropertiesTab: React.FC = () => {
                      {/* Smart Collage Builder */}
                      <PanelSection
                         title={
-                           <div className="flex items-center justify-between w-full">
-                              <span>Smart Collage Builder</span>
-                              <span className="text-[9px] font-bold bg-blue-500 text-slate-900 dark:text-white px-2 py-0.5 rounded-full shadow-sm shadow-blue-500/20">PERFECT FIT</span>
+                           <div className="flex items-center justify-between w-full gap-2">
+                              <span className="flex items-center gap-2">
+                                 Smart Collage Builder
+                                 <span className="text-[9px] font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full shadow-sm shadow-blue-500/20">PERFECT FIT</span>
+                              </span>
+                              <button
+                                 type="button"
+                                 onClick={() => {
+                                    resetCollageConfig();
+                                    // Push the defaults onto any collage cells that are selected, so
+                                    // Reset means the same thing on canvas as it does in this panel.
+                                    updateCollageBlockStyleProperty('fill', COLLAGE_DEFAULTS.bgColor);
+                                    updateCollageBlockStyleProperty('stroke', COLLAGE_DEFAULTS.borderColor);
+                                    updateCollageBlockStyleProperty('strokeWidth', COLLAGE_DEFAULTS.borderWidth);
+                                    updateCollageBlockStyleProperty('rx', COLLAGE_DEFAULTS.cornerRadius);
+                                    updateCollageBlockStyleProperty('borderStyle', COLLAGE_DEFAULTS.borderStyle);
+                                 }}
+                                 title="Reset all collage presets to their defaults"
+                                 className="shrink-0 flex items-center gap-1 h-6 px-2 rounded-md text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-white/25 active:scale-95 transition-all"
+                              >
+                                 <RotateCw size={11} /> Reset
+                              </button>
                            </div>
                         }
                         icon={<Layout size={14} className="text-purple-400" />}
@@ -551,97 +549,106 @@ export const PropertiesTab: React.FC = () => {
                               <button
                                  key={c.i}
                                  onClick={() => generateSmartCollage(c.i)}
+                                 title={'Generate a ' + c.l + ' collage that fills the artboard'}
                                  className="py-2.5 bg-slate-50 dark:bg-[#141414] hover:bg-slate-100 dark:hover:bg-[#1C1C1C] border border-slate-200 dark:border-[#333] hover:border-purple-500/50 rounded-lg text-[10px] text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center gap-1.5 transition-all group active:scale-95 shadow-sm"
                               >
-                                 <div className="w-8 h-8 border border-slate-300 dark:border-zinc-700 group-hover:border-purple-400/50 rounded-md bg-slate-100 dark:bg-[#0A0A0A] group-hover:bg-purple-500/10 flex items-center justify-center text-[10px] font-mono transition-colors text-slate-500 dark:text-zinc-500 group-hover:text-purple-300">{c.i}</div>
+                                 <CollageLayoutPreview id={c.i} />
                                  <span className="font-medium">{c.l}</span>
                               </button>
                            ))}
                         </div>
 
                         <div className="space-y-4 bg-slate-50 dark:bg-[#111] p-3 rounded-lg border border-slate-200 dark:border-white/5 mt-2">
-                           <Label>Preset Options (Perfect Fit)</Label>
+                           <div className="flex items-baseline justify-between">
+                              <Label>Preset Options</Label>
+                              <span className="text-[9px] text-slate-400 dark:text-zinc-500">applies live to selected cells</span>
+                           </div>
 
                            <RangeSlider label="Outer Padding (Margin)" min="0" max="15" step="1" value={collagePaddingPercent} valueDisplay={collagePaddingPercent} displayUnit="%" onChange={(e) => setCollagePaddingPercent(Number(e.target.value))} />
                            <RangeSlider label="Inner Gap (Spacing)" min="0" max="10" step="0.5" value={collageGapPercent} valueDisplay={collageGapPercent} displayUnit="%" onChange={(e) => setCollageGapPercent(Number(e.target.value))} />
 
-                           <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200 dark:border-white/5">
-                              <div>
-                                 <Label>Block Fill</Label>
-                                 <div className="w-full h-8 rounded-md border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: collageBgColor }}>
-                                    <ColorPickerTrigger color={collageBgColor} onChange={setCollageBgColor} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                 </div>
-                              </div>
-                              <div>
-                                 <Label>Border Color</Label>
-                                 <div className="w-full h-8 rounded-md border border-white/20 shadow-inner relative overflow-hidden transition-transform hover:scale-105 cursor-pointer" style={{ backgroundColor: collageBorderColor }}>
-                                    <ColorPickerTrigger color={collageBorderColor} onChange={setCollageBorderColor} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                 </div>
-                              </div>
+                           <div className="pt-3 border-t border-slate-200 dark:border-white/5 space-y-4">
+                              {/* These also write straight to any selected cells. Setting state alone
+                                  was not enough: selecting a cell re-syncs the config from that object,
+                                  which silently reverted the value the moment it happened. */}
+                              <RangeSlider
+                                 label="Border Width" min="0" max="50" step="1"
+                                 value={collageBorderWidth} valueDisplay={collageBorderWidth} displayUnit="px"
+                                 onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setCollageBorderWidth(v);
+                                    updateCollageBlockStyleProperty('strokeWidth', v);
+                                 }}
+                              />
+                              <RangeSlider
+                                 label="Corner Radius" min="0" max="100" step="1"
+                                 value={collageCornerRadius} valueDisplay={collageCornerRadius} displayUnit="%"
+                                 onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    setCollageCornerRadius(v);
+                                    updateCollageBlockStyleProperty('rx', v);
+                                 }}
+                              />
                            </div>
 
-                           <div className="grid grid-cols-2 gap-4 pt-1">
-                              <div>
-                                 <Label>Border Width</Label>
-                                 <input
-                                    type="number" min="0" max="10"
-                                    value={collageBorderWidth}
-                                    onChange={(e) => setCollageBorderWidth(Number(e.target.value))}
-                                    className="w-full h-8 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-[11px] text-slate-900 dark:text-white px-2 rounded-md outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-                                 />
-                              </div>
-                              <div>
-                                 <Label>Corner Radius</Label>
-                                 <input
-                                    type="number" min="0" max="100"
-                                    value={collageCornerRadius}
-                                    onChange={(e) => setCollageCornerRadius(Number(e.target.value))}
-                                    className="w-full h-8 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-[11px] text-slate-900 dark:text-white px-2 rounded-md outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
-                                 />
-                              </div>
+                           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-200 dark:border-white/5">
+                              <ColorField
+                                 label="Block Fill"
+                                 color={collageBgColor}
+                                 onChange={(c) => { setCollageBgColor(c); updateCollageBlockStyleProperty('fill', c); }}
+                              />
+                              <ColorField
+                                 label="Border Color"
+                                 color={collageBorderColor}
+                                 muted={collageBorderStyle === 'none'}
+                                 onChange={(c) => { setCollageBorderColor(c); updateCollageBlockStyleProperty('stroke', c); }}
+                              />
                            </div>
 
-                           <div className="pt-1">
+                           <div className="pt-3 border-t border-slate-200 dark:border-white/5">
                               <Label>Border Style</Label>
-                              <div className="grid grid-cols-3 gap-1 bg-slate-50 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/5 rounded-lg p-1">
-                                 {['none', 'solid', 'dashed'].map((st) => (
-                                    <GridButton key={st} active={collageBorderStyle === st} onClick={() => setCollageBorderStyle(st as any)}>
-                                       <span className="capitalize">{st}</span>
-                                    </GridButton>
-                                 ))}
-                              </div>
+                              <BorderStylePicker
+                                 value={collageBorderStyle}
+                                 onChange={(st) => { setCollageBorderStyle(st); updateCollageBlockStyleProperty('borderStyle', st); }}
+                              />
                            </div>
                         </div>
                      </PanelSection>
 
                      {/* Print Settings */}
                      <PanelSection title="Print Preparation" icon={<Printer size={14} className="text-slate-600 dark:text-zinc-400" />}>
-                        <div className="space-y-3">
-                           <div className="bg-slate-50 dark:bg-[#111] p-3 rounded-lg border border-slate-200 dark:border-white/5">
-                              <ModernCheckbox
-                                 checked={!!artboards.find(b => b.id === activeArtboardId)?.showMargins}
-                                 onChange={(val) => updateArtboardPropDirect(activeArtboardId, 'showMargins', val, true)}
-                                 label='Show Print Margins (0.25")'
-                                 labelLeft
-                              />
+                        <div className="flex items-start justify-between gap-3">
+                           <div className="min-w-0">
+                              <span className="block text-[11px] font-semibold text-slate-700 dark:text-slate-200">Show Print Margins</span>
+                              <span className="block text-[9px] text-slate-400 dark:text-zinc-500 mt-0.5">Safe area guide, 0.25&quot; inside the trim edge.</span>
                            </div>
-                           <div className="flex gap-2">
-                              <button
+                           <ModernCheckbox
+                              checked={!!artboards.find(b => b.id === activeArtboardId)?.showMargins}
+                              onChange={(val: boolean) => updateArtboardPropDirect(activeArtboardId, 'showMargins', val, true)}
+                              className="shrink-0 mt-0.5"
+                           />
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-200 dark:border-white/5">
+                           <div className="flex items-baseline justify-between mb-1.5">
+                              <Label>Bleed</Label>
+                              <span className="text-[9px] font-mono text-slate-400 dark:text-zinc-500">0.125&quot;</span>
+                           </div>
+                           <div className="grid grid-cols-2 gap-2">
+                              <GridButton
                                  onClick={() => generateBleed(false)}
-                                 className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95"
-                                 title="Add 0.125&#34; Bleed"
+                                 className="flex items-center justify-center gap-1.5 h-9"
+                                 title="Grow the artboard by 0.125&quot; on every side"
                               >
-                                 <Plus className="text-slate-600 dark:text-zinc-400" size={14} />
-                                 <span>Add Bleed</span>
-                              </button>
-                              <button
+                                 <Plus size={13} /> Add Bleed
+                              </GridButton>
+                              <GridButton
                                  onClick={() => generateBleed(true)}
-                                 className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-[11px] rounded-lg flex gap-2 justify-center items-center font-medium transition-all shadow-sm active:scale-95"
-                                 title="Remove 0.125&#34; Bleed"
+                                 className="flex items-center justify-center gap-1.5 h-9"
+                                 title="Shrink the artboard back by 0.125&quot; on every side"
                               >
-                                 <Minus className="text-slate-600 dark:text-zinc-400" size={14} />
-                                 <span>Remove Bleed</span>
-                              </button>
+                                 <Minus size={13} /> Remove Bleed
+                              </GridButton>
                            </div>
                         </div>
                      </PanelSection>

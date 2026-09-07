@@ -3,6 +3,7 @@ import { Artboard } from '../types/artboards';
 import { getAbsoluteBoundingRect } from '../../../utils/fabric-utils';
 import { Command } from '../commands/base/Command';
 import { TransformObjectsCommand } from '../commands/object/TransformCommand';
+import { isActiveSelection } from '../../../utils/fabric-utils';
 
 export type AlignmentMode = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' | 'fit' | 'fill' | 'stretch' | 'fitWidth' | 'fitHeight' | 'utils_fitInside' | 'utils_centerInside' | 'matchWidth' | 'matchHeight' | 'distributeH' | 'distributeV';
 
@@ -47,7 +48,7 @@ export class AlignmentController {
       const activeObject = this.canvas.getActiveObject();
       if (!activeObject) return;
 
-      const objects = activeObject.type === 'activeSelection'
+      const objects = isActiveSelection(activeObject)
          ? (activeObject as fabric.ActiveSelection).getObjects()
          : [activeObject];
 
@@ -135,7 +136,7 @@ export class AlignmentController {
          
          if (activeObject) {
             activeObject.setCoords();
-            if (activeObject.type === 'activeSelection') {
+            if (isActiveSelection(activeObject)) {
                (activeObject as any)._calcBounds?.(true);
             }
          }
@@ -273,7 +274,7 @@ export class AlignmentController {
 
       if (activeObject) {
          activeObject.setCoords();
-         if (activeObject.type === 'activeSelection') {
+         if (isActiveSelection(activeObject)) {
             (activeObject as any)._calcBounds?.(true);
          }
       }

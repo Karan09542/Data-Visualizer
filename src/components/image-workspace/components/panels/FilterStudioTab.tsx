@@ -10,6 +10,7 @@ import { useSelection } from '../../contexts/SelectionContext';
 import { FilterConfig } from '../../types/filters';
 import { ColorPickerTrigger } from '../shared/ColorPickers';
 import { useFilterPipeline } from '../../hooks/useFilterPipeline';
+import { isActiveSelection } from '../../../../utils/fabric-utils';
 
 export const FilterStudioTab: React.FC = () => {
    const {
@@ -39,7 +40,7 @@ export const FilterStudioTab: React.FC = () => {
 
    const getTargetImageForFilters = () => {
       let targetImage = fabricRef.current?.getActiveObject();
-      if (targetImage && targetImage.type === 'activeSelection') {
+      if (targetImage && isActiveSelection(targetImage)) {
          // Filter the first valid filterable object
          const objects = (targetImage as fabric.ActiveSelection).getObjects();
          targetImage = objects.find(o => o.type === 'image' || (o as any).isCollageBlock) || targetImage;

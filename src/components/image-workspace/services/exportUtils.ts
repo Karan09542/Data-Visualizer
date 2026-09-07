@@ -7,6 +7,7 @@ import {
    pngWasmUrl, jpegWasmUrl, webpWasmUrl, webpSimdWasmUrl, 
    avifWasmUrl, avifMtWasmUrl, resizeWasmUrl 
 } from "./export/jsquash";
+import { isActiveSelection } from '../../../utils/fabric-utils';
 
 export const generateDirectNativeBlob = async (
    canvas: fabric.Canvas, 
@@ -40,7 +41,7 @@ export const generateDirectNativeBlob = async (
    ctx.translate(-board.x, -board.y);
    const objs = canvas.getObjects();
    objs.forEach((obj) => {
-      if (!obj.visible || obj.type === 'activeSelection') return;
+      if (!obj.visible || isActiveSelection(obj)) return;
       const assignedId = (obj as any).artboardId;
       if (assignedId === board.id) {
          obj.render(ctx);
@@ -103,7 +104,7 @@ export const generateArtboardPixelBuffer = async (canvas: fabric.Canvas, board: 
 
    const objs = canvas.getObjects();
    objs.forEach((obj) => {
-      if (!obj.visible || obj.type === 'activeSelection') return;
+      if (!obj.visible || isActiveSelection(obj)) return;
 
       const assignedId = (obj as any).artboardId;
       if (assignedId === board.id) {

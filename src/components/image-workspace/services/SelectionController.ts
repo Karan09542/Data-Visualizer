@@ -1,4 +1,5 @@
 import * as fabric from 'fabric';
+import { isActiveSelection } from '../../../utils/fabric-utils';
 
 export interface SelectionState {
    activeObject: fabric.Object | null;
@@ -64,7 +65,7 @@ export class SelectionController {
       
       // Handle parent alignment object lifecycle
       if (activeObj) {
-         if (activeObj.type === 'activeSelection') {
+         if (isActiveSelection(activeObj)) {
             const selObjects = (activeObj as fabric.ActiveSelection).getObjects();
             if (this.parentAlignmentObj && !selObjects.includes(this.parentAlignmentObj)) {
                this.parentAlignmentObj = null;
@@ -80,7 +81,7 @@ export class SelectionController {
       
       // Collage check (TODO: move out)
       const isCollageBlock = activeObj?.type === 'rect' && (activeObj as any).id?.startsWith('collage-block-');
-      const isCollageSelected = !!activeObj && ((activeObj as any).isCollageBlock || (activeObj.type === 'activeSelection' && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock)));
+      const isCollageSelected = !!activeObj && ((activeObj as any).isCollageBlock || (isActiveSelection(activeObj) && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock)));
       
       const textObj = activeObj as any;
       const textContent = textObj?.text || '';

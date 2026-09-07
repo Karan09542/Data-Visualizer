@@ -1,5 +1,6 @@
 import * as fabric from "fabric";
 import { Command } from "../base/Command";
+import { isActiveSelection } from '../../../../utils/fabric-utils';
 
 // TODO(Refactor): Move to src/components/image-workspace/commands/layer/LayerReorderCommand.ts
 export class LayerReorderCommand implements Command {
@@ -27,7 +28,7 @@ export class LayerReorderCommand implements Command {
     // Clear selection so objects return to canvas
     canvas.discardActiveObject();
 
-    const existingObjs = canvas.getObjects().filter(o => o.type !== 'activeSelection') as any[];
+    const existingObjs = canvas.getObjects().filter(o => !isActiveSelection(o)) as any[];
     const map = new Map<string, any>();
     existingObjs.forEach(o => map.set(o.id, o));
 

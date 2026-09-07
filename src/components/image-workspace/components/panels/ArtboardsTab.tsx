@@ -1,13 +1,59 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-   SquareDashed, Plus, Copy, Trash2, ChevronDown, MoreVertical, Settings, Edit2
+   SquareDashed, Plus, Copy, Trash2, ChevronDown, MoreVertical, Edit2,
+   RectangleVertical, RectangleHorizontal, ArrowUp, ArrowDown, Check, Settings2
 } from 'lucide-react';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { useCanvas } from '../../contexts/CanvasContext';
 import { useHistory } from '../../contexts/HistoryContext';
-import { ModernCheckbox } from '../shared/ModernCheckbox';
 import { PRESET_REGISTRY, getDimensionsInPixels } from '../../../../lib/imagePresets';
 import { ColorPickerTrigger } from '../shared/ColorPickers';
+
+const CHECKER = 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVQRVGGIII=")';
+
+/** Field label at the one size used across the inspector. */
+const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+   <span className="text-[9px] uppercase font-bold tracking-wider text-slate-500 dark:text-zinc-500 block mb-1">{children}</span>
+);
+
+/**
+ * Guide toggle. A full-width row rather than a bare 16px checkbox: on touch the old control gave
+ * a ~16px hit area, which is well under the 44px a finger needs.
+ */
+const ToggleChip: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void }> = ({ label, checked, onChange }) => (
+   <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+      className={`h-9 px-2.5 rounded-lg border text-[10px] font-semibold flex items-center gap-2 transition-colors text-left ${checked
+         ? 'bg-blue-50 dark:bg-blue-500/15 border-blue-200 dark:border-blue-500/40 text-blue-700 dark:text-blue-300'
+         : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 dark:text-zinc-400 hover:border-slate-300 dark:hover:border-white/25'}`}
+   >
+      <span className={`w-4 h-4 shrink-0 rounded-[4px] border-2 flex items-center justify-center transition-colors ${checked
+         ? 'bg-blue-500 border-blue-500 text-white'
+         : 'border-slate-300 dark:border-slate-600'}`}
+      >
+         {checked && <Check size={10} strokeWidth={4} />}
+      </span>
+      <span className="truncate">{label}</span>
+   </button>
+);
+
+const MenuItem: React.FC<{
+   icon: React.ReactNode; label: string; danger?: boolean; disabled?: boolean; onClick: (e: React.MouseEvent) => void;
+}> = ({ icon, label, danger, disabled, onClick }) => (
+   <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`w-full px-3 h-9 text-left text-[11px] font-semibold transition-colors flex items-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed ${danger
+         ? 'text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+         : 'text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'}`}
+   >
+      {icon} {label}
+   </button>
+);
 
 export const ArtboardsTab: React.FC = () => {
    const {
@@ -52,6 +98,7 @@ export const ArtboardsTab: React.FC = () => {
 
    const moveArtboard = (sourceIndex: number, destIndex: number) => {
       if (sourceIndex === destIndex) return;
+      if (destIndex < 0 || destIndex >= artboards.length) return;
       const newArtboards = [...artboards];
       const [removed] = newArtboards.splice(sourceIndex, 1);
       newArtboards.splice(destIndex, 0, removed);
@@ -70,49 +117,67 @@ export const ArtboardsTab: React.FC = () => {
       executeCommand(cmd as any);
    };
 
+   const zoomToBoard = (board: any) => {
+      if (!fabricRef.current) return;
+      const cw = fabricRef.current.width!;
+      const ch = fabricRef.current.height!;
+      const zoom = Math.min(cw / (board.width + 100), ch / (board.height + 100), 2);
+      fabricRef.current.setZoom(zoom);
+      const vpt = fabricRef.current.viewportTransform!;
+      const newVpt = vpt.slice() as any;
+      newVpt[4] = cw / 2 - (board.x + board.width / 2) * zoom;
+      newVpt[5] = ch / 2 - (board.y + board.height / 2) * zoom;
+      fabricRef.current.setViewportTransform(newVpt);
+      setZoomPercent(Math.round(zoom * 100));
+   };
+
    return (
       <div className="flex flex-col h-full overflow-hidden text-slate-900 dark:text-white font-sans selection:bg-blue-500/30">
          {/* Header & Create */}
-         <div className="p-3 md:p-4 shrink-0 border-b border-slate-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1A1A1A] z-10 shadow-sm flex flex-col gap-3 md:gap-4 pb-4 md:pb-5">
+         <div className="p-3 md:p-4 shrink-0 border-b border-slate-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1A1A1A] z-10 shadow-sm flex flex-col gap-3">
             <div className="flex items-center justify-between">
                <div className="flex items-center gap-2">
-                  <SquareDashed size={14} className="text-blue-400 opacity-80 md:w-4 md:h-4" />
-                  <span className="text-xs md:text-sm font-semibold text-slate-900 dark:text-[#EEEEEE] tracking-tight">Artboards</span>
+                  <SquareDashed size={15} className="text-blue-500 dark:text-blue-400" />
+                  <span className="text-sm font-semibold tracking-tight">Artboards</span>
                </div>
-               <span className="text-[10px] bg-slate-100 dark:bg-[#222] text-slate-500 dark:text-[#888] border border-slate-200 dark:border-[#333] px-1.5 py-0.5 rounded font-mono font-medium">{artboards.length} Boards</span>
+               <span className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-white/10 px-2 py-0.5 rounded-full font-medium">
+                  {artboards.length}
+               </span>
             </div>
-            <div className="flex flex-col md:flex-row gap-2 md:gap-2 relative">
-               <div className="flex-1 relative">
+
+            <div className="flex gap-2 relative">
+               <div className="flex-1 relative min-w-0">
                   <button
                      type="button"
                      onClick={(e) => { e.stopPropagation(); setShowPresetsMenu(!showPresetsMenu); }}
-                     className="w-full h-10 min-h-[40px] md:h-8 md:min-h-0 bg-slate-100 dark:bg-[#222] hover:bg-slate-200 dark:hover:bg-[#2A2A2A] text-slate-700 dark:text-[#CCC] rounded text-[11px] font-semibold transition border border-slate-200 dark:border-[#333] flex items-center justify-between px-3 md:px-2.5 touch-manipulation cursor-pointer"
+                     aria-expanded={showPresetsMenu}
+                     className="w-full h-10 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-zinc-300 rounded-lg text-[11px] font-semibold transition-colors border border-slate-200 dark:border-white/10 flex items-center justify-between px-3 touch-manipulation"
                   >
                      <span className="truncate">Presets ({PRESET_REGISTRY.length})</span>
-                     <ChevronDown size={13} className={`opacity-70 transition-transform ${showPresetsMenu ? 'rotate-180 text-blue-400' : ''}`} />
+                     <ChevronDown size={14} className={`shrink-0 opacity-70 transition-transform ${showPresetsMenu ? 'rotate-180 text-blue-500 dark:text-blue-400' : ''}`} />
                   </button>
 
                   {showPresetsMenu && (
                      <div
                         ref={presetsMenuRef}
-                        className="absolute top-full left-0 w-full md:w-[280px] mt-1 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#3A3A3A] rounded-lg shadow-2xl z-[99999] flex flex-col max-h-[380px] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                        className="absolute top-full left-0 w-full md:w-[300px] mt-1.5 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#3A3A3A] rounded-xl shadow-2xl z-[99999] flex flex-col max-h-[380px] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
                      >
-                        {/* Category tabs */}
                         <div className="p-1.5 bg-slate-50 dark:bg-[#222] border-b border-slate-200 dark:border-[#333] flex gap-1 overflow-x-auto no-scrollbar shrink-0">
                            {['all', 'screens', 'social', 'document', 'print', 'ecommerce'].map(cat => (
                               <button
                                  key={cat}
                                  type="button"
                                  onClick={() => setPresetCategoryFilter(cat)}
-                                 className={`px-3 py-1.5 md:px-2 md:py-0.5 rounded text-[10px] md:text-[9px] font-bold uppercase tracking-wider transition shrink-0 touch-manipulation min-h-[36px] md:min-h-0 ${presetCategoryFilter === cat ? 'bg-blue-600 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-[#888] hover:text-slate-700 dark:hover:text-[#CCC] bg-white dark:bg-[#181818]'}`}
+                                 className={`px-2.5 h-8 rounded-md text-[9px] font-bold uppercase tracking-wider transition-colors shrink-0 touch-manipulation ${presetCategoryFilter === cat
+                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-[#181818]'}`}
                               >
                                  {cat}
                               </button>
                            ))}
                         </div>
 
-                        {/* Presets list */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-1 divide-y divide-slate-100 dark:divide-[#262626]">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
                            {PRESET_REGISTRY
                               .filter(p => presetCategoryFilter === 'all' || p.category === presetCategoryFilter)
                               .map((preset) => {
@@ -120,22 +185,17 @@ export const ArtboardsTab: React.FC = () => {
                                  return (
                                     <div
                                        key={preset.id}
-                                       className="p-2 hover:bg-slate-100 dark:hover:bg-[#252525] rounded transition flex items-center justify-between gap-2 group font-sans min-h-[44px] md:min-h-0"
+                                       className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors flex items-center justify-between gap-2 group min-h-[44px]"
                                     >
                                        <button
                                           type="button"
-                                          onClick={() => {
-                                             createArtboardFromPreset(preset.id);
-                                             setShowPresetsMenu(false);
-                                          }}
-                                          className="flex-1 text-left min-w-0 touch-manipulation h-full"
-                                          title={`Apply ${preset.name} (${dims.width}x${dims.height}) to active artboard`}
+                                          onClick={() => { createArtboardFromPreset(preset.id); setShowPresetsMenu(false); }}
+                                          className="flex-1 text-left min-w-0 touch-manipulation"
+                                          title={`Resize the active artboard to ${preset.name} (${dims.width}x${dims.height})`}
                                        >
-                                          <div className="text-[12px] md:text-[11px] font-semibold text-slate-800 dark:text-[#E0E0E0] group-hover:text-blue-500 dark:group-hover:text-blue-300 truncate">{preset.name}</div>
-                                          <div className="text-[10px] md:text-[9px] font-mono text-slate-400 dark:text-[#777] flex items-center gap-1 mt-0.5">
-                                             <span>{dims.width} x {dims.height} px</span>
-                                             <span className="opacity-40">•</span>
-                                             <span className="capitalize">{preset.category}</span>
+                                          <div className="text-[11px] font-semibold text-slate-800 dark:text-zinc-200 group-hover:text-blue-600 dark:group-hover:text-blue-300 truncate">{preset.name}</div>
+                                          <div className="text-[9px] font-mono text-slate-400 dark:text-zinc-500 mt-0.5 truncate">
+                                             {dims.width} x {dims.height} px · {preset.category}
                                           </div>
                                        </button>
 
@@ -146,10 +206,10 @@ export const ArtboardsTab: React.FC = () => {
                                              createArtboard(preset.name, dims.width, dims.height);
                                              setShowPresetsMenu(false);
                                           }}
-                                          className="px-3 py-2 md:px-2 md:py-1 bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-600 dark:text-blue-300 hover:text-white rounded text-[10px] md:text-[9px] font-semibold transition shrink-0 touch-manipulation flex items-center gap-1 min-h-[36px] md:min-h-0"
-                                          title="Create brand new artboard with this preset"
+                                          className="h-8 px-2.5 bg-blue-50 dark:bg-blue-600/20 hover:bg-blue-600 border border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-300 hover:text-white rounded-md text-[9px] font-bold uppercase tracking-wider transition-colors shrink-0 touch-manipulation flex items-center gap-1"
+                                          title="Create a new artboard with this preset"
                                        >
-                                          <Plus size={12} className="md:w-[10px] md:h-[10px]" /> New
+                                          <Plus size={11} /> New
                                        </button>
                                     </div>
                                  );
@@ -158,39 +218,42 @@ export const ArtboardsTab: React.FC = () => {
                      </div>
                   )}
                </div>
+
                <button
                   onClick={() => createArtboard()}
-                  className="flex-1 h-10 min-h-[40px] md:h-8 md:min-h-0 bg-blue-600/90 hover:bg-blue-500 text-slate-900 dark:text-white rounded text-[11px] font-semibold transition shadow touch-manipulation"
+                  className="h-10 px-4 shrink-0 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-semibold transition-colors shadow-sm active:scale-[0.98] touch-manipulation flex items-center gap-1.5"
                >
-                  + Custom
+                  <Plus size={14} /> Custom
                </button>
             </div>
          </div>
 
          {/* List existing artboards */}
-         <div className="flex-1 overflow-y-auto w-full no-scrollbar px-2 py-3 bg-slate-50 dark:bg-[#111] md:bg-slate-100 dark:md:bg-[#151515]">
+         <div className="flex-1 overflow-y-auto w-full no-scrollbar px-2 py-3 bg-slate-50 dark:bg-[#111]">
             {artboards.length === 0 && (
-               <div className="text-center p-6 text-xs text-slate-400 dark:text-[#6A6A6A] italic">No artboards created yet.</div>
+               <div className="text-center px-6 py-10 text-[11px] text-slate-400 dark:text-zinc-500">
+                  No artboards yet. Start from a preset or add a custom size.
+               </div>
             )}
-            <div className="space-y-1.5 pb-24">
+            <div className="space-y-2 pb-24">
                {artboards.map((board, idx) => {
                   const isActive = board.id === activeArtboardId;
+                  const isExpanded = expandedSettingsId === board.id;
                   const objCount = fabricRef.current ? fabricRef.current.getObjects().filter(o => (o as any).artboardId === board.id).length : 0;
                   const isDragOver = dragOverArtboardIdx === idx;
                   const isDragging = draggedArtboardIdx === idx;
+
+                  // Aspect-accurate mini preview, so orientation reads at a glance.
+                  const ratio = board.height ? board.width / board.height : 1;
+                  const thumbW = ratio >= 1 ? 26 : Math.max(6, Math.round(26 * ratio));
+                  const thumbH = ratio >= 1 ? Math.max(6, Math.round(26 / ratio)) : 26;
 
                   return (
                      <div
                         key={board.id}
                         draggable
-                        onDragStart={(e) => {
-                           e.dataTransfer.effectAllowed = 'move';
-                           setDraggedArtboardIdx(idx);
-                        }}
-                        onDragOver={(e) => {
-                           e.preventDefault();
-                           setDragOverArtboardIdx(idx);
-                        }}
+                        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDraggedArtboardIdx(idx); }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverArtboardIdx(idx); }}
                         onDrop={(e) => {
                            e.preventDefault();
                            if (draggedArtboardIdx !== null && dragOverArtboardIdx !== null) {
@@ -199,58 +262,42 @@ export const ArtboardsTab: React.FC = () => {
                            setDraggedArtboardIdx(null);
                            setDragOverArtboardIdx(null);
                         }}
-                        onDragEnd={() => {
-                           setDraggedArtboardIdx(null);
-                           setDragOverArtboardIdx(null);
-                        }}
+                        onDragEnd={() => { setDraggedArtboardIdx(null); setDragOverArtboardIdx(null); }}
                         onClick={() => setActiveArtboardId(board.id)}
-                        onDoubleClick={() => {
-                           setActiveArtboardId(board.id);
-                           setExpandedSettingsId(expandedSettingsId === board.id ? null : board.id);
-                           if (fabricRef.current) {
-                              const cw = fabricRef.current.width!;
-                              const ch = fabricRef.current.height!;
-                              const zoom = Math.min(cw / (board.width + 100), ch / (board.height + 100), 2);
-                              fabricRef.current.setZoom(zoom);
-
-                              const vpt = fabricRef.current.viewportTransform!;
-                              const newVpt = vpt.slice() as any;
-                              newVpt[4] = cw / 2 - (board.x + board.width / 2) * zoom;
-                              newVpt[5] = ch / 2 - (board.y + board.height / 2) * zoom;
-                              fabricRef.current.setViewportTransform(newVpt);
-                              setZoomPercent(Math.round(zoom * 100));
-                           }
-                        }}
-                        className={`
-                     relative p-2.5 rounded-lg cursor-pointer border select-none transition-colors group
-                     ${isActive ? 'bg-blue-600/10 border-blue-500/80 shadow-[0_0_0_1px_rgba(59,130,246,0.2)_inset]' : 'bg-white dark:bg-[#1C1C1C] border-slate-200 dark:border-[#2C2C2C] hover:border-slate-300 dark:hover:border-[#4A4A4A]'} 
-                     ${isDragging ? 'opacity-30 border-dashed' : 'opacity-100'}
-                     ${isDragOver && draggedArtboardIdx !== null && draggedArtboardIdx > idx ? 'border-t-2 border-t-blue-400' : ''}
-                     ${isDragOver && draggedArtboardIdx !== null && draggedArtboardIdx < idx ? 'border-b-2 border-b-blue-400' : ''}
-                   `}
+                        onDoubleClick={() => { setActiveArtboardId(board.id); zoomToBoard(board); }}
+                        className={`relative rounded-xl cursor-pointer border select-none transition-colors ${isActive
+                           ? 'bg-blue-50/60 dark:bg-blue-600/10 border-blue-400 dark:border-blue-500/80'
+                           : 'bg-white dark:bg-[#1C1C1C] border-slate-200 dark:border-[#2C2C2C] hover:border-slate-300 dark:hover:border-[#4A4A4A]'}
+                           ${isDragging ? 'opacity-30 border-dashed' : 'opacity-100'}
+                           ${isDragOver && draggedArtboardIdx !== null && draggedArtboardIdx > idx ? 'border-t-2 border-t-blue-400' : ''}
+                           ${isDragOver && draggedArtboardIdx !== null && draggedArtboardIdx < idx ? 'border-b-2 border-b-blue-400' : ''}`}
                      >
-                        <div className="flex gap-3 items-center">
-                           {/* Preview Thumbnail placeholder */}
+                        <div className="flex gap-3 items-center p-2.5">
                            <div
-                              className="w-10 h-10 shrink-0 border border-slate-200 dark:border-[#3A3A3A] rounded flex items-center justify-center overflow-hidden"
-                              style={{ backgroundColor: board.backgroundColor || '#fff', ...(!board.transparent ? {} : { backgroundImage: 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVQRVGGIII=")' }) }}
+                              className="w-10 h-10 shrink-0 rounded-lg border border-slate-200 dark:border-[#3A3A3A] bg-slate-100 dark:bg-[#151515] flex items-center justify-center overflow-hidden"
+                              style={board.transparent ? { backgroundImage: CHECKER } : undefined}
                            >
-                              {board.transparent && <div className="w-full h-full bg-black/10"></div>}
+                              <div
+                                 className="rounded-[2px] border border-black/10 dark:border-white/15"
+                                 style={{
+                                    width: thumbW,
+                                    height: thumbH,
+                                    backgroundColor: board.transparent ? 'transparent' : (board.backgroundColor || '#ffffff')
+                                 }}
+                              />
                            </div>
 
-                           <div className="flex-1 w-0 min-w-0 flex flex-col justify-center">
+                           <div className="flex-1 w-0 min-w-0">
                               {editingNameId === board.id ? (
                                  <input
                                     type="text"
                                     autoFocus
-                                    className="w-full h-8 bg-slate-50 dark:bg-[#111] border border-slate-300 dark:border-[#444] rounded px-2 text-[11px] font-semibold text-slate-900 dark:text-white outline-none focus:border-blue-500 transition-colors mb-0.5"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-full h-9 bg-slate-50 dark:bg-[#111] border border-slate-300 dark:border-[#444] rounded-lg px-2 text-[11px] font-semibold text-slate-900 dark:text-white outline-none focus:border-blue-500 transition-colors"
                                     value={board.name}
                                     onFocus={() => onArtboardPropStart(board.name)}
                                     onChange={(e) => updateArtboardProp(board.id, "name", e.target.value)}
-                                    onBlur={(e) => {
-                                       onArtboardPropCommit(board.id, "name", e.target.value);
-                                       setEditingNameId(null);
-                                    }}
+                                    onBlur={(e) => { onArtboardPropCommit(board.id, "name", e.target.value); setEditingNameId(null); }}
                                     onKeyDown={(e) => {
                                        if (e.key === 'Enter' || e.key === 'Escape') {
                                           onArtboardPropCommit(board.id, "name", board.name);
@@ -259,28 +306,43 @@ export const ArtboardsTab: React.FC = () => {
                                     }}
                                  />
                               ) : (
-                                 <div className="flex items-center justify-between mb-0.5">
-                                    <span className={`text-[11px] font-semibold truncate ${isActive ? 'text-blue-300' : 'text-slate-800 dark:text-[#E0E0E0]'}`}>{board.name}</span>
-                                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                                       <span className="text-[8px] bg-slate-100 dark:bg-[#222] text-slate-500 dark:text-[#888] px-1.5 py-0.5 rounded-sm font-mono border border-slate-200 dark:border-[#333]">{objCount}</span>
+                                 <>
+                                    <div className={`text-[11px] font-semibold truncate ${isActive ? 'text-blue-700 dark:text-blue-300' : 'text-slate-800 dark:text-zinc-200'}`}>
+                                       {board.name}
                                     </div>
-                                 </div>
+                                    <div className="text-[9px] text-slate-400 dark:text-zinc-500 font-mono flex items-center gap-1.5 mt-0.5">
+                                       <span>{board.width}<span className="opacity-40">x</span>{board.height}</span>
+                                       <span className="opacity-30">|</span>
+                                       <span className="uppercase">{board.orientation === 'landscape' ? 'LND' : 'PRT'}</span>
+                                       <span className="opacity-30">|</span>
+                                       <span>{objCount} {objCount === 1 ? 'item' : 'items'}</span>
+                                    </div>
+                                 </>
                               )}
-                              <div className="text-[9px] text-slate-400 dark:text-[#777] font-mono flex items-center gap-1.5">
-                                 <span>{board.width}<span className="opacity-40">x</span>{board.height}</span>
-                                 <span className="opacity-30">|</span>
-                                 <span className={`${board.orientation === 'landscape' ? 'text-cyan-600/80' : 'text-purple-600/80'} uppercase tracking-tight`}>{board.orientation === 'landscape' ? 'LND' : 'PRT'}</span>
-                              </div>
                            </div>
 
-                           {/* Context Menu Toggle */}
+                           {/* Settings sits on the card itself. It used to be buried one level deep
+                               in the overflow menu, which made it near-undiscoverable. */}
+                           <button
+                              onClick={(e) => {
+                                 e.stopPropagation();
+                                 setExpandedSettingsId(isExpanded ? null : board.id);
+                                 if (!isActive) setActiveArtboardId(board.id);
+                              }}
+                              aria-expanded={isExpanded}
+                              title={isExpanded ? 'Hide settings' : 'Artboard settings'}
+                              className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-lg transition-colors touch-manipulation ${isExpanded
+                                 ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300'
+                                 : 'text-slate-400 dark:text-zinc-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-white'}`}
+                           >
+                              <Settings2 size={15} />
+                           </button>
+
                            <div className="shrink-0 relative">
                               <button
-                                 onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenMenuId(openMenuId === board.id ? null : board.id);
-                                 }}
-                                 className="w-8 h-10 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 dark:text-[#888] hover:text-slate-700 dark:text-white rounded transition-colors touch-manipulation"
+                                 onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === board.id ? null : board.id); }}
+                                 title="More actions"
+                                 className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-white transition-colors touch-manipulation"
                               >
                                  <MoreVertical size={16} />
                               </button>
@@ -288,79 +350,60 @@ export const ArtboardsTab: React.FC = () => {
                               {openMenuId === board.id && (
                                  <div
                                     ref={menuRef}
-                                    className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#3A3A3A] rounded-lg shadow-2xl z-[99999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-100"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#3A3A3A] rounded-xl shadow-2xl z-[99999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-100"
                                  >
-                                    <button
-                                       onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditingNameId(board.id);
-                                          setOpenMenuId(null);
-                                       }}
-                                       className="w-full px-3 py-2 text-left text-[11px] font-semibold text-slate-600 dark:text-[#CCC] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#333] transition-colors flex items-center gap-2 touch-manipulation"
-                                    >
-                                       <Edit2 size={12} /> Rename
-                                    </button>
-                                    <button
-                                       onClick={(e) => {
-                                          e.stopPropagation();
-                                          setExpandedSettingsId(expandedSettingsId === board.id ? null : board.id);
-                                          setOpenMenuId(null);
-                                          // If it's not active, make it active so settings apply properly on canvas
-                                          if (!isActive) setActiveArtboardId(board.id);
-                                       }}
-                                       className="w-full px-3 py-2 text-left text-[11px] font-semibold text-slate-600 dark:text-[#CCC] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#333] transition-colors flex items-center gap-2 touch-manipulation"
-                                    >
-                                       <Settings size={12} /> {expandedSettingsId === board.id ? 'Hide Settings' : 'Settings'}
-                                    </button>
-                                    <button
-                                       onClick={(e) => {
-                                          e.stopPropagation();
-                                          duplicateArtboard(board);
-                                          setOpenMenuId(null);
-                                       }}
-                                       className="w-full px-3 py-2 text-left text-[11px] font-semibold text-slate-600 dark:text-[#CCC] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#333] transition-colors flex items-center gap-2 touch-manipulation"
-                                    >
-                                       <Copy size={12} /> Duplicate
-                                    </button>
+                                    <MenuItem
+                                       icon={<Edit2 size={13} />} label="Rename"
+                                       onClick={() => { setEditingNameId(board.id); setOpenMenuId(null); }}
+                                    />
+                                    <MenuItem
+                                       icon={<Copy size={13} />} label="Duplicate"
+                                       onClick={() => { duplicateArtboard(board); setOpenMenuId(null); }}
+                                    />
                                     <div className="h-px bg-slate-200 dark:bg-[#333] my-1 mx-2" />
-                                    <button
-                                       onClick={(e) => {
-                                          e.stopPropagation();
-                                          deleteArtboard(board.id);
-                                          setOpenMenuId(null);
-                                       }}
-                                       className="w-full px-3 py-2 text-left text-[11px] font-semibold text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors flex items-center gap-2 touch-manipulation"
-                                    >
-                                       <Trash2 size={12} /> Delete
-                                    </button>
+                                    {/* Drag-to-reorder is mouse only, so touch needs these. */}
+                                    <MenuItem
+                                       icon={<ArrowUp size={13} />} label="Move Up" disabled={idx === 0}
+                                       onClick={() => { moveArtboard(idx, idx - 1); setOpenMenuId(null); }}
+                                    />
+                                    <MenuItem
+                                       icon={<ArrowDown size={13} />} label="Move Down" disabled={idx === artboards.length - 1}
+                                       onClick={() => { moveArtboard(idx, idx + 1); setOpenMenuId(null); }}
+                                    />
+                                    <div className="h-px bg-slate-200 dark:bg-[#333] my-1 mx-2" />
+                                    <MenuItem
+                                       icon={<Trash2 size={13} />} label="Delete" danger
+                                       onClick={() => { deleteArtboard(board.id); setOpenMenuId(null); }}
+                                    />
                                  </div>
                               )}
                            </div>
                         </div>
 
-                        {/* Advanced Settings Expansion */}
-                        {expandedSettingsId === board.id && (
-                           <div className="mt-3 pt-3 border-t border-slate-200 dark:border-[#333] space-y-4 md:space-y-3 animate-in fade-in slide-in-from-top-1 duration-200" onClick={e => e.stopPropagation()}>
-
-                              {/* Dimensions & Orientation */}
-                              <div className="flex flex-col md:flex-row gap-3 md:gap-2">
-                                 <div className="flex gap-2 flex-1">
-                                    <div className="flex-1 flex flex-col gap-1.5 md:gap-1">
-                                       <span className="text-[10px] md:text-[9px] text-slate-500 dark:text-[#666] uppercase font-bold tracking-wider">Width</span>
+                        {isExpanded && (
+                           <div
+                              className="px-2.5 pb-2.5 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200"
+                              onClick={e => e.stopPropagation()}
+                           >
+                              <div className="pt-3 border-t border-slate-200 dark:border-white/5">
+                                 <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                       <FieldLabel>Width</FieldLabel>
                                        <input
                                           type="number"
-                                          className="w-full h-10 md:h-7 bg-slate-50 dark:bg-[#111] border border-slate-200 dark:border-[#333] rounded px-2 md:px-1.5 text-[11px] md:text-[10px] font-mono text-slate-700 dark:text-[#CCC] outline-none focus:border-blue-500 transition-colors"
+                                          className="w-full h-9 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 text-[11px] font-mono text-slate-700 dark:text-zinc-200 outline-none focus:border-blue-500 transition-colors"
                                           value={board.width}
                                           onFocus={() => onArtboardPropStart(board.width)}
                                           onChange={(e) => updateArtboardProp(board.id, "width", Math.max(10, Number(e.target.value)))}
                                           onBlur={(e) => onArtboardPropCommit(board.id, "width", Math.max(10, Number(e.target.value)))}
                                        />
                                     </div>
-                                    <div className="flex-1 flex flex-col gap-1.5 md:gap-1">
-                                       <span className="text-[10px] md:text-[9px] text-slate-500 dark:text-[#666] uppercase font-bold tracking-wider">Height</span>
+                                    <div>
+                                       <FieldLabel>Height</FieldLabel>
                                        <input
                                           type="number"
-                                          className="w-full h-10 md:h-7 bg-slate-50 dark:bg-[#111] border border-slate-200 dark:border-[#333] rounded px-2 md:px-1.5 text-[11px] md:text-[10px] font-mono text-slate-700 dark:text-[#CCC] outline-none focus:border-blue-500 transition-colors"
+                                          className="w-full h-9 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 text-[11px] font-mono text-slate-700 dark:text-zinc-200 outline-none focus:border-blue-500 transition-colors"
                                           value={board.height}
                                           onFocus={() => onArtboardPropStart(board.height)}
                                           onChange={(e) => updateArtboardProp(board.id, "height", Math.max(10, Number(e.target.value)))}
@@ -368,66 +411,77 @@ export const ArtboardsTab: React.FC = () => {
                                        />
                                     </div>
                                  </div>
+                              </div>
 
-                                 <div className="flex flex-col gap-1.5 md:gap-1 shrink-0">
-                                    <span className="text-[10px] md:text-[9px] text-slate-500 dark:text-[#666] uppercase font-bold tracking-wider">Orientation</span>
-                                    <div className="flex bg-slate-50 dark:bg-[#111] border border-slate-200 dark:border-[#333] rounded p-0.5 h-10 md:h-7">
+                              <div>
+                                 <FieldLabel>Orientation</FieldLabel>
+                                 <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/5 rounded-lg p-1">
+                                    {([
+                                       { id: 'portrait', label: 'Portrait', icon: <RectangleVertical size={13} /> },
+                                       { id: 'landscape', label: 'Landscape', icon: <RectangleHorizontal size={13} /> },
+                                    ] as const).map(o => (
                                        <button
-                                          onClick={() => updateArtboardPropDirect(board.id, "orientation", "portrait", true)}
-                                          className={`flex-1 md:w-8 flex items-center justify-center rounded-[2px] transition ${board.orientation === "portrait" ? "bg-slate-200 dark:bg-[#333] text-slate-900 dark:text-white" : "text-slate-400 dark:text-[#666] hover:text-slate-700 dark:hover:text-[#CCC]"}`}
-                                          title="Portrait"
+                                          key={o.id}
+                                          type="button"
+                                          onClick={() => updateArtboardPropDirect(board.id, "orientation", o.id, true)}
+                                          aria-pressed={board.orientation === o.id}
+                                          className={`h-8 rounded-md text-[10px] font-semibold flex items-center justify-center gap-1.5 transition-colors touch-manipulation ${board.orientation === o.id
+                                             ? 'bg-blue-600 text-white shadow-sm'
+                                             : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'}`}
                                        >
-                                          <div className="w-2.5 h-3.5 border-2 border-current rounded-sm"></div>
+                                          {o.icon} {o.label}
                                        </button>
-                                       <button
-                                          onClick={() => updateArtboardPropDirect(board.id, "orientation", "landscape", true)}
-                                          className={`flex-1 md:w-8 flex items-center justify-center rounded-[2px] transition ${board.orientation === "landscape" ? "bg-slate-200 dark:bg-[#333] text-slate-900 dark:text-white" : "text-slate-400 dark:text-[#666] hover:text-slate-700 dark:hover:text-[#CCC]"}`}
-                                          title="Landscape"
+                                    ))}
+                                 </div>
+                              </div>
+
+                              <div>
+                                 <FieldLabel>Background</FieldLabel>
+                                 <div className="flex items-center gap-2">
+                                    <div className="flex items-center flex-1 min-w-0 h-9 pl-1 pr-2 gap-2 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 focus-within:border-blue-500 transition-colors">
+                                       <div
+                                          className="w-7 h-7 shrink-0 rounded-md border border-black/10 dark:border-white/20 relative overflow-hidden"
+                                          style={board.transparent ? { backgroundImage: CHECKER } : { backgroundColor: board.backgroundColor || '#ffffff' }}
                                        >
-                                          <div className="w-3.5 h-2.5 border-2 border-current rounded-sm"></div>
-                                       </button>
+                                          <ColorPickerTrigger
+                                             color={board.backgroundColor || "#ffffff"}
+                                             onChange={(newColor) => updateArtboardProp(board.id, "backgroundColor", newColor)}
+                                             onStart={(initialColor) => onArtboardPropStart(initialColor)}
+                                             onCommit={(initialColor, finalColor) => {
+                                                onArtboardPropStart(initialColor);
+                                                onArtboardPropCommit(board.id, "backgroundColor", finalColor);
+                                             }}
+                                             label="Background"
+                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                          />
+                                       </div>
+                                       <input
+                                          type="text"
+                                          className="flex-1 min-w-0 bg-transparent text-[10px] uppercase font-mono text-slate-600 dark:text-zinc-300 outline-none"
+                                          value={board.backgroundColor || "#FFFFFF"}
+                                          onFocus={() => onArtboardPropStart(board.backgroundColor || "#ffffff")}
+                                          onChange={(e) => updateArtboardProp(board.id, "backgroundColor", e.target.value)}
+                                          onBlur={(e) => onArtboardPropCommit(board.id, "backgroundColor", e.target.value)}
+                                       />
+                                    </div>
+                                    <div className="w-[46%] shrink-0">
+                                       <ToggleChip
+                                          label="Transparent"
+                                          checked={!!board.transparent}
+                                          onChange={(val) => updateArtboardPropDirect(board.id, "transparent", val, true)}
+                                       />
                                     </div>
                                  </div>
                               </div>
 
-                              {/* Background */}
-                              <div className="flex items-center gap-3 md:gap-2">
-                                 <div className="relative shrink-0">
-                                    <ColorPickerTrigger
-                                       color={board.backgroundColor || "#ffffff"}
-                                       onChange={(newColor) => updateArtboardProp(board.id, "backgroundColor", newColor)}
-                                       onStart={(initialColor) => onArtboardPropStart(initialColor)}
-                                       onCommit={(initialColor, finalColor) => {
-                                          onArtboardPropStart(initialColor);
-                                          onArtboardPropCommit(board.id, "backgroundColor", finalColor);
-                                       }}
-                                       label="Background"
-                                       className="w-10 h-10 md:w-7 md:h-7 rounded border border-slate-200 dark:border-[#333]"
-                                    />
+                              <div className="pt-3 border-t border-slate-200 dark:border-white/5">
+                                 <FieldLabel>Guides</FieldLabel>
+                                 <div className="grid grid-cols-2 gap-1.5">
+                                    <ToggleChip label="Grid" checked={!!board.showGrid} onChange={val => updateArtboardPropDirect(board.id, "showGrid", val, true)} />
+                                    <ToggleChip label="Safe Area" checked={!!board.showSafeArea} onChange={val => updateArtboardPropDirect(board.id, "showSafeArea", val, true)} />
+                                    <ToggleChip label="Margins" checked={!!board.showMargins} onChange={val => updateArtboardPropDirect(board.id, "showMargins", val, true)} />
+                                    <ToggleChip label="Center Guide" checked={!!board.showCenter} onChange={val => updateArtboardPropDirect(board.id, "showCenter", val, true)} />
                                  </div>
-                                 <input
-                                    type="text"
-                                    className="h-10 md:h-7 flex-1 md:flex-none bg-slate-50 dark:bg-[#111] border border-slate-200 dark:border-[#333] rounded px-3 md:px-2 text-[11px] md:text-[10px] text-slate-700 dark:text-[#CCC] w-full md:w-20 uppercase font-mono outline-none focus:border-blue-500 transition-colors"
-                                    value={board.backgroundColor || "#FFFFFF"}
-                                    onFocus={() => onArtboardPropStart(board.backgroundColor || "#ffffff")}
-                                    onChange={(e) => updateArtboardProp(board.id, "backgroundColor", e.target.value)}
-                                    onBlur={(e) => onArtboardPropCommit(board.id, "backgroundColor", e.target.value)}
-                                 />
-                                 <div className="ml-auto flex h-10 md:h-7 items-center">
-                                    <ModernCheckbox
-                                       label="Transparent"
-                                       checked={!!board.transparent}
-                                       onChange={(val) => updateArtboardPropDirect(board.id, "transparent", val, true)}
-                                    />
-                                 </div>
-                              </div>
-
-                              {/* Guides toggle */}
-                              <div className="pt-3 md:pt-2 border-t border-slate-200 dark:border-[#333] grid grid-cols-2 gap-3 md:gap-1.5 opacity-80">
-                                 <ModernCheckbox label="Show Grid" checked={!!board.showGrid} onChange={val => updateArtboardPropDirect(board.id, "showGrid", val, true)} />
-                                 <ModernCheckbox label="Safe Area" checked={!!board.showSafeArea} onChange={val => updateArtboardPropDirect(board.id, "showSafeArea", val, true)} />
-                                 <ModernCheckbox label="Margins" checked={!!board.showMargins} onChange={val => updateArtboardPropDirect(board.id, "showMargins", val, true)} />
-                                 <ModernCheckbox label="Center Guide" checked={!!board.showCenter} onChange={val => updateArtboardPropDirect(board.id, "showCenter", val, true)} />
                               </div>
                            </div>
                         )}

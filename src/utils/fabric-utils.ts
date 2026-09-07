@@ -29,3 +29,12 @@ export const getAbsoluteBoundingRect = (obj: fabric.Object) => {
       height: maxY - minY
    };
 };
+
+/**
+ * fabric v6+ derives `type` from the class name and lowercases it, so an ActiveSelection reports
+ * "activeselection" and the literal comparison `obj.type === 'activeSelection'` is never true.
+ * isType() matches against both the PascalCase static and the lowercased instance value, which
+ * keeps this working whichever casing a future fabric settles on.
+ */
+export const isActiveSelection = (obj?: fabric.Object | null): obj is fabric.ActiveSelection =>
+   !!obj && obj.isType('ActiveSelection', 'activeselection');

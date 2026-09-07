@@ -1,6 +1,7 @@
 import { db, FabricObject, Artboard } from '../lib/db';
 import * as fabric from 'fabric';
 import { resolveAssetUrl } from './assetManager';
+import { isActiveSelection } from './fabric-utils';
 
 export const saveToDexie = async (documentId: string, artboards: any[], canvas: fabric.Canvas) => {
   if (!canvas || !documentId) return;
@@ -10,7 +11,7 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
   const fabricObjects: any[] = [];
   
   rawObjects.forEach(obj => {
-    if (obj.type === 'activeSelection') {
+    if (isActiveSelection(obj)) {
       const activeSelItems = (obj as any).getObjects();
       activeSelItems.forEach((innerObj: any) => {
           // Temporarily attach canvas to compute absolute transformations

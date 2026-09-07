@@ -1,8 +1,46 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as fabric from "fabric";
-import { Layout } from "lucide-react";
+import { Ruler, Lock, Unlock, RotateCcw } from "lucide-react";
+import { PanelSection, Label } from "../shared/PanelPrimitives";
 
-// TODO(Refactor): Move to src/components/image-workspace/components/panels/ObjectDimensionsPanel.tsx
+/** Compact numeric field with the axis letter sitting inside the control, Figma-style. */
+const NumField: React.FC<{
+   axis: string;
+   value: number;
+   onChange: (v: number) => void;
+   suffix?: string;
+   accent?: boolean;
+   title?: string;
+}> = ({ axis, value, onChange, suffix, accent, title }) => (
+   <label
+      title={title}
+      className={`flex items-center h-8 rounded-lg border transition-colors cursor-text ${accent
+         ? 'bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/40 focus-within:border-blue-500'
+         : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 focus-within:border-blue-500'}`}
+   >
+      <span className={`w-6 shrink-0 text-center text-[10px] font-bold uppercase select-none ${accent
+         ? 'text-blue-600 dark:text-blue-400'
+         : 'text-slate-400 dark:text-zinc-500'}`}
+      >
+         {axis}
+      </span>
+      <input
+         type="number"
+         value={Number.isFinite(value) ? Math.round(value) : 0}
+         onChange={(e) => onChange(Number(e.target.value))}
+         className="w-full min-w-0 bg-transparent text-[11px] font-mono text-slate-800 dark:text-white outline-none"
+      />
+      {suffix && <span className="pr-2 pl-1 text-[10px] text-slate-400 dark:text-zinc-500 select-none">{suffix}</span>}
+   </label>
+);
+
+const Metric: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+   <div className="flex items-baseline justify-between gap-2 min-w-0">
+      <span className="text-[10px] text-slate-500 dark:text-zinc-500 truncate">{label}</span>
+      <span className="text-[10px] font-mono text-slate-800 dark:text-white shrink-0">{value}</span>
+   </div>
+);
+
 export const ObjectDimensionsPanel = ({ fabricRef }: { fabricRef: React.RefObject<fabric.Canvas> }) => {
    const [dims, setDims] = useState<any>(null);
    const [lockedRatio, setLockedRatio] = useState(true);
@@ -80,18 +118,22 @@ export const ObjectDimensionsPanel = ({ fabricRef }: { fabricRef: React.RefObjec
       if (!active) return;
 
       if (lockedRatio && (updates.scaledWidth !== undefined || updates.scaledHeight !== undefined)) {
-         const aspect = dims.scaledWidth / dims.scaledHeight;
-         if (updates.scaledWidth !== undefined && updates.scaledHeight === undefined) {
-            updates.scaledHeight = updates.scaledWidth / aspect;
-         } else if (updates.scaledHeight !== undefined && updates.scaledWidth === undefined) {
-            updates.scaledWidth = updates.scaledHeight * aspect;
+         // A zero-height object has no aspect to preserve; dividing by it produced NaN scales
+         // that silently made the object vanish.
+         const aspect = dims.scaledHeight ? dims.scaledWidth / dims.scaledHeight : 0;
+         if (aspect) {
+            if (updates.scaledWidth !== undefined && updates.scaledHeight === undefined) {
+               updates.scaledHeight = updates.scaledWidth / aspect;
+            } else if (updates.scaledHeight !== undefined && updates.scaledWidth === undefined) {
+               updates.scaledWidth = updates.scaledHeight * aspect;
+            }
          }
       }
 
-      if (updates.scaledWidth !== undefined) {
+      if (updates.scaledWidth !== undefined && dims.width) {
          active.set('scaleX', updates.scaledWidth / dims.width);
       }
-      if (updates.scaledHeight !== undefined) {
+      if (updates.scaledHeight !== undefined && dims.height) {
          active.set('scaleY', updates.scaledHeight / dims.height);
       }
 
@@ -112,91 +154,82 @@ export const ObjectDimensionsPanel = ({ fabricRef }: { fabricRef: React.RefObjec
       updateObject({ scaleX: 1, scaleY: 1, scaledWidth: dims.width, scaledHeight: dims.height });
    };
 
+   const isScaled = Math.round(dims.scaleX * 100) !== 100 || Math.round(dims.scaleY * 100) !== 100;
+
    return (
-      <div className="space-y-4 border-b border-slate-200 dark:border-[#2C2C2C] pb-4 animate-fade-in mt-4">
-         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-[#A0A0A0] flex items-center justify-between">
-            <div className="flex items-center gap-2"><Layout size={12} /> Dimensions</div>
+      <PanelSection title="Dimensions" icon={<Ruler size={14} className="text-slate-500 dark:text-zinc-400" />}>
+         <div>
+            <Label>Position</Label>
+            <div className="grid grid-cols-2 gap-2">
+               <NumField axis="X" value={dims.x} onChange={(v) => updateObject({ x: v })} title="Horizontal position" />
+               <NumField axis="Y" value={dims.y} onChange={(v) => updateObject({ y: v })} title="Vertical position" />
+            </div>
          </div>
 
-         <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-[#222] p-2.5 rounded-lg">
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">X</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.x)} onChange={(e) => updateObject({ x: Number(e.target.value) })} />
-            </div>
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">Y</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.y)} onChange={(e) => updateObject({ y: Number(e.target.value) })} />
-            </div>
-
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">Width</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.width)} onChange={(e) => updateObject({ width: Number(e.target.value) })} />
-            </div>
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">Height</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.height)} onChange={(e) => updateObject({ height: Number(e.target.value) })} />
-            </div>
-
-            <div className="space-y-1 relative">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold text-blue-400">Scaled Width</span>
-               <input type="number" className="w-full bg-blue-50 dark:bg-[#0C0C0C] border border-blue-200 dark:border-blue-900/30 rounded px-2 py-1 text-xs text-blue-700 dark:text-blue-200 focus:outline-none" value={Math.round(dims.scaledWidth)} onChange={(e) => updateObject({ scaledWidth: Number(e.target.value) })} />
-            </div>
-            <div className="space-y-1 relative">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold text-blue-400">Scaled Height</span>
-               <input type="number" className="w-full bg-blue-50 dark:bg-[#0C0C0C] border border-blue-200 dark:border-blue-900/30 rounded px-2 py-1 text-xs text-blue-700 dark:text-blue-200 focus:outline-none" value={Math.round(dims.scaledHeight)} onChange={(e) => updateObject({ scaledHeight: Number(e.target.value) })} />
-            </div>
-
-            <div className="col-span-2 flex items-center justify-between text-slate-500 dark:text-[#8A8A8A]">
-               <button onClick={() => setLockedRatio(!lockedRatio)} className={`text-[10px] flex items-center gap-1 hover:text-slate-900 dark:text-white transition ${lockedRatio ? 'text-blue-400' : ''}`}>
-                  Aspect Ratio {lockedRatio ? '🔒' : '🔓'}
+         <div>
+            <div className="flex items-center justify-between mb-1.5">
+               <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-zinc-500">Size</span>
+               <button
+                  type="button"
+                  onClick={() => setLockedRatio(!lockedRatio)}
+                  title={lockedRatio ? 'Aspect ratio locked - width and height change together' : 'Aspect ratio unlocked - resize each axis freely'}
+                  aria-pressed={lockedRatio}
+                  className={`flex items-center gap-1 h-5 px-1.5 rounded text-[9px] font-bold uppercase tracking-wider border transition-colors ${lockedRatio
+                     ? 'bg-blue-50 dark:bg-blue-500/15 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-300'
+                     : 'bg-transparent border-slate-200 dark:border-white/10 text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300'}`}
+               >
+                  {lockedRatio ? <Lock size={9} /> : <Unlock size={9} />}
+                  Ratio
                </button>
-               <button onClick={resetScale} className="text-[10px] hover:text-slate-900 dark:text-white transition">Reset Scale</button>
             </div>
-
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">Scale X (%)</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.scaleX * 100)} onChange={(e) => updateObject({ scaleX: Number(e.target.value) / 100 })} />
+            <div className="grid grid-cols-2 gap-2">
+               <NumField axis="W" accent value={dims.scaledWidth} onChange={(v) => updateObject({ scaledWidth: v })} suffix="px" title="Rendered width" />
+               <NumField axis="H" accent value={dims.scaledHeight} onChange={(v) => updateObject({ scaledHeight: v })} suffix="px" title="Rendered height" />
             </div>
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">Scale Y (%)</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.scaleY * 100)} onChange={(e) => updateObject({ scaleY: Number(e.target.value) / 100 })} />
-            </div>
-
-            <div className="space-y-1">
-               <span className="text-[9px] uppercase tracking-wider text-slate-500 dark:text-[#8A8A8A] block font-bold">Rotation (°)</span>
-               <input type="number" className="w-full bg-white dark:bg-[#0C0C0C] border border-slate-200 dark:border-[#333] rounded px-2 py-1 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-blue-500" value={Math.round(dims.rotation)} onChange={(e) => updateObject({ rotation: Number(e.target.value) })} />
-            </div>
-
-            <div className="col-span-2 pt-2 mt-1 border-t border-slate-200 dark:border-[#222]">
-               <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-[#8A8A8A]">
-                  <div>BBox W: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.bboxW)}</span></div>
-                  <div>BBox H: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.bboxH)}</span></div>
-                  <div>Center X: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.centerX)}</span></div>
-                  <div>Center Y: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.centerY)}</span></div>
-               </div>
-            </div>
-
-            {dims.isImage && dims.originalRes && (
-               <div className="col-span-2 pt-2 mt-1 border-t border-slate-200 dark:border-[#222]">
-                  <div className="grid gap-1 text-[10px] text-slate-500 dark:text-[#8A8A8A]">
-                     <div>Image Resolution: <span className="font-mono text-slate-900 dark:text-white">{dims.originalRes.w} × {dims.originalRes.h} px</span></div>
-                     <div>Displayed Size: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.scaledWidth)} × {Math.round(dims.scaledHeight)} px</span></div>
-                  </div>
-               </div>
-            )}
-
-            {dims.isVector && (
-               <div className="col-span-2 pt-2 mt-1 border-t border-slate-200 dark:border-[#222]">
-                  <div className="grid gap-1 text-[10px] text-slate-500 dark:text-[#8A8A8A]">
-                     <div>Geometry Width: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.width)} px</span></div>
-                     <div>Geometry Height: <span className="font-mono text-slate-900 dark:text-white">{Math.round(dims.height)} px</span></div>
-                  </div>
-               </div>
-            )}
-
          </div>
-      </div>
+
+         <div>
+            <div className="flex items-center justify-between mb-1.5">
+               <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-zinc-500">Transform</span>
+               {isScaled && (
+                  <button
+                     type="button"
+                     onClick={resetScale}
+                     title="Return to 100% scale"
+                     className="flex items-center gap-1 h-5 px-1.5 rounded text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-white/10 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-white/25 active:scale-95 transition-all"
+                  >
+                     <RotateCcw size={9} /> Reset
+                  </button>
+               )}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+               <NumField axis="SX" value={dims.scaleX * 100} onChange={(v) => updateObject({ scaleX: v / 100 })} suffix="%" title="Horizontal scale" />
+               <NumField axis="SY" value={dims.scaleY * 100} onChange={(v) => updateObject({ scaleY: v / 100 })} suffix="%" title="Vertical scale" />
+               <NumField axis="R" value={dims.rotation} onChange={(v) => updateObject({ rotation: v })} suffix="°" title="Rotation" />
+            </div>
+         </div>
+
+         <div>
+            <Label>Base Geometry</Label>
+            <div className="grid grid-cols-2 gap-2">
+               <NumField axis="W" value={dims.width} onChange={(v) => updateObject({ width: v })} suffix="px" title="Unscaled width" />
+               <NumField axis="H" value={dims.height} onChange={(v) => updateObject({ height: v })} suffix="px" title="Unscaled height" />
+            </div>
+         </div>
+
+         <div className="pt-3 border-t border-slate-200 dark:border-white/5 grid grid-cols-2 gap-x-4 gap-y-1.5">
+            <Metric label="BBox W" value={Math.round(dims.bboxW)} />
+            <Metric label="BBox H" value={Math.round(dims.bboxH)} />
+            <Metric label="Center X" value={Math.round(dims.centerX)} />
+            <Metric label="Center Y" value={Math.round(dims.centerY)} />
+         </div>
+
+         {dims.isImage && dims.originalRes && (
+            <div className="pt-3 border-t border-slate-200 dark:border-white/5 space-y-1.5">
+               <Metric label="Source resolution" value={`${dims.originalRes.w} x ${dims.originalRes.h} px`} />
+               <Metric label="Displayed size" value={`${Math.round(dims.scaledWidth)} x ${Math.round(dims.scaledHeight)} px`} />
+            </div>
+         )}
+      </PanelSection>
    );
 };
-
-

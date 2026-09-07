@@ -1,5 +1,6 @@
 import * as fabric from "fabric";
 import { Command } from "../base/Command";
+import { isActiveSelection } from '../../../../utils/fabric-utils';
 
 export class DuplicateCommand implements Command {
   name: string;
@@ -29,7 +30,7 @@ export class DuplicateCommand implements Command {
          artboardId: (this.targetObj as any).artboardId || this.activeArtboardId
       });
 
-      if (cloned.type === 'activeSelection') {
+      if (isActiveSelection(cloned)) {
          cloned.canvas = canvas;
          (cloned as any).forEachObject((obj: any) => {
             obj.id = Date.now().toString() + Math.random().toString();
@@ -48,7 +49,7 @@ export class DuplicateCommand implements Command {
   undo(canvas: fabric.Canvas) {
     if (!this.clonedObj) return;
 
-    if (this.clonedObj.type === 'activeSelection') {
+    if (isActiveSelection(this.clonedObj)) {
        (this.clonedObj as any).forEachObject((obj: any) => {
           canvas.remove(obj);
        });
@@ -62,7 +63,7 @@ export class DuplicateCommand implements Command {
   redo(canvas: fabric.Canvas) {
     if (!this.clonedObj) return;
     
-    if (this.clonedObj.type === 'activeSelection') {
+    if (isActiveSelection(this.clonedObj)) {
        this.clonedObj.canvas = canvas;
        (this.clonedObj as any).forEachObject((obj: any) => {
           canvas.add(obj);

@@ -22,6 +22,12 @@ interface WorkspaceUIContextType {
   updateArtboardProp: (id: string, prop: string, value: any) => void;
   onArtboardPropStart: (val: any) => void;
   onArtboardPropCommit: (id: string, prop: string, value: any) => void;
+  /** Arrow-key nudge distance in px. */
+  nudgeStep: number;
+  setNudgeStep: (v: number) => void;
+  /** Shift+arrow nudge distance in px. */
+  nudgeStepLarge: number;
+  setNudgeStepLarge: (v: number) => void;
 }
 
 const WorkspaceUIContext = createContext<WorkspaceUIContextType | null>(null);

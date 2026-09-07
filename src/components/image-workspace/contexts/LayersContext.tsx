@@ -10,6 +10,8 @@ interface LayersContextType {
   getLayersOrder: () => { id: string, idx: number }[];
   handleLayerOrder: (action: 'front' | 'forward' | 'backward' | 'back') => void;
   selectLayer: (id: string) => void;
+  /** Adds/removes one object from the current selection - the touch path to a multi-selection. */
+  toggleLayerSelection: (id: string) => void;
   moveLayerUp: (id: string) => void;
   moveLayerDown: (id: string) => void;
 }
