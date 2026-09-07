@@ -88,6 +88,12 @@ export interface ExportSettings {
   format: ExportFormat;
   askForFilename?: boolean;
   directNativeExport?: boolean;
+  /**
+   * Renders the artboard at this multiple of its pixel size. An artboard is a layout unit, not a
+   * resolution: a 2048px photo placed on an 800x600 board is rasterised down to 800px at 1x, which
+   * destroys detail that the editor still has. Raising this exports the detail that is actually there.
+   */
+  exportScale?: number;
   resize: {
     enabled: boolean;
     width: number;
@@ -109,6 +115,7 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   format: 'png',
   askForFilename: false,
   directNativeExport: false,
+  exportScale: 1,
   targetSize: {
     enabled: false,
     value: 500,

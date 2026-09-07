@@ -44,7 +44,7 @@ export class ExportController {
          if (exportSettings.directNativeExport) {
             blob = await generateDirectNativeBlob(canvas, board, exportSettings);
          } else {
-            const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
+            const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board, exportSettings.exportScale);
             const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
             blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
          }
@@ -65,7 +65,7 @@ export class ExportController {
                const blob = await generateDirectNativeBlob(canvas, board, exportSettings);
                rawBuffer = await blob.arrayBuffer();
             } else {
-               const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
+               const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board, exportSettings.exportScale);
                const { buffer: optimizedBuffer } = await optimizePixelBuffer(buffer, width, height, {
                   ...exportSettings,
                   resize: { ...exportSettings.resize, enabled: false }
@@ -101,10 +101,11 @@ export class ExportController {
 
       onProgress("Extracting active composite elements...");
 
-      const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board);
+      const { buffer, width, height } = await generateArtboardPixelBuffer(canvas, board, exportSettings.exportScale);
 
-      let origTargetW = board.width;
-      let origTargetH = board.height;
+      // The preview must describe the file the user will actually get, scale included.
+      let origTargetW = width;
+      let origTargetH = height;
 
       let optTargetW = origTargetW;
       let optTargetH = origTargetH;
@@ -130,6 +131,10 @@ export class ExportController {
       originalCanvas.width = origPreviewW;
       originalCanvas.height = origPreviewH;
       const oCtx = originalCanvas.getContext('2d')!;
+      // The preview is downscaled for anything over 1200px; without this it resamples at the
+      // browser default of 'low' and looks worse than the file the user will actually get.
+      oCtx.imageSmoothingEnabled = true;
+      oCtx.imageSmoothingQuality = 'high';
 
       const sourceImage = new ImageData(new Uint8ClampedArray(buffer), width, height);
       const offscreenOriginal = document.createElement('canvas');

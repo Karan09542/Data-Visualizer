@@ -4,12 +4,10 @@ import {
   Zap,
   Download,
   RotateCw,
-  Info,
   Package,
   Layers,
   Check,
   ChevronDown,
-  ChevronUp,
   Settings2
 } from 'lucide-react';
 import { ExportSettings, ExportFormat } from '../../types/export';
@@ -21,6 +19,7 @@ import { JxlSettings } from './JxlSettings';
 import { ResizeSettings } from './ResizeSettings';
 import { MetricsPanel } from './MetricsPanel';
 import { PRESET_REGISTRY } from '../../lib/imagePresets';
+import { getNativeScaleForBoard } from '../image-workspace/services/exportUtils';
 
 interface Props {
   settings: ExportSettings;
@@ -40,6 +39,8 @@ interface Props {
   setExportTarget: (target: "current" | "selected" | "all") => void;
   selectedExportIds: Record<string, boolean>;
   setSelectedExportIds: (ids: Record<string, boolean> | ((prev: any) => any)) => void;
+  /** Used to work out how much detail the placed images still hold. */
+  fabricCanvas?: any;
 }
 
 export const ExportStudio: React.FC<Props> = ({
@@ -58,7 +59,8 @@ export const ExportStudio: React.FC<Props> = ({
   exportTarget,
   setExportTarget,
   selectedExportIds,
-  setSelectedExportIds
+  setSelectedExportIds,
+  fabricCanvas
 }) => {
   const [uiMode, setUiMode] = useState<'basic' | 'advanced' | 'expert'>('basic');
   const [activeSection, setActiveSection] = useState<'codec' | 'resize' | 'presets'>('codec');
@@ -128,6 +130,12 @@ export const ExportStudio: React.FC<Props> = ({
   };
 
   const activeBoard = artboards.find(b => b.id === activeArtboardId);
+  const exportScale = settings.exportScale || 1;
+  // How far the sharpest placed image is being scaled down for display.
+  const nativeScale = React.useMemo(
+    () => (fabricCanvas && activeBoard ? getNativeScaleForBoard(fabricCanvas, activeBoard) : 1),
+    [fabricCanvas, activeBoard, settings.format]
+  );
   const matchedPreset = activeBoard ? PRESET_REGISTRY.find(p => p.name === activeBoard.name) : null;
   const recommendation = matchedPreset?.exportRecommendation;
 
@@ -149,8 +157,8 @@ export const ExportStudio: React.FC<Props> = ({
               key={mode.id}
               onClick={() => setUiMode(mode.id as any)}
               className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${uiMode === mode.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700/50'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700/50'
                 }`}
             >
               {mode.label}
@@ -160,71 +168,71 @@ export const ExportStudio: React.FC<Props> = ({
       </div>
 
       <div className="p-3 md:p-4 space-y-4 md:space-y-6 flex-1 overflow-y-auto custom-scrollbar">
-        
+
         {/* Mobile Format & Advanced Settings Block */}
         <div className="md:hidden flex flex-col gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 p-2 rounded-xl relative">
-           <div className="flex items-center justify-between gap-2">
-              <div className="flex-1 relative">
-                <button 
-                  className={`w-full bg-white dark:bg-slate-800 border rounded-lg flex items-center px-2 py-2 transition-colors ${showFormatDropdown ? 'border-blue-500' : 'border-slate-200 dark:border-slate-700/50'}`}
-                  onClick={() => {
-                     setShowFormatDropdown(!showFormatDropdown);
-                     setShowTargetDropdown(false);
-                  }}
-                >
-                  <Package size={12} className="text-blue-500 shrink-0 mr-2" />
-                  <span className="flex-1 text-left text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{settings.format}</span>
-                  <ChevronDown size={14} className={`text-slate-500 shrink-0 ml-1 transition-transform ${showFormatDropdown ? 'rotate-180' : ''}`} />
-                </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 relative">
+              <button
+                className={`w-full bg-white dark:bg-slate-800 border rounded-lg flex items-center px-2 py-2 transition-colors ${showFormatDropdown ? 'border-blue-500' : 'border-slate-200 dark:border-slate-700/50'}`}
+                onClick={() => {
+                  setShowFormatDropdown(!showFormatDropdown);
+                  setShowTargetDropdown(false);
+                }}
+              >
+                <Package size={12} className="text-blue-500 shrink-0 mr-2" />
+                <span className="flex-1 text-left text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{settings.format}</span>
+                <ChevronDown size={14} className={`text-slate-500 shrink-0 ml-1 transition-transform ${showFormatDropdown ? 'rotate-180' : ''}`} />
+              </button>
 
-                {showFormatDropdown && (
-                  <>
-                     <div className="fixed inset-0 z-40" onClick={() => setShowFormatDropdown(false)} />
-                     <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col">
-                       {(['jpeg', 'png', 'webp', 'avif', 'jxl'] as ExportFormat[]).map(fmt => (
-                         <button
-                           key={fmt}
-                           className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-left transition-colors ${settings.format === fmt ? 'bg-blue-600/20 text-blue-400' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
-                           onClick={() => {
-                             onChange({ ...settings, format: fmt });
-                             setShowFormatDropdown(false);
-                           }}
-                         >
-                           {fmt}
-                         </button>
-                       ))}
-                     </div>
-                  </>
-                )}
+              {showFormatDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowFormatDropdown(false)} />
+                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col">
+                    {(['jpeg', 'png', 'webp', 'avif', 'jxl'] as ExportFormat[]).map(fmt => (
+                      <button
+                        key={fmt}
+                        className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-left transition-colors ${settings.format === fmt ? 'bg-blue-600/20 text-blue-400' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                        onClick={() => {
+                          onChange({ ...settings, format: fmt });
+                          setShowFormatDropdown(false);
+                        }}
+                      >
+                        {fmt}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 gap-0.5">
+                {[
+                  { id: 'basic', label: 'BASIC' },
+                  { id: 'advanced', label: 'ADV' },
+                  { id: 'expert', label: 'PRO' }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    onClick={() => setUiMode(mode.id as any)}
+                    className={`px-2 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${uiMode === mode.id
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
               </div>
-              
-              <div className="flex items-center gap-2">
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 gap-0.5">
-                  {[
-                    { id: 'basic', label: 'BASIC' },
-                    { id: 'advanced', label: 'ADV' },
-                    { id: 'expert', label: 'PRO' }
-                  ].map(mode => (
-                    <button
-                      key={mode.id}
-                      onClick={() => setUiMode(mode.id as any)}
-                      className={`px-2 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${uiMode === mode.id
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                        }`}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                </div>
-                <button 
-                  className={`flex items-center justify-center p-2 border rounded-lg transition-colors ${showAdvancedMobile ? 'bg-blue-600/10 border-blue-500/30' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/50 active:bg-slate-100 dark:bg-slate-700'}`}
-                  onClick={() => setShowAdvancedMobile(!showAdvancedMobile)}
-                >
-                  <Settings2 size={16} className={showAdvancedMobile ? "text-blue-400" : "text-slate-600 dark:text-slate-400"} />
-                </button>
-              </div>
-           </div>
+              <button
+                className={`flex items-center justify-center p-2 border rounded-lg transition-colors ${showAdvancedMobile ? 'bg-blue-600/10 border-blue-500/30' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/50 active:bg-slate-100 dark:bg-slate-700'}`}
+                onClick={() => setShowAdvancedMobile(!showAdvancedMobile)}
+              >
+                <Settings2 size={16} className={showAdvancedMobile ? "text-blue-400" : "text-slate-600 dark:text-slate-400"} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Format Selector Desktop */}
@@ -235,8 +243,8 @@ export const ExportStudio: React.FC<Props> = ({
                 key={fmt}
                 onClick={() => onChange({ ...settings, format: fmt })}
                 className={`flex-1 min-h-[36px] py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${settings.format === fmt
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
                   }`}
               >
                 {fmt}
@@ -248,19 +256,17 @@ export const ExportStudio: React.FC<Props> = ({
         {/* Advanced / Detailed Sections */}
         <div className={`space-y-4 md:space-y-6 ${!showAdvancedMobile ? 'hidden md:block' : 'block'}`}>
           {/* Direct Native High Quality Mode Toggle */}
-          <div className={`p-3 md:p-3.5 rounded-xl md:rounded-2xl transition-all duration-300 border ${
-            settings.directNativeExport 
-            ? 'bg-blue-50 dark:bg-gradient-to-r dark:from-blue-950/60 dark:via-[#121624] dark:to-[#0E111C] border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.15)]' 
-            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:border-slate-600'
-          }`}>
+          <div className={`p-3 md:p-3.5 rounded-xl md:rounded-2xl transition-all duration-300 border ${settings.directNativeExport
+              ? 'bg-blue-50 dark:bg-gradient-to-r dark:from-blue-950/60 dark:via-[#121624] dark:to-[#0E111C] border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.15)]'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:border-slate-600'
+            }`}>
             <label className="flex items-center justify-between cursor-pointer select-none gap-3">
               {/* Mobile Compact View */}
               <div className="flex md:hidden items-center gap-3 min-w-0 flex-1">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 transition-all ${
-                  settings.directNativeExport
-                  ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] ring-1 ring-blue-400/30'
-                  : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                }`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 transition-all ${settings.directNativeExport
+                    ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] ring-1 ring-blue-400/30'
+                    : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
+                  }`}>
                   HQ
                 </div>
                 <div className="text-[11px] font-extrabold text-slate-900 dark:text-white tracking-tight flex-1">
@@ -270,21 +276,19 @@ export const ExportStudio: React.FC<Props> = ({
 
               {/* Desktop Expanded View */}
               <div className="hidden md:flex items-center gap-3 min-w-0">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 transition-all ${
-                  settings.directNativeExport
-                  ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] ring-2 ring-blue-400/30'
-                  : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                }`}>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 transition-all ${settings.directNativeExport
+                    ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] ring-2 ring-blue-400/30'
+                    : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
+                  }`}>
                   HQ
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
                     <span>Direct High Quality Mode</span>
-                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider font-mono transition-all ${
-                      settings.directNativeExport
-                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
-                      : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                    }`}>
+                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider font-mono transition-all ${settings.directNativeExport
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
+                      }`}>
                       {settings.directNativeExport ? '100% Native' : 'WASM Active'}
                     </span>
                   </div>
@@ -295,16 +299,15 @@ export const ExportStudio: React.FC<Props> = ({
               </div>
 
               {/* Custom Modern Animated Toggle Switch */}
-              <div 
+              <div
                 onClick={(e) => {
                   e.preventDefault();
                   onChange({ ...settings, directNativeExport: !settings.directNativeExport });
                 }}
-                className={`w-11 h-6 rounded-full px-1 flex items-center transition-all duration-300 cursor-pointer relative shrink-0 border ${
-                  settings.directNativeExport 
-                  ? 'bg-blue-600 border-blue-400 shadow-[0_0_12px_rgba(37,99,235,0.4)] justify-end' 
-                  : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600 justify-start'
-                }`}
+                className={`w-11 h-6 rounded-full px-1 flex items-center transition-all duration-300 cursor-pointer relative shrink-0 border ${settings.directNativeExport
+                    ? 'bg-blue-600 border-blue-400 shadow-[0_0_12px_rgba(37,99,235,0.4)] justify-end'
+                    : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600 justify-start'
+                  }`}
               >
                 <div className="w-4 h-4 rounded-full bg-white shadow-md transition-all duration-300 flex items-center justify-center">
                   {settings.directNativeExport && <Check size={10} className="text-blue-600 stroke-[3.5]" />}
@@ -314,6 +317,48 @@ export const ExportStudio: React.FC<Props> = ({
           </div>
 
 
+
+          {/* Output resolution. The artboard is a layout size, not a resolution cap - without
+              this a 2048px photo on an 800x600 board exported at 800px wide. */}
+          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Output Resolution</span>
+              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                {activeBoard ? `${Math.round(activeBoard.width * exportScale)} x ${Math.round(activeBoard.height * exportScale)}` : '-'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/50">
+              {[1, 2, 3, 4].map(mult => (
+                <button
+                  key={mult}
+                  type="button"
+                  onClick={() => onChange({ ...settings, exportScale: mult })}
+                  className={`h-8 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors touch-manipulation ${exportScale === mult
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                >
+                  {mult}x
+                </button>
+              ))}
+            </div>
+
+            {nativeScale > 1.01 && (
+              <button
+                type="button"
+                onClick={() => onChange({ ...settings, exportScale: nativeScale })}
+                className="w-full h-9 rounded-lg border border-blue-300 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[10px] font-bold transition-colors hover:bg-blue-100 dark:hover:bg-blue-600/20 touch-manipulation"
+              >
+                Match source detail ({nativeScale.toFixed(2)}x)
+              </button>
+            )}
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-snug">
+              {nativeScale > 1.01
+                ? `Your highest-resolution image is being displayed at ${Math.round(100 / nativeScale)}% of its native size. Exporting at 1x throws that detail away.`
+                : 'Renders the artboard at a multiple of its pixel size. Disabled while a manual resize is set.'}
+            </p>
+          </div>
 
           {/* Export Range Targeting Selector */}
           <div className="space-y-3 md:space-y-4 bg-white dark:bg-slate-900 p-3 md:p-3.5 rounded-xl md:rounded-2xl border border-slate-200 dark:border-slate-700/50">
@@ -334,8 +379,8 @@ export const ExportStudio: React.FC<Props> = ({
                   type="button"
                   onClick={() => setExportTarget(t.id as any)}
                   className={`flex-1 min-w-[65px] min-h-[32px] md:min-h-0 py-1.5 px-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center whitespace-nowrap ${exportTarget === t.id
-                      ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm font-black'
-                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 border border-transparent'
+                    ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 border border-transparent'
                     }`}
                 >
                   {t.label}
@@ -345,42 +390,42 @@ export const ExportStudio: React.FC<Props> = ({
 
             {/* Mobile Custom Select */}
             <div className="md:hidden relative">
-                <button 
-                  className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-lg flex items-center px-2 py-2 transition-colors ${showTargetDropdown ? 'border-blue-500/50' : 'border-slate-200 dark:border-slate-700/50'}`}
-                  onClick={() => {
-                     setShowTargetDropdown(!showTargetDropdown);
-                     setShowFormatDropdown(false);
-                  }}
-                >
-                  <span className="flex-1 text-left text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                     {exportTarget === 'current' ? 'Active Board' : exportTarget === 'selected' ? 'Selected Boards' : 'All Boards'}
-                  </span>
-                  <ChevronDown size={14} className={`text-slate-500 shrink-0 ml-1 transition-transform ${showTargetDropdown ? 'rotate-180' : ''}`} />
-                </button>
+              <button
+                className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-lg flex items-center px-2 py-2 transition-colors ${showTargetDropdown ? 'border-blue-500/50' : 'border-slate-200 dark:border-slate-700/50'}`}
+                onClick={() => {
+                  setShowTargetDropdown(!showTargetDropdown);
+                  setShowFormatDropdown(false);
+                }}
+              >
+                <span className="flex-1 text-left text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  {exportTarget === 'current' ? 'Active Board' : exportTarget === 'selected' ? 'Selected Boards' : 'All Boards'}
+                </span>
+                <ChevronDown size={14} className={`text-slate-500 shrink-0 ml-1 transition-transform ${showTargetDropdown ? 'rotate-180' : ''}`} />
+              </button>
 
-                {showTargetDropdown && (
-                  <>
-                     <div className="fixed inset-0 z-40" onClick={() => setShowTargetDropdown(false)} />
-                     <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col">
-                       {[
-                         { id: 'current', label: 'Active Board' },
-                         { id: 'selected', label: 'Selected Boards' },
-                         { id: 'all', label: 'All Boards' }
-                       ].map(t => (
-                         <button
-                           key={t.id}
-                           className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-left transition-colors ${exportTarget === t.id ? 'bg-blue-600/20 text-blue-400' : 'text-slate-700 dark:text-slate-300 active:bg-slate-100 dark:bg-slate-700'}`}
-                           onClick={() => {
-                             setExportTarget(t.id as any);
-                             setShowTargetDropdown(false);
-                           }}
-                         >
-                           {t.label}
-                         </button>
-                       ))}
-                     </div>
-                  </>
-                )}
+              {showTargetDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowTargetDropdown(false)} />
+                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col">
+                    {[
+                      { id: 'current', label: 'Active Board' },
+                      { id: 'selected', label: 'Selected Boards' },
+                      { id: 'all', label: 'All Boards' }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-left transition-colors ${exportTarget === t.id ? 'bg-blue-600/20 text-blue-400' : 'text-slate-700 dark:text-slate-300 active:bg-slate-100 dark:bg-slate-700'}`}
+                        onClick={() => {
+                          setExportTarget(t.id as any);
+                          setShowTargetDropdown(false);
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {(exportTarget === "current" || exportTarget === "selected") && (
@@ -394,10 +439,10 @@ export const ExportStudio: React.FC<Props> = ({
                     <div
                       key={b.id}
                       className={`flex items-center gap-3 p-2.5 rounded-lg md:rounded-xl cursor-pointer transition-all border ${isActive
-                          ? 'bg-blue-600/5 border-blue-500/30 shadow-[0_0_12px_rgba(37,99,235,0.03)]'
-                          : isSelected
-                            ? 'bg-blue-500/5 border-blue-500/20'
-                            : 'hover:bg-slate-200 dark:hover:bg-slate-800 border-transparent'
+                        ? 'bg-blue-600/5 border-blue-500/30 shadow-[0_0_12px_rgba(37,99,235,0.03)]'
+                        : isSelected
+                          ? 'bg-blue-500/5 border-blue-500/20'
+                          : 'hover:bg-slate-200 dark:hover:bg-slate-800 border-transparent'
                         }`}
                       onClick={() => {
                         if (exportTarget === "selected") {
@@ -410,8 +455,8 @@ export const ExportStudio: React.FC<Props> = ({
                       {/* Modern Custom Checkbox */}
                       <div
                         className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${isSelected
-                            ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
+                          ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
                           } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                       >
                         {isSelected && <Check size={11} className="text-white stroke-[3.5] animate-in zoom-in-50" />}
@@ -516,11 +561,10 @@ export const ExportStudio: React.FC<Props> = ({
               <button
                 key={p}
                 onClick={() => setPreset(p)}
-                className={`p-2 border rounded-lg text-[10px] text-left transition-all min-h-[40px] md:min-h-0 touch-manipulation ${
-                  p === '100% Original HQ' 
-                  ? 'border-blue-500/60 bg-blue-600/10 text-blue-300 font-bold hover:bg-blue-600/20' 
-                  : 'border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:border-blue-500/50 hover:bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
-                }`}
+                className={`p-2 border rounded-lg text-[10px] text-left transition-all min-h-[40px] md:min-h-0 touch-manipulation ${p === '100% Original HQ'
+                    ? 'border-blue-500/60 bg-blue-600/10 text-blue-300 font-bold hover:bg-blue-600/20'
+                    : 'border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:border-blue-500/50 hover:bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
+                  }`}
               >
                 {p}
               </button>
@@ -553,11 +597,10 @@ export const ExportStudio: React.FC<Props> = ({
               onChange={(e) => onChange({ ...settings, askForFilename: e.target.checked })}
               className="sr-only"
             />
-            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
-              settings.askForFilename 
-              ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]' 
-              : 'bg-slate-100 dark:bg-[#121212] border-slate-200 dark:border-slate-700/50 group-hover:border-slate-400 dark:hover:border-[#444]'
-            }`}>
+            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${settings.askForFilename
+                ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]'
+                : 'bg-slate-100 dark:bg-[#121212] border-slate-200 dark:border-slate-700/50 group-hover:border-slate-400 dark:hover:border-[#444]'
+              }`}>
               {settings.askForFilename && <Check size={11} className="text-slate-900 dark:text-white stroke-[3.5] animate-in zoom-in-50" />}
             </div>
           </div>
@@ -566,13 +609,13 @@ export const ExportStudio: React.FC<Props> = ({
             <span className="text-[8px] md:text-[9px] text-slate-500 md:text-slate-600 truncate">Prompt for name on export (otherwise auto-generates random string)</span>
           </div>
         </label>
-        
+
         <button
           onClick={onExport}
           disabled={isExporting}
           className={`w-full group relative overflow-hidden h-[42px] md:h-12 rounded-lg md:rounded-xl flex items-center justify-center gap-2 md:gap-3 transition-all touch-manipulation ${isExporting
-              ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-bold shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-[0.98]'
+            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            : 'bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-bold shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-[0.98]'
             }`}
         >
           {isExporting ? <RotateCw className="animate-spin" size={16} /> : <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:-translate-y-1 transition-transform" />}

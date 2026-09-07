@@ -371,19 +371,39 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
     }
   };
 
+  /**
+   * Geometry of the split view's base layer.
+   *
+   * Split mode draws the OPTIMIZED image as the base and stretches the original into those same
+   * bounds, so the optimized image is what decides where the divider is painted. The hit test and
+   * the drag handler measured against the ORIGINAL instead. With Resize Optimization on the two
+   * have different natural widths, so the handle was drawn at
+   *     pan.x - Wopt*z/2 + Wopt*z*d
+   * but tested at
+   *     pan.x - Worig*z/2 + Worig*z*d
+   * leaving a gap of z * (Wopt - Worig) * (d - 0.5). It is zero at 50% and grows with zoom, which
+   * is why grabbing the handle worked zoomed out but not zoomed in.
+   */
+  const getSplitBaseBounds = () => {
+    const base = optimizedImgRef.current;
+    if (!base) return null;
+    const drawW = (base as any).naturalWidth * comparisonZoom;
+    const drawH = (base as any).naturalHeight * comparisonZoom;
+    return { drawX: pan.x - drawW / 2, drawY: pan.y - drawH / 2, drawW, drawH };
+  };
+
   const handlePointerDownLocal = (e: React.PointerEvent) => {
     if (e.button !== 0) return; // Left click only
-    
+
     // Check if clicking on slider
-    if (comparisonPreviewMode === 'split' && originalImgRef.current) {
+    if (comparisonPreviewMode === 'split') {
       const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const bounds = getSplitBaseBounds();
+      if (!rect || !bounds) return;
       const cursorX = e.clientX - rect.left;
-      
-      const drawW = (originalImgRef.current as any).naturalWidth * comparisonZoom;
-      const drawX = pan.x - drawW / 2;
-      const splitX = drawX + (drawW * (comparisonDivider / 100));
-      
+
+      const splitX = bounds.drawX + (bounds.drawW * (comparisonDivider / 100));
+
       const hitRadius = isMobile ? 40 : 20;
       if (Math.abs(cursorX - splitX) < hitRadius) {
         setIsDraggingSlider(true);
@@ -399,14 +419,13 @@ export const ExportLiveComparisonViewer: React.FC<ExportLiveComparisonViewerProp
   };
 
   const handlePointerMoveLocal = (e: React.PointerEvent) => {
-    if (isDraggingSlider && containerRef.current && originalImgRef.current) {
+    if (isDraggingSlider && containerRef.current) {
+      const bounds = getSplitBaseBounds();
+      if (!bounds || bounds.drawW <= 0) return;
       const rect = containerRef.current.getBoundingClientRect();
       const cursorX = e.clientX - rect.left;
-      
-      const drawW = (originalImgRef.current as any).naturalWidth * comparisonZoom;
-      const drawX = pan.x - drawW / 2;
-      
-      let newDiv = ((cursorX - drawX) / drawW) * 100;
+
+      let newDiv = ((cursorX - bounds.drawX) / bounds.drawW) * 100;
       newDiv = Math.min(Math.max(0, newDiv), 100);
       setComparisonDivider(newDiv);
     } else if (isPanning) {

@@ -130,6 +130,10 @@ import { DeleteArtboardCommand } from "./commands/artboard/DeleteArtboardCommand
 
 import { ArtboardPropertyCommand } from "./commands/artboard/ArtboardPropertyCommand";
 import { isActiveSelection } from '../../utils/fabric-utils';
+import {
+   generateArtboardPixelBuffer as renderArtboardToBuffer,
+   generateDirectNativeBlob
+} from './services/exportUtils';
 
 // Modern Checkbox Component
 interface ImageWorkspaceProps {
@@ -6049,45 +6053,13 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       // jSquash Export Pipeline running on a high-compatibility Background Web Worker
       const [isExporting, setIsExporting] = useState(false);
 
+      // Delegates to services/exportUtils so there is one renderer. The copy that used to live
+      // here missed the cache/skipOffscreen handling and the export scale, and since the app never
+      // mounts ExportContext this local path is the only one that actually runs.
       const generateArtboardPixelBuffer = async (board: Artboard): Promise<{ buffer: ArrayBuffer, width: number, height: number }> => {
          if (!fabricRef.current) throw new Error("Canvas not ready");
-
-         // Create an offscreen canvas of the exact artboard dimensions
-         const tempCanvas = document.createElement('canvas');
-         tempCanvas.width = board.width;
-         tempCanvas.height = board.height;
-         const ctx = tempCanvas.getContext('2d')!;
-
-         // 1. Draw background
-         if (!board.transparent) {
-            ctx.fillStyle = board.backgroundColor || "#ffffff";
-            ctx.fillRect(0, 0, board.width, board.height);
-         } else {
-            ctx.clearRect(0, 0, board.width, board.height);
-         }
-
-         // 2. Draw elements assigned to this artboard
-         ctx.save();
-         ctx.translate(-board.x, -board.y);
-
-         const objs = fabricRef.current.getObjects();
-         objs.forEach((obj) => {
-            if (!obj.visible || isActiveSelection(obj)) return;
-
-            const assignedId = (obj as any).artboardId;
-            if (assignedId === board.id) {
-               obj.render(ctx);
-            }
-         });
-
-         ctx.restore();
-
-         const imgData = ctx.getImageData(0, 0, board.width, board.height);
-         return {
-            buffer: imgData.data.buffer as ArrayBuffer,
-            width: board.width,
-            height: board.height
-         };
+         const result = await renderArtboardToBuffer(fabricRef.current, board, exportSettings.exportScale);
+         return { ...result, buffer: result.buffer as ArrayBuffer };
       };
 
       const optimizePixelBuffer = async (
@@ -6184,10 +6156,17 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
             if (targets.length === 1) {
                const board = targets[0];
-               const { buffer, width, height } = await generateArtboardPixelBuffer(board);
 
-               const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
-               const blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
+               // Direct High Quality has to bypass the WASM encoder here too. This branch was
+               // missing, so the toggle changed the preview while every download stayed compressed.
+               let blob: Blob;
+               if (exportSettings.directNativeExport) {
+                  blob = await generateDirectNativeBlob(fabricRef.current!, board, exportSettings);
+               } else {
+                  const { buffer, width, height } = await generateArtboardPixelBuffer(board);
+                  const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, exportSettings);
+                  blob = new Blob([rawBuffer], { type: `image/${exportSettings.format}` });
+               }
                const url = URL.createObjectURL(blob);
                const a = document.createElement('a');
                a.href = url;
@@ -6208,12 +6187,18 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             } else {
                const zip = new JSZip();
                for (const board of targets) {
-                  const { buffer, width, height } = await generateArtboardPixelBuffer(board);
-                  // In batch mode, we disable custom resize per image for consistency unless explicitly architecture changed
-                  const { buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, {
-                     ...exportSettings,
-                     resize: { ...exportSettings.resize, enabled: false }
-                  });
+                  let rawBuffer: ArrayBuffer;
+                  if (exportSettings.directNativeExport) {
+                     const directBlob = await generateDirectNativeBlob(fabricRef.current!, board, exportSettings);
+                     rawBuffer = await directBlob.arrayBuffer();
+                  } else {
+                     const { buffer, width, height } = await generateArtboardPixelBuffer(board);
+                     // In batch mode, we disable custom resize per image for consistency unless explicitly architecture changed
+                     ({ buffer: rawBuffer } = await optimizePixelBuffer(buffer, width, height, {
+                        ...exportSettings,
+                        resize: { ...exportSettings.resize, enabled: false }
+                     }));
+                  }
 
                   let fileName = board.name.toLowerCase().replace(/\s+/g, '_');
                   if (exportSettings.askForFilename) {
@@ -6285,11 +6270,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             setOptimizedPreviewDims({ w: optTargetW, h: optTargetH });
 
             // We downscale ONLY for internal preview performance if dimensions are massive,
-            // but we maintain the relative scale between Original and Optimized.
+            // but we maintain the relative scale between Original and Optimized. Direct High
+            // Quality gets a much larger budget: the whole point of that mode is judging detail,
+            // and a 1200px preview cannot show it.
             let previewScale = 1;
+            const previewCap = exportSettings.directNativeExport ? 2400 : 1200;
             const maxTargetDim = Math.max(origTargetW, origTargetH, optTargetW, optTargetH);
-            if (maxTargetDim > 1200) {
-               previewScale = 1200 / maxTargetDim;
+            if (maxTargetDim > previewCap) {
+               previewScale = previewCap / maxTargetDim;
             }
 
             const origPreviewW = Math.max(1, Math.round(origTargetW * previewScale));
@@ -6321,8 +6309,24 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             const origSize = originalBlob ? originalBlob.size : buffer.byteLength;
             setOriginalSize(origSize);
 
-            // 3. Run WASM optimization
             const formatLabel = exportSettings.format.toUpperCase();
+
+            // Direct High Quality never touches the WASM encoder, so the preview must not either:
+            // showing a compressed right-hand side misrepresented what would be downloaded.
+            if (exportSettings.directNativeExport) {
+               setCurrentPreviewOp(`Generating direct high quality (${formatLabel})...`);
+               const directBlob = await generateDirectNativeBlob(fabricRef.current, board, exportSettings);
+               setOptimizedSize(directBlob.size);
+               setPsnr(100);
+               const directUrl = URL.createObjectURL(directBlob);
+               setOptimizedImageUrl(prev => {
+                  if (prev) URL.revokeObjectURL(prev);
+                  return directUrl;
+               });
+               return;
+            }
+
+            // 3. Run WASM optimization
             setCurrentPreviewOp(`Running jSquash WASM optimization (${formatLabel})...`);
 
             const previewSettings: ExportSettings = {
@@ -6400,6 +6404,10 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          activeArtboardId,
          exportTarget,
          exportSettings.format,
+         // Both of these change what gets rendered, so the preview has to follow them. Their
+         // absence is why toggling High Quality left the old preview on screen.
+         exportSettings.directNativeExport,
+         exportSettings.exportScale,
          exportSettings.resize,
          exportSettings.mozjpeg,
          exportSettings.webp,
@@ -7277,6 +7285,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                                             setExportTarget={setExportTarget}
                                                             selectedExportIds={selectedExportIds}
                                                             setSelectedExportIds={setSelectedExportIds}
+                                                            fabricCanvas={fabricRef.current}
                                                          />
                                                       )}
                                                    </React.Suspense>
