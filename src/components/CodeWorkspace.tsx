@@ -282,6 +282,10 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     () => fileExt.endsWith("_search_node") || fileExt === "search",
     [fileExt],
   );
+  // Distraction-free mode for the image editor: hides the title bar and tab strip so the canvas
+  // gets the full height. Owned here because those rows belong to this component.
+  const [imageChromeHidden, setImageChromeHidden] = useState(false);
+
   const isImg = useMemo(() => {
     const ext = fileExt.toLowerCase();
     if (
@@ -320,6 +324,12 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
     return false;
   }, [fileExt, code, parsedData, currentFilePath, uploadedMediaMetadata]);
+
+  // The only control that can restore the chrome lives inside ImageWorkspace, so leaving an image
+  // file while it is hidden would strand the user with no tabs and no way back.
+  useEffect(() => {
+    if (!isImg && imageChromeHidden) setImageChromeHidden(false);
+  }, [isImg, imageChromeHidden]);
   const isJson = useMemo(
     () => fileExt.endsWith("_json") || fileExt === "json",
     [fileExt],
@@ -1726,7 +1736,7 @@ declare const console: {
         onTouchStart={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
-        <div className="flex justify-between items-center gap-1 px-2 md:px-3 min-h-[38px] border-b border-[var(--vsc-border)] bg-[var(--vsc-titlebar)] select-none shrink-0">
+        <div className={`justify-between items-center gap-1 px-2 md:px-3 min-h-[38px] border-b border-[var(--vsc-border)] bg-[var(--vsc-titlebar)] select-none shrink-0 ${imageChromeHidden ? 'hidden' : 'flex'}`}>
           {/* Workspace identity */}
           <div className="flex items-center gap-2 min-w-0 flex-1 basis-0">
             <div className="hidden md:flex items-center gap-1.5 px-1.5 py-0.5 rounded-[4px] text-[11px] font-medium text-[var(--vsc-fg-muted)] bg-[var(--vsc-hover)] shrink-0">
@@ -2267,7 +2277,7 @@ declare const console: {
               className={`flex-1 z-10 relative min-w-[120px] min-h-[80px] flex-col bg-[var(--vsc-editor)] overflow-hidden ${terminalState === "maximized" ? "hidden" : "flex"}`}
             >
               {/* Tabs list (Editor header) */}
-              <div className="flex items-stretch bg-[var(--vsc-tabbar)] overflow-x-auto select-none shrink-0 scrollbar-none h-[35px] border-b border-[var(--vsc-border)]">
+              <div className={`items-stretch bg-[var(--vsc-tabbar)] overflow-x-auto select-none shrink-0 scrollbar-none h-[35px] border-b border-[var(--vsc-border)] ${imageChromeHidden ? 'hidden' : 'flex'}`}>
                 {workspaceTabs.length === 0 && (
                   <div className="px-4 flex items-center text-xs font-mono text-[var(--vsc-fg-muted)] italic">
                     No files open
@@ -2474,6 +2484,8 @@ declare const console: {
                     <ImageWorkspace
                       key={currentFilePath}
                       path={currentFilePath}
+                      chromeHidden={imageChromeHidden}
+                      onToggleChrome={() => setImageChromeHidden(v => !v)}
                     />
                   </React.Suspense>
                 ) : (

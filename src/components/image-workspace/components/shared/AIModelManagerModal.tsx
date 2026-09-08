@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Trash2, HardDrive, CheckCircle2, Loader2, Upload, Cpu, FileBox, Settings, Save } from 'lucide-react';
+import { X, Download, Trash2, HardDrive, CheckCircle2, Loader2, Upload, Cpu, FileBox, Settings, Save, AlertCircle, RotateCcw } from 'lucide-react';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
-import { useModel } from '../../../../ai/hooks/useModel';
+import { useModelDownload } from '../../../../ai/hooks/useModelDownload';
 import { ModelManifest } from '../../../../ai/types';
 import { formatFileSize } from '@/src/lib/formatFileSize';
 import { opfsStorage } from '../../../../ai/manager/OPFSStorage';
@@ -159,14 +159,21 @@ const ModelConfigEditor = ({
 };
 
 const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManifest, onCustomDelete?: () => void, onEdit?: (manifest: ModelManifest) => void }) => {
-  const { isDownloaded, isDownloading, isChecking, modelSize, preload, deleteModel } = useModel(manifest.id);
-  const isLocalBundle = manifest.sources[0]?.type === 'local';
+  // useModelDownload owns an AbortController, so the download here can actually be stopped.
+  // The previous hook had no cancel at all: once started, a 176 MB fetch ran to completion.
+  const { status, progress, sizeBytes, error, start, cancel, remove, isCached, isBundled } = useModelDownload(manifest.id);
+  const isDownloaded = status === 'ready';
+  const isDownloading = status === 'downloading';
+  const isChecking = status === 'checking';
+  const isError = status === 'error';
+  const modelSize = sizeBytes;
+  const isLocalBundle = isBundled;
   const isCustom = manifest.version === 'custom';
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await deleteModel();
+      await remove();
       if (isCustom) {
         modelRegistry.deleteCustom(manifest.id);
         onCustomDelete?.();
@@ -197,10 +204,10 @@ const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManife
                 <span className="text-slate-600 dark:text-slate-300 font-mono">{formatFileSize(modelSize, 'B')}</span>
               </>
             )}
-            {isLocalBundle && (
+            {isLocalBundle && isCached && (
               <>
                 <span>•</span>
-                <span className="text-slate-400">Bundled</span>
+                <span className="text-slate-400">Cached</span>
               </>
             )}
           </div>
@@ -213,13 +220,27 @@ const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManife
             <Loader2 className="animate-spin" size={14} /> Checking...
           </div>
         ) : isDownloading ? (
-          <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 text-xs font-semibold bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-3 py-1.5 rounded-lg">
-            <Loader2 className="animate-spin" size={14} /> Downloading...
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 text-xs font-semibold bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-3 py-1.5 rounded-lg">
+              <Loader2 className="animate-spin" size={14} />
+              <span className="font-mono tabular-nums">{progress}%</span>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); cancel(); }}
+              title="Cancel download"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all active:scale-95"
+            >
+              <X size={14} /> Cancel
+            </button>
           </div>
         ) : isDownloaded ? (
           <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2.5 py-1.5 rounded-lg">
-              <CheckCircle2 size={14} /> Installed
+            {/* A bundled model ships with the app: it is always usable and cannot be uninstalled,
+                so calling it "Installed" next to a delete button read as the delete failing. */}
+            <div className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border ${isLocalBundle
+              ? 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-[#1A1A1A] border-slate-200 dark:border-[#333]'
+              : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20'}`}>
+              <CheckCircle2 size={14} /> {isLocalBundle ? 'Built-in' : 'Installed'}
             </div>
             {isCustom && onEdit && manifest.customConfig && (
               <button
@@ -230,21 +251,32 @@ const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManife
                 <Settings size={16} />
               </button>
             )}
-            <button
-              onClick={handleDelete}
-              className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all border border-transparent hover:border-red-200 dark:hover:border-red-500/20"
-              title="Delete Model Cache"
-            >
-              <Trash2 size={16} />
-            </button>
+            {/* Only offer delete when there is actually an OPFS copy to remove. For a bundled
+                model with no cache, the button had nothing to do and appeared to be ignored. */}
+            {isCached && (
+              <button
+                onClick={handleDelete}
+                className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all border border-transparent hover:border-red-200 dark:hover:border-red-500/20"
+                title={isLocalBundle ? 'Clear cached copy (model stays available)' : 'Delete model cache'}
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
         ) : (
-          <button
-            onClick={preload}
-            className="flex items-center gap-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 shadow-sm"
-          >
-            <Download size={14} /> Download
-          </button>
+          <div className="flex items-center gap-2">
+            {isError && (
+              <span title={error || 'Download failed'} className="flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 max-w-[160px] truncate">
+                <AlertCircle size={13} className="shrink-0" /> {error || 'Failed'}
+              </span>
+            )}
+            <button
+              onClick={() => start()}
+              className="flex items-center gap-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95 shadow-sm"
+            >
+              {isError ? <><RotateCcw size={14} /> Retry</> : <><Download size={14} /> Download</>}
+            </button>
+          </div>
         )}
       </div>
     </div>

@@ -7,6 +7,8 @@ import {
   Globe, FileText, BadgeCheck, CreditCard, Wallet, Settings, Contact, UserCheck, GripVertical
 } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
+import { ModelDownloadGate } from './ModelDownloadGate';
+import { useModelDownload } from '../../../../ai/hooks/useModelDownload';
 import { useStore } from '../../../../store/useStore';
 import { CameraCaptureModal } from '../../../CameraCaptureModal';
 import { ai } from '../../../../ai';
@@ -396,6 +398,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   const [autoAdjustFaceModel, setAutoAdjustFaceModel] = useState<string>(faceModels.length > 0 ? faceModels[0].id : 'blaze_face_short_range');
   const [autoAdjustBgModel, setAutoAdjustBgModel] = useState<string>('u2netp');
   const [autoAdjustBg, setAutoAdjustBg] = useState<PassportBackground>({ type: 'color', color: 'rgba(255, 255, 255, 1)' });
+  const [aiError, setAiError] = useState<string | null>(null);
+  // Auto-Adjust runs face detection and background removal, so both have to be on the device.
+  const faceModelState = useModelDownload(autoAdjustFaceModel);
+  const bgModelState = useModelDownload(autoAdjustBgModel);
+  const aiModelsReady = faceModelState.isReady && bgModelState.isReady;
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
 
@@ -829,6 +836,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       setIsProcessingAI(true);
       setProcessingStatus('Preparing Image...');
     }
+    setAiError(null);
     try {
       let imageData: ImageData;
       let detectionResult: any;
@@ -950,8 +958,12 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
       return outCanvas.toDataURL();
     } catch (e) {
+      // Returning dataUrl here made a failure indistinguishable from success: the caller counted
+      // the unchanged image as "applied", flipped hasAppliedAI and showed nothing. On mobile,
+      // where model fetch/inference fails far more often, that reads as "AI silently does nothing".
       console.error('[PassportPrintModal] AI Auto-Adjust failed', e);
-      return dataUrl; // Fallback to original image if AI fails
+      setAiError(e instanceof Error ? e.message : 'The AI model could not be run on this device.');
+      return null;
     } finally {
       if (!hideOverlay) {
         setIsProcessingAI(false);
@@ -993,17 +1005,24 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
     if (appliedCount > 0) {
       setPhotoQueue(nextQueue);
       setHasAppliedAI(true);
+    } else {
+      // Every target failed. Leave hasAppliedAI alone so the toggle does not claim success.
+      setAiError(prev => prev || 'AI could not process the selected photo(s) on this device.');
     }
   };
 
-  // Trigger initial AI apply if autoAdjust was passed as true (e.g. from QuickUtilsModal)
-  const hasTriggeredInitialAI = useRef(false);
+  // Auto-run only when the modal was opened with Auto-Adjust already on (from QuickUtilsModal),
+  // which is the case where the user has already opted in elsewhere and expects it to just run.
+  // Seeded from the prop so flipping the toggle inside the modal does NOT fire it: doing so ran
+  // the models immediately on whatever defaults happened to be selected, giving no chance to
+  // choose a face/background model first.
+  const hasTriggeredInitialAI = useRef(!initialAutoAdjust);
   useEffect(() => {
-    if (autoAdjust && !hasTriggeredInitialAI.current && photoQueue.length > 0 && !hasAppliedAI) {
+    if (initialAutoAdjust && autoAdjust && aiModelsReady && !hasTriggeredInitialAI.current && photoQueue.length > 0 && !hasAppliedAI) {
       hasTriggeredInitialAI.current = true;
       handleApplyAIToCurrent();
     }
-  }, [autoAdjust, photoQueue, hasAppliedAI]);
+  }, [initialAutoAdjust, autoAdjust, aiModelsReady, photoQueue, hasAppliedAI]);
 
   // Instant Auto-Apply when settings change if AI is already applied
   useEffect(() => {
@@ -1869,6 +1888,38 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                     )}
                   </div>
                   
+                  {/* AI failures used to be swallowed, which on mobile looked like the feature
+                      doing nothing at all. Surface it next to the button that triggers it. */}
+                  {aiError && (
+                    <div className="mt-2 flex items-start gap-2 p-2.5 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-950/30">
+                      <AlertCircle size={13} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300">AI could not run</p>
+                        <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 leading-snug break-words">{aiError}</p>
+                        <p className="text-[10px] text-amber-700/60 dark:text-amber-400/60 leading-snug mt-1">
+                          Models download on first use and need memory to run; a smaller photo or a lighter model may work better on this device.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAiError(null)}
+                        className="shrink-0 text-amber-600 dark:text-amber-400 hover:opacity-70 p-0.5"
+                        title="Dismiss"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Models must be present before Apply AI can do anything. Each card downloads
+                      on demand and can be cancelled mid-flight. */}
+                  {!faceModelState.isReady && (
+                    <ModelDownloadGate modelId={autoAdjustFaceModel} label="Face Detection" className="mt-2" />
+                  )}
+                  {!bgModelState.isReady && (
+                    <ModelDownloadGate modelId={autoAdjustBgModel} label="Background Removal" className="mt-2" />
+                  )}
+
                   <div className="flex gap-2 mt-2">
                     <button
                       type="button"
@@ -1894,7 +1945,9 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                     <button
                       type="button"
                       onClick={handleApplyAIToCurrent}
-                      className="flex-[2] flex items-center justify-center gap-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 py-2 rounded-xl text-xs font-bold transition-all border border-blue-500/20"
+                      disabled={!aiModelsReady}
+                      title={aiModelsReady ? 'Run face detection and background removal' : 'Download the models above first'}
+                      className="flex-[2] flex items-center justify-center gap-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 py-2 rounded-xl text-xs font-bold transition-all border border-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-600/10"
                     >
                       <Sparkles size={14} /> Apply AI
                     </button>

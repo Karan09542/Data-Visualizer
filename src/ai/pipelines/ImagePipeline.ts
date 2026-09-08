@@ -12,8 +12,8 @@ export abstract class ImagePipeline implements TaskPipeline {
     this.runtime = runtime;
   }
 
-  async preload(): Promise<void> {
-    await aiSessionManager.getRuntime(this.modelId);
+  async preload(signal?: AbortSignal): Promise<void> {
+    await aiSessionManager.getRuntime(this.modelId, undefined, undefined, signal);
   }
 
   async execute(args: PipelineExecutionArgs) {
@@ -32,7 +32,7 @@ export abstract class ImagePipeline implements TaskPipeline {
 
     // Get runtime from Session Manager (loads if needed) BEFORE preprocessing
     // so that we can check the model's input details (like shape format: NCHW vs NHWC).
-    this.runtime = await aiSessionManager.getRuntime(this.modelId, options?.preferredBackend, notify);
+    this.runtime = await aiSessionManager.getRuntime(this.modelId, options?.preferredBackend, notify, options?.signal);
 
     notify('preparing-image', 0);
     await new Promise(resolve => setTimeout(resolve, 5));

@@ -164,7 +164,7 @@ class AIQueue {
 
         const pipeline = await taskRegistry.getPipeline(manifest.task);
         if (pipeline.preload) {
-          await pipeline.preload();
+          await pipeline.preload(job.abortController.signal);
         }
 
         if (!job.isCancelled) {

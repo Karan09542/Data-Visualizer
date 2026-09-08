@@ -28,6 +28,10 @@ interface WorkspaceUIContextType {
   /** Shift+arrow nudge distance in px. */
   nudgeStepLarge: number;
   setNudgeStepLarge: (v: number) => void;
+  /** True while the host app has hidden its title bar and tab strip. */
+  chromeHidden?: boolean;
+  /** Toggles the host app's chrome; absent when no host provides it. */
+  onToggleChrome?: () => void;
 }
 
 const WorkspaceUIContext = createContext<WorkspaceUIContextType | null>(null);

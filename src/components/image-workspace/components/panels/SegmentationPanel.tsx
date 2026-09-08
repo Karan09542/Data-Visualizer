@@ -21,13 +21,6 @@ const EFFECT_UI_CONFIG = [
   { id: 'change-bg', label: 'Change Background', icon: <Layers size={14} />, desc: 'Composite over new image' }
 ];
 
-const PASSPORT_COLORS = [
-  { label: 'White', value: '#ffffff' },
-  { label: 'Blue', value: '#3b82f6' },
-  { label: 'Light Blue', value: '#7dd3fc' },
-  { label: 'Gray', value: '#9ca3af' }
-];
-
 export const SegmentationPanel: React.FC<SegmentationUIProps> = ({
   isActive, jobState, progress, onExecute, onCancel, selectedModel, setSelectedModel
 }) => {

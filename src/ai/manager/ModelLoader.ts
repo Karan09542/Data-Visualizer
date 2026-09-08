@@ -6,13 +6,14 @@ import JSZip from 'jszip';
 export class ModelLoader {
   static async load(
     manifest: ModelManifest,
-    onProgress?: (state: string, progress?: number) => void
+    onProgress?: (state: string, progress?: number) => void,
+    signal?: AbortSignal
   ): Promise<ArrayBuffer> {
-    // 1. Check if model exists in OPFS
-    const isLocal = manifest.sources[0]?.type === 'local';
-    const hasModel = !isLocal && await opfsStorage.hasModel(manifest);
-    
-    if (hasModel) {
+    // 1. Check if model exists in OPFS.
+    //    Local models used to skip this entirely, so every bundled .tflite was re-fetched and
+    //    re-read on each load. They are served from our own origin, but the HTTP cache is not a
+    //    guarantee - mobile evicts it aggressively - and OPFS turns that into a real one-time cost.
+    if (await opfsStorage.hasModel(manifest)) {
       if (onProgress) onProgress('loading');
       const data = await opfsStorage.loadModel(manifest);
       if (data) return data;
@@ -28,7 +29,7 @@ export class ModelLoader {
     if (onProgress) onProgress('downloading', 0);
     const data = await ModelDownloader.download(manifest, (progress) => {
       if (onProgress) onProgress('downloading', progress);
-    });
+    }, signal);
 
     let finalData = data;
 
@@ -68,10 +69,20 @@ export class ModelLoader {
       finalData = await bestFile.async('arraybuffer');
     }
 
-    // 3. Save to OPFS for future
-    if (!isLocal) {
-      if (onProgress) onProgress('saving');
+    // A cancel that lands during extraction should not still write the model to disk.
+    if (signal?.aborted) {
+      throw new DOMException('Model download cancelled', 'AbortError');
+    }
+
+    // 3. Save to OPFS for future loads, local models included.
+    //    Caching is an optimisation, never a precondition: a quota failure (likely on mobile with
+    //    a 176 MB model) must not take down an otherwise successful load, which is what the
+    //    previous unguarded await did.
+    if (onProgress) onProgress('saving');
+    try {
       await opfsStorage.saveModel(manifest, finalData);
+    } catch (e) {
+      console.warn(`[ModelLoader] Could not cache ${manifest.id} in OPFS; it will be re-fetched next time.`, e);
     }
 
     return finalData;

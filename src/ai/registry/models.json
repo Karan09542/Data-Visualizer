@@ -1,24 +1,5 @@
 [
   {
-    "id": "ormbg",
-    "version": "1.0.0",
-    "task": "background-removal",
-    "name": "ORMBG (High Quality)",
-    "description": "High-quality portrait segmentation model",
-    "sources": [
-      {
-        "type": "huggingface",
-        "url": "https://huggingface.co/litert-community/ormbg-LiteRT/resolve/main/ormbg.tflite?download=true"
-      }
-    ],
-    "supports": [
-      "remove",
-      "portrait",
-      "passport",
-      "change-bg"
-    ]
-  },
-  {
     "id": "u2netp",
     "version": "1.0.0",
     "task": "background-removal",
@@ -58,6 +39,25 @@
     ]
   },
   {
+    "id": "ormbg",
+    "version": "1.0.0",
+    "task": "background-removal",
+    "name": "ORMBG (High Quality)",
+    "description": "High-quality portrait segmentation model, best for human segmentation",
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/litert-community/ormbg-LiteRT/resolve/main/ormbg.tflite?download=true"
+      }
+    ],
+    "supports": [
+      "remove",
+      "portrait",
+      "passport",
+      "change-bg"
+    ]
+  },
+  {
     "id": "vdsr",
     "version": "2.0.1",
     "task": "upscale",
@@ -85,7 +85,6 @@
         "url": "/models/blaze_face_short_range.tflite"
       }
     ],
-    "supports": [
-    ]
+    "supports": []
   }
 ]

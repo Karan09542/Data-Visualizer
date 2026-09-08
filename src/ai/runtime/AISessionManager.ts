@@ -14,9 +14,12 @@ class AISessionManager {
   private maxSessions = 2; // Keep at most 2 models loaded in memory to prevent OOM
 
   async getRuntime(
-    modelId: string, 
-    preferredBackend?: AIBackend, 
-    onProgress?: (state: string, progress?: number) => void
+    modelId: string,
+    preferredBackend?: AIBackend,
+    onProgress?: (state: string, progress?: number) => void,
+    // Without this the job's AbortController stopped at the pipeline: cancelling a task that was
+    // still fetching its model left the download running to completion in the background.
+    signal?: AbortSignal
   ): Promise<LiteRTRuntime> {
     if (this.sessions.has(modelId)) {
       const entry = this.sessions.get(modelId)!;
@@ -40,7 +43,7 @@ class AISessionManager {
       if (state === 'downloading' || state === 'saving') {
         if (onProgress) onProgress('downloading', progress);
       }
-    });
+    }, signal);
     await runtime.loadModel(buffer, preferredBackend);
     if (onProgress) onProgress('loading-model', 100);
 

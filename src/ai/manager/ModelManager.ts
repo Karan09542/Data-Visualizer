@@ -17,14 +17,18 @@ export class ModelManager {
     return await opfsStorage.hasModel(manifest);
   }
 
-  async download(modelId: string, onProgress?: (progress: number) => void): Promise<void> {
+  async download(
+    modelId: string,
+    onProgress?: (progress: number) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
     const manifest = await this.getManifest(modelId);
     if (await this.isDownloaded(modelId)) return;
-    
+
     // ModelLoader.load handles downloading and caching to OPFS
     await ModelLoader.load(manifest, (state, p) => {
        if (state === 'downloading' && onProgress && p !== undefined) onProgress(p);
-    });
+    }, signal);
   }
 
   async delete(modelId: string): Promise<void> {
@@ -32,9 +36,13 @@ export class ModelManager {
     await opfsStorage.deleteModel(manifest);
   }
 
-  async load(modelId: string, onProgress?: (state: string, p?: number) => void): Promise<ArrayBuffer> {
+  async load(
+    modelId: string,
+    onProgress?: (state: string, p?: number) => void,
+    signal?: AbortSignal
+  ): Promise<ArrayBuffer> {
     const manifest = await this.getManifest(modelId);
-    return await ModelLoader.load(manifest, onProgress);
+    return await ModelLoader.load(manifest, onProgress, signal);
   }
 
   async getDownloadedModels(): Promise<ModelManifest[]> {

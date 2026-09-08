@@ -138,6 +138,10 @@ import {
 // Modern Checkbox Component
 interface ImageWorkspaceProps {
    path: string;
+   /** True while the host has hidden its title bar and tab strip. */
+   chromeHidden?: boolean;
+   /** Provided by the host to toggle its own chrome; the button hides when absent. */
+   onToggleChrome?: () => void;
 }
 
 // TODO(Refactor): Extract hooks, leaving only the main orchestration here
@@ -212,7 +216,7 @@ const getPatternStyle = (pattern: 'flat' | 'grid' | 'dots' | 'plus' | 'squares')
    }
 };
 
-export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
+export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: ImageWorkspaceProps) {
    // console.log('[ImageWorkspace] Component rendering, path:', path);
    const parsedData = useStore((state) => state.parsedData);
    const updateNodeValue = useStore((state) => state.updateNodeValue);
@@ -223,6 +227,9 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
    // rebind when it is recreated.
    const [canvasInstance, setCanvasInstance] = useState<fabric.Canvas | null>(null);
    const containerRef = useRef<HTMLDivElement>(null);
+   // The element the canvas actually lives in. Measuring this instead of the whole workspace
+   // removes the need to guess how tall the surrounding chrome is.
+   const canvasAreaRef = useRef<HTMLDivElement>(null);
 
    // Artboards State
    const {
@@ -1736,7 +1743,14 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!obj) return;
 
       const canvas = fabricRef.current;
-      const tolerance = snapToleranceRef.current;
+
+      // The tolerance is a distance the user perceives on screen, so it has to be converted into
+      // scene units. Comparing it directly against scene distances made the magnet scale with the
+      // zoom: at 38% a 10px tolerance was under 4 real pixels and felt dead, while at 400% it was
+      // 40 pixels and grabbed lines the user was nowhere near.
+      const zoom = canvas.getZoom() || 1;
+      const tolerance = snapToleranceRef.current / zoom;
+
       const bounds = obj.getBoundingRect();
       const objWidth = bounds.width;
       const objHeight = bounds.height;
@@ -1747,9 +1761,25 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       const objCenterX = objLeft + objWidth / 2;
       const objCenterY = objTop + objHeight / 2;
 
-      const newGuides: { type: 'v' | 'h', pos: number }[] = [];
-      let snappedX = false;
-      let snappedY = false;
+      // Collect every candidate and keep the closest, rather than taking the first one inside the
+      // tolerance. The old if/else-if chain locked the axis on its first hit, so an edge 9px away
+      // won over a centre line 1px away purely because it was tested earlier.
+      type SnapCandidate = { delta: number; dist: number; pos: number };
+      let bestX: SnapCandidate | null = null;
+      let bestY: SnapCandidate | null = null;
+
+      const considerX = (edge: number, target: number) => {
+         const dist = Math.abs(edge - target);
+         if (dist < tolerance && (bestX === null || dist < bestX.dist)) {
+            bestX = { delta: target - edge, dist, pos: target };
+         }
+      };
+      const considerY = (edge: number, target: number) => {
+         const dist = Math.abs(edge - target);
+         if (dist < tolerance && (bestY === null || dist < bestY.dist)) {
+            bestY = { delta: target - edge, dist, pos: target };
+         }
+      };
 
       // --- ARTBOARD SNAPPING ---
       artboardsRef.current.forEach(board => {
@@ -1760,55 +1790,18 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
          const bCX = board.x + board.width / 2;
          const bCY = board.y + board.height / 2;
 
-         // X-axis snapping
-         if (!snappedX) {
-            if (Math.abs(objLeft - bL) < tolerance) {
-               obj.set({ left: bL + (obj.left! - objLeft) });
-               newGuides.push({ type: 'v', pos: bL });
-               snappedX = true;
-            } else if (Math.abs(objRight - bR) < tolerance) {
-               obj.set({ left: bR - objWidth + (obj.left! - objLeft) });
-               newGuides.push({ type: 'v', pos: bR });
-               snappedX = true;
-            } else if (Math.abs(objCenterX - bCX) < tolerance) {
-               obj.set({ left: bCX - objWidth / 2 + (obj.left! - objLeft) });
-               newGuides.push({ type: 'v', pos: bCX });
-               snappedX = true;
-            } else if (Math.abs(objLeft - bR) < tolerance) {
-               obj.set({ left: bR + (obj.left! - objLeft) });
-               newGuides.push({ type: 'v', pos: bR });
-               snappedX = true;
-            } else if (Math.abs(objRight - bL) < tolerance) {
-               obj.set({ left: bL - objWidth + (obj.left! - objLeft) });
-               newGuides.push({ type: 'v', pos: bL });
-               snappedX = true;
-            }
-         }
+         // Inside edges, centre, and the outside of each edge.
+         considerX(objLeft, bL);
+         considerX(objRight, bR);
+         considerX(objCenterX, bCX);
+         considerX(objLeft, bR);
+         considerX(objRight, bL);
 
-         // Y-axis snapping
-         if (!snappedY) {
-            if (Math.abs(objTop - bT) < tolerance) {
-               obj.set({ top: bT + (obj.top! - objTop) });
-               newGuides.push({ type: 'h', pos: bT });
-               snappedY = true;
-            } else if (Math.abs(objBottom - bB) < tolerance) {
-               obj.set({ top: bB - objHeight + (obj.top! - objTop) });
-               newGuides.push({ type: 'h', pos: bB });
-               snappedY = true;
-            } else if (Math.abs(objCenterY - bCY) < tolerance) {
-               obj.set({ top: bCY - objHeight / 2 + (obj.top! - objTop) });
-               newGuides.push({ type: 'h', pos: bCY });
-               snappedY = true;
-            } else if (Math.abs(objTop - bB) < tolerance) {
-               obj.set({ top: bB + (obj.top! - objTop) });
-               newGuides.push({ type: 'h', pos: bB });
-               snappedY = true;
-            } else if (Math.abs(objBottom - bT) < tolerance) {
-               obj.set({ top: bT - objHeight + (obj.top! - objTop) });
-               newGuides.push({ type: 'h', pos: bT });
-               snappedY = true;
-            }
-         }
+         considerY(objTop, bT);
+         considerY(objBottom, bB);
+         considerY(objCenterY, bCY);
+         considerY(objTop, bB);
+         considerY(objBottom, bT);
 
          // Safe Areas & Margins
          if (board.showSafeArea || board.showMargins) {
@@ -1818,92 +1811,63 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             const sR = bR - board.width * m;
             const sB = bB - board.height * m;
 
-            if (!snappedX) {
-               if (Math.abs(objLeft - sL) < tolerance) {
-                  obj.set({ left: sL + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: sL });
-                  snappedX = true;
-               } else if (Math.abs(objRight - sR) < tolerance) {
-                  obj.set({ left: sR - objWidth + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: sR });
-                  snappedX = true;
-               }
-            }
-            if (!snappedY) {
-               if (Math.abs(objTop - sT) < tolerance) {
-                  obj.set({ top: sT + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: sT });
-                  snappedY = true;
-               } else if (Math.abs(objBottom - sB) < tolerance) {
-                  obj.set({ top: sB - objHeight + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: sB });
-                  snappedY = true;
-               }
-            }
+            considerX(objLeft, sL);
+            considerX(objRight, sR);
+            considerY(objTop, sT);
+            considerY(objBottom, sB);
          }
       });
 
       // --- OBJECT SNAPPING ---
-      if (!snappedX || !snappedY) {
-         const otherObjects = canvas.getObjects().filter(o => o !== obj && o.visible && o.selectable);
-         for (const other of otherObjects) {
-            const oBounds = other.getBoundingRect();
-            const oL = oBounds.left;
-            const oT = oBounds.top;
-            const oR = oL + oBounds.width;
-            const oB = oT + oBounds.height;
-            const oCX = oL + oBounds.width / 2;
-            const oCY = oT + oBounds.height / 2;
+      // Members of the dragged ActiveSelection travel with it, so treating them as targets made
+      // the object chase its own edges and produced guides that flickered while dragging.
+      const selectionMembers = isActiveSelection(obj)
+         ? new Set((obj as fabric.ActiveSelection).getObjects())
+         : null;
 
-            if (!snappedX) {
-               if (Math.abs(objLeft - oL) < tolerance) {
-                  obj.set({ left: oL + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: oL });
-                  snappedX = true;
-               } else if (Math.abs(objRight - oR) < tolerance) {
-                  obj.set({ left: oR - objWidth + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: oR });
-                  snappedX = true;
-               } else if (Math.abs(objCenterX - oCX) < tolerance) {
-                  obj.set({ left: oCX - objWidth / 2 + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: oCX });
-                  snappedX = true;
-               } else if (Math.abs(objLeft - oR) < tolerance) {
-                  obj.set({ left: oR + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: oR });
-                  snappedX = true;
-               } else if (Math.abs(objRight - oL) < tolerance) {
-                  obj.set({ left: oL - objWidth + (obj.left! - objLeft) });
-                  newGuides.push({ type: 'v', pos: oL });
-                  snappedX = true;
-               }
-            }
+      const otherObjects = canvas.getObjects().filter(o =>
+         o !== obj && o.visible && o.selectable && !selectionMembers?.has(o)
+      );
 
-            if (!snappedY) {
-               if (Math.abs(objTop - oT) < tolerance) {
-                  obj.set({ top: oT + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: oT });
-                  snappedY = true;
-               } else if (Math.abs(objBottom - oB) < tolerance) {
-                  obj.set({ top: oB - objHeight + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: oB });
-                  snappedY = true;
-               } else if (Math.abs(objCenterY - oCY) < tolerance) {
-                  obj.set({ top: oCY - objHeight / 2 + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: oCY });
-                  snappedY = true;
-               } else if (Math.abs(objTop - oB) < tolerance) {
-                  obj.set({ top: oB + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: oB });
-                  snappedY = true;
-               } else if (Math.abs(objBottom - oT) < tolerance) {
-                  obj.set({ top: oT - objHeight + (obj.top! - objTop) });
-                  newGuides.push({ type: 'h', pos: oT });
-                  snappedY = true;
-               }
-            }
-            if (snappedX && snappedY) break;
-         }
+      for (const other of otherObjects) {
+         const oBounds = other.getBoundingRect();
+         const oL = oBounds.left;
+         const oT = oBounds.top;
+         const oR = oL + oBounds.width;
+         const oB = oT + oBounds.height;
+         const oCX = oL + oBounds.width / 2;
+         const oCY = oT + oBounds.height / 2;
+
+         considerX(objLeft, oL);
+         considerX(objRight, oR);
+         considerX(objCenterX, oCX);
+         considerX(objLeft, oR);
+         considerX(objRight, oL);
+
+         considerY(objTop, oT);
+         considerY(objBottom, oB);
+         considerY(objCenterY, oCY);
+         considerY(objTop, oB);
+         considerY(objBottom, oT);
+      }
+
+      const newGuides: { type: 'v' | 'h', pos: number }[] = [];
+
+      // Applying a delta keeps this independent of the object's originX/originY, which the old
+      // "target - width + (obj.left - bounds.left)" arithmetic was reconstructing by hand.
+      if (bestX !== null) {
+         const winner = bestX as SnapCandidate;
+         obj.set({ left: obj.left! + winner.delta });
+         newGuides.push({ type: 'v', pos: winner.pos });
+      }
+      if (bestY !== null) {
+         const winner = bestY as SnapCandidate;
+         obj.set({ top: obj.top! + winner.delta });
+         newGuides.push({ type: 'h', pos: winner.pos });
+      }
+
+      if (bestX !== null || bestY !== null) {
+         obj.setCoords();
       }
 
       guidesRef.current = newGuides;
@@ -3443,9 +3407,12 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       if (!canvasRef.current || !containerRef.current) return;
 
       // Initialize Fabric Canvas
+      // Prefer the canvas area's own box; flexbox has already accounted for the header, the
+      // artboard bar and the side panel, so nothing needs subtracting.
+      const initialArea = canvasAreaRef.current;
       const canvas = new fabric.Canvas(canvasRef.current, {
-         width: containerRef.current.clientWidth - panelWidthRef.current,
-         height: containerRef.current.clientHeight - 48, // minus header
+         width: initialArea ? initialArea.clientWidth : containerRef.current.clientWidth - panelWidthRef.current,
+         height: initialArea ? initialArea.clientHeight : containerRef.current.clientHeight - 48,
          preserveObjectStacking: true,
          selection: true,
          stopContextMenu: false,
@@ -3570,10 +3537,15 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
       let initialFitDone = false;
       const resizeObserver = new ResizeObserver((entries) => {
          for (const entry of entries) {
-            if (entry.target === containerRef.current && fabricRef.current) {
-               const isMob = isMobileRef.current;
-               const w = entry.contentRect.width - (isMob ? 0 : panelWidthRef.current);
-               const h = entry.contentRect.height - (isMob ? (48 + 40 + 56) : (48 + 40));
+            if (entry.target === canvasAreaRef.current && fabricRef.current) {
+               // Previously this measured the whole workspace and subtracted fixed guesses at the
+               // chrome height: (48 + 40 + 56) on mobile, (48 + 40) on desktop. Those never
+               // matched the DOM - the header is h-10 (40px) on mobile, not 48, and the artboard
+               // bar is desktop-only, so 40px was subtracted for a row that is not rendered. The
+               // canvas came out ~48px short and, because the container centres it, the shortfall
+               // showed as a band of the grid background above and below it.
+               const w = entry.contentRect.width;
+               const h = entry.contentRect.height;
 
                fabricRef.current.setDimensions({
                   width: w > 100 ? w : 100,
@@ -3591,7 +3563,11 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
             }
          }
       });
-      resizeObserver.observe(containerRef.current);
+      if (canvasAreaRef.current) {
+         resizeObserver.observe(canvasAreaRef.current);
+      } else {
+         resizeObserver.observe(containerRef.current);
+      }
 
       // Render and background rules
       canvas.on('before:render', (opt) => {
@@ -6521,7 +6497,8 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
                                  imageFilters, setImageFilters, benchmarkInfo, setBenchmarkInfo,
                                  createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
                                  updateArtboardProp, onArtboardPropStart, onArtboardPropCommit,
-                                 nudgeStep, setNudgeStep, nudgeStepLarge, setNudgeStepLarge
+                                 nudgeStep, setNudgeStep, nudgeStepLarge, setNudgeStepLarge,
+                                 chromeHidden, onToggleChrome
                               }}>
                                  <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, moveLayerUp, moveLayerDown }}>
                                     <div
@@ -6660,6 +6637,7 @@ export default function ImageWorkspace({ path }: ImageWorkspaceProps) {
 
                                              {/* Canvas Container */}
                                              <div
+                                                ref={canvasAreaRef}
                                                 className="custom-dropzone flex-1 overflow-hidden flex items-center justify-center relative touch-none bg-slate-100 dark:bg-[#121212]"
                                                 onContextMenu={handleContextMenu}
                                                 onPointerDown={(e) => {

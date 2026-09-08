@@ -8,7 +8,8 @@ export interface PipelineExecutionArgs {
 
 export interface TaskPipeline {
   execute(args: PipelineExecutionArgs): Promise<AIExecutionResult>;
-  preload?(): Promise<void>;
+  /** signal lets a queued preload be cancelled while its model is still downloading. */
+  preload?(signal?: AbortSignal): Promise<void>;
 }
 
 class TaskRegistry {

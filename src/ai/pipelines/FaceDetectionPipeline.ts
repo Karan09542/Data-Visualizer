@@ -162,8 +162,8 @@ export class FaceDetectionPipeline implements TaskPipeline {
     this.runtime = runtime;
   }
 
-  async preload(): Promise<void> {
-    await aiSessionManager.getRuntime(this.modelId);
+  async preload(signal?: AbortSignal): Promise<void> {
+    await aiSessionManager.getRuntime(this.modelId, undefined, undefined, signal);
   }
 
   async execute(args: PipelineExecutionArgs) {
@@ -179,7 +179,7 @@ export class FaceDetectionPipeline implements TaskPipeline {
 
     this.inputSize = this.modelId.includes('full') ? 192 : 128;
 
-    this.runtime = await aiSessionManager.getRuntime(this.modelId, options?.preferredBackend, notify);
+    this.runtime = await aiSessionManager.getRuntime(this.modelId, options?.preferredBackend, notify, options?.signal);
 
     notify('preparing-image', 0);
     const imageData = await imageToImageData(image);

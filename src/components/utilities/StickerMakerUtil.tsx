@@ -102,6 +102,9 @@ export function StickerMakerUtil() {
   // stalling on a silent multi-hundred-megabyte fetch when one is chosen.
   const [modelReady, setModelReady] = useState<Record<string, boolean>>({});
   const [modelDownload, setModelDownload] = useState<{ id: string; percent: number } | null>(null);
+  // Lets the user abort a model fetch that is already in flight; without a signal reaching
+  // fetch, "cancel" would only hide the bar while the bytes kept downloading.
+  const modelAbortRef = useRef<AbortController | null>(null);
   /** Live stage of the running job, so 'Processing...' can say what it is doing. */
   const [aiStage, setAiStage] = useState<{ state: string; progress: number } | null>(null);
 
@@ -927,20 +930,39 @@ export function StickerMakerUtil() {
    */
   const ensureModelDownloaded = async (id: string): Promise<boolean> => {
     if (modelReady[id]) return true;
+
+    modelAbortRef.current?.abort();
+    const controller = new AbortController();
+    modelAbortRef.current = controller;
+
     setModelDownload({ id, percent: 0 });
     try {
-      await modelManager.download(id, (percent) =>
-        setModelDownload({ id, percent: Math.round(percent) }),
+      await modelManager.download(
+        id,
+        (percent) => {
+          if (!controller.signal.aborted) setModelDownload({ id, percent: Math.round(percent) });
+        },
+        controller.signal,
       );
+      if (controller.signal.aborted) return false;
       setModelReady((prev) => ({ ...prev, [id]: true }));
       return true;
-    } catch (err) {
+    } catch (err: any) {
+      // Cancelling is a user action, not an error worth a toast.
+      if (controller.signal.aborted || err?.name === 'AbortError') return false;
       console.error('Model download failed', err);
       setToast({ type: 'error', message: 'Could not download that model.' });
       return false;
     } finally {
+      if (modelAbortRef.current === controller) modelAbortRef.current = null;
       setModelDownload(null);
     }
+  };
+
+  const cancelModelDownload = () => {
+    modelAbortRef.current?.abort();
+    modelAbortRef.current = null;
+    setModelDownload(null);
   };
 
   // The ring lives on the preview container, so it is not clipped by the
@@ -1651,9 +1673,17 @@ export function StickerMakerUtil() {
 
             {modelDownload && (
               <div className="space-y-1.5 pt-1">
-                <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                  <span className="truncate">Downloading model</span>
-                  <span className="font-mono shrink-0">{modelDownload.percent}%</span>
+                <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="truncate flex-1">Downloading model</span>
+                  <span className="font-mono shrink-0 tabular-nums">{modelDownload.percent}%</span>
+                  <button
+                    type="button"
+                    onClick={cancelModelDownload}
+                    title="Cancel download"
+                    className="shrink-0 flex items-center gap-1 h-6 px-1.5 rounded-md border border-red-300 dark:border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 active:scale-95 transition-colors touch-manipulation"
+                  >
+                    <X size={10} /> Cancel
+                  </button>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                   <div

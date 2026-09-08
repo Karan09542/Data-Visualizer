@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Image as ImageIcon, Undo, Redo, Upload, Info, Sliders, FileOutput
+  Image as ImageIcon, Undo, Redo, Upload, Info, Sliders, FileOutput, Maximize2, Minimize2
 } from 'lucide-react';
 import { useHistory } from '../../contexts/HistoryContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
@@ -9,7 +9,8 @@ export const WorkspaceHeader: React.FC = () => {
   const { commandIndex, historyNames, performUndo, performRedo } = useHistory();
   const { 
     isMobile, setShowShortcuts, setActiveTab, 
-    handleImportImageClick, handleFileUpload, artboards 
+    handleImportImageClick, handleFileUpload, artboards,
+    chromeHidden, onToggleChrome
   } = useWorkspaceUI();
 
   return (
@@ -42,6 +43,21 @@ export const WorkspaceHeader: React.FC = () => {
         <button className={`hidden sm:flex hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-[#A0A0A0] hover:text-slate-900 dark:hover:text-white items-center justify-center rounded transition-colors shrink-0 mr-1 h-8 w-8`} title="Shortcuts Info" onClick={() => setShowShortcuts(true)}>
           <Info size={14} />
         </button>
+
+        {/* Distraction-free toggle: hands the title bar and tab strip's height to the canvas. */}
+        {onToggleChrome && (
+          <button
+            type="button"
+            onClick={onToggleChrome}
+            aria-pressed={!!chromeHidden}
+            title={chromeHidden ? 'Show tabs and title bar' : 'Hide tabs and title bar for a full-height canvas'}
+            className={`${isMobile ? 'h-7 w-7' : 'h-8 w-8'} flex items-center justify-center rounded transition-colors shrink-0 mr-1 ${chromeHidden
+              ? 'bg-blue-100 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400'
+              : 'hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-[#A0A0A0] hover:text-slate-900 dark:hover:text-white'}`}
+          >
+            {chromeHidden ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        )}
 
         <button 
            onClick={() => setActiveTab('export')} 

@@ -173,7 +173,7 @@ export class UpscalePipeline extends ImagePipeline {
       if (args.onProgress) args.onProgress(state, progress || 0);
     };
 
-    this.runtime = await aiSessionManager.getRuntime(this.modelId, args.options?.preferredBackend, notify);
+    this.runtime = await aiSessionManager.getRuntime(this.modelId, args.options?.preferredBackend, notify, args.options?.signal);
 
     // Auto-detect if the model has a hardcoded fixed input shape (e.g. [1, 64, 64, 3])
     // If so, force the tiling engine to use those exact dimensions to prevent tensor size mismatch crashes.

@@ -15,6 +15,8 @@ import { SegmentationPanel } from './SegmentationPanel';
 import { OfficeUtilitiesPanel } from './OfficeUtilitiesPanel';
 import { PassportPrintModal } from '../shared/PassportPrintModal';
 import { aiQueue } from '../../../../ai/manager/AIQueue';
+import { ModelDownloadGate } from '../shared/ModelDownloadGate';
+import { useModelDownload } from '../../../../ai/hooks/useModelDownload';
 
 interface AIToolsPanelProps {
   selectionType: string | null;
@@ -84,6 +86,9 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
     }
   }, [models, selectedModel]);
 
+  // Availability of the model this button would run. Hooks must run before the early return.
+  const { isReady } = useModelDownload(selectedModel);
+
   if (!config) return null;
 
   const isActive = jobInfo && !['completed', 'failed', 'cancelled'].includes(jobInfo.state);
@@ -91,6 +96,16 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
   const isFailed = jobInfo?.state === 'failed';
   const isDownloading = jobInfo?.state === 'downloading';
   const progress = jobInfo?.progress ?? 0;
+
+  // The model has to be on the device before the task can run. Surfacing it here means the
+  // download is explicit and interruptible, rather than happening silently on first use.
+  if (!isReady && !isActive) {
+    return (
+      <div className="relative rounded-xl z-10">
+        <ModelDownloadGate modelId={selectedModel} label={config.label} />
+      </div>
+    );
+  }
 
   return (
     <div className={`relative rounded-xl ${isDropdownOpen ? 'z-50' : 'z-10'}`}>
