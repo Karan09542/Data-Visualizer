@@ -18,7 +18,7 @@ export const FilterStudioTab: React.FC = () => {
    } = useWorkspaceUI();
 
    const { selectionType, isCollageSelected } = useSelection();
-   const { fabricRef } = useCanvas();
+   const { fabricRef, hasRegionSelection, applyFilterStackToSelection, getSelectionTargetImage } = useCanvas();
    const { executeCommand } = useHistory();
 
    const [customPresets, setCustomPresets] = useState<{ name: string; stack: FilterConfig[] }[]>([]);
@@ -40,6 +40,12 @@ export const FilterStudioTab: React.FC = () => {
 
    const getTargetImageForFilters = () => {
       let targetImage = fabricRef.current?.getActiveObject();
+      // A live region selection suppresses fabric's object targeting, so there is usually no
+      // active object to read. Fall back to the image the selection itself resolves against.
+      if (!targetImage && hasRegionSelection) {
+         const regionTarget = getSelectionTargetImage?.();
+         if (regionTarget) return regionTarget;
+      }
       if (targetImage && isActiveSelection(targetImage)) {
          // Filter the first valid filterable object
          const objects = (targetImage as fabric.ActiveSelection).getObjects();
@@ -116,7 +122,7 @@ export const FilterStudioTab: React.FC = () => {
       <>
          {/* FILTER STUDIO PANEL */}
          <div className="p-4 space-y-6 text-slate-700 dark:text-[#C0C0C0]">
-            {selectionType !== 'image' && selectionType !== 'frameGroup' && !isCollageSelected ? (
+            {selectionType !== 'image' && selectionType !== 'frameGroup' && !isCollageSelected && !hasRegionSelection ? (
                <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
                   <Sparkles size={32} className="mb-4 text-amber-500 animate-pulse" />
                   <span className="text-sm font-semibold text-slate-900 dark:text-white">Filter Studio</span>
@@ -331,6 +337,30 @@ export const FilterStudioTab: React.FC = () => {
                         )}
                      </div>
 
+                     {/* A region selection turns the whole-object stack into a masked edit. */}
+                     {hasRegionSelection && imageFilters.length > 0 && (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-500/30">
+                           <div className="flex-1 min-w-0">
+                              <div className="text-[11px] font-bold text-blue-700 dark:text-blue-300">Filtering the selected region</div>
+                              <div className="text-[9px] text-blue-600/80 dark:text-blue-400/80 leading-snug">
+                                 Changes preview inside the selection; filters already on the layer stay across it. Bake in to keep the result - clearing the selection without baking returns the stack to the whole layer.
+                              </div>
+                           </div>
+                           <button
+                              type="button"
+                              onClick={async () => {
+                                 const ok = await applyFilterStackToSelection?.();
+                                 // The stack is baked into the pixels now, so the object carries no
+                                 // live filters; leaving the list populated would misreport that.
+                                 if (ok) setImageFilters([]);
+                              }}
+                              className="shrink-0 h-8 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold transition-colors active:scale-95"
+                           >
+                              Bake In
+                           </button>
+                        </div>
+                     )}
+
                      {/* Preset Save Modal Form */}
                      {showSavePresetModal && (
                         <div className="bg-slate-50 dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2C2C2C] rounded-lg p-3 space-y-2">
@@ -378,7 +408,7 @@ export const FilterStudioTab: React.FC = () => {
                                     onDragOver={(e) => handleDragOver(e, f.id)}
                                     onDragLeave={(e) => handleDragLeave(e, f.id)}
                                     onDrop={(e) => handleDrop(e, f.id)}
-                                    className={`filter-card-item bg-white dark:bg-[#181818] border ${f.enabled ? 'border-slate-200 dark:border-[#2C2C2C]' : 'border-dashed border-slate-200 dark:border-[#2A2A2A] opacity-50'} rounded-lg transition-all shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-t-2 border-t-blue-500 shadow-[0_-2px_8px_rgba(59,130,246,0.2)]' : ''}`}
+                                    className={`filter-card-item bg-white dark:bg-[#181818] border ${f.enabled ? 'border-slate-200 dark:border-[#2C2C2C]' : (f as any).baked ? 'border-amber-300/70 dark:border-amber-500/30 opacity-80' : 'border-dashed border-slate-200 dark:border-[#2A2A2A] opacity-50'} rounded-lg transition-all shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'border-t-2 border-t-blue-500 shadow-[0_-2px_8px_rgba(59,130,246,0.2)]' : ''}`}
                                  >
 
                                     {/* Title & Control buttons bar */}
@@ -397,11 +427,20 @@ export const FilterStudioTab: React.FC = () => {
                                              onClick={() => toggleFilterEnabled(f.id)}
                                              type="button"
                                              className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition duration-150 touch-manipulation ${f.enabled ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-transparent' : 'bg-slate-200 dark:bg-[#2A2A2A] text-slate-500 dark:text-[#8A8A8A]'}`}
-                                             title={f.enabled ? 'Disable Filter' : 'Enable Filter'}
+                                             title={f.enabled ? 'Disable Filter' : (f as any).baked ? 'Already baked into the pixels - enabling applies it a second time, over the whole layer' : 'Enable Filter'}
                                           >
                                              <Power size={11} />
                                           </button>
                                           <span className="text-[11px] font-bold text-slate-900 dark:text-white tracking-tight font-sans">{f.name}</span>
+                                          {/* Kept in the stack after a region bake as a record of what was applied. */}
+                                          {(f as any).baked && !f.enabled && (
+                                             <span
+                                                className="px-1.5 py-[1px] rounded text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border border-amber-200 dark:border-amber-500/25"
+                                                title="Baked into the selected region's pixels"
+                                             >
+                                                Baked
+                                             </span>
+                                          )}
                                        </div>
 
                                        <div className="flex items-center gap-1">

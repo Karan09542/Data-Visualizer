@@ -1,6 +1,7 @@
 import React from 'react';
 import { 
-  MousePointer2, Move, Crop, Brush, Eraser, Type, Square, Circle, Triangle, Minus
+  MousePointer2, Move, Crop, Brush, Eraser, Type, Square, Circle, Triangle, Minus,
+  SquareDashed, PenTool
 } from 'lucide-react';
 import { useTool } from '../../contexts/ToolContext';
 import { useCanvas } from '../../contexts/CanvasContext';
@@ -9,7 +10,7 @@ import { ColorPickerTrigger } from '../shared/ColorPickers';
 
 export const LeftToolbar: React.FC = () => {
   const { activeTool, setTool, brushColor, changeCurrentColor } = useTool();
-  const { enterCropMode, addText, addRect, addCircle, addTriangle, addLine } = useCanvas();
+  const { enterCropMode, addText, addRect, addCircle, addTriangle, addLine, activeSelectionTool, setActiveSelectionTool } = useCanvas();
 
   return (
     <div className="hidden md:flex w-14 border-r border-slate-200 dark:border-[#2C2C2C] bg-white dark:bg-[#1E1E1E] flex flex-col items-center py-4 gap-2 z-10 shrink-0 shadow-sm dark:shadow-[4px_0_12px_rgba(0,0,0,0.1)]">
@@ -20,7 +21,33 @@ export const LeftToolbar: React.FC = () => {
         <ToolBtn icon={Eraser} tool="eraser" current={activeTool} set={setTool} title="Eraser (E)"/>
         
         <div className="w-8 h-px bg-slate-200 dark:bg-[#3A3A3A] my-2" />
-        
+
+        {/* Region selection. These arm a drawing mode rather than creating an object, so they
+            track activeSelectionTool instead of the shared activeTool. */}
+        <ToolBtn
+          icon={SquareDashed}
+          tool="sel-rect"
+          current={activeSelectionTool || ''}
+          set={() => setActiveSelectionTool?.(activeSelectionTool === 'sel-rect' ? null : 'sel-rect')}
+          title="Rectangular Select"
+        />
+        <ToolBtn
+          icon={Circle}
+          tool="sel-ellipse"
+          current={activeSelectionTool || ''}
+          set={() => setActiveSelectionTool?.(activeSelectionTool === 'sel-ellipse' ? null : 'sel-ellipse')}
+          title="Elliptical Select"
+        />
+        <ToolBtn
+          icon={PenTool}
+          tool="sel-pen"
+          current={activeSelectionTool || ''}
+          set={() => setActiveSelectionTool?.(activeSelectionTool === 'sel-pen' ? null : 'sel-pen')}
+          title="Pen Select (Alt+Enter to close)"
+        />
+
+        <div className="w-8 h-px bg-slate-200 dark:bg-[#3A3A3A] my-2" />
+
         <ToolBtn icon={Type} tool="text" current={activeTool} set={addText} title="Text (T)"/>
         <ToolBtn icon={Square} tool="rect" current={activeTool} set={addRect} title="Rectangle"/>
         <ToolBtn icon={Circle} tool="circle" current={activeTool} set={addCircle} title="Ellipse (Circle)"/>

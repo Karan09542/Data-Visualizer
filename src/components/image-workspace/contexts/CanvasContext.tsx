@@ -18,6 +18,17 @@ interface CanvasContextType {
   changeTextProp: (prop: string, val: any, historyLabel?: string) => void;
   applyFilter: (filterId: string, val: any) => void;
   alignSelection: (alignment: string) => void;
+  /** Region-selection tools (marquee / ellipse / pen); see selection/useImageSelection. */
+  activeSelectionTool?: string | null;
+  setActiveSelectionTool?: (t: any) => void;
+  /** True while a region selection is active. */
+  hasRegionSelection?: boolean;
+  /** Bakes the current fabric filter stack into the selected region only. */
+  applyFilterStackToSelection?: () => Promise<boolean> | void;
+  /** Image the region selection applies to; null when there is no selection. */
+  getSelectionTargetImage?: () => any;
+  /** Erases the selected pixels rather than the whole object. */
+  deleteSelectedPixels?: () => Promise<boolean> | void;
   duplicateActiveObject: () => void;
   deleteActiveObject: () => void;
   updateArtboardPropDirect: (id: string, prop: string, val: any, saveHistory?: boolean) => void;

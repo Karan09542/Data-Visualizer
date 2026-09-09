@@ -130,6 +130,9 @@ import { DeleteArtboardCommand } from "./commands/artboard/DeleteArtboardCommand
 
 import { ArtboardPropertyCommand } from "./commands/artboard/ArtboardPropertyCommand";
 import { isActiveSelection } from '../../utils/fabric-utils';
+import { useImageSelection } from './selection/useImageSelection';
+import { SelectionTab } from './components/panels/SelectionTab';
+import { ai } from '../../ai';
 import {
    generateArtboardPixelBuffer as renderArtboardToBuffer,
    generateDirectNativeBlob
@@ -661,7 +664,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
    // UI Panels
-   const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards" | "quick">("properties");
+   const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards" | "quick" | "selection">("properties");
 
    useEffect(() => {
       if (activeTab === 'export') {
@@ -1041,6 +1044,96 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       setCommandIndex(nextIndex);
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
+
+   const [selectionFillColor, setSelectionFillColor] = useState('#ffffff');
+   // U2NetP is the default because it ships with the app and runs at 320px, so a selection comes
+   // back in well under a second; the heavier mattes are there for when the edge matters more.
+   const [autoSelectModelId, setAutoSelectModelId] = useState('u2netp');
+   // Read through a ref so changing the model never rebuilds the segmenter and, through it, the
+   // canvas event handlers the selection hook installs.
+   const autoSelectModelRef = useRef(autoSelectModelId);
+   useEffect(() => { autoSelectModelRef.current = autoSelectModelId; }, [autoSelectModelId]);
+
+   /**
+    * Runs a background-removal model purely for its matte: the alpha channel it returns is the
+    * object mask the selection tool traces. Nothing is drawn and no layer is modified.
+    */
+   const segmentSubjectPixels = useCallback(async (
+      pixels: ImageData,
+      signal: AbortSignal,
+      onProgress?: (state: string, progress: number) => void
+   ) => {
+      const { promise } = ai.execute(
+         'background-removal',
+         pixels,
+         {
+            modelId: autoSelectModelRef.current,
+            signal,
+            // Carries the model download and load through to the tool's own status line, so a
+            // first run on a model that is not on the device explains itself instead of hanging.
+            onProgress: (evt) => onProgress?.(evt.state, evt.progress || 0)
+         },
+         5
+      );
+      const result = await promise;
+      if (!(result.output instanceof ImageData)) throw new Error('The model returned no mask.');
+      return result.output;
+   }, []);
+   // Pan and pinch handlers re-enable fabric's own selection when they finish. Without this guard
+   // they would silently disarm an active marquee/ellipse/pen tool.
+   const selectionToolRef = useRef<string | null>(null);
+
+   // Region selection (marquee / ellipse / pen). The module is self-contained; it only needs the
+   // canvas and a way to record undo entries.
+   const imageSelection = useImageSelection({
+      // canvasInstance, not fabricRef: the hook's effects have to run again once the canvas is
+      // actually created, and a ref never changes identity to trigger that.
+      canvas: canvasInstance,
+      // Lets undoing a bake put the live filters back from the restored customFilters.
+      rebuildFilters: (image: any) => {
+         const filtersObj = (fabric as any).Image?.filters || (fabric as any).filters;
+         if (filtersObj) rebuildFabricFilters(image, filtersObj);
+      },
+      segmentSubject: segmentSubjectPixels,
+      onCommit: (label, undo, redo) => {
+         executeCommand({
+            name: label,
+            execute: () => { void redo(); },
+            undo: () => { void undo(); },
+            redo: () => { void redo(); }
+         } as any);
+      }
+   });
+
+   useEffect(() => {
+      selectionToolRef.current = imageSelection.activeSelectionTool;
+   }, [imageSelection.activeSelectionTool]);
+
+   // FilterPipelineCommand writes the stack onto obj.customFilters, and undo/redo change it there
+   // directly. The panel renders from React state that only applyFilterStack updated, so after an
+   // undo the list kept showing a stack the object no longer had - and the object was the truth.
+   // Re-read from the object whenever history moves.
+   useEffect(() => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      let obj: any = canvas.getActiveObject();
+      if (obj && isActiveSelection(obj)) {
+         obj = (obj as fabric.ActiveSelection).getObjects()
+            .find(o => o.type === 'image' || (o as any).isCollageBlock) || obj;
+      }
+      if (obj && obj.get?.('isFrameGroup')) {
+         obj = (obj as any).getObjects().find((i: any) => i.type === 'image') || obj;
+      }
+      // A live region selection clears the active object, so fall back to its target.
+      if ((!obj || (obj.type !== 'image' && !obj.isCollageBlock)) && imageSelection.hasSelection) {
+         obj = imageSelection.getSelectionTargetImage();
+      }
+
+      if (obj && (obj.type === 'image' || obj.isCollageBlock)) {
+         setImageFilters(obj.customFilters ? [...obj.customFilters] : []);
+      }
+   }, [commandIndex]);
 
    /** Moves the selection by (dx, dy) scene pixels, starting/extending an undo burst. */
    const nudgeSelection = useCallback((dx: number, dy: number) => {
@@ -4197,13 +4290,13 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                   setHudFadingOut(false);
                }, 500);
             }, 800);
-            canvas.selection = true;
+            canvas.selection = !selectionToolRef.current;
             validateViewport();
             return;
          }
 
          if (e.touches.length < 2) {
-            canvas.selection = true;
+            canvas.selection = !selectionToolRef.current;
             if (drawingModeBeforePinch !== null) {
                canvas.isDrawingMode = drawingModeBeforePinch;
                drawingModeBeforePinch = null;
@@ -4420,7 +4513,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             canvas.setViewportTransform(canvas.viewportTransform!);
             isPanning = false;
             isPanningRef.current = false;
-            canvas.selection = true;
+            canvas.selection = !selectionToolRef.current;
 
             if (!isMobileRef.current) {
                viewportTransformRef.current = canvas.viewportTransform!.slice();
@@ -5521,6 +5614,12 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       };
 
       const deleteActiveObject = () => {
+         // With a region marked, Delete means "erase these pixels", not "remove the layer".
+         // Routing it here covers the Delete key, the context menu and any panel button at once.
+         if (imageSelection.hasSelection) {
+            void imageSelection.deleteSelectedPixels();
+            return;
+         }
          const active = fabricRef.current?.getActiveObjects();
          if (active && active.length > 0) {
             const cmd = new DeleteObjectCommand("Delete Layer(s)", active);
@@ -6475,6 +6574,12 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                         fabricRef, enterCropMode, resetCrop, addText, addRect, addCircle, addTriangle, addLine,
                         flipX, flipY, addAlignedCollageText, updateSelectedShapeProperty, changeTextProp,
                         applyFilter, alignSelection, duplicateActiveObject, deleteActiveObject,
+                        activeSelectionTool: imageSelection.activeSelectionTool,
+                        setActiveSelectionTool: imageSelection.setActiveSelectionTool,
+                        hasRegionSelection: imageSelection.hasSelection,
+                        applyFilterStackToSelection: imageSelection.applyFilterStackToSelection,
+                        getSelectionTargetImage: imageSelection.getSelectionTargetImage,
+                        deleteSelectedPixels: imageSelection.deleteSelectedPixels,
                         updateArtboardPropDirect, generateSmartCollage, generateBleed,
                         updateCollageBlockStyleProperty, fillCollageBlockWithImage, fitCollageToArtboard,
                         setZoomPercent
@@ -7175,6 +7280,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                       <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
                                                       <TabBtn tab="ai" active={activeTab} set={setActiveTab} label="AI Tools" icon={Zap} />
                                                       <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
+                                                      <TabBtn tab="selection" active={activeTab} set={setActiveTab} label="Select" icon={SquareDashed} />
                                                       <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
                                                       <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
                                                       <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
@@ -7229,6 +7335,40 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                       {activeTab === 'filters' && <FilterStudioTab />}
 
                                                       {/* LAYERS PANEL */}
+                                                      {activeTab === 'selection' && (
+                                                         <SelectionTab
+                                                            activeSelectionTool={imageSelection.activeSelectionTool}
+                                                            setActiveSelectionTool={imageSelection.setActiveSelectionTool}
+                                                            hasSelection={imageSelection.hasSelection}
+                                                            selection={imageSelection.selection}
+                                                            clearSelection={imageSelection.clearSelection}
+                                                            commitPenPath={imageSelection.commitPenPath}
+                                                            savedShapes={imageSelection.savedShapes}
+                                                            saveCurrentShape={imageSelection.saveCurrentShape}
+                                                            loadSavedShape={imageSelection.loadSavedShape}
+                                                            deleteSavedShape={imageSelection.deleteSavedShape}
+                                                            deleteSelectedPixels={imageSelection.deleteSelectedPixels}
+                                                            fillSelection={imageSelection.fillSelection}
+                                                            replaceSelection={imageSelection.replaceSelection}
+                                                            filterSelection={imageSelection.filterSelection}
+                                                            copySelectionToLayer={imageSelection.copySelectionToLayer}
+                                                            moveSelection={imageSelection.moveSelection}
+                                                            scaleSelection={imageSelection.scaleSelection}
+                                                            expandSelection={imageSelection.expandSelection}
+                                                            invertSelection={imageSelection.invertSelection}
+                                                            autoSelectObject={imageSelection.autoSelectObject}
+                                                            cancelAutoSelect={imageSelection.cancelAutoSelect}
+                                                            isAutoSelecting={imageSelection.isAutoSelecting}
+                                                            autoSelectStage={imageSelection.autoSelectStage}
+                                                            autoSelectError={imageSelection.autoSelectError}
+                                                            clearAutoSelectError={imageSelection.clearAutoSelectError}
+                                                            autoSelectModelId={autoSelectModelId}
+                                                            setAutoSelectModelId={setAutoSelectModelId}
+                                                            rotateSelection={imageSelection.rotateSelection}
+                                                            fillColor={selectionFillColor}
+                                                            setFillColor={setSelectionFillColor}
+                                                         />
+                                                      )}
                                                       {activeTab === 'layers' && <LayersTab />}
 
                                                       {/* HISTORY PANEL */}
