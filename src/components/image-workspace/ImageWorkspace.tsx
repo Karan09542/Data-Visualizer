@@ -132,6 +132,11 @@ import { ArtboardPropertyCommand } from "./commands/artboard/ArtboardPropertyCom
 import { isActiveSelection } from '../../utils/fabric-utils';
 import { useImageSelection } from './selection/useImageSelection';
 import { SelectionTab } from './components/panels/SelectionTab';
+import { isTextObject, textScaleAsFontSize } from './services/text/textScale';
+import { sceneFullImageTopLeft } from './services/crop/cropGeometry';
+import { CropShape, traceCropShape } from '../../utils/cropShapes';
+import { buildShapeMaskCommand } from './services/image/shapeMask';
+import { CropShapePicker } from './components/shared/CropShapePicker';
 import { ai } from '../../ai';
 import {
    generateArtboardPixelBuffer as renderArtboardToBuffer,
@@ -301,6 +306,13 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    const [snapTolerance, setSnapTolerance] = useState(10);
    const [isCropping, setIsCropping] = useState(false);
    const [cropRatio, setCropRatio] = useState('free');
+   const [cropShape, setCropShape] = useState<CropShape>({ id: 'rect', sides: 5, innerRatio: 0.42 });
+   // The crop overlay's render hook is bound once, so it reads the shape through a ref.
+   const cropShapeRef = useRef(cropShape);
+   useEffect(() => {
+      cropShapeRef.current = cropShape;
+      fabricRef.current?.requestRenderAll();
+   }, [cropShape]);
    const cropSessionRef = useRef<{
       origObj: fabric.Image | null;
       fullImg: fabric.Image | null;
@@ -1045,6 +1057,69 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
 
+   /**
+    * Draws the crop shape inside the crop frame.
+    *
+    * The rectangle stays the thing you drag - it carries the handles and the aspect ratio - while
+    * the shape that will actually be cut is drawn inside it and everything it discards is dimmed.
+    * Without this a star crop looks exactly like a rectangular one right up until it is applied.
+    */
+   useEffect(() => {
+      const canvas = fabricRef.current;
+      if (!canvas || !isCropping) return;
+
+      const onAfterRender = () => {
+         const rect = cropSessionRef.current?.cropRect as any;
+         const shape = cropShapeRef.current;
+         if (!rect || !shape || shape.id === 'rect') return;
+
+         const ctx = canvas.getContext();
+         const vpt = canvas.viewportTransform;
+         if (!ctx || !vpt) return;
+
+         const w = rect.width || 0;
+         const h = rect.height || 0;
+         if (w < 1 || h < 1) return;
+
+         // Drawn in the rect's own local space, so its rotation and scale come along for free.
+         const m = rect.calcTransformMatrix();
+         const box = { x: -w / 2, y: -h / 2, width: w, height: h };
+
+         ctx.save();
+         ctx.transform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
+         ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+
+         // Frame minus shape, filled even-odd: exactly the pixels the shape throws away.
+         ctx.beginPath();
+         ctx.rect(box.x, box.y, box.width, box.height);
+         traceCropShape(ctx, shape, box);
+         ctx.fillStyle = 'rgba(0,0,0,0.5)';
+         ctx.fill('evenodd');
+
+         // Line width is divided by the whole chain of scales, since this space carries both the
+         // viewport zoom and the rect's own scale.
+         const zoom = canvas.getZoom() || 1;
+         const rectScale = Math.max(Math.abs(rect.scaleX || 1), 1e-4);
+         ctx.beginPath();
+         traceCropShape(ctx, shape, box);
+         ctx.lineWidth = 2 / (zoom * rectScale);
+         ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+         ctx.stroke();
+         ctx.lineWidth = 1.25 / (zoom * rectScale);
+         ctx.strokeStyle = '#3b82f6';
+         ctx.stroke();
+
+         ctx.restore();
+      };
+
+      canvas.on('after:render', onAfterRender);
+      canvas.requestRenderAll();
+      return () => {
+         canvas.off('after:render', onAfterRender);
+         canvas.requestRenderAll();
+      };
+   }, [isCropping]);
+
    const [selectionFillColor, setSelectionFillColor] = useState('#ffffff');
    // U2NetP is the default because it ships with the app and runs at 320px, so a selection comes
    // back in well under a second; the heavier mattes are there for when the edge matters more.
@@ -1082,6 +1157,8 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    // Pan and pinch handlers re-enable fabric's own selection when they finish. Without this guard
    // they would silently disarm an active marquee/ellipse/pen tool.
    const selectionToolRef = useRef<string | null>(null);
+   /** True whenever a region is marked, tool armed or not. */
+   const selectionActiveRef = useRef(false);
 
    // Region selection (marquee / ellipse / pen). The module is self-contained; it only needs the
    // canvas and a way to record undo entries.
@@ -1095,6 +1172,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          if (filtersObj) rebuildFabricFilters(image, filtersObj);
       },
       segmentSubject: segmentSubjectPixels,
+      // Deleting through a command keeps "shape becomes selection" on the undo stack as one step.
+      onConsumeObject: (obj: any) => {
+         executeCommand(new DeleteObjectCommand('Shape to Selection', [obj]));
+      },
       onCommit: (label, undo, redo) => {
          executeCommand({
             name: label,
@@ -1108,6 +1189,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    useEffect(() => {
       selectionToolRef.current = imageSelection.activeSelectionTool;
    }, [imageSelection.activeSelectionTool]);
+
+   useEffect(() => {
+      selectionActiveRef.current = imageSelection.hasSelection;
+   }, [imageSelection.hasSelection]);
 
    // FilterPipelineCommand writes the stack onto obj.customFilters, and undo/redo change it there
    // directly. The panel renders from React state that only applyFilterStack updated, so after an
@@ -1132,6 +1217,20 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
 
       if (obj && (obj.type === 'image' || obj.isCollageBlock)) {
          setImageFilters(obj.customFilters ? [...obj.customFilters] : []);
+      }
+
+      // Same problem for type: fitting rewrites the font size on the object, and undo puts the old
+      // one back, but the Typography panel renders from state that only its own inputs updated.
+      const active: any = canvas.getActiveObject();
+      if (isTextObject(active)) {
+         setTextProps(prev => ({
+            ...prev,
+            fontSize: active.fontSize ?? prev.fontSize,
+            angle: active.angle ?? prev.angle,
+            charSpacing: active.charSpacing ?? prev.charSpacing,
+            lineHeight: active.lineHeight ?? prev.lineHeight,
+            textContent: active.text ?? prev.textContent,
+         }));
       }
    }, [commandIndex]);
 
@@ -1393,6 +1492,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             angle: o.angle,
             width: o.width,
             height: o.height,
+            fontSize: isTextObject(o) ? (o as any).fontSize : undefined,
          }
       }));
 
@@ -1750,6 +1850,16 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          }
       }
 
+      // Done once here rather than inside each branch, so every path that resizes - single object,
+      // multi-selection, with or without a parent - ends up reporting the same font size.
+      objects.forEach(o => {
+         if (!isTextObject(o)) return;
+         const next = textScaleAsFontSize(o);
+         if (!next) return;
+         o.set(next as any);
+         o.setCoords();
+      });
+
       const afterStates = objects.map(o => ({
          obj: o,
          before: beforeStates.find(s => s.obj === o)!.before,
@@ -1761,6 +1871,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             angle: o.angle,
             width: o.width,
             height: o.height,
+            fontSize: isTextObject(o) ? (o as any).fontSize : undefined,
          }
       }));
 
@@ -4468,7 +4579,11 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          const e = opt.e as any;
          if (!e) return;
 
-         if (activeToolRef.current === 'pan' || e.button === 1 || isSpacePressedRef.current || isAltPressedRef.current) {
+         // Alt is the selection brush's "subtract" modifier, and Alt-drag otherwise pans the
+         // viewport - which reads as "every shape moved". While any selection tool is armed the
+         // modifier belongs to the selection, so panning stands down.
+         const altPans = isAltPressedRef.current && !selectionToolRef.current;
+         if (activeToolRef.current === 'pan' || e.button === 1 || isSpacePressedRef.current || altPans) {
             isPanning = true;
             isPanningRef.current = true;
             if (cursorRingRef.current) cursorRingRef.current.style.display = 'none';
@@ -4576,6 +4691,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          }
          if (!isMobileRef.current) return;
 
+         // A selection gesture is a drag on the artwork, not a navigation gesture. Without this a
+         // marquee or brush swipe longer than 80px pages to the next artboard, and two quick taps
+         // while refining a selection zoom the view to fit.
+         if (selectionToolRef.current || selectionActiveRef.current) return;
 
          // Handle Swipe
          if (e.changedTouches.length === 1) {
@@ -5140,16 +5259,9 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          if (!el) return;
 
          imgTarget.setCoords();
-         const matrix = imgTarget.calcTransformMatrix();
-
-         const origCenterH = imgTarget.originX === 'center' ? imgTarget.width! / 2 : 0;
-         const origCenterV = imgTarget.originY === 'center' ? imgTarget.height! / 2 : 0;
-
-         const localFullTl = new fabric.Point(
-            -origCenterH - (imgTarget.cropX || 0),
-            -origCenterV - (imgTarget.cropY || 0)
-         );
-         const canvasFullTl = fabric.util.transformPoint(localFullTl, matrix);
+         // The transform matrix is centre-based whatever originX/originY say, so this is derived
+         // rather than assumed - see cropGeometry for why guessing put the copy half a size out.
+         const canvasFullTl = sceneFullImageTopLeft(imgTarget);
 
          const fullImg = new fabric.Image(el, {
             left: canvasFullTl.x,
@@ -5294,13 +5406,23 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             originY: cropRect.originY,
          };
 
-         const cmd = new TransformObjectsCommand("Crop Image", [{
+         const cropCmd = new TransformObjectsCommand("Crop Image", [{
             obj: origObj,
             before: beforeState,
             after: afterState
          }]);
 
-         executeCommand(cmd);
+         // Applied up front so the mask below sees the cropped pixels rather than the whole photo.
+         // The macro re-runs it, which is harmless: it sets absolute values, not deltas.
+         cropCmd.execute(fabricRef.current, updateLayersList);
+
+         const maskCmd = buildShapeMaskCommand(origObj as fabric.Image, cropShapeRef.current);
+         executeCommand(
+            maskCmd
+               // One history entry, undone in reverse: the mask first, then the crop.
+               ? new MacroCommand('Shape Crop', [cropCmd, maskCmd as any])
+               : cropCmd
+         );
 
          fabricRef.current.remove(fullImg);
          fabricRef.current.remove(cropRect);
@@ -7016,13 +7138,15 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
 
                                                          {/* Takes the leftover width on a phone rather than a
                                                              fixed size that squeezed out the buttons. */}
-                                                         <div className="flex-1 min-w-0 sm:flex-none sm:w-52">
+                                                         <div className="flex-1 min-w-0 sm:flex-none sm:w-44">
                                                             <ModernSelect
                                                                value={cropRatio}
                                                                onChange={handleCropRatioChange}
                                                                groups={CROP_RATIO_GROUPS}
                                                             />
                                                          </div>
+
+                                                         <CropShapePicker value={cropShape} onChange={setCropShape} />
 
                                                          <div className="h-5 w-px bg-slate-200 dark:bg-[#333] shrink-0" />
 
@@ -7356,6 +7480,13 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                             scaleSelection={imageSelection.scaleSelection}
                                                             expandSelection={imageSelection.expandSelection}
                                                             invertSelection={imageSelection.invertSelection}
+                                                            isInverted={imageSelection.isInverted}
+                                                            brushMode={imageSelection.brushMode}
+                                                            brushSize={imageSelection.brushSize}
+                                                            setBrushSize={imageSelection.setBrushSize}
+                                                            minBrushSize={imageSelection.minBrushSize}
+                                                            maxBrushSize={imageSelection.maxBrushSize}
+                                                            convertObjectToSelection={imageSelection.convertObjectToSelection}
                                                             autoSelectObject={imageSelection.autoSelectObject}
                                                             cancelAutoSelect={imageSelection.cancelAutoSelect}
                                                             isAutoSelecting={imageSelection.isAutoSelecting}

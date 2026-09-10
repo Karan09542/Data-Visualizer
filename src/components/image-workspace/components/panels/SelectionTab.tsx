@@ -3,12 +3,12 @@ import {
   SquareDashed, Circle, PenTool, Trash2, Scissors, PaintBucket, Frame, X, Bookmark,
   Move, RotateCw, RotateCcw, Maximize2, Minimize2, Wand2, CopyPlus, Layers2,
   Sparkles, Loader2, AlertTriangle, Focus, Contrast, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
-  Minus, Plus, Lock, CheckCircle2
+  Minus, Plus, Lock, CheckCircle2, Brush, Shapes, PlusCircle, MinusCircle, Eraser
 } from 'lucide-react';
 import { SelectionToolId, SavedSelection, RegionFilter, SelectionShape } from '../../selection/types';
 import { AutoSelectDetail, AutoSelectRequest, AutoSelectStage } from '../../selection/useImageSelection';
 import { getShapeBBox } from '../../selection/geometry';
-import { PanelSection, Label } from '../shared/PanelPrimitives';
+import { PanelSection, Label, RangeSlider } from '../shared/PanelPrimitives';
 import { ColorPickerTrigger } from '../shared/ColorPickers';
 import { ModelDownloadGate } from '../shared/ModelDownloadGate';
 import CustomSelect from '../../../CustomSelect';
@@ -38,8 +38,19 @@ interface Props {
   rotateSelection: (degrees: number) => void;
   fillColor: string;
   setFillColor: (c: string) => void;
-  /** Swaps the selected region for everything else on the layer. */
+  /** Swaps the selected region for everything else on the layer. Calling it again restores. */
   invertSelection: () => boolean;
+  /** True while the selection is showing the inverse of what was drawn. */
+  isInverted: boolean;
+  /** Which way a swipe pushes the selection; follows the armed tool. */
+  brushMode: 'add' | 'subtract';
+  /** Brush width in screen pixels. */
+  brushSize: number;
+  setBrushSize: (px: number) => void;
+  minBrushSize: number;
+  maxBrushSize: number;
+  /** Turns the object selected on the canvas into a selection. */
+  convertObjectToSelection: (mode?: 'add' | 'subtract') => boolean;
   /** Segments an object and turns the result into a selection. */
   autoSelectObject: (request?: AutoSelectRequest) => Promise<boolean>;
   cancelAutoSelect: () => void;
@@ -55,7 +66,9 @@ const TOOLS: { id: SelectionToolId; label: string; icon: React.ReactNode; hint: 
   { id: 'sel-rect', label: 'Marquee', icon: <SquareDashed size={17} />, hint: 'Drag a rectangular region' },
   { id: 'sel-ellipse', label: 'Ellipse', icon: <Circle size={17} />, hint: 'Drag an elliptical region' },
   { id: 'sel-pen', label: 'Pen', icon: <PenTool size={17} />, hint: 'Click points, then Alt+Enter or click the first point to close' },
-  { id: 'sel-object', label: 'Object', icon: <Wand2 size={17} />, hint: 'Tap an object, or drag a box around it, and the AI traces its outline', ai: true }
+  { id: 'sel-object', label: 'Object', icon: <Wand2 size={17} />, hint: 'Tap an object, or drag a box around it, and the AI traces its outline', ai: true },
+  { id: 'sel-brush', label: 'Brush', icon: <Brush size={17} />, hint: 'Paint to grow the selection. Hold Alt to erase for one stroke' },
+  { id: 'sel-erase', label: 'Erase', icon: <Eraser size={17} />, hint: 'Paint to cut away part of the selection. Hold Alt to add for one stroke' }
 ];
 
 const DETAIL_LEVELS: { id: AutoSelectDetail; label: string; hint: string }[] = [
@@ -230,7 +243,9 @@ export const SelectionTab: React.FC<Props> = ({
   deleteSelectedPixels, fillSelection, replaceSelection, filterSelection, copySelectionToLayer,
   moveSelection, scaleSelection, expandSelection, rotateSelection,
   fillColor, setFillColor,
-  invertSelection,
+  invertSelection, isInverted,
+  brushMode, brushSize, setBrushSize, minBrushSize, maxBrushSize,
+  convertObjectToSelection,
   autoSelectObject, cancelAutoSelect, isAutoSelecting, autoSelectStage, autoSelectError,
   clearAutoSelectError, autoSelectModelId, setAutoSelectModelId
 }) => {
@@ -244,7 +259,10 @@ export const SelectionTab: React.FC<Props> = ({
     [segModels]
   );
   const objectToolArmed = activeSelectionTool === 'sel-object';
+  const brushArmed = activeSelectionTool === 'sel-brush' || activeSelectionTool === 'sel-erase';
   const box = selection ? getShapeBBox(selection) : null;
+  // Only surfaced when the conversion finds nothing to convert, which is otherwise silent.
+  const [convertNote, setConvertNote] = useState<string | null>(null);
 
   const onPickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -261,7 +279,7 @@ export const SelectionTab: React.FC<Props> = ({
       {/* Tool strip. Deliberately not boxed like the sections below it: this is the one control
           that is always live, so it should read as a toolbar rather than as another setting. */}
       <div className="space-y-2">
-        <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/5">
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/5">
           {TOOLS.map(t => {
             const active = activeSelectionTool === t.id;
             return (
@@ -271,11 +289,14 @@ export const SelectionTab: React.FC<Props> = ({
                 title={t.hint}
                 aria-pressed={active}
                 onClick={() => setActiveSelectionTool(active ? null : t.id)}
-                className={`h-14 rounded-lg flex flex-col items-center justify-center gap-1 text-[9px] font-bold uppercase tracking-wide transition-all active:scale-[0.96] touch-manipulation ${active
+                className={`h-14 px-0.5 rounded-lg flex flex-col items-center justify-center gap-1 text-[9px] font-bold uppercase tracking-wide transition-all active:scale-[0.96] touch-manipulation ${active
                   ? t.ai
                     // Violet for the AI tool, matching the tint the canvas shows while it thinks.
                     ? 'bg-gradient-to-b from-violet-500 to-violet-600 text-white shadow-md shadow-violet-500/25'
-                    : 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                    // Red for erase, the same colour its brush trail paints on the canvas.
+                    : t.id === 'sel-erase'
+                      ? 'bg-red-600 text-white shadow-md shadow-red-500/25'
+                      : 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
                   : 'text-slate-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-white/[0.07] hover:text-slate-900 dark:hover:text-white'}`}
               >
                 {t.icon}
@@ -312,6 +333,83 @@ export const SelectionTab: React.FC<Props> = ({
           </div>
         )}
 
+        {brushArmed && (
+          <div className="p-2.5 space-y-2.5 rounded-xl bg-white dark:bg-[#181818] border border-slate-200 dark:border-[#2A2A2A] shadow-sm">
+            {/* A second way to reach the same two tools, next to the size they share. */}
+            <div className="grid grid-cols-2 gap-1">
+              {([
+                { tool: 'sel-brush', mode: 'add', label: 'Add', icon: <PlusCircle size={13} />, hint: 'Paint to grow the selection' },
+                { tool: 'sel-erase', mode: 'subtract', label: 'Deselect', icon: <MinusCircle size={13} />, hint: 'Paint to cut away part of the selection' }
+              ] as const).map(m => {
+                const on = activeSelectionTool === m.tool;
+                return (
+                  <button
+                    key={m.tool}
+                    type="button"
+                    title={m.hint}
+                    aria-pressed={on}
+                    onClick={() => setActiveSelectionTool(m.tool)}
+                    className={`h-9 rounded-lg border flex items-center justify-center gap-1.5 text-[11px] font-semibold transition-all active:scale-[0.97] touch-manipulation ${on
+                      ? m.mode === 'add'
+                        ? 'bg-blue-600 border-blue-500 text-white shadow-sm shadow-blue-500/25'
+                        : 'bg-red-600 border-red-500 text-white shadow-sm shadow-red-500/25'
+                      : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-white/20'}`}
+                  >
+                    {m.icon} {m.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <RangeSlider
+              label="Brush Size"
+              valueDisplay={brushSize}
+              displayUnit="px"
+              min={minBrushSize}
+              max={maxBrushSize}
+              step={1}
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+            />
+
+            <p className="text-[9px] text-slate-400 dark:text-zinc-500 leading-relaxed">
+              {brushMode === 'add'
+                ? 'Paint over the image to grow the selection.'
+                : 'Paint over the selection to cut parts of it away.'}{' '}
+              Hold{' '}
+              <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-black/30 font-mono text-[9px]">Alt</kbd>{' '}
+              to use the other brush for a single stroke — on touch, tap the buttons above instead.
+            </p>
+          </div>
+        )}
+
+        {/* Always available: on touch there is no Alt+Enter, and a painted shape is the one thing
+            here that comes from a different tool entirely. */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!convertObjectToSelection()) {
+              setConvertNote('Select a shape on the canvas first — a brush stroke, path or any drawn object.');
+              window.setTimeout(() => setConvertNote(null), 4000);
+            } else {
+              setConvertNote(null);
+            }
+          }}
+          title="Turn the object selected on the canvas into a selection"
+          className="w-full h-9 px-2.5 rounded-lg border border-dashed border-slate-300 dark:border-white/15 bg-slate-50/60 dark:bg-white/[0.03] text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-400 dark:hover:border-white/30 flex items-center justify-center gap-2 text-[11px] font-semibold transition-all active:scale-[0.98] touch-manipulation"
+        >
+          <Shapes size={14} className="shrink-0" />
+          <span className="truncate">Drawn Shape → Selection</span>
+          <kbd className="shrink-0 px-1 py-0.5 rounded bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 font-mono text-[9px]">Alt+↵</kbd>
+        </button>
+
+        {convertNote && (
+          <div className="flex items-start gap-2 p-2.5 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-950/30">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <span className="flex-1 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">{convertNote}</span>
+          </div>
+        )}
+
         {/* Status line: what is selected, and the three actions that act on the region itself. */}
         <div className="flex items-center gap-2 h-11 pl-3 pr-1.5 rounded-xl border bg-white dark:bg-[#181818] border-slate-200 dark:border-[#2A2A2A] shadow-sm">
           {hasSelection ? (
@@ -326,10 +424,17 @@ export const SelectionTab: React.FC<Props> = ({
             <div className="text-[11px] font-semibold text-slate-800 dark:text-zinc-200 truncate">
               {hasSelection ? 'Region selected' : 'No selection'}
             </div>
-            <div className="text-[9px] font-mono text-slate-400 dark:text-zinc-500 truncate">
-              {box
-                ? `${selection?.kind} · ${Math.round(box.width)} × ${Math.round(box.height)} px`
-                : 'Pick a tool above to draw one'}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[9px] font-mono text-slate-400 dark:text-zinc-500 truncate">
+                {box
+                  ? `${selection?.kind} · ${Math.round(box.width)} × ${Math.round(box.height)} px`
+                  : 'Pick a tool above to draw one'}
+              </span>
+              {hasSelection && isInverted && (
+                <span className="shrink-0 px-1.5 rounded-full text-[8px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">
+                  Inverted
+                </span>
+              )}
             </div>
           </div>
 
@@ -338,10 +443,15 @@ export const SelectionTab: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => invertSelection()}
-                title="Invert — select everything on the layer except this region"
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white transition-colors active:scale-95 touch-manipulation"
+                aria-pressed={isInverted}
+                title={isInverted
+                  ? 'Inverted — click to go back to the region you drew'
+                  : 'Invert — select everything on the layer except this region'}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors active:scale-95 touch-manipulation ${isInverted
+                  ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-400'
+                  : 'text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white'}`}
               >
-                <Contrast size={14} />
+                <Contrast size={14} className={isInverted ? 'rotate-180 transition-transform' : 'transition-transform'} />
               </button>
               <button
                 type="button"

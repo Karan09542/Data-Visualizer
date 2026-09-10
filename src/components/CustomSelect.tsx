@@ -2,6 +2,7 @@ import { useState, useRef, useLayoutEffect, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, Check, Search } from "lucide-react";
+import { usePreviewHold } from "./image-workspace/hooks/usePreviewHold";
 
 interface Option {
   label: string;
@@ -20,6 +21,11 @@ interface CustomSelectProps {
   placeholder?: string;
   searchable?: boolean;
   variant?: "default" | "toolbar";
+  /**
+   * Called with an option while it is hovered or held, and with null on release. Wire it up to
+   * show the choice on the canvas before committing to it; omit it for a plain select.
+   */
+  onPreview?: (value: string | null) => void;
 }
 
 export default function CustomSelect({
@@ -33,7 +39,12 @@ export default function CustomSelect({
   placeholder = "Select...",
   searchable = false,
   variant = "default",
+  onPreview,
 }: CustomSelectProps) {
+  const { bind, stop, consumeHoldClick } = usePreviewHold<string>({
+    preview: (option) => onPreview?.(option),
+    revert: () => onPreview?.(null)
+  });
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +88,9 @@ export default function CustomSelect({
       setCoords({ top, left, width: Math.max(parentRect.width, 160) });
     }
   }, [isOpen]);
+
+  // Closing the menu - by choosing, clicking away or scrolling off - ends any live preview.
+  useEffect(() => { if (!isOpen) stop(); }, [isOpen, stop]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -177,7 +191,11 @@ export default function CustomSelect({
                         <button
                           key={option.value}
                           type="button"
+                          {...(onPreview ? bind(option.value) : {})}
                           onClick={() => {
+                            // A hold was a request to look, not to choose.
+                            if (consumeHoldClick()) return;
+                            stop();
                             onChange(option.value);
                             setIsOpen(false);
                           }}

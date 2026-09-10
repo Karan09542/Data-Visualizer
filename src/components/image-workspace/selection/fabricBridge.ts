@@ -91,6 +91,36 @@ export const readImagePixels = (
   return { pixels: ctx.getImageData(0, 0, width, height), offset: { x, y } };
 };
 
+/**
+ * Renders any canvas object into its own bitmap, in scene coordinates.
+ *
+ * This is what lets a shape drawn with the paint brush - or any other object - become a selection:
+ * whatever the object paints is the mask, so a brush stroke, a polygon and a piece of text all
+ * convert through the same path with no per-type handling.
+ */
+export const rasterizeObject = (
+  obj: fabric.Object,
+  maxSize = 1400
+): { canvas: HTMLCanvasElement; bounds: { x: number; y: number; width: number; height: number } } | null => {
+  const rect = obj.getBoundingRect();
+  if (!rect.width || !rect.height) return null;
+
+  const scale = Math.min(1, maxSize / Math.max(rect.width, rect.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(rect.width * scale));
+  canvas.height = Math.max(1, Math.round(rect.height * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+
+  // The object renders through its own transform matrix, which is in scene space, so shifting the
+  // origin to the bounding rect is all that is needed to bring it into view.
+  ctx.setTransform(canvas.width / rect.width, 0, 0, canvas.height / rect.height, 0, 0);
+  ctx.translate(-rect.left, -rect.top);
+  obj.render(ctx);
+
+  return { canvas, bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height } };
+};
+
 const getRasterTarget = (image: fabric.Image): RasterTarget | null => {
   const element = image.getElement?.() as CanvasImageSource | undefined;
   if (!element) return null;

@@ -18,6 +18,8 @@ export class TransformObjectsCommand implements Command {
       cropY?: number;
       originX?: string;
       originY?: string;
+      /** Text only: scaling text changes its font size, so it has to travel with the transform. */
+      fontSize?: number;
     };
     after: {
       left: number;
@@ -31,6 +33,7 @@ export class TransformObjectsCommand implements Command {
       cropY?: number;
       originX?: string;
       originY?: string;
+      fontSize?: number;
     };
   }[];
 
@@ -57,6 +60,7 @@ export class TransformObjectsCommand implements Command {
         cropY: t.before.cropY,
         originX: t.before.originX,
         originY: t.before.originY,
+        fontSize: t.before.fontSize,
       },
       after: {
         left: t.after.left ?? t.obj.left ?? 0,
@@ -70,6 +74,7 @@ export class TransformObjectsCommand implements Command {
         cropY: t.after.cropY,
         originX: t.after.originX,
         originY: t.after.originY,
+        fontSize: t.after.fontSize,
       }
     }));
   }
@@ -88,6 +93,8 @@ export class TransformObjectsCommand implements Command {
       width: t.width,
       height: t.height,
     };
+    // Only present for text, and only when the transform actually changed it.
+    if (typeof t.fontSize === 'number') props.fontSize = t.fontSize;
     if (t.cropX !== undefined) props.cropX = t.cropX;
     if (t.cropY !== undefined) props.cropY = t.cropY;
     if (t.originX !== undefined) props.originX = t.originX;

@@ -31,6 +31,11 @@ export interface MaskToShapeOptions {
   seed?: Point | null;
   /** Added to every output coordinate, for a mask that came from a crop of a larger image. */
   offset?: Point;
+  /**
+   * Multiplies every output coordinate before the offset is added. Lets a mask rasterised at a
+   * reduced resolution report its outline in the caller's own units.
+   */
+  scale?: number;
 }
 
 const DEFAULTS = {
@@ -297,6 +302,7 @@ export const maskToSelection = (
 ): PathSelection | null => {
   const opts = { ...DEFAULTS, ...options };
   const offset = options.offset || { x: 0, y: 0 };
+  const scale = options.scale ?? 1;
 
   let grid = alphaToMask(mask, opts.threshold, opts.maxTraceSize);
   if (options.seed) {
@@ -323,8 +329,8 @@ export const maskToSelection = (
       const simplified = simplifyPath(r.points, opts.tolerance);
       const smoothed = opts.smooth > 0 ? smoothRing(simplified, opts.smooth) : simplified;
       return smoothed.map(p => ({
-        x: p.x * grid.scaleX + offset.x,
-        y: p.y * grid.scaleY + offset.y
+        x: p.x * grid.scaleX * scale + offset.x,
+        y: p.y * grid.scaleY * scale + offset.y
       }));
     })
     .filter(r => r.length >= 3);

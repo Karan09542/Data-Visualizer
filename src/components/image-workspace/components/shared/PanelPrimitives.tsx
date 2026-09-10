@@ -21,6 +21,55 @@ export const PanelSection: React.FC<{
    </div>
 );
 
+/**
+ * Pill switch for an on/off setting.
+ *
+ * The knob is placed with an explicit `left` rather than an unanchored `absolute` + transform: with
+ * no left set, it lands at the button's default padding instead of the track's edge, which parks it
+ * mid-track and makes "off" read as "on". The word beside it settles the question outright, since
+ * the two states of a small pill are easy to misread on a dark panel.
+ */
+export const ToggleSwitch: React.FC<{
+   checked: boolean;
+   onChange: (next: boolean) => void;
+   /** Hide the On/Off word where the row's own label already carries the state. */
+   showState?: boolean;
+   title?: string;
+   className?: string;
+}> = ({ checked, onChange, showState = true, title, className = '' }) => (
+   <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      title={title}
+      onClick={(e) => { e.stopPropagation(); onChange(!checked); }}
+      className={`inline-flex items-center gap-2 p-0 bg-transparent border-0 cursor-pointer touch-manipulation ${className}`}
+   >
+      {showState && (
+         <span className={`text-[9px] font-bold uppercase tracking-wider transition-colors ${checked
+            ? 'text-blue-600 dark:text-blue-400'
+            : 'text-slate-400 dark:text-zinc-600'}`}
+         >
+            {checked ? 'On' : 'Off'}
+         </span>
+      )}
+      <span
+         className={`relative block w-9 h-5 rounded-full border transition-colors ${checked
+            ? 'bg-blue-600 border-blue-500'
+            : 'bg-slate-200 dark:bg-[#242424] border-slate-300 dark:border-white/10'}`}
+      >
+         {/* The track is border-box, so the knob sits inside a 34x18 padding box: left-0.5 and
+             left-4 give it a matching 2px gap at either end, and centring is left to the transform
+             rather than a hand-computed top. */}
+         <span
+            className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-sm transition-[left,background-color] duration-150 ${checked
+               ? 'left-4 bg-white'
+               : 'left-0.5 bg-white dark:bg-zinc-500'}`}
+         />
+      </span>
+   </button>
+);
+
 export const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-zinc-500 block mb-1.5">{children}</span>
 );

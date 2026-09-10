@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import * as fabric from 'fabric';
 import {
    Brush, Eraser, FlipHorizontal, FlipVertical, Move, SquareDashed, Layout, Square, Palette, MousePointer2, Copy, Trash2, Crop, RotateCcw, Settings,
@@ -16,6 +16,8 @@ import { ColorPickerTrigger } from '../../shared/ColorPickers';
 import { BrushPreview } from '../../shared/BrushPreview';
 import { ModernCheckbox } from '../../shared/ModernCheckbox';
 import { TypographyPanel } from '../TypographyPanel';
+import { ImageBorderPanel } from '../ImageBorderPanel';
+import { EdgeRefinePanel } from '../EdgeRefinePanel';
 import { SmartCollageBlockCustomizationPanel } from '../SmartCollageBlockCustomizationPanel';
 import { ArtboardAssignmentModule } from '../ArtboardAssignmentModule';
 import { ModernSelect, SelectGroup } from '../../shared/ModernSelect';
@@ -118,6 +120,31 @@ export const PropertiesTab: React.FC = () => {
       (activeObj as any).isCollageBlock ||
       (isActiveSelection(activeObj) && (activeObj as fabric.ActiveSelection).getObjects().some(o => (o as any).isCollageBlock))
    );
+
+   // Blend modes are impossible to judge by name against a particular layer and background, so
+   // hovering or holding one shows it on the canvas. Written straight to the objects and undone
+   // from this snapshot, so scrubbing the list never reaches the undo history.
+   const blendPreviewRef = useRef<{ obj: any; value: any }[]>([]);
+
+   const previewBlendMode = (val: string | null) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      if (val === null) {
+         blendPreviewRef.current.forEach(({ obj, value }) => obj.set('globalCompositeOperation', value));
+         blendPreviewRef.current = [];
+         canvas.requestRenderAll();
+         return;
+      }
+
+      const objs = canvas.getActiveObjects();
+      if (!objs.length) return;
+      if (!blendPreviewRef.current.length) {
+         blendPreviewRef.current = objs.map(o => ({ obj: o, value: o.get('globalCompositeOperation') }));
+      }
+      objs.forEach(o => o.set('globalCompositeOperation', val as any));
+      canvas.requestRenderAll();
+   };
 
    return (
       <div className="p-4 space-y-4 font-sans max-w-full overflow-x-hidden">
@@ -231,6 +258,7 @@ export const PropertiesTab: React.FC = () => {
                            <Label>Blend Mode</Label>
                            <ModernSelect
                               value={shapeBlendMode || 'source-over'}
+                              onPreview={previewBlendMode}
                               onChange={(val) => updateSelectedShapeProperty('globalCompositeOperation', val)}
                               groups={[
                                  { label: 'Normal', options: [{ value: 'source-over', label: 'Normal' }] },
@@ -437,6 +465,8 @@ export const PropertiesTab: React.FC = () => {
                {/* Image Adjustments Module */}
                {(selectionType === 'image' || selectionType === 'frameGroup') && (
                   <div className="space-y-4">
+                     <EdgeRefinePanel />
+                     <ImageBorderPanel />
                      <PanelSection title="Crop & Composition" icon={<Crop size={14} className="text-orange-400" />}>
                         <div className="flex gap-2">
                            <button

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
+import { usePreviewHold } from '../../hooks/usePreviewHold';
 
 export interface SelectOption {
    value: string;
@@ -15,6 +16,11 @@ interface ModernSelectProps {
    value: string;
    onChange: (value: string) => void;
    groups: SelectGroup[];
+   /**
+    * Called with an option while it is hovered or held, and with null when it is released. Wire it
+    * up to see the choice on the canvas before committing to it; leave it out for a plain select.
+    */
+   onPreview?: (value: string | null) => void;
 }
 
 /** Tallest the menu is ever allowed to be. */
@@ -22,7 +28,11 @@ const MAX_MENU_HEIGHT = 300;
 /** Breathing room kept between the menu and the edge of the window. */
 const VIEWPORT_MARGIN = 12;
 
-export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, groups }) => {
+export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, groups, onPreview }) => {
+   const { bind, stop, consumeHoldClick } = usePreviewHold<string>({
+      preview: (option) => onPreview?.(option),
+      revert: () => onPreview?.(null)
+   });
    const [isOpen, setIsOpen] = useState(false);
    // Where the menu opens is decided per-open from the space actually
    // available: a select near the bottom of the window - the crop bar, say -
@@ -32,6 +42,9 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, gro
       maxHeight: MAX_MENU_HEIGHT,
    });
    const containerRef = useRef<HTMLDivElement>(null);
+
+   // Closing the menu - by choosing, clicking away or pressing Escape - ends any live preview.
+   useEffect(() => { if (!isOpen) stop(); }, [isOpen, stop]);
 
    useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
@@ -105,7 +118,11 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({ value, onChange, gro
                               <button
                                  key={option.value}
                                  type="button"
+                                 {...(onPreview ? bind(option.value) : {})}
                                  onClick={() => {
+                                    // A hold was a request to look, not to choose.
+                                    if (consumeHoldClick()) return;
+                                    stop();
                                     onChange(option.value);
                                     setIsOpen(false);
                                  }}

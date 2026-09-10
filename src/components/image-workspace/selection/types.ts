@@ -6,7 +6,8 @@
  * that needs a selection can depend on this file alone.
  */
 
-export type SelectionToolId = 'sel-rect' | 'sel-ellipse' | 'sel-pen' | 'sel-object';
+export type SelectionToolId =
+  | 'sel-rect' | 'sel-ellipse' | 'sel-pen' | 'sel-object' | 'sel-brush' | 'sel-erase';
 
 export interface Point {
   x: number;

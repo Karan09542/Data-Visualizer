@@ -14,9 +14,10 @@ import {
 import {
   applyOperationToImage, extractFromImage, swapImageSource,
   attachRegionFilterMask, detachRegionFilterMask,
-  sceneShapeToImagePixels, imagePixelsToSceneShape, readImagePixels
+  sceneShapeToImagePixels, imagePixelsToSceneShape, readImagePixels, rasterizeObject
 } from './fabricBridge';
 import { maskToSelection } from './maskToShape';
+import { BrushMode, applyBrushStroke, combineSelection, imageAddition } from './combineSelection';
 
 interface Options {
   /**
@@ -39,6 +40,12 @@ interface Options {
     signal: AbortSignal,
     onProgress?: (state: string, progress: number) => void
   ) => Promise<ImageData>;
+  /**
+   * Called with an object that has just been turned into a selection. The host deletes it through
+   * its own undo stack: once the shape has become a selection it has done its job, and leaving it
+   * behind covers the very region the user is now trying to edit.
+   */
+  onConsumeObject?: (obj: fabric.Object) => void;
 }
 
 /** What the auto-select is doing right now, so the UI can say so instead of just spinning. */
@@ -73,6 +80,23 @@ const HANDLE_SIZE_PX = 9;
 /** Generous so a fingertip can grab a handle; a mouse benefits too. */
 const HANDLE_HIT_PX = 22;
 const ROTATE_OFFSET_PX = 26;
+/**
+ * The two brushes differ only in which way they push the selection, so the tool itself is the
+ * mode. One tap to switch beats a modifier that touch devices do not have and that desktop users
+ * have to discover, and it leaves exactly one source of truth for what a swipe will do.
+ */
+const isBrushTool = (tool: SelectionToolId | null): boolean =>
+  tool === 'sel-brush' || tool === 'sel-erase';
+
+const baseBrushMode = (tool: SelectionToolId | null): BrushMode =>
+  tool === 'sel-erase' ? 'subtract' : 'add';
+
+const otherMode = (mode: BrushMode): BrushMode => (mode === 'add' ? 'subtract' : 'add');
+
+/** Brush width in screen pixels, so the footprint stays the same at any zoom. */
+const DEFAULT_BRUSH_PX = 48;
+const MIN_BRUSH_PX = 4;
+const MAX_BRUSH_PX = 300;
 
 /**
  * Drives the marquee, ellipse and pen selection tools on a fabric canvas.
@@ -80,11 +104,13 @@ const ROTATE_OFFSET_PX = 26;
  * The hook owns only interaction and state; every geometric and pixel decision lives in the pure
  * modules beside it, so the same selection can be driven from a different UI without change.
  */
-export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSubject }: Options) {
+export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSubject, onConsumeObject }: Options) {
   const [activeSelectionTool, setActiveSelectionTool] = useState<SelectionToolId | null>(null);
   const [selection, setSelection] = useState<SelectionShape | null>(null);
   const [draft, setDraft] = useState<SelectionShape | null>(null);
   const [savedShapes, setSavedShapes] = useState<SavedSelection[]>([]);
+  const [brushSize, setBrushSize] = useState(DEFAULT_BRUSH_PX);
+  const [isInverted, setIsInverted] = useState(false);
   const [isAutoSelecting, setIsAutoSelecting] = useState(false);
   const [autoSelectError, setAutoSelectError] = useState<string | null>(null);
   const [autoSelectStage, setAutoSelectStage] = useState<AutoSelectStage | null>(null);
@@ -103,18 +129,118 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
     | null
   >(null);
   const antsOffsetRef = useRef(0);
+  // Brush state the once-bound canvas handlers read: the stroke in progress, the mode it started
+  // with, and where the pointer is so the size ring can be drawn under it.
+  const brushSizeRef = useRef(brushSize);
+  const strokeRef = useRef<{ points: Point[]; mode: BrushMode; radius: number } | null>(null);
+  const hoverRef = useRef<Point | null>(null);
+  /**
+   * Alt as tracked from the keyboard, not only from the pointer event.
+   *
+   * A pointer event usually carries altKey, but not always - synthetic events, some pen and touch
+   * paths, and events replayed by other handlers can arrive without it. Reading both is what makes
+   * "hold Alt to subtract" fire reliably rather than most of the time.
+   */
+  const altDownRef = useRef(false);
+  /**
+   * The layer this selection belongs to, remembered rather than re-derived.
+   *
+   * Drawing a selection makes fabric drop its active object - the gesture lands on empty space as
+   * far as it is concerned - so by the time an operation runs there is nothing left saying which
+   * layer the user meant. Falling back to "topmost image that overlaps" quietly picks the wrong
+   * one as soon as two images overlap, which is exactly what a pasted copy is: the same picture,
+   * offset slightly, sitting on top of the original. Pinning the layer when the gesture starts
+   * keeps the answer stable for the life of the selection.
+   */
+  const pinnedTargetRef = useRef<fabric.Image | null>(null);
+  /**
+   * What the selection looked like before it was inverted, so inverting back can restore it
+   * exactly. `result` is the shape this hook produced, used to tell an invert apart from every
+   * other way the selection can change.
+   */
+  const invertStateRef = useRef<{ from: SelectionShape | null; result: SelectionShape | null }>({
+    from: null,
+    result: null
+  });
+  const applyStrokeRef = useRef<((stroke: { points: Point[]; mode: BrushMode; radius: number }) => void) | null>(null);
   // The canvas handlers are bound once, so they reach the current auto-select through a ref.
   const autoSelectRef = useRef<((opts?: AutoSelectRequest) => Promise<boolean>) | null>(null);
   const autoAbortRef = useRef<AbortController | null>(null);
   // Read by the render handler, which is bound once and so cannot see the state directly.
   const autoBusyRef = useRef(false);
 
-  useEffect(() => { toolRef.current = activeSelectionTool; }, [activeSelectionTool]);
+  // Arming a tool is the last moment the active object still says which layer the user chose.
+  useEffect(() => {
+    if (!canvas || !activeSelectionTool) return;
+    const active = canvas.getActiveObject() as any;
+    if (active?.type === 'image') {
+      pinnedTargetRef.current = active as fabric.Image;
+    } else if (active?.get?.('isFrameGroup')) {
+      const inner = active.getObjects?.().find((o: any) => o.type === 'image');
+      if (inner) pinnedTargetRef.current = inner as fabric.Image;
+    }
+  }, [activeSelectionTool, canvas]);
+
+  useEffect(() => {
+    toolRef.current = activeSelectionTool;
+    // Otherwise the size ring reappears at the last place the pointer was, whenever the brush is
+    // picked up again.
+    if (!isBrushTool(activeSelectionTool)) hoverRef.current = null;
+  }, [activeSelectionTool]);
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => { altDownRef.current = e.altKey; };
+    // Alt-tabbing away never delivers the keyup, so the flag would stay stuck on without this.
+    const clear = () => { altDownRef.current = false; };
+    window.addEventListener('keydown', sync);
+    window.addEventListener('keyup', sync);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', sync);
+      window.removeEventListener('keyup', sync);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
+  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
+
+  // The canvas handlers bind once, so they reach these through refs.
+  const isLiveTargetRef = useRef<typeof isLiveTarget | null>(null);
+  const imageAtPointRef = useRef<typeof imageAtPoint | null>(null);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   useEffect(() => { draftRef.current = draft; }, [draft]);
 
+  /** Whether a pinned layer is still a usable target. */
+  const isLiveTarget = useCallback((obj: fabric.Image | null): obj is fabric.Image => {
+    if (!obj || !canvas) return false;
+    if (obj.visible === false) return false;
+    return canvas.getObjects().includes(obj);
+  }, [canvas]);
+
+  /** Whether a scene point falls within an image's on-canvas bounds. */
+  const pointOverImage = (img: fabric.Image | null, point: Point): boolean => {
+    if (!img) return false;
+    const b = img.getBoundingRect();
+    return point.x >= b.left && point.x <= b.left + b.width
+      && point.y >= b.top && point.y <= b.top + b.height;
+  };
+
+  /** Topmost visible image under a scene point, which is the one the user is pointing at. */
+  const imageAtPoint = useCallback((point: Point): fabric.Image | null => {
+    if (!canvas) return null;
+    const images = canvas.getObjects().filter(o => o.type === 'image' && o.visible);
+    for (let i = images.length - 1; i >= 0; i--) {
+      const b = images[i].getBoundingRect();
+      if (point.x >= b.left && point.x <= b.left + b.width
+        && point.y >= b.top && point.y <= b.top + b.height) {
+        return images[i] as fabric.Image;
+      }
+    }
+    return null;
+  }, [canvas]);
+
   const clearSelection = useCallback(() => {
     if (canvas) canvas.defaultCursor = 'default';
+    // The selection is gone, so the layer it belonged to should not haunt the next one.
+    pinnedTargetRef.current = null;
     setSelection(null);
     setDraft(null);
     dragStartRef.current = null;
@@ -174,6 +300,39 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       const current = selectionRef.current;
       const zoom = canvas.getZoom() || 1;
 
+      /**
+       * Decides which layer a *new* selection gesture belongs to.
+       *
+       * An explicit choice is honoured only while the press is actually over it - that is what
+       * separates "I picked the original, the copy just happens to sit on top" from "I picked
+       * something earlier and have now moved on to a different layer". Called only where a new
+       * selection begins, never when an existing one is being dragged or resized, so moving a
+       * selection across the canvas cannot hand it to a different layer.
+       */
+      const pinTargetFor = (at: Point) => {
+        const pinned = pinnedTargetRef.current;
+        const pinnedLives = !!isLiveTargetRef.current?.(pinned);
+        if (pinnedLives && pinned && pointOverImage(pinned, at)) return;
+        pinnedTargetRef.current = imageAtPointRef.current?.(at) ?? (pinnedLives ? pinned : null);
+      };
+
+      // The brush is checked before the transform handles: with the brush armed, a press inside an
+      // existing selection has to paint, not drag it. Photoshop draws the same line between a
+      // painting tool and a transform.
+      if (isBrushTool(tool)) {
+        pinTargetFor(point);
+        // Alt flips to the other brush for the length of one stroke - a shortcut, never the only
+        // way in. The mode is captured now so releasing Alt mid-swipe cannot turn a single stroke
+        // into two different operations.
+        const alt = !!(opt.e?.altKey) || altDownRef.current;
+        const mode: BrushMode = alt ? otherMode(baseBrushMode(tool)) : baseBrushMode(tool);
+        strokeRef.current = { points: [point], mode, radius: brushSizeRef.current / 2 / zoom };
+        hoverRef.current = point;
+        opt.e.preventDefault?.();
+        canvas.requestRenderAll();
+        return;
+      }
+
       // Direct manipulation comes first and applies whether or not a tool is armed, which is what
       // makes the selection behave like Photoshop's: grab a handle to transform, press inside to
       // move it, press outside to start a new one.
@@ -215,6 +374,7 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       }
 
       opt.e.preventDefault?.();
+      pinTargetFor(point);
 
       if (tool === 'sel-pen') {
         const current = draftRef.current as PathSelection | null;
@@ -248,6 +408,23 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
 
     const onMove = (opt: any) => {
       const point = scenePoint(opt);
+
+      if (isBrushTool(toolRef.current)) {
+        hoverRef.current = point;
+        const stroke = strokeRef.current;
+        if (stroke) {
+          const last = stroke.points[stroke.points.length - 1];
+          // Skip points that add nothing: a swipe can fire hundreds of events, and every one of
+          // them is a segment the mask has to rasterise and the tracer has to walk.
+          const minStep = Math.max(0.5, stroke.radius * 0.15);
+          if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= minStep) {
+            stroke.points.push(point);
+          }
+        }
+        canvas.requestRenderAll();
+        if (stroke) { opt.e.preventDefault?.(); return; }
+        return;
+      }
 
       const drag = dragRef.current;
       if (drag) {
@@ -304,6 +481,14 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
     };
 
     const onUp = () => {
+      const stroke = strokeRef.current;
+      if (stroke) {
+        strokeRef.current = null;
+        applyStrokeRef.current?.(stroke);
+        canvas.requestRenderAll();
+        return;
+      }
+
       if (dragRef.current) {
         dragRef.current = null;
         return;
@@ -355,10 +540,57 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       canvas.requestRenderAll();
     };
 
+    /** The swipe in progress, plus the size ring, both in scene space. */
+    const drawBrushOverlay = (ctx: CanvasRenderingContext2D, zoom: number) => {
+      const stroke = strokeRef.current;
+      const adding = (stroke?.mode ?? baseBrushMode(toolRef.current)) === 'add';
+      const tint = adding ? 'rgba(59,130,246,' : 'rgba(239,68,68,';
+
+      if (stroke && stroke.points.length) {
+        ctx.save();
+        ctx.fillStyle = `${tint}0.35)`;
+        ctx.strokeStyle = `${tint}0.35)`;
+        ctx.lineWidth = stroke.radius * 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.setLineDash([]);
+        if (stroke.points.length === 1) {
+          ctx.beginPath();
+          ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.radius, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+          for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // The ring is the only way to judge brush size before committing to a swipe, and it matters
+      // more on touch, where there is no cursor at all.
+      const at = stroke ? stroke.points[stroke.points.length - 1] : hoverRef.current;
+      if (!at) return;
+      const radius = (stroke ? stroke.radius : brushSizeRef.current / 2 / zoom);
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(at.x, at.y, radius, 0, Math.PI * 2);
+      ctx.lineWidth = 2 / zoom;
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.stroke();
+      ctx.lineWidth = 1 / zoom;
+      ctx.strokeStyle = adding ? '#60a5fa' : '#f87171';
+      ctx.stroke();
+      ctx.restore();
+    };
+
     // Marching ants, drawn in scene space so the outline tracks the artwork through pan and zoom.
     const onAfterRender = () => {
       const shape = draftRef.current || selectionRef.current;
-      if (!shape) return;
+      const brushArmed = isBrushTool(toolRef.current);
+      if (!shape && !brushArmed) return;
+
       const ctx = canvas.getContext();
       const vpt = canvas.viewportTransform;
       if (!ctx || !vpt) return;
@@ -366,6 +598,29 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       const zoom = canvas.getZoom() || 1;
       ctx.save();
       ctx.transform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
+
+      if (brushArmed) drawBrushOverlay(ctx, zoom);
+      if (!shape) { ctx.restore(); return; }
+
+      // Outline the layer the selection will act on. With overlapping copies of one image there is
+      // otherwise nothing on screen saying which of them an operation is about to change.
+      const target = targetImageRef.current?.();
+      if (target) {
+        const corners = target.getCoords?.();
+        if (corners && corners.length === 4) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(corners[0].x, corners[0].y);
+          for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+          ctx.closePath();
+          ctx.setLineDash([6 / zoom, 5 / zoom]);
+          ctx.lineWidth = 1 / zoom;
+          ctx.strokeStyle = 'rgba(56,189,248,0.75)';
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
       ctx.beginPath();
       traceShape(ctx, shape);
 
@@ -394,7 +649,7 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
 
       // Transform handles, drawn only for a committed selection so they do not flicker mid-drag.
       const committed = selectionRef.current;
-      if (committed && !draftRef.current) {
+      if (committed && !draftRef.current && !isBrushTool(toolRef.current)) {
         const size = HANDLE_SIZE_PX / zoom;
         const rotOffset = ROTATE_OFFSET_PX / zoom;
         // Rotated positions, so the box hugs the shape rather than its screen-aligned bounds.
@@ -501,7 +756,9 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
       if (e.altKey && e.key === 'Enter') {
-        if (commitPenPath()) e.preventDefault();
+        // Closing a pen path in progress wins; otherwise the shortcut converts whatever object is
+        // selected on the canvas, which is what makes a painted brush shape into a selection.
+        if (commitPenPath() || convertObjectToSelectionRef.current?.()) e.preventDefault();
       } else if (e.key === 'Escape') {
         if (draftRef.current || selectionRef.current) {
           e.preventDefault();
@@ -515,6 +772,8 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
 
   // Confine the object's filter stack to the selection while one is live, so adding a filter in
   // the Filter Studio affects the marked region only instead of the whole layer.
+  // The key handler is registered before the converter exists, so it reaches it through a ref.
+  const convertObjectToSelectionRef = useRef<((mode?: BrushMode) => boolean) | null>(null);
   const maskedImageRef = useRef<fabric.Image | null>(null);
   useEffect(() => {
     if (!canvas) return;
@@ -568,6 +827,79 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
   const rotateSelection = useCallback((degrees: number) =>
     transformSelection(shape => rotateShape(shape, degrees)), [transformSelection]);
 
+  /** Replaces the selection with the result of a combine, treating "nothing left" as a deselect. */
+  const settleCombined = useCallback((next: SelectionShape | null) => {
+    setSelection(next);
+    selectionRef.current = next;
+    setDraft(null);
+    draftRef.current = null;
+    canvas?.requestRenderAll();
+  }, [canvas]);
+
+  /**
+   * Folds one finished brush swipe into the selection.
+   *
+   * Committing on release rather than continuously is what keeps this usable: one rasterise and
+   * one re-trace per swipe instead of per pointer event, while the translucent overlay carries the
+   * feedback during the drag.
+   */
+  const applyStroke = useCallback((stroke: { points: Point[]; mode: BrushMode; radius: number }) => {
+    if (!stroke.points.length) return;
+    const next = applyBrushStroke(
+      selectionRef.current,
+      { points: stroke.points, radius: stroke.radius },
+      stroke.mode
+    );
+    settleCombined(next);
+  }, [settleCombined]);
+
+  useEffect(() => { applyStrokeRef.current = applyStroke; }, [applyStroke]);
+
+  /**
+   * Turns the object on the canvas into a selection - a shape painted with the paint brush, but
+   * equally a polygon, a path or text.
+   *
+   * With a selection already live it combines rather than replaces, using the brush's own mode, so
+   * a painted shape can extend or cut into what is selected exactly as a swipe would.
+   */
+  const convertObjectToSelection = useCallback((mode?: BrushMode): boolean => {
+    if (!canvas) return false;
+    const obj = canvas.getActiveObject();
+    if (!obj) return false;
+
+    const raster = rasterizeObject(obj);
+    if (!raster) return false;
+
+    const effective = mode || baseBrushMode(toolRef.current);
+    const current = selectionRef.current;
+
+    const next = current
+      ? combineSelection(current, imageAddition(raster.canvas, raster.bounds), effective)
+      : maskToSelection(
+        raster.canvas.getContext('2d')!.getImageData(0, 0, raster.canvas.width, raster.canvas.height),
+        {
+          offset: { x: raster.bounds.x, y: raster.bounds.y },
+          scale: raster.bounds.width / raster.canvas.width,
+          tolerance: 1,
+          smooth: 1,
+          minRingAreaRatio: 0.002,
+          maxRings: 64
+        }
+      );
+
+    if (!next) return false;
+
+    // Fabric must let go of the object, or the live selection's handles would fight with it.
+    canvas.discardActiveObject();
+    // The shape has become the selection, so the shape itself goes. The host routes this through
+    // the undo stack, which is why it is a callback rather than a canvas.remove() here.
+    onConsumeObject?.(obj);
+    settleCombined(next);
+    return true;
+  }, [canvas, settleCombined, onConsumeObject]);
+
+  useEffect(() => { convertObjectToSelectionRef.current = convertObjectToSelection; }, [convertObjectToSelection]);
+
   /**
    * Swaps the selected region for everything else on the layer.
    *
@@ -578,6 +910,21 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
   const invertSelection = useCallback((): boolean => {
     const current = selectionRef.current;
     if (!current || !canvas) return false;
+
+    // Inverting an inverted selection restores what was there before, rather than wrapping it in
+    // another pair of rings. Even-odd would still resolve those to the right region, but the outer
+    // ring stays in the outline, so the selection went on *looking* inverted after being undone.
+    const state = invertStateRef.current;
+    if (state.from && state.result === current) {
+      const restored = state.from;
+      invertStateRef.current = { from: null, result: restored };
+      setIsInverted(false);
+      setSelection(restored);
+      selectionRef.current = restored;
+      canvas.requestRenderAll();
+      return true;
+    }
+
     const image = targetImageRef.current?.();
     if (!image) return false;
 
@@ -595,11 +942,25 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
     const inverted = invertShape(current, boundsShape.points);
     if (!inverted) return false;
 
+    invertStateRef.current = { from: current, result: inverted };
+    setIsInverted(true);
     setSelection(inverted);
     selectionRef.current = inverted;
     canvas.requestRenderAll();
     return true;
   }, [canvas]);
+
+  /**
+   * Any other change - a new shape, a brush stroke, a transform - breaks the relationship the
+   * stored original depends on, so the toggle drops back to "not inverted". Identity comparison is
+   * enough because every path that changes the selection hands over a freshly built shape.
+   */
+  useEffect(() => {
+    const state = invertStateRef.current;
+    if (selection === state.result) return;
+    if (state.from || state.result) invertStateRef.current = { from: null, result: null };
+    setIsInverted(prev => (prev ? false : prev));
+  }, [selection]);
 
   // ---------------------------------------------------------------- operations
   const targetImageRef = useRef<(() => fabric.Image | null) | null>(null);
@@ -607,7 +968,12 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
   const targetImage = useCallback((): fabric.Image | null => {
     const active = canvas?.getActiveObject();
     if (active && active.type === 'image') return active as fabric.Image;
-    // Fall back to the topmost image the selection actually overlaps.
+
+    // The layer pinned when this selection was drawn. It beats the overlap search below, which
+    // cannot tell an original from a copy pasted on top of it.
+    if (isLiveTarget(pinnedTargetRef.current)) return pinnedTargetRef.current;
+
+    // Last resort: the topmost image the selection actually overlaps.
     const shape = selectionRef.current;
     if (!canvas || !shape) return null;
     const box = getShapeBBox(shape);
@@ -616,12 +982,18 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       const b = images[i].getBoundingRect();
       const overlaps = box.x < b.left + b.width && b.left < box.x + box.width
         && box.y < b.top + b.height && b.top < box.y + box.height;
-      if (overlaps) return images[i] as fabric.Image;
+      if (overlaps) {
+        // Remember it, so every later operation in this selection agrees with this one.
+        pinnedTargetRef.current = images[i] as fabric.Image;
+        return images[i] as fabric.Image;
+      }
     }
     return null;
-  }, [canvas]);
+  }, [canvas, isLiveTarget]);
 
   useEffect(() => { targetImageRef.current = targetImage; }, [targetImage]);
+  useEffect(() => { isLiveTargetRef.current = isLiveTarget; }, [isLiveTarget]);
+  useEffect(() => { imageAtPointRef.current = imageAtPoint; }, [imageAtPoint]);
 
   /**
    * The image an auto-select should run against.
@@ -634,6 +1006,10 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
     if (!canvas) return null;
     const active = canvas.getActiveObject();
     if (active && active.type === 'image') return active as fabric.Image;
+
+    // A tap names its own layer; otherwise stay on whichever layer this selection already belongs
+    // to rather than silently hopping to the topmost one.
+    if (!scenePoint && isLiveTarget(pinnedTargetRef.current)) return pinnedTargetRef.current;
 
     const images = canvas.getObjects().filter(o => o.type === 'image' && o.visible);
     if (!images.length) return null;
@@ -648,7 +1024,7 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
       }
     }
     return images[images.length - 1] as fabric.Image;
-  }, [canvas]);
+  }, [canvas, isLiveTarget]);
 
   const cancelAutoSelect = useCallback(() => {
     autoAbortRef.current?.abort();
@@ -678,6 +1054,8 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
     }
 
     const image = pickImageFor(request.point);
+    // Whatever the run resolved to is the layer the resulting selection belongs to.
+    if (image) pinnedTargetRef.current = image;
     if (!image) {
       setAutoSelectError('Add or select an image layer first.');
       return false;
@@ -890,6 +1268,7 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
 
     // The copy is now its own object and is what the user wants to manipulate; leaving the marquee
     // up would suggest the next operation still applies to the region it came from.
+    pinnedTargetRef.current = null;
     setSelection(null);
     selectionRef.current = null;
     setDraft(null);
@@ -930,6 +1309,15 @@ export function useImageSelection({ canvas, onCommit, rebuildFilters, segmentSub
     scaleSelection,
     expandSelection,
     rotateSelection,
-    invertSelection
+    invertSelection,
+    /** True while the selection is showing the inverse of what was drawn. */
+    isInverted,
+    /** Which way a swipe will push the selection, decided by the armed tool. */
+    brushMode: baseBrushMode(activeSelectionTool),
+    brushSize,
+    setBrushSize: (px: number) => setBrushSize(Math.max(MIN_BRUSH_PX, Math.min(MAX_BRUSH_PX, px))),
+    minBrushSize: MIN_BRUSH_PX,
+    maxBrushSize: MAX_BRUSH_PX,
+    convertObjectToSelection
   };
 }
