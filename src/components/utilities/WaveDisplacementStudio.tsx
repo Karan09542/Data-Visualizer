@@ -1,3 +1,4 @@
+import { loadExternalScript } from "../../utils/offlineErrors";
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -366,21 +367,6 @@ export function WaveDisplacementStudio() {
          img.onload = () => resolve(img);
          img.onerror = (err) => reject(err);
          img.src = url;
-      });
-   };
-
-   // Dynamic Script Loader for CCapture
-   const loadScript = (src: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-         if (document.querySelector(`script[src="${src}"]`)) {
-            resolve();
-            return;
-         }
-         const script = document.createElement('script');
-         script.src = src;
-         script.onload = () => resolve();
-         script.onerror = () => reject(new Error(`Failed to load ${src}`));
-         document.head.appendChild(script);
       });
    };
 
@@ -2040,7 +2026,7 @@ export function WaveDisplacementStudio() {
             // Frame-by-frame export via CCapture (guarantees perfect framerate for WebM/GIF)
             if (!(window as any).CCapture) {
                setStatusMessage('Loading CCapture module...');
-               await loadScript('https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js');
+               await loadExternalScript('https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js', 'WebM / GIF export');
             }
             const CCaptureClass = (window as any).CCapture;
             if (!CCaptureClass) throw new Error('CCapture engine unavailable');

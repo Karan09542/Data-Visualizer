@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Download, X, RefreshCw } from "lucide-react";
 import { Workbox } from 'workbox-window';
+import { useStore } from "../store/useStore";
 
 export function ServiceWorkerUpdater() {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -39,6 +40,14 @@ export function ServiceWorkerUpdater() {
       workbox.addEventListener('controlling', (event) => {
         if (event.isUpdate) {
           window.location.reload();
+        }
+      });
+
+      // First install done: everything is precached, so from now on the app opens and works
+      // offline. Worth saying - going offline before this point leaves nothing to fall back on.
+      workbox.addEventListener('installed', (event) => {
+        if (!event.isUpdate) {
+          useStore.getState().setNotification({ message: 'Ready to work offline — the app is now saved on this device.', type: 'success' });
         }
       });
 

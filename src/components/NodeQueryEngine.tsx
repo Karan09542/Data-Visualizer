@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 import { useStore } from '../store/useStore';
 import { Search, Command, Code2, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, X, Info, Settings, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-const NodeQueryEngineHelpModal = lazy(() => import('./NodeQueryEngineHelpModal'));
+const NodeQueryEngineHelpModal = lazyWithRetry(() => import('./NodeQueryEngineHelpModal'), 'Query Engine Help');
 
 export default function NodeQueryEngine() {
     const searchQuery = useStore((state) => state.searchQuery);

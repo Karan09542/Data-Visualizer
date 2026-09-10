@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download, RotateCw, RotateCcw, AlignStartVertical, AlignCenterVertical } from "lucide-react";
 import { useDebounce } from "use-debounce";
 import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -531,7 +532,8 @@ const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.
 });
 
 // Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Bundled with the app, and so precached, rather than fetched from unpkg: PDFs open offline.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface PdfViewerProps {
   url: string;

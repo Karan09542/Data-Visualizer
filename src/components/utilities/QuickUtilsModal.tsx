@@ -1,4 +1,5 @@
-import React, { useState, useEffect, lazy, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
+import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
 import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
@@ -14,10 +15,10 @@ import { ImageSlicerUtil } from "./ImageSlicerUtil";
 import { PdfMergeUtil } from "./PdfMergeUtil";
 import CustomSelect from "../CustomSelect";
 
-const WaveDisplacementStudio = lazy(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })));
+const WaveDisplacementStudio = lazyWithRetry(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })), "Wave Displacement Studio");
 // Split out: it pulls in the AI runtime, the eraser engine and d3, none of
 // which are needed unless the Sticker Maker tab is actually opened.
-const StickerMakerUtil = lazy(() => import("./StickerMakerUtil").then(m => ({ default: m.StickerMakerUtil })));
+const StickerMakerUtil = lazyWithRetry(() => import("./StickerMakerUtil").then(m => ({ default: m.StickerMakerUtil })), "Sticker Maker");
 
 const TABS = [
   { id: "passport", label: "Passport Studio", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30 font-bold", iconClass: "text-blue-500" },

@@ -22,15 +22,15 @@ const hexToRgbaString = (hex: string, alpha = 1): string => {
    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-const ExportLiveComparisonViewer = React.lazy(() => import('../export/ExportLiveComparisonViewer').then(m => ({ default: m.ExportLiveComparisonViewer })));
-const PropertiesTab = React.lazy(() => import('./components/panels/PropertiesTab').then(m => ({ default: m.PropertiesTab })));
-const ArtboardsTab = React.lazy(() => import('./components/panels/ArtboardsTab').then(m => ({ default: m.ArtboardsTab })));
-const LayersTab = React.lazy(() => import('./components/panels/LayersTab').then(m => ({ default: m.LayersTab })));
-const AIToolsPanel = React.lazy(() => import('./components/panels/AIToolsPanel').then(m => ({ default: m.AIToolsPanel })));
-const FilterStudioTab = React.lazy(() => import('./components/panels/FilterStudioTab').then(m => ({ default: m.FilterStudioTab })));
-const QuickActionsTab = React.lazy(() => import('./components/panels/QuickActionsTab').then(m => ({ default: m.QuickActionsTab })));
-const ExportStudio = React.lazy(() => import('../export/ExportStudio').then(m => ({ default: m.ExportStudio })));
-const AssetGallery = React.lazy(() => import('../image-import/gallery/AssetGallery').then(m => ({ default: m.AssetGallery })));
+const ExportLiveComparisonViewer = lazyWithRetry(() => import('../export/ExportLiveComparisonViewer').then(m => ({ default: m.ExportLiveComparisonViewer })), 'Export Comparison');
+const PropertiesTab = lazyWithRetry(() => import('./components/panels/PropertiesTab').then(m => ({ default: m.PropertiesTab })), 'Properties');
+const ArtboardsTab = lazyWithRetry(() => import('./components/panels/ArtboardsTab').then(m => ({ default: m.ArtboardsTab })), 'Artboards');
+const LayersTab = lazyWithRetry(() => import('./components/panels/LayersTab').then(m => ({ default: m.LayersTab })), 'Layers');
+const AIToolsPanel = lazyWithRetry(() => import('./components/panels/AIToolsPanel').then(m => ({ default: m.AIToolsPanel })), 'AI Tools');
+const FilterStudioTab = lazyWithRetry(() => import('./components/panels/FilterStudioTab').then(m => ({ default: m.FilterStudioTab })), 'Filter Studio');
+const QuickActionsTab = lazyWithRetry(() => import('./components/panels/QuickActionsTab').then(m => ({ default: m.QuickActionsTab })), 'Quick Actions');
+const ExportStudio = lazyWithRetry(() => import('../export/ExportStudio').then(m => ({ default: m.ExportStudio })), 'Export Studio');
+const AssetGallery = lazyWithRetry(() => import('../image-import/gallery/AssetGallery').then(m => ({ default: m.AssetGallery })), 'Asset Gallery');
 
 import { ARTBOARD_PRESETS } from './types/artboards';
 import { useArtboardState } from "./hooks/useArtboardState";
@@ -47,6 +47,7 @@ import { loadFromDexie, saveToDexie } from "../../utils/fabricDexieSync";
 import { useStore } from "../../store/useStore";
 import { resolveAssetUrl, importFile } from "../../utils/assetManager";
 import { getValueAtPath } from "../../utils/pathUtils";
+import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import {
    Type, Upload, Download,
    Layers, MousePointer2, Brush, Eraser, Circle, Minus, Edit2, Image as ImageIcon,

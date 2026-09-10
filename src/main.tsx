@@ -10,6 +10,7 @@ import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
 import './index.css';
+import { FeatureUnavailableError, isLoadFailure, notifyLoadFailure } from './utils/offlineErrors';
 
 if (typeof window !== 'undefined') {
   sessionStorage.removeItem('chunk-reload-attempted');
@@ -262,6 +263,10 @@ if (typeof window !== 'undefined') {
       }
       e.stopImmediatePropagation();
       e.preventDefault();
+    } else if (isLoadFailure(e.error || e.message)) {
+       // Something could not be downloaded (usually offline): a message, not a stack trace.
+       e.preventDefault();
+       notifyLoadFailure();
     } else {
        // display error on screen
        const errDiv = document.createElement('div');
@@ -346,6 +351,14 @@ if (typeof window !== 'undefined') {
     if (isSuppressed) {
       e.preventDefault();
       e.stopImmediatePropagation();
+      return;
+    }
+
+    // A dynamic import or download that failed - typically offline. Said once, in plain words,
+    // rather than as a raw rejection in the corner.
+    if (isLoadFailure(e.reason)) {
+      e.preventDefault();
+      notifyLoadFailure(e.reason instanceof FeatureUnavailableError ? e.reason.feature : undefined);
       return;
     }
 

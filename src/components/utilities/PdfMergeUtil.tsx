@@ -5,12 +5,14 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, 
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { PDFDocument, degrees } from 'pdf-lib';
 import { useStore } from '../../store/useStore';
 import MediaCarousel from '../MediaCarousel';
 
 // Ensure worker is set for pdfjs
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Bundled with the app, and so precached, rather than fetched from unpkg: PDFs open offline.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 type MergeItemType = 'pdf-page' | 'pdf-file' | 'image';
 

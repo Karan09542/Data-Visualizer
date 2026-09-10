@@ -69,7 +69,10 @@
     // Auto-reload on chunk load failure (fixes SPA deployments where old chunks are deleted)
     window.addEventListener('error', function(e) {
       var target = e.target || e.srcElement;
-      var isScript = target && target.tagName === 'SCRIPT';
+      // Reloading offline cannot fetch anything - it would only throw the user's work away. And a
+      // library from a CDN failing is handled where it is used, so only the app's own scripts count.
+      if (!navigator.onLine) return;
+      var isScript = target && target.tagName === 'SCRIPT' && !!target.src && target.src.indexOf(location.origin) === 0;
       if (isScript || (e.message && e.message.toLowerCase().includes('failed to load module script'))) {
         console.error('Chunk load error detected. Forcing hard reload...');
         if (sessionStorage.getItem('chunk-reload-attempted') !== 'true') {

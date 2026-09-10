@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { clientsClaim } from 'workbox-core';
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -152,6 +152,40 @@ registerRoute(
   })
 );
 
+// --- Libraries loaded from CDNs at run time ---
+//
+// pyodide, the jsquash codecs, Google Fonts and a few others are fetched from a CDN on first use
+// rather than bundled. Their URLs are pinned to a version, so the first download can be kept and
+// served from then on - which is what lets them work offline afterwards. Opaque responses (a plain
+// <script> or <link> without CORS) are kept too: they are all such a tag ever gets.
+const CDN_HOSTS = new Set([
+  'unpkg.com',
+  'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+]);
+
+const keepOkOrOpaque = {
+  cacheWillUpdate: async ({ response }: { response: Response }) =>
+    response && (response.ok || response.type === 'opaque') ? response : null,
+};
+
+registerRoute(
+  ({ url }) => CDN_HOSTS.has(url.hostname),
+  new CacheFirst({
+    cacheName: 'cdn-cache',
+    plugins: [
+      keepOkOrOpaque,
+      new ExpirationPlugin({
+        maxEntries: 400,
+        maxAgeSeconds: 90 * 24 * 60 * 60, // 90 Days
+        purgeOnQuotaError: true,
+      }),
+    ],
+  })
+);
+
 // Cache images with an expiration plugin
 registerRoute(
   ({ request, url }) => request.destination === 'image' || url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i),
@@ -194,13 +228,36 @@ registerRoute(
   })
 );
 
-// SPA Navigation Fallback
-// Navigations will go to the network first to ensure we get the latest HTML
-registerRoute(
-  new NavigationRoute(
-    new NetworkFirst({
-      cacheName: 'html-cache',
-      networkTimeoutSeconds: 3,
-    })
-  )
-);
+// --- App shell for every navigation ---
+//
+// Online, the page comes from the network so a fresh deploy is picked up. When that fails -
+// offline, or a connection too slow to wait for - the precached index.html is served instead.
+// That is the page this worker's precache was built with, so every lazily loaded chunk it asks for
+// is in the same precache.
+//
+// This used to go through a separate HTML cache, which broke offline in two ways: it could hand
+// out a page from a newer deploy than the cached chunks (screens then failed to open), and it could
+// never answer a URL it had not seen before - such as the share target's `/?shared_id=...`
+// redirect, which is unique every time.
+const NAVIGATION_TIMEOUT_MS = 4000;
+
+const appShell = async (request: Request): Promise<Response> => {
+  try {
+    const network = await Promise.race([
+      fetch(request),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('navigation timeout')), NAVIGATION_TIMEOUT_MS)),
+    ]);
+    // Redirects and ordinary pages pass straight through; only a failing server falls back.
+    if (network.status < 500) return network;
+  } catch {
+    // Offline or too slow: fall through to the app shell.
+  }
+  return (await matchPrecache('/index.html')) || Response.error();
+};
+
+registerRoute(new NavigationRoute(({ request }) => appShell(request), { denylist: [/^\/api\//] }));
+
+// Navigations used to be cached here; the precached app shell replaces it.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.delete('html-cache'));
+});

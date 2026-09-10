@@ -73,8 +73,10 @@ if (typeof (globalThis as any).window === "undefined") {
 
 // ─── Now safe to import pdfjs-dist ───────────────────────────────────────────
 import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Bundled with the app, and so precached, rather than fetched from unpkg: PDFs open offline.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 let pdfDoc: any = null;
 
