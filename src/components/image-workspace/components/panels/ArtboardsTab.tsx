@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
    SquareDashed, Plus, Copy, Trash2, ChevronDown, MoreVertical, Edit2,
-   RectangleVertical, RectangleHorizontal, ArrowUp, ArrowDown, Check, Settings2
+   RectangleVertical, RectangleHorizontal, ArrowUp, ArrowDown, Check, Settings2, ZoomIn
 } from 'lucide-react';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { useCanvas } from '../../contexts/CanvasContext';
@@ -10,6 +11,18 @@ import { PRESET_REGISTRY, getDimensionsInPixels } from '../../../../lib/imagePre
 import { ColorPickerTrigger } from '../shared/ColorPickers';
 
 const CHECKER = 'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgGwEg9AMRAGQzUQJDw/wP9h2IIMhqwYYwGKDAaINBQgAHTyMAwwAEAnpIEB3aIfjIAAAAASUVQRVGGIII=")';
+
+/**
+ * Whether a gesture started on something that has its own meaning for it - a text field, a button,
+ * the settings panel. Card gestures stand aside there: a double-click in a width field is selecting
+ * a number, and a right-click in one should still get the browser's copy/paste menu.
+ */
+const isOwnGestureTarget = (target: EventTarget | null): boolean =>
+   target instanceof Element && !!target.closest('input, textarea, select, button, a, [data-card-ignore]');
+
+const LONG_PRESS_MS = 500;
+const DOUBLE_TAP_MS = 320;
+const TOUCH_SLOP_PX = 10;
 
 /** Field label at the one size used across the inspector. */
 const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -69,6 +82,17 @@ export const ArtboardsTab: React.FC = () => {
    const [dragOverArtboardIdx, setDragOverArtboardIdx] = useState<number | null>(null);
 
    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+   // Set when the menu is opened by right-click or long-press, so it appears where the pointer is;
+   // null means it hangs off the card's own menu button.
+   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+   // Touch has no dblclick or contextmenu worth relying on (iOS sends neither), so both are
+   // recognised from the raw touches.
+   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
+   const suppressDblClickUntilRef = useRef(0);
+   const longPressTimerRef = useRef<number | null>(null);
+   const longPressFiredRef = useRef(false);
+   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
    const [expandedSettingsId, setExpandedSettingsId] = useState<string | null>(null);
    const [editingNameId, setEditingNameId] = useState<string | null>(null);
    const menuRef = useRef<HTMLDivElement>(null);
@@ -115,6 +139,30 @@ export const ArtboardsTab: React.FC = () => {
          }
       };
       executeCommand(cmd as any);
+   };
+
+   const toggleSettings = (boardId: string) => {
+      setExpandedSettingsId(prev => (prev === boardId ? null : boardId));
+      setActiveArtboardId(boardId);
+   };
+
+   const openMenuAt = (boardId: string, x: number, y: number) => {
+      // Kept inside the window so a click near the edge does not open a menu half off-screen.
+      const width = 184;
+      const height = 300;
+      setMenuPos({
+         x: Math.max(8, Math.min(x, window.innerWidth - width)),
+         y: Math.max(8, Math.min(y, window.innerHeight - height))
+      });
+      setOpenMenuId(boardId);
+      setActiveArtboardId(boardId);
+   };
+
+   const clearLongPress = () => {
+      if (longPressTimerRef.current !== null) {
+         window.clearTimeout(longPressTimerRef.current);
+         longPressTimerRef.current = null;
+      }
    };
 
    const zoomToBoard = (board: any) => {
@@ -251,8 +299,9 @@ export const ArtboardsTab: React.FC = () => {
                   return (
                      <div
                         key={board.id}
-                        draggable
-                        onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDraggedArtboardIdx(idx); }}
+                        data-board-card
+                        // Only a drop target now. The whole card used to be draggable, so pressing
+                        // in the name or size fields and dragging to select text reordered the list.
                         onDragOver={(e) => { e.preventDefault(); setDragOverArtboardIdx(idx); }}
                         onDrop={(e) => {
                            e.preventDefault();
@@ -262,10 +311,64 @@ export const ArtboardsTab: React.FC = () => {
                            setDraggedArtboardIdx(null);
                            setDragOverArtboardIdx(null);
                         }}
-                        onDragEnd={() => { setDraggedArtboardIdx(null); setDragOverArtboardIdx(null); }}
                         onClick={() => setActiveArtboardId(board.id)}
-                        onDoubleClick={() => { setActiveArtboardId(board.id); zoomToBoard(board); }}
-                        className={`relative rounded-xl cursor-pointer border select-none transition-colors ${isActive
+                        onDoubleClick={(e) => {
+                           if (isOwnGestureTarget(e.target)) return;
+                           // A double-tap was already handled from the touches themselves.
+                           if (Date.now() < suppressDblClickUntilRef.current) return;
+                           toggleSettings(board.id);
+                        }}
+                        onContextMenu={(e) => {
+                           if (isOwnGestureTarget(e.target)) return;
+                           e.preventDefault();
+                           openMenuAt(board.id, e.clientX, e.clientY);
+                        }}
+                        onTouchStart={(e) => {
+                           if (e.touches.length !== 1 || isOwnGestureTarget(e.target)) return;
+                           // A long-press on the handle starts a native drag on Android; opening the
+                           // menu as well would put two gestures on one finger.
+                           if (e.target instanceof Element && e.target.closest('[data-drag-handle]')) return;
+                           const t = e.touches[0];
+                           touchStartRef.current = { x: t.clientX, y: t.clientY };
+                           longPressFiredRef.current = false;
+                           clearLongPress();
+                           longPressTimerRef.current = window.setTimeout(() => {
+                              longPressFiredRef.current = true;
+                              lastTapRef.current = null;
+                              openMenuAt(board.id, t.clientX, t.clientY);
+                           }, LONG_PRESS_MS);
+                        }}
+                        onTouchMove={(e) => {
+                           const start = touchStartRef.current;
+                           const t = e.touches[0];
+                           // Scrolling the list is not a long-press.
+                           if (start && t && Math.hypot(t.clientX - start.x, t.clientY - start.y) > TOUCH_SLOP_PX) {
+                              clearLongPress();
+                              touchStartRef.current = null;
+                           }
+                        }}
+                        onTouchEnd={(e) => {
+                           clearLongPress();
+                           // After a long-press some browsers (iOS Safari especially) still send the
+                           // compatibility mousedown/click. That mousedown lands outside the menu
+                           // that just opened and the outside-click handler shut it straight away.
+                           if (longPressFiredRef.current) e.preventDefault();
+                           const wasTap = !!touchStartRef.current && !longPressFiredRef.current;
+                           touchStartRef.current = null;
+                           if (!wasTap || isOwnGestureTarget(e.target)) return;
+
+                           const now = Date.now();
+                           const last = lastTapRef.current;
+                           if (last && last.id === board.id && now - last.time < DOUBLE_TAP_MS) {
+                              lastTapRef.current = null;
+                              suppressDblClickUntilRef.current = now + 600;
+                              toggleSettings(board.id);
+                           } else {
+                              lastTapRef.current = { id: board.id, time: now };
+                           }
+                        }}
+                        onTouchCancel={() => { clearLongPress(); touchStartRef.current = null; }}
+                        className={`relative rounded-xl cursor-pointer border select-none transition-colors touch-manipulation ${isActive
                            ? 'bg-blue-50/60 dark:bg-blue-600/10 border-blue-400 dark:border-blue-500/80'
                            : 'bg-white dark:bg-[#1C1C1C] border-slate-200 dark:border-[#2C2C2C] hover:border-slate-300 dark:hover:border-[#4A4A4A]'}
                            ${isDragging ? 'opacity-30 border-dashed' : 'opacity-100'}
@@ -274,7 +377,19 @@ export const ArtboardsTab: React.FC = () => {
                      >
                         <div className="flex gap-3 items-center p-2.5">
                            <div
-                              className="w-10 h-10 shrink-0 rounded-lg border border-slate-200 dark:border-[#3A3A3A] bg-slate-100 dark:bg-[#151515] flex items-center justify-center overflow-hidden"
+                              draggable
+                              onDragStart={(e) => {
+                                 e.stopPropagation();
+                                 e.dataTransfer.effectAllowed = 'move';
+                                 // Show the whole card under the pointer, not just the small thumbnail.
+                                 const card = (e.currentTarget as HTMLElement).closest('[data-board-card]') as HTMLElement | null;
+                                 if (card) e.dataTransfer.setDragImage(card, 24, 24);
+                                 setDraggedArtboardIdx(idx);
+                              }}
+                              onDragEnd={() => { setDraggedArtboardIdx(null); setDragOverArtboardIdx(null); }}
+                              title="Drag to reorder"
+                              data-drag-handle
+                              className="w-10 h-10 shrink-0 rounded-lg border border-slate-200 dark:border-[#3A3A3A] bg-slate-100 dark:bg-[#151515] flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing hover:border-blue-400 dark:hover:border-blue-500/60 transition-colors"
                               style={board.transparent ? { backgroundImage: CHECKER } : undefined}
                            >
                               <div
@@ -340,19 +455,36 @@ export const ArtboardsTab: React.FC = () => {
 
                            <div className="shrink-0 relative">
                               <button
-                                 onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === board.id ? null : board.id); }}
-                                 title="More actions"
+                                 onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuPos(null);
+                                    setOpenMenuId(openMenuId === board.id ? null : board.id);
+                                 }}
+                                 title="More actions (or right-click the card)"
                                  className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-500 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-700 dark:hover:text-white transition-colors touch-manipulation"
                               >
                                  <MoreVertical size={16} />
                               </button>
 
-                              {openMenuId === board.id && (
+                              {openMenuId === board.id && (() => {
+                                 const menu = (
                                  <div
                                     ref={menuRef}
+                                    data-card-ignore
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#3A3A3A] rounded-xl shadow-2xl z-[99999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-100"
+                                    onContextMenu={(e) => e.preventDefault()}
+                                    style={menuPos ? { position: 'fixed', left: menuPos.x, top: menuPos.y } : undefined}
+                                    className={`${menuPos ? '' : 'absolute right-0 top-full mt-1'} w-44 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#3A3A3A] rounded-xl shadow-2xl z-[99999] flex flex-col py-1 animate-in fade-in zoom-in-95 duration-100`}
                                  >
+                                    <MenuItem
+                                       icon={<Settings2 size={13} />} label={isExpanded ? 'Hide Settings' : 'Settings'}
+                                       onClick={() => { toggleSettings(board.id); setOpenMenuId(null); }}
+                                    />
+                                    <MenuItem
+                                       icon={<ZoomIn size={13} />} label="Zoom to Board"
+                                       onClick={() => { setActiveArtboardId(board.id); zoomToBoard(board); setOpenMenuId(null); }}
+                                    />
+                                    <div className="h-px bg-slate-200 dark:bg-[#333] my-1 mx-2" />
                                     <MenuItem
                                        icon={<Edit2 size={13} />} label="Rename"
                                        onClick={() => { setEditingNameId(board.id); setOpenMenuId(null); }}
@@ -377,14 +509,20 @@ export const ArtboardsTab: React.FC = () => {
                                        onClick={() => { deleteArtboard(board.id); setOpenMenuId(null); }}
                                     />
                                  </div>
-                              )}
+                                 );
+                                 // Opened at the pointer: rendered on the page itself, so a transformed
+                                 // panel ancestor cannot drag the "fixed" position away from the pointer.
+                                 return menuPos ? createPortal(menu, document.body) : menu;
+                              })()}
                            </div>
                         </div>
 
                         {isExpanded && (
                            <div
+                              data-card-ignore
                               className="px-2.5 pb-2.5 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200"
                               onClick={e => e.stopPropagation()}
+                              onDoubleClick={e => e.stopPropagation()}
                            >
                               <div className="pt-3 border-t border-slate-200 dark:border-white/5">
                                  <div className="grid grid-cols-2 gap-2">

@@ -51,8 +51,8 @@ import {
    Type, Upload, Download,
    Layers, MousePointer2, Brush, Eraser, Circle, Minus, Edit2, Image as ImageIcon,
    SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, BringToFront, SendToBack, ArrowUp, ArrowDown, AlignLeft, AlignCenter, AlignRight,
-   Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, Target, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
-   Zap
+   Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
+   Zap, ChevronLeft, ChevronRight, Scan
 } from "lucide-react";
 import JSZip from "jszip";
 // @ts-ignore
@@ -135,6 +135,7 @@ import { useImageSelection } from './selection/useImageSelection';
 import { SelectionTab } from './components/panels/SelectionTab';
 import { isTextObject, textScaleAsFontSize } from './services/text/textScale';
 import { sceneFullImageTopLeft } from './services/crop/cropGeometry';
+import { computeArtboardReflow, BoardGeom } from './services/artboards/reflow';
 import { CropShape, traceCropShape } from '../../utils/cropShapes';
 import { buildShapeMaskCommand } from './services/image/shapeMask';
 import { CropShapePicker } from './components/shared/CropShapePicker';
@@ -3476,6 +3477,66 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       executeCommand(cmd);
    };
 
+   /**
+    * Artboard geometry as last seen, so a size change can be told apart from everything else.
+    *
+    * Watching the board list, rather than hooking each place a size can change, catches every
+    * route at once: typing a width, flipping orientation, bleed, resize-to-selection, preset
+    * conversion, and the undo of each. The reflow is expressed as a change in edge position, so it
+    * is its own inverse - undoing a resize pulls the neighbours back without needing a history entry.
+    */
+   const artboardGeometryRef = useRef<Map<string, BoardGeom>>(new Map());
+
+   useEffect(() => {
+      const geometry = (b: Artboard): BoardGeom => ({ x: b.x, y: b.y, width: b.width, height: b.height });
+      const previous = artboardGeometryRef.current;
+
+      // First sight of this document: nothing to compare against yet.
+      if (previous.size === 0) {
+         artboardGeometryRef.current = new Map(artboards.map(b => [b.id, geometry(b)]));
+         return;
+      }
+
+      const targets = computeArtboardReflow(previous, artboards);
+      if (!targets.size) {
+         artboardGeometryRef.current = new Map(artboards.map(b => [b.id, geometry(b)]));
+         return;
+      }
+
+      // Objects are stored at absolute canvas positions, so a board moved on its own would slide
+      // out from under its artwork. Each one follows its board from where the board was last seen.
+      const canvas = fabricRef.current;
+      if (canvas) {
+         const active = canvas.getActiveObject();
+         // Selection members hold coordinates relative to the selection; dissolve it so the shift
+         // lands in real canvas space.
+         if (active && isActiveSelection(active)) canvas.discardActiveObject();
+
+         let moved = false;
+         canvas.getObjects().forEach(obj => {
+            const boardId = (obj as any).artboardId;
+            const target = boardId ? targets.get(boardId) : undefined;
+            const seen = boardId ? previous.get(boardId) : undefined;
+            if (!target || !seen) return;
+            obj.set({ left: (obj.left || 0) + (target.x - seen.x), top: (obj.top || 0) + (target.y - seen.y) });
+            obj.setCoords();
+            moved = true;
+         });
+         if (moved) {
+            canvas.requestRenderAll();
+            updateLayersList();
+         }
+      }
+
+      const next = artboards.map(b => {
+         const target = targets.get(b.id);
+         return target ? { ...b, x: target.x, y: target.y } : b;
+      });
+      // Recorded before the state update, so the run it triggers sees no size change and stops.
+      artboardGeometryRef.current = new Map(next.map(b => [b.id, geometry(b)]));
+      setArtboards(next);
+   }, [artboards]);
+
    const updateArtboardProp = (id: string, prop: keyof Artboard, val: any) => {
       setArtboards((prev) => {
          return prev.map((board) => {
@@ -3829,6 +3890,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       };
 
       loadFromDexie(path, canvas).then((loadedArtboards) => {
+         // A loaded document is not a resize. The default board shares its id with saved ones, so
+         // without forgetting what was seen before, a reload read as "this board just grew" and
+         // pushed every other board - and its artwork - along by the difference.
+         artboardGeometryRef.current = new Map();
          if (loadedArtboards && loadedArtboards.length > 0) {
             setArtboards(loadedArtboards);
          } else {
@@ -3994,6 +4059,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          ctx.restore();
 
          let boards = artboardsRef.current || [];
+         // Phones show one artboard at a time; the others are reached by swiping or the board stepper.
          if (isMobileRef.current) {
             boards = boards.filter(b => b.id === activeArtboardIdRef.current);
          }
@@ -4052,6 +4118,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          if (!vpt || !ctx || ctx !== canvas.getContext()) return;
 
          let boards = artboardsRef.current || [];
+         // Phones show one artboard at a time; the others are reached by swiping or the board stepper.
          if (isMobileRef.current) {
             boards = boards.filter(b => b.id === activeArtboardIdRef.current);
          }
@@ -6910,7 +6977,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             const last = lastMobileFitRef.current;
             // Only a genuine change of board - or arriving in the mobile layout - earns a re-fit.
             // Anything else would take the view away from wherever the user has put it; the
-            // "fit all artboards" button is there for getting back.
+            // fit button in the view controls is there for getting back.
             const shouldFit = !!activeBoard && (!last.mobile || last.boardId !== activeBoard.id);
             if (activeBoard) lastMobileFitRef.current = { boardId: activeBoard.id, mobile: true };
             if (activeBoard && shouldFit) {
@@ -6941,6 +7008,45 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             }
          }
 }, [isMobile, activeArtboardId, artboards]);
+
+      /** Zooms about the middle of what is on screen. setZoom scales about the canvas origin, which dragged the view off to the top-left. */
+      const zoomViewTo = (zoom: number) => {
+         const canvas = fabricRef.current;
+         if (!canvas) return;
+         const z = Math.max(0.1, Math.min(10, zoom));
+         canvas.zoomToPoint(new fabric.Point(canvas.getWidth() / 2, canvas.getHeight() / 2), z);
+         setZoomPercent(Math.round(z * 100));
+         canvas.requestRenderAll();
+      };
+
+      const zoomViewBy = (factor: number) => {
+         const canvas = fabricRef.current;
+         if (canvas) zoomViewTo(canvas.getZoom() * factor);
+      };
+
+      /** Fits the active artboard to the screen, centred. */
+      const fitActiveArtboard = () => {
+         const canvas = fabricRef.current;
+         if (!canvas) return;
+         const board = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
+         if (!board) return;
+         const cw = canvas.width!;
+         const ch = canvas.height!;
+         if (cw <= 0 || ch <= 0) return;
+         const padding = isMobileRef.current ? 16 : 60;
+         const zoom = Math.max(0.1, Math.min(4, cw / (board.width + padding * 2), ch / (board.height + padding * 2)));
+         const vpt = canvas.viewportTransform!.slice() as any;
+         vpt[0] = zoom;
+         vpt[3] = zoom;
+         vpt[4] = cw / 2 - zoom * (board.x + board.width / 2);
+         vpt[5] = ch / 2 - zoom * (board.y + board.height / 2);
+         canvas.setViewportTransform(vpt);
+         canvas.requestRenderAll();
+         setZoomPercent(Math.round(zoom * 100));
+         if (!isMobileRef.current) viewportTransformRef.current = vpt.slice();
+      };
+
+      const activeBoardIndex = Math.max(0, artboards.findIndex(b => b.id === activeArtboardId));
 
       return (
          <CollageConfigProvider value={collageProps}>
@@ -7480,102 +7586,61 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                    />
                                                 </React.Suspense>
 
-                                                {/* Floating Canvas Navigation & Zoom Controller */}
-                                                <div className={`absolute ${isMobile ? 'top-3 left-1/2 -translate-x-1/2 scale-[0.85] origin-top' : 'bottom-4 left-6'} bg-white/90 dark:bg-[#1A1A1A]/90 hover:bg-white dark:hover:bg-[#1A1A1A] text-slate-700 dark:text-slate-300 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#2D2D2D] shadow-xl items-center gap-3 text-xs select-none z-20 ${comparisonMode ? 'hidden' : 'flex'}`}>
-                                                   <button
-                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                      onClick={() => {
-                                                         if (!fabricRef.current) return;
-                                                         let z = fabricRef.current.getZoom();
-                                                         z = Math.max(0.1, z - 0.15);
-                                                         fabricRef.current.setZoom(z);
-                                                         setZoomPercent(Math.round(z * 100));
-                                                         fabricRef.current.requestRenderAll();
-                                                      }}
-                                                      title="Zoom Out"
-                                                   >
-                                                      <Minus size={13} />
-                                                   </button>
+                                                {/* Floating view controls */}
+                                                {(() => {
+                                                   const btn = `${isMobile ? 'h-8 w-8' : 'h-7 w-7'} inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.07] active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all`;
+                                                   const divider = <div className="w-px h-4 mx-0.5 bg-slate-200 dark:bg-white/10 shrink-0" />;
+                                                   return (
+                                                      <div className={`absolute z-20 ${isMobile ? 'top-2 left-1/2 -translate-x-1/2' : 'bottom-4 left-4'} ${comparisonMode ? 'hidden' : 'flex'} items-center gap-0.5 p-1 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white/85 dark:bg-[#161616]/85 backdrop-blur-xl shadow-[0_4px_16px_rgba(15,23,42,0.12)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.5)] select-none`}>
+                                                         {isMobile && artboards.length > 1 && (
+                                                            <>
+                                                               <button
+                                                                  className={btn}
+                                                                  disabled={activeBoardIndex <= 0}
+                                                                  onClick={() => setActiveArtboardId(artboards[activeBoardIndex - 1].id)}
+                                                                  title="Previous artboard"
+                                                                  aria-label="Previous artboard"
+                                                               >
+                                                                  <ChevronLeft size={15} />
+                                                               </button>
+                                                               <span className="px-0.5 text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                                                                  {activeBoardIndex + 1}<span className="text-slate-400 dark:text-slate-500"> / {artboards.length}</span>
+                                                               </span>
+                                                               <button
+                                                                  className={btn}
+                                                                  disabled={activeBoardIndex >= artboards.length - 1}
+                                                                  onClick={() => setActiveArtboardId(artboards[activeBoardIndex + 1].id)}
+                                                                  title="Next artboard"
+                                                                  aria-label="Next artboard"
+                                                               >
+                                                                  <ChevronRight size={15} />
+                                                               </button>
+                                                               {divider}
+                                                            </>
+                                                         )}
 
-                                                   <span className="font-mono text-[11px] font-bold min-w-[36px] text-center text-slate-800 dark:text-slate-200">
-                                                      {zoomPercent}%
-                                                   </span>
+                                                         <button className={btn} disabled={zoomPercent <= 10} onClick={() => zoomViewBy(1 / 1.25)} title="Zoom out" aria-label="Zoom out">
+                                                            <Minus size={14} />
+                                                         </button>
+                                                         <button
+                                                            className={`${isMobile ? 'h-8' : 'h-7'} min-w-[48px] px-1.5 rounded-lg text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.07] active:scale-95 transition-all`}
+                                                            onClick={() => zoomViewTo(1)}
+                                                            title="Reset zoom to 100%"
+                                                         >
+                                                            {zoomPercent}%
+                                                         </button>
+                                                         <button className={btn} disabled={zoomPercent >= 1000} onClick={() => zoomViewBy(1.25)} title="Zoom in" aria-label="Zoom in">
+                                                            <Plus size={14} />
+                                                         </button>
 
-                                                   <button
-                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                      onClick={() => {
-                                                         if (!fabricRef.current) return;
-                                                         let z = fabricRef.current.getZoom();
-                                                         z = Math.min(10, z + 0.15);
-                                                         fabricRef.current.setZoom(z);
-                                                         setZoomPercent(Math.round(z * 100));
-                                                         fabricRef.current.requestRenderAll();
-                                                      }}
-                                                      title="Zoom In"
-                                                   >
-                                                      <Plus size={13} />
-                                                   </button>
+                                                         {divider}
 
-                                                   <div className="w-px h-4 bg-slate-200 dark:bg-[#2D2D2D]" />
-
-                                                   <button
-                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                      onClick={() => {
-                                                         if (!fabricRef.current) return;
-                                                         const activeB = artboardsRef.current.find(b => b.id === activeArtboardIdRef.current) || artboardsRef.current[0];
-                                                         if (!activeB) return;
-                                                         const vpt = fabricRef.current.viewportTransform!;
-                                                         const newVpt = vpt.slice() as any;
-                                                         newVpt[0] = 1.0;
-                                                         newVpt[3] = 1.0;
-                                                         const cw = fabricRef.current.width!;
-                                                         const ch = fabricRef.current.height!;
-                                                         newVpt[4] = cw / 2 - (activeB.x + activeB.width / 2);
-                                                         newVpt[5] = ch / 2 - (activeB.y + activeB.height / 2);
-                                                         fabricRef.current.setViewportTransform(newVpt);
-                                                         setZoomPercent(100);
-                                                      }}
-                                                      title="Recenter Camera on Active Artboard"
-                                                   >
-                                                      <Target size={14} />
-                                                   </button>
-
-                                                   <button
-                                                      className="p-1 hover:bg-slate-100 dark:hover:bg-[#2C2C2C] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition-colors"
-                                                      onClick={() => {
-                                                         if (!fabricRef.current || artboardsRef.current.length === 0) return;
-                                                         let minX = Infinity, minY = Infinity;
-                                                         let maxX = -Infinity, maxY = -Infinity;
-                                                         artboardsRef.current.forEach(b => {
-                                                            minX = Math.min(minX, b.x);
-                                                            minY = Math.min(minY, b.y);
-                                                            maxX = Math.max(maxX, b.x + b.width);
-                                                            maxY = Math.max(maxY, b.y + b.height);
-                                                         });
-                                                         minX -= 60; minY -= 60;
-                                                         maxX += 60; maxY += 60;
-
-                                                         const w = maxX - minX;
-                                                         const h = maxY - minY;
-                                                         const cw = fabricRef.current.width!;
-                                                         const ch = fabricRef.current.height!;
-
-                                                         const zoom = Math.max(0.1, Math.min(4, Math.min(cw / w, ch / h)));
-                                                         const vpt = fabricRef.current.viewportTransform!;
-                                                         const newVpt = vpt.slice() as any;
-                                                         newVpt[0] = zoom;
-                                                         newVpt[3] = zoom;
-                                                         newVpt[4] = cw / 2 - zoom * (minX + w / 2);
-                                                         newVpt[5] = ch / 2 - zoom * (minY + h / 2);
-
-                                                         fabricRef.current.setViewportTransform(newVpt);
-                                                         setZoomPercent(Math.round(zoom * 100));
-                                                      }}
-                                                      title="Fit All Artboards in Viewport"
-                                                   >
-                                                      <Expand size={14} />
-                                                   </button>
-                                                </div>
+                                                         <button className={btn} onClick={fitActiveArtboard} title="Fit artboard to screen" aria-label="Fit artboard to screen">
+                                                            <Scan size={14} />
+                                                         </button>
+                                                      </div>
+                                                   );
+                                                })()}
                                              </div>
                                           </div>
 

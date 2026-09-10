@@ -1,14 +1,17 @@
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Zap,
   Download,
   RotateCw,
-  Package,
   Layers,
   Check,
   ChevronDown,
-  Settings2
+  FileImage,
+  Sliders,
+  Maximize2,
+  Sparkles,
+  BarChart3
 } from 'lucide-react';
 import { ExportSettings, ExportFormat } from '../../types/export';
 import { MozjpegSettings } from './MozjpegSettings';
@@ -20,6 +23,7 @@ import { ResizeSettings } from './ResizeSettings';
 import { MetricsPanel } from './MetricsPanel';
 import { PRESET_REGISTRY } from '../../lib/imagePresets';
 import { getNativeScaleForBoard } from '../image-workspace/services/exportUtils';
+import { ToggleSwitch } from '../image-workspace/components/shared/PanelPrimitives';
 
 interface Props {
   settings: ExportSettings;
@@ -43,6 +47,104 @@ interface Props {
   fabricCanvas?: any;
 }
 
+type SectionId = 'format' | 'quality' | 'size' | 'boards' | 'presets' | 'stats';
+
+const SECTIONS_KEY = 'export_studio_sections_v2';
+const DEFAULT_OPEN: SectionId[] = ['format', 'quality', 'size'];
+
+const FORMATS: { id: ExportFormat; hint: string }[] = [
+  { id: 'jpeg', hint: 'Photos · small files, no transparency' },
+  { id: 'png', hint: 'Lossless · keeps transparency' },
+  { id: 'webp', hint: 'Web · small files with transparency' },
+  { id: 'avif', hint: 'Smallest files · slower to encode' },
+  { id: 'jxl', hint: 'Next-gen · lossless or lossy' }
+];
+
+const PRESETS = ['100% Original HQ', 'Maximum Quality', 'Web Optimized', 'Extreme Compression', 'Social Media', 'Thumbnail'];
+
+const TARGETS: { id: "current" | "selected" | "all"; label: string }[] = [
+  { id: 'current', label: 'Active' },
+  { id: 'selected', label: 'Selected' },
+  { id: 'all', label: 'All Boards' }
+];
+
+const formatBytes = (bytes: number): string => {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+/**
+ * Collapsible block. Each header keeps a one-line summary of what the section is set to, so a
+ * closed section still answers "what will I get" and the column stays short enough that the export
+ * button is never more than a scroll away on a phone.
+ */
+const Section: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  summary?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}> = ({ icon, title, summary, open, onToggle, children }) => (
+  <section className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#161616] overflow-hidden">
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="w-full h-11 px-3 flex items-center gap-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors touch-manipulation"
+    >
+      <span className="shrink-0 text-blue-500">{icon}</span>
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">{title}</span>
+      <span className="flex-1 min-w-0 text-right text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate">
+        {!open && summary}
+      </span>
+      <ChevronDown size={14} className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+    {open && (
+      <div className="px-3 pb-3 pt-2.5 space-y-3 border-t border-slate-100 dark:border-white/5">
+        {children}
+      </div>
+    )}
+  </section>
+);
+
+/** Segmented control shared by every either/or row. */
+function Segmented<T extends string | number>({
+  value, options, onChange, size = 'md'
+}: {
+  value: T;
+  options: { id: T; label: React.ReactNode; title?: string }[];
+  onChange: (id: T) => void;
+  size?: 'sm' | 'md';
+}) {
+  return (
+    <div
+      className="grid gap-1 p-1 rounded-lg bg-slate-100 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/5"
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      role="group"
+    >
+      {options.map(o => {
+        const active = value === o.id;
+        return (
+          <button
+            key={String(o.id)}
+            type="button"
+            title={o.title}
+            aria-pressed={active}
+            onClick={() => onChange(o.id)}
+            className={`${size === 'sm' ? 'h-7' : 'h-8'} rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors touch-manipulation truncate px-1 ${active
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white'}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export const ExportStudio: React.FC<Props> = ({
   settings,
   onChange,
@@ -63,10 +165,23 @@ export const ExportStudio: React.FC<Props> = ({
   fabricCanvas
 }) => {
   const [uiMode, setUiMode] = useState<'basic' | 'advanced' | 'expert'>('basic');
-  const [activeSection, setActiveSection] = useState<'codec' | 'resize' | 'presets'>('codec');
-  const [showAdvancedMobile, setShowAdvancedMobile] = useState(false);
-  const [showFormatDropdown, setShowFormatDropdown] = useState(false);
-  const [showTargetDropdown, setShowTargetDropdown] = useState(false);
+
+  const [openSections, setOpenSections] = useState<Set<SectionId>>(() => {
+    try {
+      const stored = localStorage.getItem(SECTIONS_KEY);
+      if (stored) return new Set(JSON.parse(stored) as SectionId[]);
+    } catch { /* fall back to the defaults */ }
+    return new Set<SectionId>(DEFAULT_OPEN);
+  });
+
+  const toggleSection = useCallback((id: SectionId) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem(SECTIONS_KEY, JSON.stringify([...next])); } catch { /* storage may be unavailable */ }
+      return next;
+    });
+  }, []);
 
   const updateCodecSettings = (codec: 'mozjpeg' | 'webp' | 'avif' | 'png' | 'jxl', newOptions: any) => {
     onChange({
@@ -138,378 +253,110 @@ export const ExportStudio: React.FC<Props> = ({
   );
   const matchedPreset = activeBoard ? PRESET_REGISTRY.find(p => p.name === activeBoard.name) : null;
   const recommendation = matchedPreset?.exportRecommendation;
+  void recommendation;
+
+  // ---------------------------------------------------------------- read-only summaries
+  const formatLabel = settings.format.toUpperCase();
+  const formatHint = FORMATS.find(f => f.id === settings.format)?.hint || '';
+
+  const outputDims = settings.resize.enabled
+    ? `${settings.resize.width} × ${settings.resize.height}`
+    : activeBoard
+      ? `${Math.round(activeBoard.width * exportScale)} × ${Math.round(activeBoard.height * exportScale)}`
+      : '—';
+
+  const selectedCount = Object.values(selectedExportIds).filter(Boolean).length;
+  const boardCount = exportTarget === 'all' ? artboards.length : exportTarget === 'selected' ? selectedCount : 1;
+  const targetSummary =
+    exportTarget === 'all' ? `All ${artboards.length} boards`
+      : exportTarget === 'selected' ? `${selectedCount} selected`
+        : (activeBoard?.name || 'Active board');
+
+  const sizeText = formatBytes(optimizedSize);
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0D0D0D] border-l border-slate-200 dark:border-slate-700/50 w-full overflow-y-auto custom-scrollbar">
-      {/* Header - Desktop Only */}
-      <div className="hidden md:flex p-4 border-b border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-900 sticky top-0 z-10 items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Zap size={18} className="text-blue-500" />
-          <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">Export Studio</h2>
+    <div className="flex flex-col h-full w-full overflow-hidden bg-slate-50 dark:bg-[#0D0D0D] border-l border-slate-200 dark:border-white/10">
+
+      {/* ------------------------------------------------------------ header */}
+      <div className="shrink-0 px-3 pt-3 pb-2.5 space-y-2.5 bg-white dark:bg-[#121212] border-b border-slate-200 dark:border-white/10">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-7 h-7 rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Zap size={15} />
+            </span>
+            <h2 className="text-[12px] font-black uppercase tracking-widest text-slate-900 dark:text-white truncate">Export</h2>
+          </div>
+          <div className="shrink-0 w-[168px]">
+            <Segmented
+              size="sm"
+              value={uiMode}
+              onChange={(m) => setUiMode(m)}
+              options={[
+                { id: 'basic', label: 'Basic', title: 'Only the essentials' },
+                { id: 'advanced', label: 'Adv', title: 'More encoder controls' },
+                { id: 'expert', label: 'Pro', title: 'Every encoder control' }
+              ]}
+            />
+          </div>
         </div>
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 gap-0.5">
-          {[
-            { id: 'basic', label: 'BASIC' },
-            { id: 'advanced', label: 'ADVANCED' },
-            { id: 'expert', label: 'EXPERT' }
-          ].map(mode => (
-            <button
-              key={mode.id}
-              onClick={() => setUiMode(mode.id as any)}
-              className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${uiMode === mode.id
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700/50'
-                }`}
-            >
-              {mode.label}
-            </button>
-          ))}
+
+        {/* What you will get, before opening anything. */}
+        <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-semibold">
+          <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white tracking-wider">{formatLabel}</span>
+          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10 font-mono">{outputDims}</span>
+          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10 truncate max-w-[140px]">{targetSummary}</span>
+          {settings.directNativeExport && (
+            <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">Pixel-perfect</span>
+          )}
+          {sizeText && (
+            <span className="ml-auto px-2 py-0.5 rounded-md text-slate-500 dark:text-slate-400 font-mono">≈ {sizeText}</span>
+          )}
         </div>
       </div>
 
-      <div className="p-3 md:p-4 space-y-4 md:space-y-6 flex-1 overflow-y-auto custom-scrollbar">
+      {/* ------------------------------------------------------------ body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-2">
 
-        {/* Mobile Format & Advanced Settings Block */}
-        <div className="md:hidden flex flex-col gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 p-2 rounded-xl relative">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex-1 relative">
-              <button
-                className={`w-full bg-white dark:bg-slate-800 border rounded-lg flex items-center px-2 py-2 transition-colors ${showFormatDropdown ? 'border-blue-500' : 'border-slate-200 dark:border-slate-700/50'}`}
-                onClick={() => {
-                  setShowFormatDropdown(!showFormatDropdown);
-                  setShowTargetDropdown(false);
-                }}
-              >
-                <Package size={12} className="text-blue-500 shrink-0 mr-2" />
-                <span className="flex-1 text-left text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{settings.format}</span>
-                <ChevronDown size={14} className={`text-slate-500 shrink-0 ml-1 transition-transform ${showFormatDropdown ? 'rotate-180' : ''}`} />
-              </button>
+        <Section
+          icon={<FileImage size={13} />}
+          title="Format"
+          summary={`${formatLabel}${settings.directNativeExport ? ' · pixel-perfect' : ''}`}
+          open={openSections.has('format')}
+          onToggle={() => toggleSection('format')}
+        >
+          <Segmented
+            value={settings.format}
+            onChange={(fmt) => onChange({ ...settings, format: fmt })}
+            options={FORMATS.map(f => ({ id: f.id, label: f.id, title: f.hint }))}
+          />
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1">{formatHint}</p>
 
-              {showFormatDropdown && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowFormatDropdown(false)} />
-                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col">
-                    {(['jpeg', 'png', 'webp', 'avif', 'jxl'] as ExportFormat[]).map(fmt => (
-                      <button
-                        key={fmt}
-                        className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-left transition-colors ${settings.format === fmt ? 'bg-blue-600/20 text-blue-400' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
-                        onClick={() => {
-                          onChange({ ...settings, format: fmt });
-                          setShowFormatDropdown(false);
-                        }}
-                      >
-                        {fmt}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 gap-0.5">
-                {[
-                  { id: 'basic', label: 'BASIC' },
-                  { id: 'advanced', label: 'ADV' },
-                  { id: 'expert', label: 'PRO' }
-                ].map(mode => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setUiMode(mode.id as any)}
-                    className={`px-2 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${uiMode === mode.id
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                      }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
+          <div className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors ${settings.directNativeExport
+            ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30'
+            : 'bg-slate-50 dark:bg-white/[0.03] border-slate-200 dark:border-white/10'}`}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold text-slate-800 dark:text-white">Pixel-perfect export</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                Skip lossy compression and export the canvas pixels exactly (Direct High Quality Mode).
               </div>
-              <button
-                className={`flex items-center justify-center p-2 border rounded-lg transition-colors ${showAdvancedMobile ? 'bg-blue-600/10 border-blue-500/30' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700/50 active:bg-slate-100 dark:bg-slate-700'}`}
-                onClick={() => setShowAdvancedMobile(!showAdvancedMobile)}
-              >
-                <Settings2 size={16} className={showAdvancedMobile ? "text-blue-400" : "text-slate-600 dark:text-slate-400"} />
-              </button>
             </div>
-          </div>
-        </div>
-
-        {/* Format Selector Desktop */}
-        <div className="hidden md:block">
-          <div className="flex bg-white dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700/50 gap-0.5 overflow-x-auto no-scrollbar">
-            {(['jpeg', 'png', 'webp', 'avif', 'jxl'] as ExportFormat[]).map(fmt => (
-              <button
-                key={fmt}
-                onClick={() => onChange({ ...settings, format: fmt })}
-                className={`flex-1 min-h-[36px] py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${settings.format === fmt
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50'
-                  }`}
-              >
-                {fmt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Advanced / Detailed Sections */}
-        <div className={`space-y-4 md:space-y-6 ${!showAdvancedMobile ? 'hidden md:block' : 'block'}`}>
-          {/* Direct Native High Quality Mode Toggle */}
-          <div className={`p-3 md:p-3.5 rounded-xl md:rounded-2xl transition-all duration-300 border ${settings.directNativeExport
-              ? 'bg-blue-50 dark:bg-gradient-to-r dark:from-blue-950/60 dark:via-[#121624] dark:to-[#0E111C] border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.15)]'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:border-slate-600'
-            }`}>
-            <label className="flex items-center justify-between cursor-pointer select-none gap-3">
-              {/* Mobile Compact View */}
-              <div className="flex md:hidden items-center gap-3 min-w-0 flex-1">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] shrink-0 transition-all ${settings.directNativeExport
-                    ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] ring-1 ring-blue-400/30'
-                    : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                  }`}>
-                  HQ
-                </div>
-                <div className="text-[11px] font-extrabold text-slate-900 dark:text-white tracking-tight flex-1">
-                  100% Native Mode
-                </div>
-              </div>
-
-              {/* Desktop Expanded View */}
-              <div className="hidden md:flex items-center gap-3 min-w-0">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 transition-all ${settings.directNativeExport
-                    ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-slate-900 dark:text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] ring-2 ring-blue-400/30'
-                    : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                  }`}>
-                  HQ
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                    <span>Direct High Quality Mode</span>
-                    <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider font-mono transition-all ${settings.directNativeExport
-                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
-                        : 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                      }`}>
-                      {settings.directNativeExport ? '100% Native' : 'WASM Active'}
-                    </span>
-                  </div>
-                  <div className="text-[9.5px] text-slate-600 dark:text-slate-400 mt-0.5 font-medium leading-tight">
-                    Bypass WASM lossy compression for 100% pixel-perfect original canvas export
-                  </div>
-                </div>
-              </div>
-
-              {/* Custom Modern Animated Toggle Switch */}
-              <div
-                onClick={(e) => {
-                  e.preventDefault();
-                  onChange({ ...settings, directNativeExport: !settings.directNativeExport });
-                }}
-                className={`w-11 h-6 rounded-full px-1 flex items-center transition-all duration-300 cursor-pointer relative shrink-0 border ${settings.directNativeExport
-                    ? 'bg-blue-600 border-blue-400 shadow-[0_0_12px_rgba(37,99,235,0.4)] justify-end'
-                    : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-600 justify-start'
-                  }`}
-              >
-                <div className="w-4 h-4 rounded-full bg-white shadow-md transition-all duration-300 flex items-center justify-center">
-                  {settings.directNativeExport && <Check size={10} className="text-blue-600 stroke-[3.5]" />}
-                </div>
-              </div>
-            </label>
-          </div>
-
-
-
-          {/* Output resolution. The artboard is a layout size, not a resolution cap - without
-              this a 2048px photo on an 800x600 board exported at 800px wide. */}
-          <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Output Resolution</span>
-              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                {activeBoard ? `${Math.round(activeBoard.width * exportScale)} x ${Math.round(activeBoard.height * exportScale)}` : '-'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700/50">
-              {[1, 2, 3, 4].map(mult => (
-                <button
-                  key={mult}
-                  type="button"
-                  onClick={() => onChange({ ...settings, exportScale: mult })}
-                  className={`h-8 rounded-md text-[10px] font-black uppercase tracking-wider transition-colors touch-manipulation ${exportScale === mult
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                >
-                  {mult}x
-                </button>
-              ))}
-            </div>
-
-            {nativeScale > 1.01 && (
-              <button
-                type="button"
-                onClick={() => onChange({ ...settings, exportScale: nativeScale })}
-                className="w-full h-9 rounded-lg border border-blue-300 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[10px] font-bold transition-colors hover:bg-blue-100 dark:hover:bg-blue-600/20 touch-manipulation"
-              >
-                Match source detail ({nativeScale.toFixed(2)}x)
-              </button>
-            )}
-            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-snug">
-              {nativeScale > 1.01
-                ? `Your highest-resolution image is being displayed at ${Math.round(100 / nativeScale)}% of its native size. Exporting at 1x throws that detail away.`
-                : 'Renders the artboard at a multiple of its pixel size. Disabled while a manual resize is set.'}
-            </p>
-          </div>
-
-          {/* Export Range Targeting Selector */}
-          <div className="space-y-3 md:space-y-4 bg-white dark:bg-slate-900 p-3 md:p-3.5 rounded-xl md:rounded-2xl border border-slate-200 dark:border-slate-700/50">
-            <div className="flex items-center gap-2 mb-1">
-              <Layers size={14} className="text-blue-500" />
-              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Pipeline Target</span>
-            </div>
-
-            {/* Premium segmented control instead of simple select (Desktop) */}
-            <div className="hidden md:flex bg-slate-50 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700/50 gap-1 overflow-x-auto no-scrollbar">
-              {[
-                { id: 'current', label: 'Active' },
-                { id: 'selected', label: 'Selected' },
-                { id: 'all', label: 'All Boards' }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setExportTarget(t.id as any)}
-                  className={`flex-1 min-w-[65px] min-h-[32px] md:min-h-0 py-1.5 px-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all text-center whitespace-nowrap ${exportTarget === t.id
-                    ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-sm font-black'
-                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-300 border border-transparent'
-                    }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Mobile Custom Select */}
-            <div className="md:hidden relative">
-              <button
-                className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-lg flex items-center px-2 py-2 transition-colors ${showTargetDropdown ? 'border-blue-500/50' : 'border-slate-200 dark:border-slate-700/50'}`}
-                onClick={() => {
-                  setShowTargetDropdown(!showTargetDropdown);
-                  setShowFormatDropdown(false);
-                }}
-              >
-                <span className="flex-1 text-left text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  {exportTarget === 'current' ? 'Active Board' : exportTarget === 'selected' ? 'Selected Boards' : 'All Boards'}
-                </span>
-                <ChevronDown size={14} className={`text-slate-500 shrink-0 ml-1 transition-transform ${showTargetDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showTargetDropdown && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowTargetDropdown(false)} />
-                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/50 rounded-lg shadow-2xl z-50 overflow-hidden flex flex-col">
-                    {[
-                      { id: 'current', label: 'Active Board' },
-                      { id: 'selected', label: 'Selected Boards' },
-                      { id: 'all', label: 'All Boards' }
-                    ].map(t => (
-                      <button
-                        key={t.id}
-                        className={`px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-left transition-colors ${exportTarget === t.id ? 'bg-blue-600/20 text-blue-400' : 'text-slate-700 dark:text-slate-300 active:bg-slate-100 dark:bg-slate-700'}`}
-                        onClick={() => {
-                          setExportTarget(t.id as any);
-                          setShowTargetDropdown(false);
-                        }}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {(exportTarget === "current" || exportTarget === "selected") && (
-              <div className="space-y-1.5 mt-2 md:mt-3 max-h-[150px] md:max-h-[180px] overflow-y-auto border border-slate-200 dark:border-slate-800 p-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 custom-scrollbar shadow-inner">
-                {artboards.map((b) => {
-                  const isSelected = exportTarget === "selected" ? !!selectedExportIds[b.id] : activeArtboardId === b.id;
-                  const isActive = activeArtboardId === b.id;
-                  const isDisabled = exportTarget === "current";
-
-                  return (
-                    <div
-                      key={b.id}
-                      className={`flex items-center gap-3 p-2.5 rounded-lg md:rounded-xl cursor-pointer transition-all border ${isActive
-                        ? 'bg-blue-600/5 border-blue-500/30 shadow-[0_0_12px_rgba(37,99,235,0.03)]'
-                        : isSelected
-                          ? 'bg-blue-500/5 border-blue-500/20'
-                          : 'hover:bg-slate-200 dark:hover:bg-slate-800 border-transparent'
-                        }`}
-                      onClick={() => {
-                        if (exportTarget === "selected") {
-                          setSelectedExportIds(prev => ({ ...prev, [b.id]: !prev[b.id] }));
-                        } else {
-                          setActiveArtboardId(b.id);
-                        }
-                      }}
-                    >
-                      {/* Modern Custom Checkbox */}
-                      <div
-                        className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all shrink-0 ${isSelected
-                          ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]'
-                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
-                          } ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                      >
-                        {isSelected && <Check size={11} className="text-white stroke-[3.5] animate-in zoom-in-50" />}
-                      </div>
-
-                      {/* Info details */}
-                      <div className="flex-1 min-w-0" onClick={(e) => {
-                        if (exportTarget === "selected") {
-                          setActiveArtboardId(b.id);
-                          e.stopPropagation();
-                        }
-                      }}>
-                        <div className={`text-[11px] font-extrabold tracking-tight truncate ${isActive ? 'text-blue-400 font-black' : 'text-slate-700 dark:text-slate-300'}`}>
-                          {b.name}
-                        </div>
-                        <div className="text-[9px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                          <span className="opacity-50 font-sans font-bold">DIM:</span>
-                          <span className="text-slate-600 dark:text-slate-400 font-semibold">{b.width} × {b.height}</span>
-                        </div>
-                      </div>
-
-                      {/* Beautiful active badge status */}
-                      {isActive && (
-                        <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full shrink-0">
-                          <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider">Active</span>
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Resize Section Toggle */}
-          <div className="space-y-4">
-            <ResizeSettings
-              options={settings.resize}
-              targetSize={settings.targetSize}
-              format={settings.format}
-              onChange={(opt) => onChange({ ...settings, resize: { ...settings.resize, ...opt } })}
-              onTargetSizeChange={(opt) => onChange({ ...settings, targetSize: opt })}
-              originalWidth={originalWidth}
-              originalHeight={originalHeight}
-              mode={uiMode}
+            <ToggleSwitch
+              checked={!!settings.directNativeExport}
+              onChange={(next) => onChange({ ...settings, directNativeExport: next })}
+              title="Direct High Quality Mode"
             />
           </div>
+        </Section>
 
-          <div className="h-px bg-slate-100 dark:bg-slate-700 hidden md:block" />
-
-          {/* Dynamic Codec Settings */}
-          <div className="space-y-4 animate-in fade-in duration-300">
+        <Section
+          icon={<Sliders size={13} />}
+          title="Quality"
+          summary={`${formatLabel} settings`}
+          open={openSections.has('quality')}
+          onToggle={() => toggleSection('quality')}
+        >
+          <div className="animate-in fade-in duration-200">
             {settings.format === 'jpeg' && (
               <MozjpegSettings
                 options={settings.mozjpeg}
@@ -546,34 +393,186 @@ export const ExportStudio: React.FC<Props> = ({
               />
             )}
           </div>
+        </Section>
 
-          <div className="h-px bg-slate-100 dark:bg-slate-700 hidden md:block" />
-        </div>
+        <Section
+          icon={<Maximize2 size={13} />}
+          title="Size"
+          summary={outputDims}
+          open={openSections.has('size')}
+          onToggle={() => toggleSection('size')}
+        >
+          {/* Output resolution. The artboard is a layout size, not a resolution cap - without
+              this a 2048px photo on an 800x600 board exported at 800px wide. */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Resolution</span>
+              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                {activeBoard ? `${Math.round(activeBoard.width * exportScale)} × ${Math.round(activeBoard.height * exportScale)}` : '-'}
+              </span>
+            </div>
 
-        {/* Presets List */}
-        <div className={`space-y-3 ${!showAdvancedMobile ? 'hidden md:block' : 'block'}`}>
-          <div className="flex items-center gap-2 mb-2">
-            <Package size={14} className="text-slate-500" />
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Global Presets</span>
+            <Segmented
+              value={exportScale}
+              onChange={(mult) => onChange({ ...settings, exportScale: mult })}
+              options={[1, 2, 3, 4].map(mult => ({ id: mult, label: `${mult}x` }))}
+            />
+
+            {nativeScale > 1.01 && (
+              <button
+                type="button"
+                onClick={() => onChange({ ...settings, exportScale: nativeScale })}
+                className="w-full h-9 rounded-lg border border-blue-300 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[10px] font-bold transition-colors hover:bg-blue-100 dark:hover:bg-blue-600/20 touch-manipulation"
+              >
+                Match source detail ({nativeScale.toFixed(2)}x)
+              </button>
+            )}
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+              {nativeScale > 1.01
+                ? `Your highest-resolution image is being displayed at ${Math.round(100 / nativeScale)}% of its native size. Exporting at 1x throws that detail away.`
+                : 'Renders the artboard at a multiple of its pixel size. Disabled while a manual resize is set.'}
+            </p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {['100% Original HQ', 'Maximum Quality', 'Web Optimized', 'Extreme Compression', 'Social Media', 'Thumbnail'].map(p => (
+
+          <div className="h-px bg-slate-100 dark:bg-white/5" />
+
+          <ResizeSettings
+            options={settings.resize}
+            targetSize={settings.targetSize}
+            format={settings.format}
+            onChange={(opt) => onChange({ ...settings, resize: { ...settings.resize, ...opt } })}
+            onTargetSizeChange={(opt) => onChange({ ...settings, targetSize: opt })}
+            originalWidth={originalWidth}
+            originalHeight={originalHeight}
+            mode={uiMode}
+          />
+        </Section>
+
+        <Section
+          icon={<Layers size={13} />}
+          title="Boards"
+          summary={targetSummary}
+          open={openSections.has('boards')}
+          onToggle={() => toggleSection('boards')}
+        >
+          <Segmented
+            value={exportTarget}
+            onChange={(t) => setExportTarget(t)}
+            options={TARGETS.map(t => ({ id: t.id, label: t.label }))}
+          />
+
+          {exportTarget === 'all' && (
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">
+              Every artboard ({artboards.length}) is exported with these settings.
+            </p>
+          )}
+
+          {(exportTarget === "current" || exportTarget === "selected") && (
+            <>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1">
+                {exportTarget === 'selected'
+                  ? 'Tick the boards to export. Tap a name to make it the active board.'
+                  : 'Tap a board to export it.'}
+              </p>
+              <div className="space-y-1 max-h-[190px] overflow-y-auto custom-scrollbar pr-0.5">
+                {artboards.map((b) => {
+                  const isSelected = exportTarget === "selected" ? !!selectedExportIds[b.id] : activeArtboardId === b.id;
+                  const isActive = activeArtboardId === b.id;
+                  const isDisabled = exportTarget === "current";
+
+                  return (
+                    <div
+                      key={b.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (exportTarget === "selected") {
+                          setSelectedExportIds(prev => ({ ...prev, [b.id]: !prev[b.id] }));
+                        } else {
+                          setActiveArtboardId(b.id);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        if (exportTarget === "selected") {
+                          setSelectedExportIds(prev => ({ ...prev, [b.id]: !prev[b.id] }));
+                        } else {
+                          setActiveArtboardId(b.id);
+                        }
+                      }}
+                      className={`flex items-center gap-2.5 h-11 px-2 rounded-lg cursor-pointer border transition-colors outline-none focus-visible:border-blue-500 touch-manipulation ${isSelected
+                        ? 'bg-blue-50 dark:bg-blue-600/10 border-blue-300 dark:border-blue-500/30'
+                        : 'bg-slate-50 dark:bg-white/[0.03] border-transparent hover:border-slate-300 dark:hover:border-white/15'}`}
+                    >
+                      <span
+                        className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${isSelected
+                          ? 'bg-blue-600 border-blue-500 text-white'
+                          : 'bg-white dark:bg-[#121212] border-slate-300 dark:border-white/15'} ${isDisabled ? 'opacity-40' : ''}`}
+                      >
+                        {isSelected && <Check size={10} strokeWidth={4} />}
+                      </span>
+
+                      {/* In Selected mode this inner region switches which board is active,
+                          independently of the tick - preserved from the previous layout. */}
+                      <div
+                        className="flex-1 min-w-0"
+                        onClick={(e) => {
+                          if (exportTarget === "selected") {
+                            setActiveArtboardId(b.id);
+                            e.stopPropagation();
+                          }
+                        }}
+                      >
+                        <div className={`text-[11px] font-bold truncate ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {b.name}
+                        </div>
+                        <div className="text-[9px] font-mono text-slate-500 truncate">{b.width} × {b.height}</div>
+                      </div>
+
+                      {isActive && (
+                        <span className="shrink-0 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full text-blue-600 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </Section>
+
+        <Section
+          icon={<Sparkles size={13} />}
+          title="Presets"
+          summary="One-tap setups"
+          open={openSections.has('presets')}
+          onToggle={() => toggleSection('presets')}
+        >
+          <div className="grid grid-cols-2 gap-1.5">
+            {PRESETS.map(p => (
               <button
                 key={p}
+                type="button"
                 onClick={() => setPreset(p)}
-                className={`p-2 border rounded-lg text-[10px] text-left transition-all min-h-[40px] md:min-h-0 touch-manipulation ${p === '100% Original HQ'
-                    ? 'border-blue-500/60 bg-blue-600/10 text-blue-300 font-bold hover:bg-blue-600/20'
-                    : 'border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:border-blue-500/50 hover:bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white'
-                  }`}
+                className={`min-h-[38px] px-2.5 rounded-lg border text-[10px] font-semibold text-left transition-colors touch-manipulation ${p === '100% Original HQ'
+                  ? 'border-blue-300 dark:border-blue-500/50 bg-blue-50 dark:bg-blue-600/10 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-600/20'
+                  : 'border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] text-slate-600 dark:text-slate-400 hover:border-blue-400 dark:hover:border-blue-500/50 hover:text-slate-900 dark:hover:text-white'}`}
               >
                 {p}
               </button>
             ))}
           </div>
-        </div>
+        </Section>
 
-        {/* Metrics Display */}
-        <div className="pt-0 md:pt-2">
+        <Section
+          icon={<BarChart3 size={13} />}
+          title="Stats"
+          summary={sizeText ? `≈ ${sizeText}` : 'Not estimated yet'}
+          open={openSections.has('stats')}
+          onToggle={() => toggleSection('stats')}
+        >
           <MetricsPanel
             originalSize={originalSize}
             optimizedSize={optimizedSize}
@@ -584,43 +583,38 @@ export const ExportStudio: React.FC<Props> = ({
             format={settings.format}
             psnr={psnr}
           />
-        </div>
+        </Section>
       </div>
 
-      {/* Footer Export Button */}
-      <div className="p-2 md:p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700/50 sticky bottom-0 z-20 space-y-1.5 md:space-y-3 shrink-0">
-        <label className={`flex items-center gap-2 md:gap-3 cursor-pointer group bg-slate-50 dark:bg-slate-800 p-2 md:p-2.5 rounded-lg md:rounded-xl border border-slate-200 dark:border-slate-700/50 hover:border-blue-500/20 transition-all select-none ${!showAdvancedMobile ? 'hidden md:flex' : 'flex'}`}>
-          <div className="relative flex items-center justify-center shrink-0">
-            <input
-              type="checkbox"
-              checked={settings.askForFilename || false}
-              onChange={(e) => onChange({ ...settings, askForFilename: e.target.checked })}
-              className="sr-only"
-            />
-            <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${settings.askForFilename
-                ? 'bg-blue-600 border-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.3)]'
-                : 'bg-slate-100 dark:bg-[#121212] border-slate-200 dark:border-slate-700/50 group-hover:border-slate-400 dark:hover:border-[#444]'
-              }`}>
-              {settings.askForFilename && <Check size={11} className="text-slate-900 dark:text-white stroke-[3.5] animate-in zoom-in-50" />}
-            </div>
+      {/* ------------------------------------------------------------ footer */}
+      <div className="shrink-0 p-2.5 space-y-2 bg-white dark:bg-[#121212] border-t border-slate-200 dark:border-white/10">
+        <div className="flex items-center gap-3 px-1">
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Ask for a file name</div>
+            <div className="text-[9px] text-slate-400 dark:text-slate-500 truncate">Otherwise a name is generated automatically</div>
           </div>
-          <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-[10px] text-slate-700 dark:text-slate-300 md:text-slate-600 dark:text-slate-400 group-hover:text-slate-800 dark:text-slate-200 transition-colors font-bold uppercase tracking-tight truncate">Ask for Custom Filename</span>
-            <span className="text-[8px] md:text-[9px] text-slate-500 md:text-slate-600 truncate">Prompt for name on export (otherwise auto-generates random string)</span>
-          </div>
-        </label>
+          <ToggleSwitch
+            checked={!!settings.askForFilename}
+            onChange={(next) => onChange({ ...settings, askForFilename: next })}
+            showState={false}
+            title="Prompt for a file name on export"
+          />
+        </div>
 
         <button
+          type="button"
           onClick={onExport}
           disabled={isExporting}
-          className={`w-full group relative overflow-hidden h-[42px] md:h-12 rounded-lg md:rounded-xl flex items-center justify-center gap-2 md:gap-3 transition-all touch-manipulation ${isExporting
-            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            : 'bg-blue-600 hover:bg-blue-500 text-slate-900 dark:text-white font-bold shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-[0.98]'
-            }`}
+          className={`w-full h-11 rounded-xl flex items-center justify-center gap-2 transition-all touch-manipulation ${isExporting
+            ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
+            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-600/30 active:scale-[0.98]'}`}
         >
-          {isExporting ? <RotateCw className="animate-spin" size={16} /> : <Download size={16} className="md:w-[18px] md:h-[18px] group-hover:-translate-y-1 transition-transform" />}
-          <span className="tracking-tight text-[12px]">{isExporting ? 'Processing...' : `Process & Download`}</span>
-          <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-12" />
+          {isExporting ? <RotateCw className="animate-spin" size={16} /> : <Download size={16} />}
+          <span className="text-[12px] font-bold tracking-tight">
+            {isExporting
+              ? 'Processing...'
+              : `Export ${formatLabel}${boardCount > 1 ? ` · ${boardCount} boards` : ''}`}
+          </span>
         </button>
       </div>
     </div>
