@@ -30,6 +30,11 @@ interface CanvasContextType {
   /** Erases the selected pixels rather than the whole object. */
   deleteSelectedPixels?: () => Promise<boolean> | void;
   duplicateActiveObject: () => void;
+  /** Step-and-repeat: a copy of the selection placed beside it in `dir`, then selected. */
+  duplicateInDirection?: (dir: 'left' | 'right' | 'up' | 'down') => void;
+  /** Space left between the selection and the copy, in scene pixels. */
+  duplicateGap?: number;
+  setDuplicateGap?: (px: number) => void;
   deleteActiveObject: () => void;
   updateArtboardPropDirect: (id: string, prop: string, val: any, saveHistory?: boolean) => void;
   generateSmartCollage: (type: string) => void;

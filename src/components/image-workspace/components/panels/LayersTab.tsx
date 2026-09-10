@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RotateCw, Trash2, LayoutGrid, MoreHorizontal, Copy, Image as ImageIcon, Check, Anchor, X } from 'lucide-react';
+import { RotateCw, Trash2, LayoutGrid, MoreHorizontal, Copy, Image as ImageIcon, Check, Anchor, X, Minus } from 'lucide-react';
 import { useLayers } from '../../contexts/LayersContext';
 import { useCanvas } from '../../contexts/CanvasContext';
 import { useSelection } from '../../contexts/SelectionContext';
@@ -22,13 +22,49 @@ const getPxForSize = (s: ThumbSize) => {
 };
 
 export const LayersTab: React.FC = () => {
-   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, moveLayerUp } = useLayers();
+   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, setLayerSelection, moveLayerUp } = useLayers();
    const { deleteActiveObject } = useCanvas();
    const { activeObjs, parentAlignmentObj, setParentAlignmentObj } = useSelection();
    const { artboards } = useWorkspaceUI();
    const setNotification = useStore((state) => state.setNotification);
    const [thumbSize, setThumbSize] = useState<ThumbSize>('standard');
    const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
+   // Only layers that can actually be selected count towards "all": hidden ones (other artboards
+   // on mobile) and locked helpers would otherwise keep the header box from ever reading as full.
+   const selectableLayers = layers.filter(l => l.selectable !== false && l.visible !== false);
+   const selectedCount = selectableLayers.filter(l => activeObjs.includes(l)).length;
+   const allSelected = selectableLayers.length > 0 && selectedCount === selectableLayers.length;
+   const someSelected = selectedCount > 0 && !allSelected;
+
+   const toggleSelectAll = () => {
+      // The list runs top layer first; the canvas wants bottom-up order.
+      setLayerSelection(allSelected ? [] : [...selectableLayers].reverse());
+   };
+
+   /**
+    * Checkbox click, with two modifiers:
+    * - Alt: this layer only - everything else is deselected.
+    * - Shift: this layer and every layer below it in the list, replacing the selection, so the
+    *   gesture always means the same thing whatever was ticked before.
+    * A plain click toggles just this one.
+    */
+   const onCheckboxClick = (e: React.MouseEvent, index: number, layer: fabric.Object) => {
+      e.stopPropagation();
+
+      if (e.altKey) {
+         setLayerSelection([layer]);
+         return;
+      }
+
+      if (e.shiftKey) {
+         // Rows from here to the bottom of the list, handed over in canvas (bottom-up) order.
+         setLayerSelection(layers.slice(index).reverse());
+         return;
+      }
+
+      toggleLayerSelection((layer as any).id);
+   };
 
    const copyLayerObject = (layer: fabric.Object) => {
       navigator.clipboard.writeText(JSON.stringify({ __fabricInternalClipboard: true })).catch(() => { });
@@ -76,6 +112,33 @@ export const LayersTab: React.FC = () => {
             </div>
          </div>
 
+         {layers.length > 0 && (
+            <div className="px-2 flex items-center gap-2 shrink-0">
+               <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={allSelected ? 'true' : someSelected ? 'mixed' : 'false'}
+                  onClick={toggleSelectAll}
+                  title={allSelected ? 'Deselect all layers' : 'Select all layers'}
+                  className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-md border transition-colors ${allSelected || someSelected
+                     ? 'bg-blue-600 border-blue-400 text-white'
+                     : 'bg-transparent border-[#3A3A3A] text-transparent hover:border-blue-500/60 active:bg-blue-600/20'}`}
+               >
+                  {someSelected ? <Minus size={13} strokeWidth={3} /> : <Check size={13} strokeWidth={3} />}
+               </button>
+               <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="text-[11px] font-semibold text-slate-300 hover:text-white transition-colors"
+               >
+                  {allSelected ? 'Deselect all' : 'Select all'}
+               </button>
+               <span className="ml-auto text-[9px] text-slate-500 truncate hidden md:inline">
+                  Shift: this layer and below · Alt: only this
+               </span>
+            </div>
+         )}
+
          {activeObjs.length > 1 && (
             <div className="mb-2 px-2.5 py-2 rounded-lg bg-blue-950/30 border border-blue-500/20 flex items-center gap-2">
                <span className="text-[10px] font-bold text-blue-300 shrink-0">{activeObjs.length} selected</span>
@@ -109,8 +172,8 @@ export const LayersTab: React.FC = () => {
                      {/* Tap target for building a multi-selection without a keyboard */}
                      <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); toggleLayerSelection((layer as any).id); }}
-                        title={inSelection ? 'Remove from selection' : 'Add to selection'}
+                        onClick={(e) => onCheckboxClick(e, idx, layer)}
+                        title={`${inSelection ? 'Remove from selection' : 'Add to selection'} - Shift+click: this layer and all below · Alt+click: only this layer`}
                         aria-pressed={inSelection}
                         className={`w-7 h-7 mr-1.5 shrink-0 flex items-center justify-center rounded-md border transition-colors ${
                            inSelection

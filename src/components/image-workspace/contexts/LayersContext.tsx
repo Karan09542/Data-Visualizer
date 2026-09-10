@@ -12,6 +12,8 @@ interface LayersContextType {
   selectLayer: (id: string) => void;
   /** Adds/removes one object from the current selection - the touch path to a multi-selection. */
   toggleLayerSelection: (id: string) => void;
+  /** Replaces the selection with exactly these objects, e.g. a Shift+click range from the layer list. */
+  setLayerSelection: (objects: fabric.Object[]) => void;
   moveLayerUp: (id: string) => void;
   moveLayerDown: (id: string) => void;
 }

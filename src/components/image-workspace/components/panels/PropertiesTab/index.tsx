@@ -18,6 +18,7 @@ import { ModernCheckbox } from '../../shared/ModernCheckbox';
 import { TypographyPanel } from '../TypographyPanel';
 import { ImageBorderPanel } from '../ImageBorderPanel';
 import { EdgeRefinePanel } from '../EdgeRefinePanel';
+import { DuplicatePanel } from '../DuplicatePanel';
 import { SmartCollageBlockCustomizationPanel } from '../SmartCollageBlockCustomizationPanel';
 import { ArtboardAssignmentModule } from '../ArtboardAssignmentModule';
 import { ModernSelect, SelectGroup } from '../../shared/ModernSelect';
@@ -243,6 +244,9 @@ export const PropertiesTab: React.FC = () => {
                      <button className="flex-1 h-9 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:bg-white/10 rounded-lg flex justify-center items-center gap-2 text-[11px] font-medium text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white transition-all border border-slate-200 dark:border-white/10 active:scale-95 shadow-sm" onClick={flipY}><FlipVertical size={14} /> Flip Y</button>
                   </div>
                </PanelSection>
+
+               {/* The touch route to Shift+Alt+Arrow, which a phone has no keys for. */}
+               <DuplicatePanel />
 
                {/* Appearance Panel */}
                {!isCollageSelected && selectionType !== 'frameGroup' && (

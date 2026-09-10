@@ -90,6 +90,7 @@ import { MacroCommand } from "./commands/base/MacroCommand";
 
 
 import { AddObjectCommand } from "./commands/object/AddObjectCommand";
+import { AddObjectsCommand } from "./commands/object/AddObjectsCommand";
 
 
 import { DeleteObjectCommand } from "./commands/object/DeleteObjectCommand";
@@ -484,6 +485,32 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       canvas.requestRenderAll();
    }, [applyParentAlignment]);
 
+   const setLayerSelection = useCallback((objects: fabric.Object[]) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      const onCanvas = new Set(canvas.getObjects());
+      // Hidden layers (another artboard on mobile) and locked helpers cannot join a selection;
+      // selecting them would move things the user cannot see.
+      const next = objects.filter(o => onCanvas.has(o) && o.selectable !== false && o.visible !== false);
+
+      // discardActiveObject fires selection:cleared, which drops the key object; keep it if it is
+      // still part of what is being selected.
+      const keepParent = parentAlignmentObjRef.current;
+
+      canvas.discardActiveObject();
+      if (next.length === 1) {
+         canvas.setActiveObject(next[0]);
+      } else if (next.length > 1) {
+         canvas.setActiveObject(new fabric.ActiveSelection(next, { canvas }));
+      }
+
+      if (keepParent && next.length > 1 && next.includes(keepParent)) {
+         applyParentAlignment(keepParent);
+      }
+      canvas.requestRenderAll();
+   }, [applyParentAlignment]);
+
    const getAbsoluteBoundingRect = (obj: fabric.Object) => {
       if (!obj.group) {
          return (obj as any).getBoundingRect();
@@ -671,6 +698,28 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       }
       canvas.requestRenderAll();
    }, [activeTool, isSpacePressed, isAltPressed]);
+
+   /**
+    * With the hand tool (or Space held) the canvas must not find objects at all.
+    *
+    * Fabric decides what a press grabs inside its own mousedown - it hit-tests, selects the object
+    * and sets up the drag - and only then fires the `mouse:down` event the pan handler listens to.
+    * So a pan that started over an object also dragged that object along with the view. Turning
+    * target-finding off *before* the press is the only point early enough to stop it.
+    */
+   useEffect(() => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const panning = activeTool === 'pan' || isSpacePressed;
+      if (!panning) return;
+
+      const previousSkip = canvas.skipTargetFind;
+      canvas.skipTargetFind = true;
+      return () => {
+         // Keep the selection tools' own lock if one of them is armed or a region is live.
+         canvas.skipTargetFind = previousSkip || !!selectionToolRef.current || selectionActiveRef.current;
+      };
+   }, [activeTool, isSpacePressed]);
 
    const [layers, setLayers] = useState<fabric.Object[]>([]);
    const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
@@ -1062,6 +1111,87 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       setCommandIndex(nextIndex);
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
+
+   const [duplicateGap, setDuplicateGap] = useState(20);
+   const duplicateGapRef = useRef(duplicateGap);
+   useEffect(() => { duplicateGapRef.current = duplicateGap; }, [duplicateGap]);
+
+   /**
+    * Places a copy of the selection beside it and selects the copy.
+    *
+    * The step is the selection's own size plus the gap, so copies tile edge to edge instead of
+    * piling on top of each other, and repeating the gesture builds a row or column.
+    *
+    * The order of work is what keeps the panel still. Cloning is asynchronous - an image reloads its
+    * source - so the selection is left standing while it happens; clearing it first had the
+    * Properties tab show its empty state for as long as the clone took, unmounting and remounting
+    * every section on each press. Everything after the clone then runs synchronously, so React
+    * batches the deselect, the adds and the reselect into a single render.
+    *
+    * Members of a multi-selection carry coordinates relative to it, so their real positions are read
+    * after the selection is dissolved and written onto the copies, rather than trusting whatever the
+    * clone inherited. All copies go in as one AddObjectsCommand: one selection change, one redraw,
+    * one layer-list rebuild, and one undo that removes every copy.
+    */
+   // A second press while the first is still cloning would read the same, unchanged selection and
+   // stack a duplicate copy on top of the first.
+   const duplicateBusyRef = useRef(false);
+
+   const duplicateInDirection = useCallback(async (dir: 'left' | 'right' | 'up' | 'down') => {
+      if (duplicateBusyRef.current) return;
+      const canvas = fabricRef.current;
+      const active = canvas?.getActiveObject();
+      if (!canvas || !active) return;
+      if ((active as any).isEditing || (active as any).isCropHelper) return;
+
+      duplicateBusyRef.current = true;
+      try {
+         active.setCoords();
+         const bounds = active.getBoundingRect();
+         const gap = duplicateGapRef.current;
+         const dx = dir === 'left' ? -(bounds.width + gap) : dir === 'right' ? bounds.width + gap : 0;
+         const dy = dir === 'up' ? -(bounds.height + gap) : dir === 'down' ? bounds.height + gap : 0;
+
+         const sources = isActiveSelection(active)
+            ? [...(active as fabric.ActiveSelection).getObjects()]
+            : [active];
+
+         const clones = await Promise.all(
+            sources.map(o => o.clone(['id', 'artboardId', 'customName', 'customFilters']))
+         );
+
+         // The user moved on while the copies were being made; placing them now would be a surprise.
+         if (canvas.getActiveObject() !== active) return;
+
+         // Synchronous from here: one batched render for everything below.
+         canvas.discardActiveObject();
+         clones.forEach((copy, i) => {
+            const src: any = sources[i];
+            copy.set({
+               left: (src.left || 0) + dx,
+               top: (src.top || 0) + dy,
+               angle: src.angle,
+               scaleX: src.scaleX,
+               scaleY: src.scaleY,
+               skewX: src.skewX,
+               skewY: src.skewY,
+               flipX: src.flipX,
+               flipY: src.flipY
+            });
+            (copy as any).id = Date.now().toString() + Math.random().toString();
+            (copy as any).artboardId = src.artboardId || activeArtboardIdRef.current;
+            copy.setCoords();
+         });
+
+         executeCommand(new AddObjectsCommand(`Duplicate ${dir}`, clones));
+      } finally {
+         duplicateBusyRef.current = false;
+      }
+   }, [executeCommand]);
+
+   // The keyboard handler is registered once; it reaches the current implementation through this.
+   const duplicateInDirectionRef = useRef(duplicateInDirection);
+   useEffect(() => { duplicateInDirectionRef.current = duplicateInDirection; }, [duplicateInDirection]);
 
    /**
     * Draws the crop shape inside the crop frame.
@@ -2191,7 +2321,19 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    }, [importAssets]);
 
 
+   /**
+    * Bumped on every selection event, purely to force a render.
+    *
+    * The selection context's `activeObjs` is read straight from fabric during render, so it is only
+    * as fresh as the last render. Growing a multi-selection from two objects to three changes none
+    * of the state below - the type is still 'activeselection' and there is still no layer id - so
+    * React skipped the render and the Layers tab went on showing two ticks until an unrelated key
+    * press happened to re-render the workspace.
+    */
+   const [, setSelectionVersion] = useState(0);
+
    const handleSelectionContext = useCallback((e: any) => {
+      setSelectionVersion(v => v + 1);
       const active = fabricRef.current?.getActiveObject();
 
       // Crop handles are ordinary Rects on the canvas, so without this the
@@ -4580,6 +4722,23 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       let isPanning = false;
       let lastX = 0;
       let lastY = 0;
+      // What was selected when a pan press began, so the press cannot quietly deselect it.
+      let selectionBeforePan: fabric.Object | null | undefined = undefined;
+
+      // Fires before fabric makes any of its own decisions about the press. Two of those decisions
+      // have to be overruled for a pan: starting a rubber-band selection (it checks `selection`
+      // before our mouse:down ever runs), and clearing the current selection because the press -
+      // with target-finding off - appears to have hit empty canvas.
+      canvas.on('mouse:down:before', (opt) => {
+         const e = opt.e as any;
+         const panPress = activeToolRef.current === 'pan' || isSpacePressedRef.current || e?.button === 1;
+         if (!panPress) {
+            selectionBeforePan = undefined;
+            return;
+         }
+         selectionBeforePan = canvas.getActiveObject() || null;
+         canvas.selection = false;
+      });
 
       canvas.on('mouse:down', (opt) => {
          const e = opt.e as any;
@@ -4592,6 +4751,12 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          if (activeToolRef.current === 'pan' || e.button === 1 || isSpacePressedRef.current || altPans) {
             isPanning = true;
             isPanningRef.current = true;
+            // Panning is looking, not editing: hand back the selection the press may have cleared.
+            if (selectionBeforePan && canvas.getActiveObject() !== selectionBeforePan
+               && canvas.getObjects().includes(selectionBeforePan)) {
+               canvas.setActiveObject(selectionBeforePan);
+            }
+            selectionBeforePan = undefined;
             if (cursorRingRef.current) cursorRingRef.current.style.display = 'none';
             lastX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
             lastY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
@@ -4649,12 +4814,14 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       let touchStartX = 0;
       let touchStartY = 0;
       let lastTapTime = 0;
+      let touchStartTime = 0;
       let twoFingerTouchTimer: any = null;
 
       const handleTouchStart = (e: TouchEvent) => {
          if (e.touches.length === 1) {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
          } else if (e.touches.length === 2 && fabricRef.current) {
             // Detect logic for two-finger context menu
             const evt = e.touches[0];
@@ -4728,8 +4895,18 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             }
          }
 
-         // Handle Double Tap to Fit
+         // Handle Double Tap to Fit. Only genuine taps count: the end of a drag used to be stamped
+         // as a "tap" too, so two quick pans in a row were read as a double-tap and snapped the
+         // view back to the artboard.
          const now = Date.now();
+         const end = e.changedTouches[0];
+         const moved = end ? Math.hypot(end.clientX - touchStartX, end.clientY - touchStartY) : 0;
+         const isTap = e.changedTouches.length === 1 && e.touches.length === 0
+            && moved < 12 && now - touchStartTime < 250;
+         if (!isTap) {
+            lastTapTime = 0;
+            return;
+         }
          if (now - lastTapTime < 300) {
             const boards = artboardsRef.current;
             const activeBoard = boards.find(b => b.id === activeArtboardIdRef.current);
@@ -4976,6 +5153,22 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          const NUDGE_KEYS: Record<string, [number, number]> = {
             ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]
          };
+         // Shift+Alt+Arrow: step-and-repeat duplicate. Checked before the plain nudge, which
+         // deliberately ignores Alt and would otherwise never see this combination.
+         if (NUDGE_KEYS[e.key] && e.shiftKey && e.altKey && !ctrlOrCmd) {
+            const tag = document.activeElement?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as any)?.isContentEditable) return;
+            const activeObj = fabricRef.current?.getActiveObject();
+            if (!activeObj || (activeObj as any).isEditing) return;
+            e.preventDefault();
+            e.stopPropagation();
+            // Holding the keys down must not spray a copy per auto-repeat.
+            if (e.repeat) return;
+            const [ux, uy] = NUDGE_KEYS[e.key];
+            void duplicateInDirectionRef.current(ux < 0 ? 'left' : ux > 0 ? 'right' : uy < 0 ? 'up' : 'down');
+            return;
+         }
+
          if (NUDGE_KEYS[e.key] && !ctrlOrCmd && !e.altKey) {
             const tag = document.activeElement?.tagName;
             const activeObj = fabricRef.current?.getActiveObject();
@@ -6680,6 +6873,11 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          exportSettings.targetSize
       ]);
 
+      // What the mobile auto-fit last fitted to. The effect below also runs whenever `artboards`
+      // changes identity - which any artboard save does - and fitting on every one of those runs
+      // snapped the view back to centre the moment the user had panned it anywhere.
+      const lastMobileFitRef = useRef<{ boardId: string | null; mobile: boolean }>({ boardId: null, mobile: false });
+
       // Hide objects of inactive artboards on mobile
       useEffect(() => {
          if (!fabricRef.current) return;
@@ -6706,10 +6904,16 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             canvas.requestRenderAll();
          }
 
-         // Fit to screen on mobile whenever active artboard changes, or restore desktop state on return
+         // Fit to screen on mobile when the active artboard actually changes, or restore desktop state on return
          if (isMobile) {
             const activeBoard = artboards.find(b => b.id === activeArtboardId) || artboards[0];
-            if (activeBoard) {
+            const last = lastMobileFitRef.current;
+            // Only a genuine change of board - or arriving in the mobile layout - earns a re-fit.
+            // Anything else would take the view away from wherever the user has put it; the
+            // "fit all artboards" button is there for getting back.
+            const shouldFit = !!activeBoard && (!last.mobile || last.boardId !== activeBoard.id);
+            if (activeBoard) lastMobileFitRef.current = { boardId: activeBoard.id, mobile: true };
+            if (activeBoard && shouldFit) {
                const cw = canvas.width!;
                const ch = canvas.height!;
                if (cw > 0 && ch > 0) {
@@ -6726,6 +6930,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                }
             }
          } else {
+            lastMobileFitRef.current = { boardId: null, mobile: false };
             if (viewportTransformRef.current) {
                canvas.setViewportTransform(viewportTransformRef.current.slice() as any);
                const zoom = canvas.getZoom();
@@ -6754,6 +6959,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                         fabricRef, enterCropMode, resetCrop, addText, addRect, addCircle, addTriangle, addLine,
                         flipX, flipY, addAlignedCollageText, updateSelectedShapeProperty, changeTextProp,
                         applyFilter, alignSelection, duplicateActiveObject, deleteActiveObject,
+                        duplicateInDirection, duplicateGap, setDuplicateGap,
                         activeSelectionTool: imageSelection.activeSelectionTool,
                         setActiveSelectionTool: imageSelection.setActiveSelectionTool,
                         hasRegionSelection: imageSelection.hasSelection,
@@ -6785,7 +6991,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                  nudgeStep, setNudgeStep, nudgeStepLarge, setNudgeStepLarge,
                                  chromeHidden, onToggleChrome
                               }}>
-                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, moveLayerUp, moveLayerDown }}>
+                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, setLayerSelection, moveLayerUp, moveLayerDown }}>
                                     <div
                                        className="w-full h-full flex flex-col bg-slate-100 dark:bg-[#121212] text-slate-800 dark:text-[#E0E0E0] select-none"
                                        ref={containerRef}
