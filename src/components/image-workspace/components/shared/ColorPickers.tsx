@@ -193,6 +193,22 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
                </button>
             )}
          </div>
+         
+         <div className="grid grid-cols-6 gap-1.5 mt-1">
+            {[
+               '#000000', '#4A4A4A', '#9B9B9B', '#FFFFFF', '#FF3B30', '#FF9500', 
+               '#FFCC00', '#4CD964', '#5AC8FA', '#007AFF', '#5856D6', '#FF2D55'
+            ].map(c => (
+               <button
+                  key={c}
+                  type="button"
+                  onClick={() => onChange(c)}
+                  className="w-[22px] h-[22px] rounded-[4px] shadow-sm border border-slate-200 dark:border-white/10 active:scale-95 transition-transform mx-auto"
+                  style={{ backgroundColor: c }}
+                  title={c}
+               />
+            ))}
+         </div>
       </div>,
       document.body
    );

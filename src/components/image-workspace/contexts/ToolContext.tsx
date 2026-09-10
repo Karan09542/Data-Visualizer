@@ -5,6 +5,11 @@ interface ToolContextType {
   setTool: (tool: string) => void;
   brushColor: string;
   changeCurrentColor: (color: string) => void;
+  /** Background color (Photoshop-style). */
+  bgColor: string;
+  changeBgColor: (color: string) => void;
+  /** Swap foreground ↔ background (X key). */
+  swapColors: () => void;
   brushSize: number;
   setBrushSize: (size: number) => void;
   brushOpacity: number;

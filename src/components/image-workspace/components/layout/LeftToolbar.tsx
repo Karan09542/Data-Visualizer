@@ -9,7 +9,7 @@ import { ToolBtn } from '../shared/ToolBtn';
 import { ColorPickerTrigger } from '../shared/ColorPickers';
 
 export const LeftToolbar: React.FC = () => {
-  const { activeTool, setTool, brushColor, changeCurrentColor } = useTool();
+  const { activeTool, setTool, brushColor, changeCurrentColor, bgColor, changeBgColor, swapColors } = useTool();
   const { enterCropMode, addText, addRect, addCircle, addTriangle, addLine, activeSelectionTool, setActiveSelectionTool } = useCanvas();
 
   return (
@@ -56,14 +56,63 @@ export const LeftToolbar: React.FC = () => {
         
         <div className="flex-1" />
 
-        <div className="relative">
-            <ColorPickerTrigger 
-               color={brushColor} 
-               onChange={changeCurrentColor} 
-               className="w-8 h-8 rounded-full border-2 border-slate-300 dark:border-white/20 shadow-inner relative overflow-hidden"
-               label="Brush Color"
-            />
-         </div>
+        {/* ── Photoshop-style Foreground / Background color swatches ── */}
+        <div className="relative" style={{ width: 38, height: 38 }}>
+           {/* Background swatch (behind, offset to bottom-right) */}
+           <div
+              className="absolute bottom-0 right-0 w-[24px] h-[24px] rounded-[4px] border border-slate-400 dark:border-white/30 shadow-inner overflow-hidden"
+              style={{ backgroundColor: bgColor }}
+              title="Background Color (Alt+Delete to fill)"
+           >
+              <ColorPickerTrigger
+                 color={bgColor}
+                 onChange={changeBgColor}
+                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                 label="Background Color"
+              />
+           </div>
+
+           {/* Foreground swatch (in front, offset to top-left) */}
+           <div
+              className="absolute top-0 left-0 w-[24px] h-[24px] rounded-[4px] border-2 border-white dark:border-zinc-300 shadow-md overflow-hidden z-[1]"
+              style={{ backgroundColor: brushColor }}
+              title="Foreground Color (Ctrl+Delete to fill)"
+           >
+              <ColorPickerTrigger
+                 color={brushColor}
+                 onChange={changeCurrentColor}
+                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                 label="Foreground Color"
+              />
+           </div>
+
+           {/* Swap button (X) — top-right corner */}
+           <button
+              type="button"
+              onClick={swapColors}
+              className="absolute -top-1 -right-1 z-[2] flex items-center justify-center w-[14px] h-[14px] rounded-full bg-zinc-700 dark:bg-zinc-600 border border-zinc-500 dark:border-zinc-400 text-[8px] font-bold text-white hover:bg-zinc-500 dark:hover:bg-zinc-400 hover:text-white transition-all active:scale-90 shadow-sm"
+              title="Swap Foreground & Background (X)"
+           >
+              ⇄
+           </button>
+
+           {/* Reset to defaults (D) — bottom-left corner */}
+           <button
+              type="button"
+              onClick={() => {
+                 changeCurrentColor('#000000');
+                 changeBgColor('#ffffff');
+              }}
+              className="absolute -bottom-1 -left-1 z-[2] flex items-center justify-center w-[14px] h-[14px] rounded-full bg-zinc-700 dark:bg-zinc-600 border border-zinc-500 dark:border-zinc-400 hover:bg-zinc-500 dark:hover:bg-zinc-400 transition-all active:scale-90 shadow-sm overflow-hidden"
+              title="Reset to Default Colors (D)"
+           >
+              {/* Mini fg/bg preview icon */}
+              <span className="block w-full h-full relative">
+                 <span className="absolute top-0 left-0 w-[7px] h-[7px] bg-black rounded-[1px]" />
+                 <span className="absolute bottom-0 right-0 w-[7px] h-[7px] bg-white rounded-[1px]" />
+              </span>
+           </button>
+        </div>
      </div>
   );
 };

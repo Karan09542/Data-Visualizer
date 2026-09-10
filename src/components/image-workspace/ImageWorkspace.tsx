@@ -794,6 +794,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    // Brush / Styling
    const [brushType, setBrushType] = useState<string>("pencil");
    const [brushColor, setBrushColor] = useState("#ff0000");
+   const [bgColor, setBgColor] = useState("#ffffff");
    const [brushSize, setBrushSize] = useState(10);
    const [brushOpacity, setBrushOpacity] = useState<number>(100);
    const [brushFlow, setBrushFlow] = useState<number>(100);
@@ -838,6 +839,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    const brushHardnessRef = useRef(brushHardness);
    const brushTypeRef = useRef(brushType);
    const brushColorRef = useRef(brushColor);
+   const bgColorRef = useRef(bgColor);
    const brushFlowRef = useRef(brushFlow);
    const brushSmoothingRef = useRef(brushSmoothing);
 
@@ -868,6 +870,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    useEffect(() => {
       brushColorRef.current = brushColor;
    }, [brushColor]);
+
+   useEffect(() => {
+      bgColorRef.current = bgColor;
+   }, [bgColor]);
 
    useEffect(() => {
       brushFlowRef.current = brushFlow;
@@ -4931,7 +4937,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          const ctrlOrCmd = e.ctrlKey || e.metaKey;
          const isRedo = ctrlOrCmd && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey));
          const isUndo = ctrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey;
-         const isDelete = e.key === 'Delete' || e.key === 'Backspace';
+         const isDeleteKey = e.key === 'Delete' || e.key === 'Backspace';
+         const isDelete = isDeleteKey && !ctrlOrCmd && !e.altKey;
+         const isFillForeground = isDeleteKey && ctrlOrCmd && !e.altKey;
+         const isFillBackground = isDeleteKey && e.altKey && !ctrlOrCmd;
          const isBringForward = ctrlOrCmd && e.key === ']' && !e.shiftKey;
          const isBringToFront = ctrlOrCmd && e.key === ']' && e.shiftKey;
          const isSendBackward = ctrlOrCmd && e.key === '[' && !e.shiftKey;
@@ -4985,7 +4994,17 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          }
 
 
-         if (e.key === 'Escape') {
+          // Ctrl+Delete → fill with foreground, Alt+Delete → fill with background
+          if ((isFillForeground || isFillBackground) && selectionActiveRef.current) {
+             if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+             e.preventDefault();
+             e.stopPropagation();
+             const fillColor = isFillForeground ? brushColorRef.current : bgColorRef.current;
+             imageSelection.fillSelection(fillColor);
+             return;
+          }
+
+          if (e.key === 'Escape') {
             if (isCropping) {
                cancelCrop();
             }
@@ -5077,6 +5096,28 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                   }
                   updateCursorRing();
                   return;
+               }
+            }
+         }
+
+         // Photoshop-style color shortcuts (no modifier keys, not in input)
+         if (!ctrlOrCmd && !e.altKey && !e.shiftKey) {
+            if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+            if (e.key.toLowerCase() === 'x') {
+               // Swap foreground ↔ background
+               const currentFg = brushColorRef.current;
+               const currentBg = bgColorRef.current;
+               setBrushColor(currentBg);
+               setBgColor(currentFg);
+               if (fabricRef.current?.freeDrawingBrush) {
+                  fabricRef.current.freeDrawingBrush.color = currentBg;
+               }
+            } else if (e.key.toLowerCase() === 'd') {
+               // Reset to default black fg / white bg
+               setBrushColor('#000000');
+               setBgColor('#ffffff');
+               if (fabricRef.current?.freeDrawingBrush) {
+                  fabricRef.current.freeDrawingBrush.color = '#000000';
                }
             }
          }
@@ -6198,6 +6239,22 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          }
       };
 
+      /** Set the background color (no side-effects on active objects). */
+      const changeBgColor = (newColor: string) => {
+         setBgColor(newColor);
+      };
+
+      /** Photoshop-style swap: foreground ↔ background (X key). */
+      const swapColors = () => {
+         const currentFg = brushColorRef.current;
+         const currentBg = bgColorRef.current;
+         setBrushColor(currentBg);
+         setBgColor(currentFg);
+         if (activeTool === 'brush' && fabricRef.current?.freeDrawingBrush) {
+            fabricRef.current.freeDrawingBrush.color = currentBg;
+         }
+      };
+
       // Advanced Filters
       const getTargetImageForFilters = () => {
          let obj = fabricRef.current?.getActiveObject() as any;
@@ -6678,7 +6735,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                fitView();
             }
          }
-      }, [isMobile, activeArtboardId, artboards]);
+}, [isMobile, activeArtboardId, artboards]);
 
       return (
          <CollageConfigProvider value={collageProps}>
@@ -6686,6 +6743,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                <ShapePropertiesProvider value={shapeProps}>
                   <ToolProvider value={{
                      activeTool, setTool, brushColor, changeCurrentColor,
+                     bgColor, changeBgColor, swapColors,
                      brushSize, setBrushSize, brushOpacity, setBrushOpacity,
                      brushHardness, setBrushHardness, brushFlow, setBrushFlow,
                      brushSmoothing, setBrushSmoothing, brushType, setBrushType,
