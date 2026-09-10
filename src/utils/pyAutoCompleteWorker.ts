@@ -1,5 +1,9 @@
 import { loadPyodide } from "pyodide";
 import { getInstalledPackages } from "./pyDb";
+import { keptPackageFetch, mountPersistentPackages, PERSIST_HELPERS_PY } from "./pyPackageStorage";
+
+// Jedi and the installed packages load from device storage when kept, as in the Python worker.
+self.fetch = keptPackageFetch(self.fetch.bind(self), { shouldKeep: () => true });
 
 let pyodide: any = null;
 let isInitializing = false;
@@ -153,18 +157,24 @@ def get_diagnostics(code, path="main.py"):
         return json.dumps([])
     `);
 
-    // Synchronize workspace packages
+    // Installed packages, so completions know them. PyPI ones import straight from the folder the
+    // Python worker keeps on this device; prebuilt ones come through Pyodide's loader.
     try {
-      // console.log("[PyIntelliSense Worker]: Synchronizing installed libraries...");
+      try {
+        await mountPersistentPackages(pyodide);
+        pyodide.runPython(PERSIST_HELPERS_PY);
+      } catch (mountErr) {
+        console.warn("[PyIntelliSense Worker]: Kept packages unavailable:", mountErr);
+      }
       const installedPkgs = await getInstalledPackages();
       const readyPkgs = installedPkgs.filter(p => p.status === "installed");
-      if (readyPkgs.length > 0) {
-        for (const pkg of readyPkgs) {
+      for (const pkg of readyPkgs) {
+        const names = pkg.method === "pypi" ? (pkg.native || []).map(d => d.name) : [pkg.name];
+        for (const name of names) {
           try {
-            // console.log(`[PyIntelliSense Worker]: Mapping package completions for "${pkg.name}"...`);
-            await pyodide.loadPackage(pkg.name);
+            await pyodide.loadPackage(name);
           } catch (pkgErr) {
-            console.warn(`[PyIntelliSense Worker]: Optional preload of package ${pkg.name} failed:`, pkgErr);
+            console.warn(`[PyIntelliSense Worker]: Optional preload of package ${name} failed:`, pkgErr);
           }
         }
       }

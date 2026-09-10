@@ -6,6 +6,12 @@ export interface PyPackageMetadata {
   installedAt: string;
   status: "installed" | "loading" | "error";
   isPrebuilt?: boolean;
+  /** How it was installed: Pyodide's prebuilt set, or PyPI through micropip. */
+  method?: "pyodide" | "pypi";
+  /** PyPI distributions whose installed files are kept on the device (see pyPackageStorage). */
+  persisted?: { name: string; version: string }[];
+  /** Distributions with compiled code, loaded through Pyodide's loader on start-up. */
+  native?: { name: string; version: string; url?: string }[];
 }
 
 export interface PyWheelCache {
@@ -58,13 +64,11 @@ export async function removeInstalledPackage(name: string): Promise<void> {
 
 export async function getWheelsCacheSize(): Promise<number> {
   try {
-    const all = await pyDb.wheels.toArray();
+    // One record at a time: loading the whole table would hold every wheel in memory at once.
     let size = 0;
-    for (const w of all) {
-      if (w.data) {
-        size += w.data.byteLength;
-      }
-    }
+    await pyDb.wheels.each((w) => {
+      if (w.data) size += w.data.byteLength;
+    });
     return size;
   } catch {
     return 0;

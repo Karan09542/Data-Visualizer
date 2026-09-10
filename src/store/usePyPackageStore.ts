@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getInstalledPackages, saveInstalledPackage, removeInstalledPackage, PyPackageMetadata } from "../utils/pyDb";
 import { appendLogs } from "../utils/executionStore";
+import { clearPackageStorage, packageStorageInfo, PackageStorageBackend } from "../utils/pyPackageStorage";
 
 export interface PyPackageStore {
   installedPackages: PyPackageMetadata[];
@@ -20,6 +21,33 @@ export interface PyPackageStore {
   setAutoInstallMissing: (val: boolean) => void;
   setPyPackageCacheEnabled: (val: boolean) => void;
   setShowMissingModal: (val: { isOpen: boolean; path: string; missingPackages: string[] } | null) => void;
+
+  /** What kept packages take up on this device, and where. */
+  storageInfo: { backend: PackageStorageBackend; bytes: number } | null;
+  refreshStorageInfo: () => Promise<void>;
+  /** Deletes the device copies; packages download again the next time Python starts. */
+  clearStoredPackages: () => Promise<void>;
+}
+
+type InstallOutcome = { success: boolean; version: string; error?: string } &
+  Pick<PyPackageMetadata, "method" | "persisted" | "native">;
+
+/**
+ * Stops the shared Python worker, so the next run starts from a clean runtime. Unloading Python
+ * modules is not reliable, so this is how a removal takes effect.
+ */
+async function restartSharedWorker(reason: string) {
+  const { activePyWorkers, activePyRejectors, activePyWorkersBusy, currentExecutingPath, SHARED_KEY } =
+    await import("../utils/pyExecutor");
+  const worker = activePyWorkers[SHARED_KEY];
+  if (!worker) return;
+  worker.terminate();
+  delete activePyWorkers[SHARED_KEY];
+  delete activePyWorkersBusy[SHARED_KEY];
+  if (currentExecutingPath && activePyRejectors[currentExecutingPath]) {
+    activePyRejectors[currentExecutingPath](new Error(reason));
+    delete activePyRejectors[currentExecutingPath];
+  }
 }
 
 // Installs in flight. Aborting execution terminates the shared worker, which
@@ -36,7 +64,7 @@ async function runWorkerInstall(
   packageName: string, 
   onLog: (msg: string) => void, 
   onError: (err: string) => void
-): Promise<{ success: boolean; version: string; error?: string }> {
+): Promise<InstallOutcome> {
   const { activePyWorkers, SHARED_KEY } = await import("../utils/pyExecutor");
   let worker = activePyWorkers[SHARED_KEY];
   if (!worker) {
@@ -64,7 +92,10 @@ async function runWorkerInstall(
         resolve({
           success: e.data.success,
           version: e.data.version || "latest",
-          error: e.data.error
+          error: e.data.error,
+          method: e.data.method,
+          persisted: e.data.persisted,
+          native: e.data.native
         });
       }
     };
@@ -122,6 +153,21 @@ export const usePyPackageStore = create<PyPackageStore>((set, get) => ({
     }
   })(),
   showMissingModal: null,
+  storageInfo: null,
+
+  refreshStorageInfo: async () => {
+    try {
+      set({ storageInfo: await packageStorageInfo() });
+    } catch {
+      set({ storageInfo: null });
+    }
+  },
+
+  clearStoredPackages: async () => {
+    await restartSharedWorker("Runtime restarted after clearing stored packages");
+    await clearPackageStorage();
+    await get().refreshStorageInfo();
+  },
 
   loadRegistry: async () => {
     set({ isLoadingRegistry: true });
@@ -243,7 +289,10 @@ export const usePyPackageStore = create<PyPackageStore>((set, get) => ({
         name: cleanName,
         version: result.version || "latest",
         installedAt: new Date().toLocaleDateString(),
-        status: "installed"
+        status: "installed",
+        method: result.method,
+        persisted: result.persisted,
+        native: result.native
       });
 
       await get().loadRegistry();
@@ -304,24 +353,8 @@ export const usePyPackageStore = create<PyPackageStore>((set, get) => ({
       ]).catch(() => {});
     }
 
-    // Since unloading Python modules is unstable, we clear and terminate the shared worker so on next execute it builds a clean workspace!
-    const activePyWorkers = (await import("../utils/pyExecutor")).activePyWorkers;
-    const activePyRejectors = (await import("../utils/pyExecutor")).activePyRejectors;
-    const currentExecutingPath = (await import("../utils/pyExecutor")).currentExecutingPath;
-    const SHARED_KEY = "shared_global_python_worker";
-    
-    const worker = activePyWorkers[SHARED_KEY];
-    if (worker) {
-      worker.terminate();
-      delete activePyWorkers[SHARED_KEY];
-      const activePyWorkersBusy = (await import("../utils/pyExecutor")).activePyWorkersBusy;
-      delete activePyWorkersBusy[SHARED_KEY];
-
-      if (currentExecutingPath && activePyRejectors[currentExecutingPath]) {
-        activePyRejectors[currentExecutingPath](new Error("Runtime restarted to apply package removal"));
-        delete activePyRejectors[currentExecutingPath];
-      }
-    }
+    // A clean runtime on the next run; its start-up also deletes the removed package's kept files.
+    await restartSharedWorker("Runtime restarted to apply package removal");
 
     await get().loadRegistry();
   }

@@ -1,7 +1,9 @@
 import { loadPyodide } from "pyodide";
-import { getInstalledPackages, pyDb } from "./pyDb";
+import { getInstalledPackages, saveInstalledPackage, PyPackageMetadata } from "./pyDb";
+import { keptPackageFetch, mountPersistentPackages, MountedPackages, PERSIST_HELPERS_PY, PERSIST_MOUNT } from "./pyPackageStorage";
 
 let activeEnabledProxies: string[] = [];
+void PERSIST_MOUNT;
 
 // Set up shims for window and document so python scripts can import them and perform actions like downloads
 (self as any).window = self;
@@ -40,60 +42,17 @@ let cacheEnabled = true;
 
 const originalFetch = self.fetch;
 
-self.fetch = async (
+const requestUrl = (input: RequestInfo | URL) =>
+  typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+
+/** The network, with the configured CORS proxies as a fallback for cross-origin failures. */
+const networkFetch = async (
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> => {
-  const urlStr =
-    typeof input === "string"
-      ? input
-      : input instanceof URL
-        ? input.href
-        : input.url;
-
-  if (cacheEnabled && urlStr.endsWith(".whl")) {
-    try {
-      const cached = await pyDb.wheels.get(urlStr);
-      if (cached && cached.data) {
-        return new Response(cached.data, {
-          status: 200,
-          headers: {
-            "Content-Type": "application/x-pip-egg-info",
-            "Content-Length": String(cached.data.byteLength),
-            "X-Cache": "Dexie-Hit",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-          },
-        });
-      }
-    } catch (err) {
-      console.warn("[Pyodide Cache]: Dexie wheel read failed:", err);
-    }
-  }
-
+  const urlStr = requestUrl(input);
   try {
-    const response = await originalFetch(input, init);
-    if (response.ok && cacheEnabled && urlStr.endsWith(".whl")) {
-      const clonedRes = response.clone();
-      clonedRes
-        .arrayBuffer()
-        .then((buffer) => {
-          pyDb.wheels
-            .put({
-              url: urlStr,
-              data: buffer,
-              cachedAt: Date.now(),
-            })
-            .catch((err) => {
-              console.warn("[Pyodide Cache]: Failed to cache wheel:", err);
-            });
-        })
-        .catch((err) => {
-          console.warn("[Pyodide Cache]: Failed to extract array buffer:", err);
-        });
-    }
-    return response;
+    return await originalFetch(input, init);
   } catch (err: any) {
     if (err.name === "TypeError" && err.message === "Failed to fetch") {
       if (
@@ -126,6 +85,19 @@ self.fetch = async (
   }
 };
 
+/** Package URLs requested during the install in progress, so compiled parts can be traced to their wheel. */
+let installRecording: string[] | null = null;
+/** Package files still being written to device storage. */
+const pendingPackageWrites = new Set<Promise<unknown>>();
+
+// Package files (wheels, Pyodide's shared-library archives) come from device storage when kept,
+// and are kept as they download - see pyPackageStorage.
+self.fetch = keptPackageFetch(networkFetch, {
+  shouldKeep: () => cacheEnabled,
+  onPackageUrl: (url) => installRecording?.push(url),
+  pending: pendingPackageWrites,
+});
+
 let pyodide: any = null;
 let currentFlushInterval: any = null;
 let activeAddLog: ((logType: string, args: any[]) => void) | null = null;
@@ -149,78 +121,123 @@ self.addEventListener("unhandledrejection", (e) => {
   self.postMessage({ type: "finish", success: false, error: msg });
 });
 
+/** The kept-packages folder, once mounted on cold boot. */
+let kept: MountedPackages | null = null;
+
+const normalizeName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
+
+/** Whether Pyodide's loader has this package in. An unknown name is reported, not thrown, so this is what counts. */
+const isLoaded = (name: string) =>
+  Object.keys(pyodide?.loadedPackages || {}).some((k) => normalizeName(k) === normalizeName(name));
+
+/** Whether the name is one of Pyodide's prebuilt packages, when the lock file is at hand. */
+const isPrebuiltName = (name: string) => {
+  const lock = pyodide?._api?.lockfile_packages;
+  return !lock || normalizeName(name) in lock;
+};
+
+const useAggBackend = (name: string) => {
+  if (name !== "matplotlib") return;
+  try {
+    pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
+  } catch { }
+};
+
+function detectVersion(name: string): string {
+  useAggBackend(name);
+  pyodide.globals.set("_dv_pkg", name);
+  try {
+    return pyodide.runPython("import importlib.metadata as meta; meta.version(_dv_pkg)") || "latest";
+  } catch {
+    try {
+      return pyodide.runPython(`import ${name}; ${name}.__version__`) || "latest";
+    } catch {
+      return "latest";
+    }
+  }
+}
+
+/** The wheel a distribution came from, among the URLs the install requested. */
+function wheelUrlFor(name: string, version: string): string | undefined {
+  const prefix = `${name.replace(/-/g, "_")}-${version}-`.toLowerCase();
+  return (installRecording || []).find((url) => {
+    const file = decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() || "").toLowerCase();
+    return file.endsWith(".whl") && file.startsWith(prefix);
+  });
+}
+
+const flushPackageWrites = () => Promise.allSettled(Array.from(pendingPackageWrites));
+
+interface InstallResult {
+  success: boolean;
+  version?: string;
+  error?: string;
+  method?: "pyodide" | "pypi";
+  persisted?: { name: string; version: string }[];
+  native?: { name: string; version: string; url?: string }[];
+}
+
 async function installPackageInWorker(
   name: string,
   addLog: (type: string, args: any[]) => void,
-) {
-  addLog("log", [
-    `[Pyodide Pip]: Checking prebuilt bundle or PyPI for "${name}"...`,
-  ]);
+): Promise<InstallResult> {
+  installRecording = [];
   try {
-    await pyodide.loadPackage(name);
-    let version = "latest";
-    try {
-      if (name === "matplotlib") {
-        try {
-          pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-        } catch { }
-      }
-      version =
-        pyodide.runPython(
-          `import ${name}; import importlib.metadata as meta; meta.version('${name}')`,
-        ) || "latest";
-    } catch {
-      try {
-        if (name === "matplotlib") {
-          try {
-            pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-          } catch { }
-        }
-        version =
-          pyodide.runPython(`import ${name}; ${name}.__version__`) || "latest";
-      } catch { }
-    }
     addLog("log", [
-      `[Pyodide Pip]: Successfully loaded prebuilt library "${name}" (v${version})`,
+      `[Pyodide Pip]: Checking prebuilt bundle or PyPI for "${name}"...`,
     ]);
-    return { success: true, version };
-  } catch (err: any) {
+
+    // 1. Pyodide's prebuilt set. Its wheels are kept as they download, so the next start
+    //    loads them from the device.
+    if (isPrebuiltName(name)) {
+      try {
+        await pyodide.loadPackage(name);
+      } catch { }
+      if (isLoaded(name)) {
+        const version = detectVersion(name);
+        await flushPackageWrites();
+        addLog("log", [
+          `[Pyodide Pip]: Successfully loaded prebuilt library "${name}" (v${version})`,
+        ]);
+        return { success: true, version, method: "pyodide" };
+      }
+    }
+
+    // 2. PyPI through micropip. What it installs is copied into the kept folder, since micropip
+    //    cannot run offline - it asks PyPI before it installs anything.
     addLog("log", [
       `[Pyodide Pip]: "${name}" is not prebuilt or failed to load directly. Installing from PyPI via micropip...`,
     ]);
     try {
       await pyodide.loadPackage("micropip");
-      await pyodide.runPythonAsync(`
-import micropip
-await micropip.install('${name}')
-      `);
-      let version = "latest";
-      try {
-        if (name === "matplotlib") {
-          try {
-            pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-          } catch { }
-        }
-        version =
-          pyodide.runPython(
-            `import ${name}; import importlib.metadata as meta; meta.version('${name}')`,
-          ) || "latest";
-      } catch {
-        try {
-          if (name === "matplotlib") {
-            try {
-              pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-            } catch { }
-          }
-          version =
-            pyodide.runPython(`import ${name}; ${name}.__version__`) ||
-            "latest";
-        } catch { }
-      }
+      // Taken after micropip itself is in, so it is not mistaken for part of this package.
+      const before = kept ? pyodide.runPython("_dv_snapshot()") : "{}";
+      pyodide.globals.set("_dv_pkg", name);
+      await pyodide.runPythonAsync("import micropip\nawait micropip.install(_dv_pkg)");
+      const version = detectVersion(name);
       addLog("log", [
         `[Pyodide Pip]: Successfully installed "${name}" (v${version}) from PyPI!`,
       ]);
-      return { success: true, version };
+
+      const result: InstallResult = { success: true, version, method: "pypi", persisted: [], native: [] };
+      if (cacheEnabled && kept && kept.backend !== "memory") {
+        try {
+          pyodide.globals.set("_dv_before", before);
+          const saved = JSON.parse(pyodide.runPython("_dv_keep_new(_dv_before)"));
+          result.persisted = saved.kept;
+          result.native = saved.native.map((d: { name: string; version: string }) => ({ ...d, url: wheelUrlFor(d.name, d.version) }));
+          await kept.persist();
+          await flushPackageWrites();
+          addLog("log", [
+            `[Pyodide Pip]: Saved "${name}" on this device (${kept.backend === "opfs" ? "OPFS" : "IndexedDB"}). It loads after a refresh without downloading, even offline.`,
+          ]);
+        } catch (saveErr: any) {
+          addLog("warn", [
+            `[Pyodide Pip]: "${name}" is installed, but could not be saved on this device: ${saveErr?.message || saveErr}`,
+          ]);
+        }
+      }
+      return result;
     } catch (micropipErr: any) {
       const msg = micropipErr.message || String(micropipErr);
       addLog("error", [
@@ -228,7 +245,126 @@ await micropip.install('${name}')
       ]);
       return { success: false, error: msg };
     }
+  } finally {
+    installRecording = null;
   }
+}
+
+/** Loads a compiled distribution by name through Pyodide's loader, or from the wheel it came in. */
+async function loadCompiledPart(dep: { name: string; url?: string }) {
+  try {
+    await pyodide.loadPackage(dep.name);
+  } catch { }
+  if (isLoaded(dep.name)) return;
+  if (dep.url) {
+    await pyodide.loadPackage(dep.url);
+    return;
+  }
+  throw new Error(`its compiled part "${dep.name}" is not available`);
+}
+
+/**
+ * Brings back every installed package on cold boot. PyPI packages whose files are kept are
+ * importable already; prebuilt ones go through Pyodide's loader, fed from device storage.
+ * Only what is missing from the device is downloaded.
+ */
+async function restorePackages(addLog: (type: string, args: any[]) => void) {
+  let installed: PyPackageMetadata[] = [];
+  try {
+    addLog("log", [
+      "[Pyodide Backend]: Scanning workspace registry for installed packages...",
+    ]);
+    installed = (await getInstalledPackages()).filter((p) => p.status === "installed");
+  } catch (dbErr: any) {
+    console.warn("Could not scan IndexedDB in worker coldboot", dbErr);
+    return;
+  }
+
+  // Files of packages uninstalled since last time go now; whatever the others still need stays.
+  if (kept && kept.backend !== "memory") {
+    try {
+      const roots = installed
+        .filter((p) => p.method === "pypi")
+        .flatMap((p) => [p.name, ...(p.persisted || []).map((d) => d.name)]);
+      pyodide.globals.set("_dv_roots", JSON.stringify(roots));
+      const removed: string[] = JSON.parse(pyodide.runPython("_dv_gc(_dv_roots)"));
+      if (removed.length) {
+        await kept.persist();
+        addLog("log", [`[Pyodide Backend]: Removed files of uninstalled packages: ${removed.join(", ")}`]);
+      }
+    } catch (gcErr) {
+      console.warn("[Pyodide Backend]: Could not tidy kept packages", gcErr);
+    }
+  }
+
+  if (!installed.length) {
+    addLog("log", [
+      "[Pyodide Backend]: No previously installed packages found. Clean environment.",
+    ]);
+    return;
+  }
+
+  addLog("log", [
+    `[Pyodide Backend]: Restoring ${installed.length} installed package environments...`,
+  ]);
+
+  let onDevice: Record<string, string> = {};
+  try {
+    onDevice = kept ? JSON.parse(pyodide.runPython("_dv_kept()")) : {};
+  } catch { }
+
+  const ready: string[] = [];
+  for (const pkg of installed) {
+    try {
+      const keptFiles =
+        pkg.method === "pypi" &&
+        (pkg.persisted?.length ?? 0) > 0 &&
+        pkg.persisted!.every((d) => d.name in onDevice);
+
+      if (keptFiles) {
+        for (const dep of pkg.native || []) await loadCompiledPart(dep);
+        addLog("log", [`[Pyodide Backend]: "${pkg.name}" loaded from this device (no download).`]);
+        ready.push(pkg.name);
+        continue;
+      }
+
+      if (pkg.method !== "pypi" && isPrebuiltName(pkg.name)) {
+        addLog("log", [`[Pyodide Backend]: Restoring package "${pkg.name}"...`]);
+        try {
+          await pyodide.loadPackage(pkg.name);
+        } catch { }
+        if (isLoaded(pkg.name)) {
+          useAggBackend(pkg.name);
+          ready.push(pkg.name);
+          continue;
+        }
+      }
+
+      // Installed before packages were kept, or the device copy was cleared: install it again,
+      // which also keeps it from now on.
+      if (!self.navigator.onLine) {
+        throw new Error("offline, and it has not been saved on this device yet");
+      }
+      const res = await installPackageInWorker(pkg.name, addLog);
+      if (!res.success) throw new Error(res.error || "installation failed");
+      await saveInstalledPackage({
+        ...pkg,
+        version: res.version || pkg.version,
+        method: res.method,
+        persisted: res.persisted,
+        native: res.native,
+      });
+      ready.push(pkg.name);
+    } catch (loadErr: any) {
+      addLog("error", [
+        `[Pyodide Backend]: Failed to load and restore "${pkg.name}": ${loadErr?.message || loadErr}`,
+      ]);
+    }
+  }
+
+  addLog("log", [
+    `[Pyodide Backend]: Environment restored. Ready packages: ${ready.join(", ") || "none"}`,
+  ]);
 }
 
 self.onmessage = async (e) => {
@@ -357,61 +493,20 @@ self.onmessage = async (e) => {
       });
       addLog("log", ["[Pyodide]: Runtime initialized successfully!"]);
 
-      // Automatically restore previously installed packages on cold-boot
+      // The folder kept on this device, then everything that was installed.
       try {
-        addLog("log", [
-          "[Pyodide Backend]: Scanning workspace registry for installed packages...",
-        ]);
-        const installedPkgs = await getInstalledPackages();
-        const readyPkgs = installedPkgs.filter((p) => p.status === "installed");
-
-        if (readyPkgs.length > 0) {
+        kept = await mountPersistentPackages(pyodide);
+        pyodide.runPython(PERSIST_HELPERS_PY);
+        if (kept.backend !== "memory") {
           addLog("log", [
-            `[Pyodide Backend]: Restoring ${readyPkgs.length} installed package environments...`,
-          ]);
-          for (const pkg of readyPkgs) {
-            try {
-              addLog("log", [
-                `[Pyodide Backend]: Restoring package "${pkg.name}"...`,
-              ]);
-              await pyodide.loadPackage(pkg.name);
-              if (pkg.name === "matplotlib") {
-                try {
-                  pyodide.runPython("import matplotlib; matplotlib.use('Agg')");
-                } catch { }
-              }
-            } catch (loadErr: any) {
-              // If load failed, attempt micropip
-              try {
-                await pyodide.loadPackage("micropip");
-                await pyodide.runPythonAsync(
-                  `import micropip; await micropip.install('${pkg.name}')`,
-                );
-                if (pkg.name === "matplotlib") {
-                  try {
-                    pyodide.runPython(
-                      "import matplotlib; matplotlib.use('Agg')",
-                    );
-                  } catch { }
-                }
-              } catch (e: any) {
-                addLog("error", [
-                  `[Pyodide Backend]: Failed to load and restore "${pkg.name}": ${loadErr.message || loadErr}`,
-                ]);
-              }
-            }
-          }
-          addLog("log", [
-            `[Pyodide Backend]: Environment restored. Ready packages: ${readyPkgs.map((p) => p.name).join(", ")}`,
-          ]);
-        } else {
-          addLog("log", [
-            "[Pyodide Backend]: No previously installed packages found. Clean environment.",
+            `[Pyodide Backend]: Packages are kept on this device (${kept.backend === "opfs" ? "OPFS" : "IndexedDB"}).`,
           ]);
         }
-      } catch (dbErr: any) {
-        console.warn("Could not scan IndexedDB in worker coldboot", dbErr);
+      } catch (mountErr: any) {
+        kept = null;
+        console.warn("[Pyodide]: Could not set up package storage", mountErr);
       }
+      await restorePackages(addLog);
     }
 
     // Check if the current message is a dedicated installation request
@@ -421,6 +516,25 @@ self.onmessage = async (e) => {
         cacheEnabled = msgCacheEnabled;
       }
       const res = await installPackageInWorker(packageName, addLog);
+
+      // Recorded here as well as by the page. Start-up tidies away kept files that no registered
+      // package claims, so the entry has to exist before anything can start another worker - a
+      // refresh straight after installing included.
+      if (res.success) {
+        try {
+          await saveInstalledPackage({
+            name: packageName,
+            version: res.version || "latest",
+            installedAt: new Date().toLocaleDateString(),
+            status: "installed",
+            method: res.method,
+            persisted: res.persisted,
+            native: res.native,
+          });
+        } catch (dbErr) {
+          console.warn("[Pyodide]: Could not record the install", dbErr);
+        }
+      }
 
       if (currentFlushInterval) clearInterval(currentFlushInterval);
       flushLogs();
@@ -432,6 +546,9 @@ self.onmessage = async (e) => {
         success: res.success,
         version: res.version,
         error: res.error,
+        method: res.method,
+        persisted: res.persisted,
+        native: res.native,
       });
       return;
     }
@@ -474,7 +591,7 @@ for k, m in list(sys.modules.items()):
     if k == '__main__':
         continue
     f = getattr(m, '__file__', None)
-    if f and type(f) is str and f.startswith('/') and not f.startswith('/lib/'):
+    if f and type(f) is str and f.startswith('/') and not f.startswith('/lib/') and not f.startswith('/opt/py_packages/'):
         del sys.modules[k]
 importlib.invalidate_caches()
 `;

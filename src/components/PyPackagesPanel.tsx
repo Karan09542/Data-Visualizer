@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { usePyPackageStore } from "../store/usePyPackageStore";
-import { Search, Loader2, CheckCircle2, AlertCircle, Trash2, RefreshCw, Layers, ChevronDown, ChevronUp, Play, Check } from "lucide-react";
+import { Search, Loader2, CheckCircle2, AlertCircle, Trash2, RefreshCw, Layers, ChevronDown, ChevronUp, Play, Check, HardDrive } from "lucide-react";
 
 const sectionLabel =
   "text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted,#616161)] mb-1.5";
@@ -8,6 +8,13 @@ const listBox =
   "border border-[var(--vsc-border,#e5e5e5)] rounded-[4px] overflow-hidden divide-y divide-[var(--vsc-border,#e5e5e5)]";
 const iconBtn =
   "p-1 rounded-[4px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] transition disabled:opacity-50 cursor-pointer";
+
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
 
 /** A settings row in the VS Code side bar idiom - no card, no fill. */
 const ToggleRow: React.FC<{
@@ -49,6 +56,10 @@ export const PyPackagesPanel: React.FC = () => {
   const uninstallPackage = usePyPackageStore((state) => state.uninstallPackage);
   const setAutoInstallMissing = usePyPackageStore((state) => state.setAutoInstallMissing);
   const setPyPackageCacheEnabled = usePyPackageStore((state) => state.setPyPackageCacheEnabled);
+  const storageInfo = usePyPackageStore((state) => state.storageInfo);
+  const refreshStorageInfo = usePyPackageStore((state) => state.refreshStorageInfo);
+  const clearStoredPackages = usePyPackageStore((state) => state.clearStoredPackages);
+  const [confirmClearStorage, setConfirmClearStorage] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});
@@ -57,6 +68,11 @@ export const PyPackagesPanel: React.FC = () => {
   useEffect(() => {
     loadRegistry();
   }, [loadRegistry]);
+
+  // Re-measured whenever the installed list changes - an install or removal changes what is kept.
+  useEffect(() => {
+    refreshStorageInfo();
+  }, [installedPackages, refreshStorageInfo]);
 
   const recommendedPackages = [
     { name: "numpy", desc: "Scientific computing, N-dimensional arrays" },
@@ -129,9 +145,45 @@ export const PyPackagesPanel: React.FC = () => {
           <ToggleRow
             checked={pyPackageCacheEnabled}
             onChange={setPyPackageCacheEnabled}
-            label="Persistent cache"
-            hint="Cache wheel layers in IndexedDB for instant reload speeds."
+            label="Keep packages on this device"
+            hint="Installed packages load after a refresh without downloading, even offline. Stored in OPFS, or IndexedDB where OPFS isn't available."
           />
+          {storageInfo && (
+            <div className="flex items-center justify-between gap-2 pl-6 pr-1 pt-0.5 text-[11px] text-[var(--vsc-fg-muted,#616161)]">
+              <span className="flex items-center gap-1.5 min-w-0 truncate">
+                <HardDrive className="w-3 h-3 shrink-0" />
+                {formatBytes(storageInfo.bytes)} on this device · {storageInfo.backend === "opfs" ? "OPFS" : "IndexedDB"}
+              </span>
+              {storageInfo.bytes > 0 &&
+                (confirmClearStorage ? (
+                  <span className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={async () => {
+                        await clearStoredPackages();
+                        setConfirmClearStorage(false);
+                      }}
+                      className="px-1.5 py-0.5 text-[10px] font-medium bg-red-600 hover:bg-red-700 text-white rounded-[3px] transition cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => setConfirmClearStorage(false)}
+                      className="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--vsc-input,#ffffff)] border border-[var(--vsc-border-strong,#cecece)] hover:bg-[var(--vsc-hover,rgba(0,0,0,0.06))] text-[var(--vsc-fg,#3b3b3b)] rounded-[3px] transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmClearStorage(true)}
+                    className="shrink-0 hover:text-[var(--vsc-fg,#3b3b3b)] hover:underline underline-offset-2 cursor-pointer"
+                    title="Delete the saved copies. Packages download again the next time Python starts."
+                  >
+                    Clear
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
 
         {/* Search / Install bar */}
