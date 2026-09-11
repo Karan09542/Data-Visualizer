@@ -21,6 +21,9 @@ import {
   FileText,
   Maximize2,
   CheckSquare,
+  FileVideo,
+  FileAudio,
+  FileType,
   Image,
   FoldVertical,
   UnfoldVertical,
@@ -44,6 +47,7 @@ import {
   TextIcon,
 } from "./FileIcons";
 import { performWorkspaceRenameScope, cleanNodeName } from "../utils/workspaceIntelliSense";
+import { detectMediaFile, mediaFileName, mediaKindLabel } from "../utils/mediaFiles";
 import { getVirtualPath } from "../utils/vfs";
 import { maskParsedData } from "../utils/masker";
 
@@ -64,6 +68,8 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
   const resolvedRootPath = rootPath || "root";
 
   const parsedData = useStore((state) => state.parsedData);
+  const uploadedMediaMetadata = useStore((state) => state.uploadedMediaMetadata);
+  const setMediaViewOnly = useStore((state) => state.setMediaViewOnly);
   const codeFormat = useStore((state) => state.codeFormat);
   const setCode = useStore((state) => state.setCode);
   const expandedJsNodeId = useStore((state) => state.expandedJsNodeId);
@@ -887,6 +893,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
     setSelectedExplorerFiles([item.id]);
 
     if (!isFolder) {
+      setMediaViewOnly(item.id, false); // a single click opens the editor, as before
       openWorkspaceTab(item.id, true);
       setExpandedJsNodeId(item.id); // Open code workspace for ANY file
     } else {
@@ -904,6 +911,11 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
       const isEditing = editingPath === item.id;
       const isCreatingInside = creatingInPath === item.id;
 
+      // A media file holds an asset id, not text: its kind decides the icon and puts the
+      // extension back on the name, which the node key does not carry.
+      const media = isFolder ? null : detectMediaFile(item.name, getValueAtPath(parsedData, item.id), uploadedMediaMetadata);
+      const displayName = mediaFileName(item.name, media);
+
       let fileIcon = <FileText size={16} className="text-slate-400 dark:text-slate-500 shrink-0" />;
       if (item.type === "js_node" || item.name.endsWith(".js")) {
         fileIcon = <JavaScriptIcon />;
@@ -917,6 +929,17 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
         fileIcon = <CheckSquare size={16} className="text-blue-500 dark:text-blue-400 shrink-0" />;
       } else if (item.type === "image_node" || item.name.endsWith(".img")) {
         fileIcon = <Image size={16} className="text-purple-500 dark:text-purple-400 shrink-0" />;
+      } else if (media) {
+        fileIcon =
+          media.kind === "video" ? (
+            <FileVideo size={16} className="text-rose-500 dark:text-rose-400 shrink-0" />
+          ) : media.kind === "audio" ? (
+            <FileAudio size={16} className="text-amber-500 dark:text-amber-400 shrink-0" />
+          ) : media.kind === "pdf" ? (
+            <FileType size={16} className="text-red-500 dark:text-red-400 shrink-0" />
+          ) : (
+            <Image size={16} className="text-purple-500 dark:text-purple-400 shrink-0" />
+          );
       } else if (item.type === "primitive") {
         if (item.name.endsWith(".json")) {
           fileIcon = <JsonIcon />;
@@ -946,6 +969,8 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
             onDoubleClick={(e) => {
               if (!isFolder) {
                 e.stopPropagation();
+                // A double-click on media shows the media itself; a single click opens its editor.
+                if (media) setMediaViewOnly(item.id, true);
                 openWorkspaceTab(item.id, false); // false = not preview
                 setExpandedJsNodeId(item.id);
               }
@@ -998,7 +1023,7 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   className="w-full text-xs font-mono px-1 py-0.5 bg-white dark:bg-[#121824] border border-blue-500 rounded outline-none text-slate-800 dark:text-slate-200"
                 />
               ) : (
-                <span className="truncate" title={item.name}>{item.name}</span>
+                <span className="truncate" title={displayName}>{displayName}</span>
               )}
             </div>
 
@@ -1364,6 +1389,44 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                   {contextMenu.name}
                 </p>
               </div>
+
+              {/* Media: as itself, or in its editor */}
+              {(() => {
+                const menuMedia = activeNodeMenu
+                  ? detectMediaFile(activeNodeMenu.name, getValueAtPath(parsedData, activeNodeMenu.id), uploadedMediaMetadata)
+                  : null;
+                if (!menuMedia) return null;
+                return (
+                  <>
+                    <button
+                      onClick={() => {
+                        setMediaViewOnly(activeNodeMenu.id, true);
+                        openWorkspaceTab(activeNodeMenu.id, false);
+                        setExpandedJsNodeId(activeNodeMenu.id);
+                        setContextMenu(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
+                    >
+                      <Image size={13} className="shrink-0 opacity-80" />
+                      <span>Show {mediaKindLabel(menuMedia.kind).toLowerCase()} only</span>
+                    </button>
+                    {menuMedia.kind === "image" && (
+                      <button
+                        onClick={() => {
+                          setMediaViewOnly(activeNodeMenu.id, false);
+                          openWorkspaceTab(activeNodeMenu.id, false);
+                          setExpandedJsNodeId(activeNodeMenu.id);
+                          setContextMenu(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 h-[22px] text-left text-[13px] text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-accent,#005fb8)] hover:text-[var(--vsc-accent-fg,#ffffff)] transition-colors cursor-pointer"
+                      >
+                        <ExternalLink size={13} className="shrink-0 opacity-80" />
+                        <span>Open in image editor</span>
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Standard Operations */}
               {(contextMenu.type === "js_node" || contextMenu.type === "ts_node" || contextMenu.type === "py_node") && (

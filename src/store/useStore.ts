@@ -9,6 +9,29 @@ import SearchWorker from "../utils/searchWorker?worker";
 
 
 
+/**
+ * The state after tabs close: an emptied group folds away, and when the main group empties the
+ * side group takes its place - VS Code never leaves an empty group beside a full one.
+ */
+function settleGroups(tabs: WorkspaceTab[], active: string | null, split: EditorSplit | null) {
+  let editorSplit = split;
+  if (editorSplit && editorSplit.tabs.length === 0) editorSplit = null;
+  if (editorSplit && tabs.length === 0) {
+    tabs = editorSplit.tabs;
+    active = editorSplit.active ?? tabs[tabs.length - 1]?.path ?? null;
+    editorSplit = null;
+  }
+  return { workspaceTabs: tabs, activeExplorerFile: active, selectedExplorerFiles: active ? [active] : [], expandedJsNodeId: active, editorSplit };
+}
+
+/** The main group with a file open and active in it, as a tab kept open (not a preview). */
+function withMainTabOpen(s: { workspaceTabs: WorkspaceTab[]; editorSplit: EditorSplit | null }, path: string) {
+  const tabs = s.workspaceTabs.some(t => t.path === path)
+    ? s.workspaceTabs
+    : [...s.workspaceTabs, { path, isPreview: false, isDirty: !!s.editorSplit?.tabs.find(t => t.path === path)?.isDirty }];
+  return { workspaceTabs: tabs, activeExplorerFile: path, selectedExplorerFiles: [path], expandedJsNodeId: path };
+}
+
 let searchWorkerInstance: Worker | null = null;
 if (typeof window !== "undefined") {
   searchWorkerInstance = new SearchWorker();
@@ -87,6 +110,19 @@ export interface WorkspaceTab {
   isDirty: boolean;
 }
 
+/** The workspace's editor groups: the one it always has, and the one a split adds beside it. */
+export type EditorGroupId = "main" | "side";
+export type SplitDirection = "right" | "down";
+
+/** A second editor group, VS Code's split editor. It has tabs of its own. */
+export interface EditorSplit {
+  direction: SplitDirection;
+  tabs: WorkspaceTab[];
+  active: string | null;
+  /** The share of the space the main group takes, 0-1. */
+  ratio: number;
+}
+
 export interface StoreState {
   proxyServers: ProxyServer[];
   setProxyServers: (proxies: ProxyServer[] | ((prev: ProxyServer[]) => ProxyServer[])) => void;
@@ -112,6 +148,24 @@ export interface StoreState {
   // Multi-select Explorer State
   updateWorkspaceTabPath: (oldPath: string, newPath: string) => void;
   closeWorkspaceTabs: (paths: string[]) => void;
+
+  editorSplit: EditorSplit | null;
+  /**
+   * Shows a file in the other group - VS Code's split. From the main group it opens the file in
+   * the side group (making one when there is none); from the side group, in the main one.
+   */
+  splitEditorTab: (path: string, options?: { from?: EditorGroupId; direction?: SplitDirection }) => void;
+  activateGroupTab: (group: EditorGroupId, path: string) => void;
+  /**
+   * Closes some of a group's tabs. `focus` is the tab the reader acted on: it becomes the active
+   * one if the active tab went. A group left empty folds away, as in VS Code.
+   */
+  closeGroupTabs: (group: EditorGroupId, paths: string[], focus?: string) => void;
+  setGroupTabs: (group: EditorGroupId, tabs: WorkspaceTab[]) => void;
+  keepGroupTabOpen: (group: EditorGroupId, path: string) => void;
+  moveTabToOtherGroup: (group: EditorGroupId, path: string) => void;
+  setEditorSplitLayout: (layout: Partial<Pick<EditorSplit, "direction" | "ratio">>) => void;
+  closeEditorSplit: () => void;
 
   selectedExplorerFiles: string[];
   setSelectedExplorerFiles: (paths: string[] | ((prev: string[]) => string[])) => void;
@@ -178,6 +232,10 @@ export interface StoreState {
   removeJsNode: (path: string) => void;
   expandedJsNodeId: string | null;
   setExpandedJsNodeId: (id: string | null) => void;
+
+  /** Media files opened as a plain preview rather than their editor - a double-click, or the menu. */
+  mediaViewOnly: Record<string, boolean>;
+  setMediaViewOnly: (path: string, viewOnly: boolean) => void;
 
   activePrompts: Record<string, { sessionId: string; promptText?: string; defaultValue?: string; type: "input" | "prompt" | "confirm" | "alert" } | null>;
   setActivePrompt: (
@@ -327,7 +385,13 @@ export interface StoreState {
       type: "image" | "video" | "audio" | "smart" | "pdf" | "3d-model";
     } | null,
   ) => void;
-  updateNodeValue: (path: string, newValue: any) => Promise<void>;
+  /**
+   * Writes a value into the workspace tree. A value typed at a node is read loosely - "42" becomes
+   * the number, "{...}" becomes an object - which is what editing a data node should do. Pass
+   * `{ fromEditor: true }` for an editor's contents: a file's text then stays text, since "42" or
+   * "null" is simply what the file says, while a node the editor showed as JSON is read back.
+   */
+  updateNodeValue: (path: string, newValue: any, options?: { fromEditor?: boolean }) => Promise<void>;
   setDragOverride: (id: string, pos: { x: number; y: number } | null) => void;
   setMultipleDragOverrides: (
     overrides: Record<string, { x: number; y: number } | null>,
@@ -528,17 +592,20 @@ export const useStore = create<StoreState>()(
               if (tabs.length > 0) active = tabs[tabs.length - 1].path;
               else active = null;
             }
-            return { workspaceTabs: tabs, activeExplorerFile: active, selectedExplorerFiles: active ? [active] : [], expandedJsNodeId: active };
+            return settleGroups(tabs, active, s.editorSplit);
           }),
         markWorkspaceTabDirty: (path, dirty) =>
           set((s) => {
-            const tabs = s.workspaceTabs.map(t => {
+            // A file open in both groups is one file: saving it in one saves it in the other.
+            const mark = (list: WorkspaceTab[]) => list.map(t => {
               if (t.path === path) {
                 return { ...t, isDirty: dirty, isPreview: dirty ? false : t.isPreview };
               }
               return t;
             });
-            return { workspaceTabs: tabs };
+            const tabs = mark(s.workspaceTabs);
+            if (!s.editorSplit) return { workspaceTabs: tabs };
+            return { workspaceTabs: tabs, editorSplit: { ...s.editorSplit, tabs: mark(s.editorSplit.tabs) } };
           }),
         updateWorkspaceTabPath: (oldPath, newPath) =>
           set((s) => {
@@ -558,19 +625,108 @@ export const useStore = create<StoreState>()(
             if (expandedJsNodeId === oldPath) expandedJsNodeId = newPath;
             else if (expandedJsNodeId?.startsWith(oldPath + ".")) expandedJsNodeId = expandedJsNodeId.replace(oldPath, newPath);
 
-            return { workspaceTabs: tabs, activeExplorerFile: active, selectedExplorerFiles: active ? [active] : [], expandedJsNodeId };
+            // A renamed or moved file keeps its tab in the side group as well.
+            const moved = (p: string) =>
+              p === oldPath ? newPath : p.startsWith(oldPath + ".") ? p.replace(oldPath, newPath) : p;
+            const editorSplit = s.editorSplit
+              ? {
+                ...s.editorSplit,
+                tabs: s.editorSplit.tabs.map(t => ({ ...t, path: moved(t.path) })),
+                active: s.editorSplit.active ? moved(s.editorSplit.active) : null,
+              }
+              : null;
+
+            return { workspaceTabs: tabs, activeExplorerFile: active, selectedExplorerFiles: active ? [active] : [], expandedJsNodeId, editorSplit };
           }),
         closeWorkspaceTabs: (paths) =>
           set((s) => {
-            const pathSet = new Set(paths);
-            const tabs = s.workspaceTabs.filter(t => !pathSet.has(t.path) && !paths.some(p => t.path.startsWith(p + ".")));
+            // Files that went away: their tabs close in both groups.
+            const gone = (p: string) => paths.includes(p) || paths.some(q => p.startsWith(q + "."));
+            const tabs = s.workspaceTabs.filter(t => !gone(t.path));
             let active = s.activeExplorerFile;
-            if (active && (pathSet.has(active) || paths.some(p => active!.startsWith(p + ".")))) {
+            if (active && gone(active)) {
               if (tabs.length > 0) active = tabs[tabs.length - 1].path;
               else active = null;
             }
-            return { workspaceTabs: tabs, activeExplorerFile: active, selectedExplorerFiles: active ? [active] : [], expandedJsNodeId: active };
+            let split = s.editorSplit;
+            if (split) {
+              const sideTabs = split.tabs.filter(t => !gone(t.path));
+              const sideActive = split.active && gone(split.active) ? sideTabs[sideTabs.length - 1]?.path ?? null : split.active;
+              split = { ...split, tabs: sideTabs, active: sideActive };
+            }
+            return settleGroups(tabs, active, split);
           }),
+
+        editorSplit: null,
+        splitEditorTab: (path, options) =>
+          set((s) => {
+            if (options?.from === "side") {
+              return withMainTabOpen(s, path);
+            }
+            const direction = options?.direction ?? s.editorSplit?.direction ?? "right";
+            const split = s.editorSplit ?? { direction, tabs: [], active: null, ratio: 0.5 };
+            const tabs = split.tabs.some(t => t.path === path)
+              ? split.tabs
+              : [...split.tabs, { path, isPreview: false, isDirty: !!s.workspaceTabs.find(t => t.path === path)?.isDirty }];
+            return { editorSplit: { ...split, direction, tabs, active: path } };
+          }),
+        activateGroupTab: (group, path) =>
+          set((s) => {
+            if (group === "main") return withMainTabOpen(s, path);
+            if (!s.editorSplit) return {};
+            return { editorSplit: { ...s.editorSplit, active: path } };
+          }),
+        closeGroupTabs: (group, paths, focus) =>
+          set((s) => {
+            const closing = new Set(paths);
+            const pick = (tabs: WorkspaceTab[], active: string | null) => {
+              const left = tabs.filter(t => !closing.has(t.path));
+              if (active && !closing.has(active) && left.some(t => t.path === active)) return { left, active };
+              if (focus && !closing.has(focus)) return { left, active: focus };
+              // The nearest tab that stays: to the right of the one that went, else to its left.
+              const from = Math.max(0, tabs.findIndex(t => t.path === active));
+              const next =
+                tabs.slice(from).find(t => !closing.has(t.path)) ??
+                tabs.slice(0, from).reverse().find(t => !closing.has(t.path));
+              return { left, active: next?.path ?? null };
+            };
+            if (group === "main") {
+              const { left, active } = pick(s.workspaceTabs, s.activeExplorerFile);
+              return settleGroups(left, active, s.editorSplit);
+            }
+            if (!s.editorSplit) return {};
+            const { left, active } = pick(s.editorSplit.tabs, s.editorSplit.active);
+            return settleGroups(s.workspaceTabs, s.activeExplorerFile, { ...s.editorSplit, tabs: left, active });
+          }),
+        setGroupTabs: (group, tabs) =>
+          set((s) => {
+            if (group === "main") return { workspaceTabs: tabs };
+            if (!s.editorSplit) return {};
+            return { editorSplit: { ...s.editorSplit, tabs } };
+          }),
+        keepGroupTabOpen: (group, path) =>
+          set((s) => {
+            const keep = (tabs: WorkspaceTab[]) => tabs.map(t => (t.path === path ? { ...t, isPreview: false } : t));
+            if (group === "main") return { workspaceTabs: keep(s.workspaceTabs) };
+            if (!s.editorSplit) return {};
+            return { editorSplit: { ...s.editorSplit, tabs: keep(s.editorSplit.tabs) } };
+          }),
+        moveTabToOtherGroup: (group, path) => {
+          if (group === "main") {
+            get().splitEditorTab(path, { from: "main" });
+            get().closeGroupTabs("main", [path]);
+          } else if (get().editorSplit) {
+            get().splitEditorTab(path, { from: "side" });
+            get().closeGroupTabs("side", [path]);
+          }
+        },
+        setEditorSplitLayout: (layout) =>
+          set((s) => {
+            if (!s.editorSplit) return {};
+            const ratio = layout.ratio === undefined ? s.editorSplit.ratio : Math.min(0.85, Math.max(0.15, layout.ratio));
+            return { editorSplit: { ...s.editorSplit, ...layout, ratio } };
+          }),
+        closeEditorSplit: () => set({ editorSplit: null }),
 
         selectedExplorerFiles: [],
         setSelectedExplorerFiles: (paths) =>
@@ -775,6 +931,9 @@ export const useStore = create<StoreState>()(
           set((s) => ({
             jsNodeCodeOverrides: { ...s.jsNodeCodeOverrides, [path]: code },
           })),
+        mediaViewOnly: {},
+        setMediaViewOnly: (path: string, viewOnly: boolean) =>
+          set((s) => ({ mediaViewOnly: { ...s.mediaViewOnly, [path]: viewOnly } })),
         removeJsNode: (path: string) =>
           set((s) => {
             const res = { ...s.jsNodeResponses };
@@ -1094,8 +1253,27 @@ export const useStore = create<StoreState>()(
             knownDataUrls: { ...state.knownDataUrls, [url]: type },
           })),
 
-        updateNodeValue: async (path, newValue) => {
+        updateNodeValue: async (path, newValue, options) => {
           const { parsedData, code, setCode, codeFormat } = get();
+
+          // Decided once the current value is known: a file's text saved from an editor is kept
+          // exactly as written; anything else is read loosely.
+          let keepText = false;
+          const readValue = (value: any) => {
+            if (keepText || typeof value !== "string") return value;
+            if (value === "true") return true;
+            if (value === "false") return false;
+            if (value === "null") return null;
+            if (!isNaN(Number(value)) && value.trim() !== "") return Number(value);
+            if (value.trim().startsWith("{") || value.trim().startsWith("[")) {
+              try {
+                return JSON.parse(value);
+              } catch (e) {
+                return value;
+              }
+            }
+            return value;
+          };
           if (!parsedData) return;
 
           // Path is like 'root.key.subkey' or 'root[0].key'
@@ -1126,6 +1304,7 @@ export const useStore = create<StoreState>()(
             console.warn("updateNodeValue: Path does not exist in parsedData, ignoring update to prevent resurrection or errors.", path);
             return;
           }
+          keepText = !!options?.fromEditor && (parts.length === 0 ? typeof parsedData : typeof checkCurrent) === "string";
 
           // Clone parsedData
           let newData = JSON.parse(JSON.stringify(parsedData));
@@ -1151,38 +1330,9 @@ export const useStore = create<StoreState>()(
               }
             }
 
-            let finalVal = newValue;
-            if (typeof newValue === "string") {
-              if (newValue === "true") finalVal = true;
-              else if (newValue === "false") finalVal = false;
-              else if (newValue === "null") finalVal = null;
-              else if (!isNaN(Number(newValue)) && newValue.trim() !== "") {
-                finalVal = Number(newValue);
-              }
-              if (typeof finalVal === "string" && (finalVal.trim().startsWith("{") || finalVal.trim().startsWith("["))) {
-                try {
-                  finalVal = JSON.parse(finalVal);
-                } catch (e) { }
-              }
-            }
-
-            current[lastPart] = finalVal;
+            current[lastPart] = readValue(newValue);
           } else {
-            let finalVal = newValue;
-            if (typeof newValue === "string") {
-              if (newValue === "true") finalVal = true;
-              else if (newValue === "false") finalVal = false;
-              else if (newValue === "null") finalVal = null;
-              else if (!isNaN(Number(newValue)) && newValue.trim() !== "") {
-                finalVal = Number(newValue);
-              }
-              if (typeof finalVal === "string" && (finalVal.trim().startsWith("{") || finalVal.trim().startsWith("["))) {
-                try {
-                  finalVal = JSON.parse(finalVal);
-                } catch (e) { }
-              }
-            }
-            newData = finalVal;
+            newData = readValue(newValue);
           }
 
           // Enforce Search Node data validation before serialization
@@ -1316,6 +1466,7 @@ export const useStore = create<StoreState>()(
           "globalTextExpanded",
           "activePreviewPath",
           "workspaceTabs",
+          "editorSplit",
           "activeExplorerFile",
           "explorerExpandedPaths",
           "selectedExplorerFiles",

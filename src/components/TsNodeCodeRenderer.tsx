@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
+import { usePackageTypes } from "../utils/npmEditorSupport";
 import { Play, Code2, Maximize2, Hash, X, Square } from "lucide-react";
 import { executeTsNode, abortTsNode } from "../utils/tsExecutor";
 
@@ -49,6 +50,8 @@ export function TsNodeCodeRenderer({
   const containerRef = React.useRef<HTMLDivElement>(null);
   const isExpanded = expandedJsNodeId === path;
   const [monaco, setMonaco] = useState<any>(null);
+  // Types for the npm packages this code imports, for autocomplete (see packageTypes).
+  usePackageTypes(monaco, localCode);
 
   // Adjust global TypeScript and JavaScript compiler options to prevent global scope clashes (e.g. Cannot redeclare block-scoped variable 'name')
   useEffect(() => {
@@ -156,7 +159,7 @@ export function TsNodeCodeRenderer({
     (newCode: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        updateNodeValue(path, newCode);
+        updateNodeValue(path, newCode, { fromEditor: true });
       }, 1000);
     },
     [path, updateNodeValue],

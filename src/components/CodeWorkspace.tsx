@@ -29,18 +29,32 @@ import {
   FileText,
   CheckSquare,
   Image as ImageIcon,
+  FileVideo,
+  FileAudio,
   Sun,
   Moon,
   Info,
   ClipboardPaste,
   Plus,
   Minus,
+  Columns2,
+  Rows2,
+  ArrowLeftRight,
+  Pin,
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
+import { usePackageTypes } from "../utils/npmEditorSupport";
 import { useStore } from "../store/useStore";
 import { getVirtualPath } from "../utils/vfs";
 import { usePyPackageStore } from "../store/usePyPackageStore";
 import { PyPackagesPanel } from "./PyPackagesPanel";
+import { NpmPackagesPanel } from "./NpmPackagesPanel";
+import { ConsoleValue, consoleValueToText, logArgsToText } from "./console/ConsoleValue";
+import { useLineCopyMenu } from "./console/useLineCopyMenu";
+import MediaFileViewer from "./MediaFileViewer";
+import { detectMediaFile, mediaFileName } from "../utils/mediaFiles";
+// Falls back to the old copy command where the clipboard API is refused.
+import { copyToClipboard } from "./AppErrorPopup";
 import { appendLogs } from "../utils/executionStore";
 import { safeStringify } from "../utils/safeStringify";
 import { TodoWorkspace } from "./TodoWorkspace";
@@ -68,6 +82,10 @@ import { ProgrammingKeyboard } from "../programming-assistant/components/Program
 import { getMediaType } from "./NodeRenderer";
 import FileExplorerPanel from "./FileExplorerPanel";
 import WorkspaceSash from "./WorkspaceSash";
+import { EditorTabStrip } from "./editor-tabs/EditorTabStrip";
+import { SplitEditorGroup } from "./editor-tabs/SplitEditorGroup";
+import type { TabMenuEntry } from "./editor-tabs/useTabContextMenu";
+import type { EditorGroupId, SplitDirection } from "../store/useStore";
 import {
   JavaScriptIcon,
   TypeScriptIcon,
@@ -171,10 +189,20 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const closeWorkspaceTab = useStore((state) => state.closeWorkspaceTab);
   const markWorkspaceTabDirty = useStore((state) => state.markWorkspaceTabDirty);
   const setWorkspaceTabs = useStore((state) => state.setWorkspaceTabs);
+  const editorSplit = useStore((state) => state.editorSplit);
+  const splitEditorTab = useStore((state) => state.splitEditorTab);
+  const activateGroupTab = useStore((state) => state.activateGroupTab);
+  const closeGroupTabs = useStore((state) => state.closeGroupTabs);
+  const setGroupTabs = useStore((state) => state.setGroupTabs);
+  const keepGroupTabOpen = useStore((state) => state.keepGroupTabOpen);
+  const moveTabToOtherGroup = useStore((state) => state.moveTabToOtherGroup);
+  const setEditorSplitLayout = useStore((state) => state.setEditorSplitLayout);
   const activePrompts = useStore((state) => state.activePrompts);
   const setActivePrompt = useStore((state) => state.setActivePrompt);
   const setAppTheme = useStore((state) => state.setAppTheme);
   const uploadedMediaMetadata = useStore((state) => state.uploadedMediaMetadata);
+  const mediaViewOnly = useStore((state) => state.mediaViewOnly);
+  const setMediaViewOnly = useStore((state) => state.setMediaViewOnly);
   const setIsProxyModalOpen = useStore((state) => state.setIsProxyModalOpen);
   const setGlobalAlert = useStore((state) => state.setGlobalAlert);
   const isAssistantEnabled = useAssistantStore((s) => s.isEnabled);
@@ -266,6 +294,15 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     () => fileExt.endsWith("_js_node") || fileExt === "js",
     [fileExt],
   );
+
+  // Types for the npm packages the open JS/TS file imports, for autocomplete (see packageTypes).
+  const typedSource =
+    isEditingOtherFile && typeof otherFileValue === "string" ? otherFileValue : code;
+  usePackageTypes(
+    monaco,
+    typeof typedSource === "string" ? typedSource : undefined,
+    isJs || isTs,
+  );
   const isPy = useMemo(
     () => fileExt.endsWith("_py_node") || fileExt === "py",
     [fileExt],
@@ -285,6 +322,21 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   // Distraction-free mode for the image editor: hides the title bar and tab strip so the canvas
   // gets the full height. Owned here because those rows belong to this component.
   const [imageChromeHidden, setImageChromeHidden] = useState(false);
+
+  /** What this file holds, when it holds media: an asset id or a URL, not text. */
+  const currentMedia = useMemo(
+    () =>
+      detectMediaFile(
+        currentFilePath.split(".").pop() || currentFilePath,
+        getValueAtPath(parsedData, currentFilePath),
+        uploadedMediaMetadata,
+      ),
+    [parsedData, currentFilePath, uploadedMediaMetadata],
+  );
+
+  // Images open in their editor, unless asked for on their own (a double-click, or the menu).
+  // Video, sound and PDFs have no editor, so they are always shown as themselves.
+  const showMediaOnly = !!currentMedia && (currentMedia.kind !== "image" || !!mediaViewOnly[currentFilePath]);
 
   const isImg = useMemo(() => {
     const ext = fileExt.toLowerCase();
@@ -425,7 +477,16 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (isJson) return <JsonIcon />;
     if (isTodo)
       return <CheckSquare size={13} className="text-blue-500 shrink-0" />;
-    if (isImgIcon)
+    const tabMedia = detectMediaFile(
+      filePath.split(".").pop() || filePath,
+      getValueAtPath(parsedData, filePath),
+      uploadedMediaMetadata,
+    );
+    if (tabMedia?.kind === "video")
+      return <FileVideo size={13} className="text-rose-500 shrink-0" />;
+    if (tabMedia?.kind === "audio")
+      return <FileAudio size={13} className="text-amber-500 shrink-0" />;
+    if (isImgIcon || tabMedia?.kind === "image")
       return <ImageIcon size={13} className="text-purple-500 shrink-0" />;
     if (isMd) return <MarkdownIcon />;
 
@@ -458,13 +519,17 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (rawName.endsWith("_xml")) return rawName.replace("_xml", ".xml");
     if (rawName.endsWith("_md")) return rawName.replace("_md", ".md");
     if (rawName.endsWith("_txt")) return rawName.replace("_txt", ".txt");
-    return rawName;
+    // A media file's extension lives in the asset it points at, not in its key.
+    return mediaFileName(
+      rawName,
+      detectMediaFile(rawName, getValueAtPath(parsedData, filePath), uploadedMediaMetadata),
+    );
   };
 
-  const mainCleanName = useMemo(() => getCleanName(path), [path]);
+  const mainCleanName = useMemo(() => getCleanName(path), [path, parsedData]);
   const activeCleanName = useMemo(
     () => getCleanName(currentFilePath),
-    [currentFilePath],
+    [currentFilePath, parsedData],
   );
 
   // Breadcrumb trail under the tab bar, mirroring the VS Code editor header.
@@ -525,7 +590,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
       clearTimeout(debounceMap.current[fPath]);
     }
     debounceMap.current[fPath] = setTimeout(() => {
-      updateNodeValue(fPath, newCode);
+      updateNodeValue(fPath, newCode, { fromEditor: true });
     }, 1000);
   };
 
@@ -556,7 +621,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
       }
     }
     setJsNodeCodeOverride(currentFilePath, "");
-    updateNodeValue(currentFilePath, "");
+    updateNodeValue(currentFilePath, "", { fromEditor: true });
     const tab = workspaceTabs.find((t) => t.path === currentFilePath);
     if (tab && !tab.isDirty) {
       markWorkspaceTabDirty(currentFilePath, true);
@@ -616,19 +681,19 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
     if (isTs) {
       setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue);
+      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
       executeTsNode(currentFilePath, activeCodeValue);
     } else if (isJs) {
       setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue);
+      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
       executeJsNode(currentFilePath, activeCodeValue);
     } else if (isPy) {
       setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue);
+      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
       executePyNode(currentFilePath, activeCodeValue);
     } else if (isApi) {
       setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue);
+      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
       fetchApiNode(currentFilePath, activeCodeValue);
     }
   };
@@ -944,6 +1009,18 @@ declare const console: {
   const { logCount, getLog, clearLogs, startOffset } =
     useExecutionLogs(currentFilePath);
 
+  // Right-click a line, or hold it on a touch screen, to copy it.
+  const copyMenu = useLineCopyMenu({
+    onCopyAll: async () => {
+      const lines = [];
+      for (let i = 0; i < logCount; i++) {
+        const entry = getLog(i);
+        if (entry?.args) lines.push(logArgsToText(entry.args));
+      }
+      await copyToClipboard(lines.join("\n"));
+    },
+  });
+
   const formatConsoleArg = (arg: any): string => {
     if (typeof arg === "string") return arg;
     if (typeof arg === "undefined") return "\x1b[90mundefined\x1b[0m"; // grey
@@ -1038,62 +1115,9 @@ declare const console: {
         </span>
       );
     }
-    if (typeof arg === "undefined") {
-      return (
-        <span
-          key={index}
-          className="text-slate-400 dark:text-slate-500 italic whitespace-pre-wrap break-all"
-        >
-          undefined
-        </span>
-      );
-    }
-    if (arg === null) {
-      return (
-        <span
-          key={index}
-          className="text-cyan-500 dark:text-cyan-400 font-bold whitespace-pre-wrap break-all"
-        >
-          null
-        </span>
-      );
-    }
-    if (typeof arg === "number") {
-      return (
-        <span
-          key={index}
-          className="text-amber-600 dark:text-amber-400 whitespace-pre-wrap break-all"
-        >
-          {arg}
-        </span>
-      );
-    }
-    if (typeof arg === "boolean") {
-      return (
-        <span
-          key={index}
-          className="text-purple-500 dark:text-purple-400 whitespace-pre-wrap break-all"
-        >
-          {String(arg)}
-        </span>
-      );
-    }
-    if (typeof arg === "object") {
-      const displayed = safeStringify(arg, 2);
-      return (
-        <span
-          key={index}
-          className="text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all font-mono"
-        >
-          {displayed}
-        </span>
-      );
-    }
-    return (
-      <span key={index} className="whitespace-pre-wrap break-all">
-        {String(arg)}
-      </span>
-    );
+    // Everything else is shown the way a terminal shows it: one line that opens into its
+    // contents, with the types kept (see console/ConsoleValue).
+    return <ConsoleValue key={index} value={arg} />;
   };
 
   // Settings
@@ -1242,12 +1266,13 @@ declare const console: {
     }
   }, [currentPrompt]);
 
-  // Reset sidebar tab back to explorer files when not looking at a Python workbook file
+  // Back to the explorer when the open file has no Packages tab (Python has pip packages, JS/TS
+  // have npm packages). Checking Python alone sent the JS/TS Packages tab straight back to Files.
   useEffect(() => {
-    if (!isPy && sidebarTab !== "files") {
+    if (!(isPy || isJs || isTs) && sidebarTab !== "files") {
       setSidebarTab("files");
     }
-  }, [isPy, sidebarTab]);
+  }, [isPy, isJs, isTs, sidebarTab]);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -1272,6 +1297,21 @@ declare const console: {
           changeFontSize(0);
         }
       }
+      // Split the editor: Ctrl+\ (Cmd+\ on a Mac), also Ctrl+| - shows the file in the other group.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        (e.code === "Backslash" || e.code === "IntlBackslash" || e.key === "\\" || e.key === "|")
+      ) {
+        e.preventDefault();
+        const state = useStore.getState();
+        if (focusedGroupRef.current === "side" && state.editorSplit?.active) {
+          splitTab("side", state.editorSplit.active);
+        } else {
+          const active = state.activeExplorerFile || latestRefs.current.currentFilePath;
+          if (active) splitTab("main", active);
+        }
+      }
       // Toggle Word Wrap: Alt + Z
       if (e.altKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -1285,11 +1325,15 @@ declare const console: {
       ) {
         e.preventDefault();
         const state = useStore.getState();
-        state.workspaceTabs.forEach((tab) => {
+        // A file open in both groups is saved once.
+        const everyTab = [...state.workspaceTabs, ...(state.editorSplit?.tabs ?? [])].filter(
+          (tab, i, all) => all.findIndex((t) => t.path === tab.path) === i,
+        );
+        everyTab.forEach((tab) => {
           if (tab.isDirty) {
             const unsavedVal = state.jsNodeCodeOverrides[tab.path];
             if (unsavedVal !== undefined) {
-              state.updateNodeValue(tab.path, unsavedVal);
+              state.updateNodeValue(tab.path, unsavedVal, { fromEditor: true });
               state.markWorkspaceTabDirty(tab.path, false);
             }
           }
@@ -1607,6 +1651,93 @@ declare const console: {
       });
     };
   }, [isMinimapMenuOpen]);
+
+  // Which editor group the reader is working in: Ctrl+\ splits that group's file.
+  const [focusedGroup, setFocusedGroup] = useState<EditorGroupId>("main");
+  const focusedGroupRef = useRef<EditorGroupId>("main");
+  focusedGroupRef.current = editorSplit ? focusedGroup : "main";
+  useEffect(() => {
+    if (!editorSplit && focusedGroup !== "main") setFocusedGroup("main");
+  }, [editorSplit, focusedGroup]);
+
+  const isMacPlatform =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+  const splitShortcut = isMacPlatform ? "\u2318\\" : "Ctrl+\\";
+
+  /** Opens a file in the other group, picking a way to lay the groups out that suits the screen. */
+  const splitTab = useCallback(
+    (group: EditorGroupId, tabPath: string, direction?: SplitDirection) => {
+      const state = useStore.getState();
+      const dir = direction ?? state.editorSplit?.direction ?? (window.innerWidth < 640 ? "down" : "right");
+      if (group === "side") {
+        state.splitEditorTab(tabPath, { from: "side" });
+        state.setEditorSplitLayout({ direction: dir });
+      } else {
+        state.splitEditorTab(tabPath, { from: "main", direction: dir });
+      }
+    },
+    [],
+  );
+
+  /** The menu for a tab, VS Code's: closing it and its neighbours, and splitting. */
+  const buildTabMenu = (group: EditorGroupId, tabPath: string): TabMenuEntry[] => {
+    const tabs = group === "main" ? workspaceTabs : editorSplit?.tabs ?? [];
+    const index = tabs.findIndex((t) => t.path === tabPath);
+    const tab = tabs[index];
+    const paths = (list: typeof tabs) => list.map((t) => t.path);
+    const left = paths(tabs.slice(0, Math.max(0, index)));
+    const right = paths(tabs.slice(index + 1));
+    const others = paths(tabs.filter((t) => t.path !== tabPath));
+    const saved = paths(tabs.filter((t) => !t.isDirty));
+    const close = (list: string[]) => closeGroupTabs(group, list, tabPath);
+
+    const entries: TabMenuEntry[] = [
+      { id: "close", label: "Close", icon: <X size={14} />, onSelect: () => closeGroupTabs(group, [tabPath]) },
+      { id: "close-others", label: "Close Others", disabled: others.length === 0, onSelect: () => close(others) },
+      { id: "close-right", label: "Close to the Right", disabled: right.length === 0, onSelect: () => close(right) },
+      { id: "close-right-self", label: "Close This and to the Right", onSelect: () => close([tabPath, ...right]) },
+      { id: "close-left", label: "Close to the Left", disabled: left.length === 0, onSelect: () => close(left) },
+      { id: "close-left-self", label: "Close This and to the Left", onSelect: () => close([...left, tabPath]) },
+      "separator",
+      { id: "close-saved", label: "Close Saved", disabled: saved.length === 0, onSelect: () => close(saved) },
+      { id: "close-all", label: "Close All", onSelect: () => closeGroupTabs(group, paths(tabs)) },
+      "separator",
+      { id: "split-right", label: "Split Right", icon: <Columns2 size={14} />, shortcut: splitShortcut, onSelect: () => splitTab(group, tabPath, "right") },
+      { id: "split-down", label: "Split Down", icon: <Rows2 size={14} />, onSelect: () => splitTab(group, tabPath, "down") },
+    ];
+    if (editorSplit) {
+      entries.push({
+        id: "move",
+        label: group === "main" ? "Move to Other Group" : "Move to Main Group",
+        icon: <ArrowLeftRight size={14} />,
+        onSelect: () => moveTabToOtherGroup(group, tabPath),
+      });
+    }
+    if (tab?.isPreview) {
+      entries.push("separator", { id: "keep-open", label: "Keep Open", icon: <Pin size={14} />, onSelect: () => keepGroupTabOpen(group, tabPath) });
+    }
+    return entries;
+  };
+
+  /** A tab dragged from one group's row into the other's, dropped at `index`. */
+  const moveTabInto = (toGroup: EditorGroupId) => (tabPath: string, fromGroup: EditorGroupId, index: number) => {
+    if (fromGroup === toGroup) return;
+    moveTabToOtherGroup(fromGroup, tabPath);
+    const state = useStore.getState();
+    const tabs = toGroup === "main" ? state.workspaceTabs : state.editorSplit?.tabs;
+    if (!tabs) return;
+    const from = tabs.findIndex((t) => t.path === tabPath);
+    if (from < 0) return;
+    const next = [...tabs];
+    const [moved] = next.splice(from, 1);
+    next.splice(Math.min(index, next.length), 0, moved);
+    setGroupTabs(toGroup, next);
+  };
+
+  // Resizing the two groups: the share of the space the main group takes.
+  const editorAreaRef = useRef<HTMLDivElement>(null);
+  const splitDragStart = useRef({ ratio: 0.5, size: 1 });
+  const splitShownDirection: SplitDirection = editorSplit?.direction ?? "right";
 
   const latestRefs = useRef({
     onExecute,
@@ -2222,8 +2353,8 @@ declare const console: {
                 </button>
               </div>
 
-              {/* Explorer / Packages switch for Python workspaces */}
-              {isPy && (
+              {/* Explorer / Packages switch: Python packages, or npm packages for JS/TS */}
+              {(isPy || isJs || isTs) && (
                 <div className="flex items-center gap-1 px-2 pb-2 shrink-0">
                   <button
                     onClick={() => setSidebarTab("files")}
@@ -2247,10 +2378,12 @@ declare const console: {
               )}
 
               <div className="flex-1 flex flex-col overflow-hidden">
-                {sidebarTab === "files" ? (
+                {sidebarTab === "files" || !(isPy || isJs || isTs) ? (
                   <FileExplorerPanel />
-                ) : (
+                ) : isPy ? (
                   <PyPackagesPanel />
+                ) : (
+                  <NpmPackagesPanel />
                 )}
               </div>
 
@@ -2274,141 +2407,47 @@ declare const console: {
             className={`flex-1 flex overflow-hidden h-full relative min-w-0 ${effectiveLayout === "bottom" ? "flex-col" : "flex-row"}`}
           >
             <div
-              className={`flex-1 z-10 relative min-w-[120px] min-h-[80px] flex-col bg-[var(--vsc-editor)] overflow-hidden ${terminalState === "maximized" ? "hidden" : "flex"}`}
+              ref={editorAreaRef}
+              data-editor-area
+              className={`flex-1 z-10 relative min-w-[120px] min-h-[80px] bg-[var(--vsc-editor)] overflow-hidden ${terminalState === "maximized" ? "hidden" : "flex"} ${editorSplit && splitShownDirection === "down" ? "flex-col" : "flex-row"}`}
+            >
+            <div
+              data-editor-group="main"
+              className="relative flex flex-col min-w-0 min-h-0 overflow-hidden"
+              style={{ flex: editorSplit ? `${editorSplit.ratio} 1 0px` : "1 1 0px" }}
+              onPointerDownCapture={() => setFocusedGroup("main")}
+              onFocusCapture={() => setFocusedGroup("main")}
             >
               {/* Tabs list (Editor header) */}
-              <div className={`items-stretch bg-[var(--vsc-tabbar)] overflow-x-auto select-none shrink-0 scrollbar-none h-[35px] border-b border-[var(--vsc-border)] ${imageChromeHidden ? 'hidden' : 'flex'}`}>
-                {workspaceTabs.length === 0 && (
-                  <div className="px-4 flex items-center text-xs font-mono text-[var(--vsc-fg-muted)] italic">
-                    No files open
-                  </div>
-                )}
-
-                {workspaceTabs.map((tab, idx) => {
-                  const isActive = currentFilePath === tab.path;
-                  const cleanName = getCleanName(tab.path);
-
-                  return (
+              <EditorTabStrip
+                group="main"
+                tabs={workspaceTabs}
+                activePath={currentFilePath}
+                focused={!editorSplit || focusedGroup === "main"}
+                hidden={imageChromeHidden}
+                getIcon={getTabIcon}
+                getName={getCleanName}
+                onActivate={(tab) => openWorkspaceTab(tab.path, tab.isPreview)}
+                onClose={(tabPath) => closeGroupTabs("main", [tabPath])}
+                onReorder={setWorkspaceTabs}
+                onKeepOpen={(tabPath) => keepGroupTabOpen("main", tabPath)}
+                onMoveIn={moveTabInto("main")}
+                menuFor={(tabPath) => buildTabMenu("main", tabPath)}
+                actions={
+                  workspaceTabs.length > 0 ? (
                     <button
-                      key={tab.path}
-                      draggable
-                      onDragStart={(e) => {
-                        (window as any).__isInternalDrag = true;
-                        e.dataTransfer.setData("text/plain", idx.toString());
-                        e.dataTransfer.effectAllowed = "move";
-                        e.currentTarget.classList.add("opacity-50");
-                      }}
-                      onDragEnd={(e) => {
-                        (window as any).__isInternalDrag = false;
-                        e.currentTarget.classList.remove("opacity-50");
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const isLeft = e.clientX < rect.left + rect.width / 2;
-                        if (isLeft) {
-                          e.currentTarget.classList.add(
-                            "border-l-[3px]",
-                            "border-l-blue-500",
-                            "pl-[13px]",
-                          );
-                          e.currentTarget.classList.remove(
-                            "border-r-[3px]",
-                            "border-r-blue-500",
-                            "pr-[13px]",
-                          );
-                          // maintain normal px-4 padding minus 3px border
-                        } else {
-                          e.currentTarget.classList.add(
-                            "border-r-[3px]",
-                            "border-r-blue-500",
-                            "pr-[13px]",
-                          );
-                          e.currentTarget.classList.remove(
-                            "border-l-[3px]",
-                            "border-l-blue-500",
-                            "pl-[13px]",
-                          );
-                        }
-                      }}
-                      onDragLeave={(e) => {
-                        e.currentTarget.classList.remove(
-                          "border-l-[3px]",
-                          "border-l-blue-500",
-                          "pl-[13px]",
-                          "border-r-[3px]",
-                          "border-r-blue-500",
-                          "pr-[13px]",
-                        );
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const isLeft = e.clientX < rect.left + rect.width / 2;
-                        e.currentTarget.classList.remove(
-                          "border-l-[3px]",
-                          "border-l-blue-500",
-                          "pl-[13px]",
-                          "border-r-[3px]",
-                          "border-r-blue-500",
-                          "pr-[13px]",
-                        );
-
-                        const fromIdx = parseInt(
-                          e.dataTransfer.getData("text/plain"),
-                        );
-                        if (isNaN(fromIdx)) return;
-                        let toIdx = isLeft ? idx : idx + 1;
-                        if (fromIdx < toIdx) toIdx--; // adjust for removing from original position
-
-                        if (fromIdx !== toIdx) {
-                          const newTabs = [...workspaceTabs];
-                          const [moved] = newTabs.splice(fromIdx, 1);
-                          newTabs.splice(toIdx, 0, moved);
-                          setWorkspaceTabs(newTabs);
-                        }
-                      }}
-                      onDoubleClick={(e) => {
-                        if (tab.isPreview) {
-                          const newTabs = [...workspaceTabs];
-                          newTabs[idx] = { ...tab, isPreview: false };
-                          setWorkspaceTabs(newTabs);
-                        }
-                      }}
-                      onClick={() => openWorkspaceTab(tab.path, tab.isPreview)}
-                      className={`relative flex items-center gap-1.5 px-3 h-full text-[13px] border-r border-[var(--vsc-border)] transition-colors cursor-pointer shrink-0 group ${isActive
-                        ? "bg-[var(--vsc-tab-active)] text-[var(--vsc-fg)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[var(--vsc-accent)] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-[var(--vsc-tab-active)]"
-                        : "text-[var(--vsc-tab-inactive-fg)] hover:bg-[var(--vsc-hover)]"
-                        }`}
+                      type="button"
+                      data-split-editor-button
+                      onClick={() => splitTab("main", currentFilePath)}
+                      title={`Split Editor (${splitShortcut})`}
+                      aria-label="Split Editor"
+                      className="p-1 rounded-[4px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
                     >
-                      {getTabIcon(tab.path, isActive)}
-                      <span
-                        className={`truncate max-w-[100px] sm:max-w-[160px] ${tab.isPreview ? "italic" : ""}`}
-                      >
-                        {cleanName}
-                      </span>
-
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          closeWorkspaceTab(tab.path);
-                        }}
-                        className={`ml-1 flex items-center justify-center w-[18px] h-[18px] rounded-[4px] transition-colors cursor-pointer ${tab.isDirty ? "" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"} hover:bg-[var(--vsc-active)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)]`}
-                      >
-                        {tab.isDirty ? (
-                          <div className="w-2 h-2 rounded-full bg-[var(--vsc-fg)] group-hover:hidden" />
-                        ) : null}
-                        <X
-                          size={12}
-                          className={
-                            tab.isDirty ? "hidden group-hover:block" : ""
-                          }
-                        />
-                      </span>
+                      {(editorSplit?.direction ?? (viewport.w < 640 ? "down" : "right")) === "down" ? <Rows2 size={14} /> : <Columns2 size={14} />}
                     </button>
-                  );
-                })}
-              </div>
+                  ) : undefined
+                }
+              />
 
               {/* Breadcrumbs */}
               {workspaceTabs.length > 0 && (
@@ -2479,6 +2518,15 @@ declare const console: {
                   />
                 ) : isTodo ? (
                   <TodoWorkspace key={currentFilePath} path={currentFilePath} />
+                ) : showMediaOnly && currentMedia ? (
+                  <MediaFileViewer
+                    key={currentFilePath}
+                    name={mediaFileName(currentFilePath.split(".").pop() || currentFilePath, currentMedia)}
+                    media={currentMedia}
+                    onOpenEditor={
+                      currentMedia.kind === "image" ? () => setMediaViewOnly(currentFilePath, false) : undefined
+                    }
+                  />
                 ) : isImg ? (
                   <React.Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-400">Loading Image Workspace...</div>}>
                     <ImageWorkspace
@@ -2567,6 +2615,7 @@ declare const console: {
                           latestRefs.current.updateNodeValue(
                             latestRefs.current.currentFilePath,
                             val,
+                            { fromEditor: true },
                           );
                           latestRefs.current.markWorkspaceTabDirty(
                             latestRefs.current.currentFilePath,
@@ -2760,6 +2809,42 @@ declare const console: {
               </div>
             </div>
 
+            {/* The second editor group, when the editor is split */}
+            {editorSplit && (
+              <>
+                <WorkspaceSash
+                  orientation={splitShownDirection === "down" ? "horizontal" : "vertical"}
+                  label="Resize editor groups"
+                  onStart={() => {
+                    const rect = editorAreaRef.current?.getBoundingClientRect();
+                    splitDragStart.current = {
+                      ratio: useStore.getState().editorSplit?.ratio ?? 0.5,
+                      size: Math.max(1, (splitShownDirection === "down" ? rect?.height : rect?.width) ?? 1),
+                    };
+                  }}
+                  onDelta={(dx, dy) => {
+                    const { ratio, size } = splitDragStart.current;
+                    setEditorSplitLayout({ ratio: ratio + (splitShownDirection === "down" ? dy : dx) / size });
+                  }}
+                  onReset={() => setEditorSplitLayout({ ratio: 0.5 })}
+                />
+                <SplitEditorGroup
+                  split={editorSplit}
+                  focused={focusedGroup === "side"}
+                  onFocus={() => setFocusedGroup("side")}
+                  getIcon={getTabIcon}
+                  getName={getCleanName}
+                  menuFor={(tabPath) => buildTabMenu("side", tabPath)}
+                  onMoveIn={moveTabInto("side")}
+                  editorOptions={codeEditorOptions}
+                  editorTheme={codeEditorOptions.theme || (appTheme === "dark" ? "customDark" : "customLight")}
+                  shownDirection={splitShownDirection}
+                  style={{ flex: `${1 - editorSplit.ratio} 1 0px` }}
+                />
+              </>
+            )}
+            </div>
+
             {/* Editor / panel sash */}
             {terminalState === "normal" && (
               <WorkspaceSash
@@ -2823,13 +2908,7 @@ declare const console: {
                             const lg = getLog(i);
                             if (lg && lg.args) {
                               logsToCopy.push(
-                                lg.args
-                                  .map((a: any) =>
-                                    typeof a === "object"
-                                      ? safeStringify(a)
-                                      : String(a),
-                                  )
-                                  .join(" "),
+                                lg.args.map((a: any) => consoleValueToText(a)).join(" "),
                               );
                             }
                           }
@@ -3039,6 +3118,7 @@ declare const console: {
                             return (
                               <div
                                 className={`px-4 py-0.5 flex items-start gap-4 w-full group/log ${log.type === "error" ? "bg-red-500/10 text-red-500" : log.type === "warn" ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg)]"}`}
+                                {...copyMenu.bind(log.args)}
                               >
                                 <div className="flex-1 min-w-0 font-mono">
                                   <div className="flex flex-wrap items-start gap-2 w-full text-[13px]">
@@ -3049,21 +3129,14 @@ declare const console: {
                                 </div>
                                 {log.type === "error" && (
                                   <div className="opacity-0 group-hover/log:opacity-100 focus-within:opacity-100 transition-opacity self-start shrink-0">
-                                    <CopyButton
-                                      text={log.args
-                                        .map((arg: any) =>
-                                          typeof arg === "string"
-                                            ? arg
-                                            : JSON.stringify(arg),
-                                        )
-                                        .join(" ")}
-                                    />
+                                    <CopyButton text={logArgsToText(log.args)} />
                                   </div>
                                 )}
                               </div>
                             );
                           }}
                         />
+                        {copyMenu.menu}
                       </div>
                     )}
                   </div>

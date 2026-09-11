@@ -17,6 +17,7 @@
  * pandas and scipy are in - stay outside it and are read one at a time.
  */
 import { pyDb, getWheelsCacheSize, clearWheelsCache } from "./pyDb";
+import { createDeviceFileStore, opfsDirectory } from "./deviceFileStore";
 
 /** Where the kept PyPI packages appear inside Python. */
 export const PERSIST_MOUNT = "/opt/py_packages";
@@ -27,27 +28,11 @@ const IDBFS_DATABASE = PERSIST_MOUNT;
 
 export type PackageStorageBackend = "opfs" | "indexeddb";
 
-let opfsRootPromise: Promise<FileSystemDirectoryHandle | null> | null = null;
+/** The app's Python package folder in OPFS, or null where OPFS cannot be written. */
+const opfsRoot = () => opfsDirectory([OPFS_ROOT]);
 
-/**
- * The app's package folder in OPFS, or null where OPFS cannot be written - older Safari lacks
- * createWritable, and private windows may refuse the directory altogether.
- */
-function opfsRoot(): Promise<FileSystemDirectoryHandle | null> {
-  if (!opfsRootPromise) {
-    opfsRootPromise = (async () => {
-      try {
-        if (typeof navigator === "undefined" || !navigator.storage?.getDirectory) return null;
-        if (typeof FileSystemFileHandle === "undefined" || !("createWritable" in FileSystemFileHandle.prototype)) return null;
-        const root = await navigator.storage.getDirectory();
-        return await root.getDirectoryHandle(OPFS_ROOT, { create: true });
-      } catch {
-        return null;
-      }
-    })();
-  }
-  return opfsRootPromise;
-}
+/** Downloaded package files: OPFS `py_packages/wheels`, or IndexedDB where OPFS cannot be written. */
+const wheelStore = createDeviceFileStore({ opfsPath: [OPFS_ROOT, "wheels"], table: () => pyDb.wheels });
 
 export async function packageStorageBackend(): Promise<PackageStorageBackend> {
   return (await opfsRoot()) ? "opfs" : "indexeddb";
@@ -61,80 +46,13 @@ export const isCacheablePackageUrl = (url: string): boolean => {
   return path.endsWith(".whl") || (path.includes("/pyodide/") && path.endsWith(".zip"));
 };
 
-const fnv1a = (text: string, seed: number): string => {
-  let h = seed >>> 0;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-};
-
-/** A short, stable file name for a URL: two hashes, then the original name for readability. */
-const fileNameFor = (url: string): string => {
-  const base = decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() || "file")
-    .replace(/[^\w.+-]/g, "_")
-    .slice(-80);
-  return `${fnv1a(url, 0x811c9dc5)}${fnv1a(url, 0x01000193)}-${base}`;
-};
-
 const contentTypeFor = (url: string) => (url.split(/[?#]/)[0].endsWith(".zip") ? "application/zip" : "application/octet-stream");
 
-async function packageFileDir(): Promise<FileSystemDirectoryHandle | null> {
-  const root = await opfsRoot();
-  if (!root) return null;
-  try {
-    return await root.getDirectoryHandle("wheels", { create: true });
-  } catch {
-    return null;
-  }
-}
-
 /** Writes a downloaded package file to device storage. Returns where it went. */
-export async function storePackageFile(url: string, data: ArrayBuffer): Promise<PackageStorageBackend> {
-  const dir = await packageFileDir();
-  if (dir) {
-    try {
-      const handle = await dir.getFileHandle(fileNameFor(url), { create: true });
-      const writable = await (handle as any).createWritable();
-      await writable.write(data);
-      await writable.close();
-      return "opfs";
-    } catch (err) {
-      console.warn("[Py packages] OPFS write failed, keeping it in IndexedDB instead:", err);
-    }
-  }
-  await pyDb.wheels.put({ url, data, cachedAt: Date.now() });
-  return "indexeddb";
-}
+export const storePackageFile = (url: string, data: ArrayBuffer) => wheelStore.write(url, data);
 
 /** A kept package file, or null when it has never been downloaded on this device. */
-export async function readStoredPackageFile(url: string): Promise<ArrayBuffer | null> {
-  const dir = await packageFileDir();
-  if (dir) {
-    try {
-      const handle = await dir.getFileHandle(fileNameFor(url));
-      return await (await handle.getFile()).arrayBuffer();
-    } catch {
-      // Not in OPFS - it may still be in the IndexedDB cache from before OPFS was used.
-    }
-  }
-  try {
-    const legacy = await pyDb.wheels.get(url);
-    if (legacy?.data) {
-      if (dir) {
-        // Moved across once, so the IndexedDB copy does not linger next to the OPFS one.
-        void storePackageFile(url, legacy.data)
-          .then((where) => (where === "opfs" ? pyDb.wheels.delete(url) : undefined))
-          .catch(() => {});
-      }
-      return legacy.data;
-    }
-  } catch {
-    // IndexedDB unavailable too: treat as not kept.
-  }
-  return null;
-}
+export const readStoredPackageFile = (url: string) => wheelStore.read(url);
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 

@@ -2,7 +2,41 @@ import { useStore } from '../store/useStore';
 import { usePyPackageStore, cancelActiveInstalls } from '../store/usePyPackageStore';
 import lodashGet from 'lodash.get';
 import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionStore';
-import { buildVirtualFS, getVirtualPath } from './vfs';
+import { buildVirtualFS, getVirtualPath, buildVfsMap } from './vfs';
+import { applyFileChanges, describeFileChanges, type WorkspaceFileChange } from './pyFileSync';
+import { getValueAtPath } from './pathUtils';
+
+/**
+ * Puts what a Python run wrote back into the workspace: changed files, new ones, removed ones.
+ * Any editor showing a changed file is updated too, so it does not sit on stale text.
+ */
+async function applyPythonFileChanges(path: string, changes: WorkspaceFileChange[]) {
+    if (!Array.isArray(changes) || changes.length === 0) return;
+    const store = useStore.getState();
+    const applied = applyFileChanges(store.parsedData, changes);
+    const message = describeFileChanges(applied);
+    if (!message) return;
+
+    const owners = buildVfsMap(applied.data);
+    for (const changed of [...applied.updated, ...applied.created]) {
+        const dotPath = owners[changed];
+        const content = dotPath ? getValueAtPath(applied.data, dotPath) : undefined;
+        if (dotPath && typeof content === 'string') store.setJsNodeCodeOverride(dotPath, content);
+    }
+
+    // Said before the tree is replaced: that re-parses the workspace, which clears this node's log.
+    await appendLogs(path, [{ type: 'log', args: [message], time: new Date().toISOString() }]).catch(() => {});
+
+    let newCode = JSON.stringify(applied.data, null, 2);
+    if (store.codeFormat === 'yaml') {
+        try {
+            newCode = (await import('js-yaml')).default.dump(applied.data);
+        } catch (err) {
+            // Stays as JSON; the workspace still gets the change.
+        }
+    }
+    store.setCode(newCode);
+}
 
 export function detectImports(pyCode: string): string[] {
   const imports: string[] = [];
@@ -322,7 +356,12 @@ export const executePyNode = async (path: string, codeToRun: string) => {
                  return;
              }
 
-             if (e.data.type === 'finish') {
+             if (e.data.type === 'fs_changes') {
+                void applyPythonFileChanges(path, e.data.changes);
+                return;
+            }
+
+            if (e.data.type === 'finish') {
                 cleanup();
                 if (e.data.success) {
                    resolve(e.data);

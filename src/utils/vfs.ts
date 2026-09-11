@@ -19,6 +19,57 @@ export function cleanNodeName(rawName: string): string {
   return rawName;
 }
 
+export function buildVfsMap(parsedData: any): Record<string, string> {
+  const map: Record<string, string> = {};
+
+  function traverse(obj: any, parentFsPath: string, parentObjPath: string) {
+    if (typeof obj !== "object" || obj === null) return;
+    for (const [key, val] of Object.entries(obj)) {
+      const currentObjPath = parentObjPath ? `${parentObjPath}.${key}` : key;
+      if (typeof val === "string") {
+        const baseName = cleanNodeName(key);
+        const fsPath = parentFsPath
+          ? `${parentFsPath}/${baseName}`
+          : `/${baseName}`;
+        map[fsPath] = currentObjPath;
+      } else if (
+        typeof val === "object" &&
+        val !== null &&
+        !Array.isArray(val)
+      ) {
+        const nextFsPath = parentFsPath ? `${parentFsPath}/${key}` : `/${key}`;
+        traverse(val, nextFsPath, currentObjPath);
+      }
+    }
+  }
+
+  traverse(parsedData, "", "root");
+  return map;
+}
+
+/** The node key suffixes the workspace uses for the file types it knows. */
+const KEY_SUFFIX: Record<string, string> = {
+  ts: "_ts_node", js: "_js_node", py: "_py_node", api: "_api_node", todo: "_todo_node",
+  json: "_json", yaml: "_yaml", yml: "_yml", csv: "_csv", xml: "_xml", md: "_md", txt: "_txt",
+};
+
+/**
+ * The key a file belongs under in the tree: "om.txt" -> "om_txt". The other direction of
+ * cleanNodeName, for files Python created that the workspace has never seen.
+ */
+export function fileNameToNodeKey(fileName: string): string {
+  const name = (fileName || "").trim();
+  if (!name || name === "." || name === ".." || name.includes("/")) return "";
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  const suffix = KEY_SUFFIX[extension];
+  if (suffix) return `${base}${suffix}`;
+  // A type the workspace has no node for: the name stands as the key, with dots made safe
+  // because a dot separates one node from the next.
+  return name.replace(/\./g, "_");
+}
+
 export function buildVirtualFS(parsedData: any) {
   const vfs: Record<string, string> = {};
 

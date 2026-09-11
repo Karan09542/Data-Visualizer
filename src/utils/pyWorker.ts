@@ -1,8 +1,12 @@
 import { loadPyodide } from "pyodide";
 import { getInstalledPackages, saveInstalledPackage, PyPackageMetadata } from "./pyDb";
 import { keptPackageFetch, mountPersistentPackages, MountedPackages, PERSIST_HELPERS_PY, PERSIST_MOUNT } from "./pyPackageStorage";
+import { __dvPostCloneable } from "./cloneSafe.js";
 
 let activeEnabledProxies: string[] = [];
+
+/** Every message out of this worker: a value the browser cannot copy is described, not dropped. */
+const post = (message: any) => __dvPostCloneable(self as any, message);
 void PERSIST_MOUNT;
 
 // Set up shims for window and document so python scripts can import them and perform actions like downloads
@@ -24,7 +28,7 @@ const mockDocument = {
         href: "",
         download: "",
         click: function (this: any) {
-          self.postMessage({
+          post({
             type: "trigger_download",
             url: this.href,
             filename: this.download,
@@ -105,7 +109,7 @@ let currentSessionId: string = "";
 
 self.addEventListener("error", (e) => {
   e.preventDefault();
-  self.postMessage({
+  post({
     type: "finish",
     success: false,
     error: e.message || "Worker global error",
@@ -118,7 +122,7 @@ self.addEventListener("unhandledrejection", (e) => {
   try {
     msg = e.reason ? String(e.reason.message || e.reason) : msg;
   } catch (err) { }
-  self.postMessage({ type: "finish", success: false, error: msg });
+  post({ type: "finish", success: false, error: msg });
 });
 
 /** The kept-packages folder, once mounted on cold boot. */
@@ -367,6 +371,137 @@ async function restorePackages(addLog: (type: string, args: any[]) => void) {
   ]);
 }
 
+/**
+ * Empty `__init__.py` files this worker puts in folders so Python can import from them. They are
+ * the worker's doing, not the script's, so they stay out of the workspace - unless a script
+ * writes something into one.
+ */
+let scaffoldedFiles: Record<string, string> = {};
+
+/**
+ * Folders that belong to the runtime rather than the workspace. Installing a package drops files
+ * in several of these - "share/man/man1/ttx.1" comes with fonttools - and none of them are the
+ * reader's files.
+ */
+const SYSTEM_DIRS = new Set([
+  "lib", "lib64", "proc", "dev", "tmp", "home", "opt", "usr", "etc", "bin", "sbin", "boot",
+  "share", "include", "var", "run", "srv", "mnt", "media", "root", "local", "__pycache__",
+]);
+/**
+ * When this run began, rounded down to the second so a file system that keeps timestamps only to
+ * the second still counts as having been written during it. A file the run did not touch cannot be
+ * something the run wrote, and outside the workspace's own folders that is what decides.
+ */
+let runStartedAt = 0;
+
+const markRunStart = () => {
+  runStartedAt = Math.floor(Date.now() / 1000) * 1000;
+};
+
+const touchedThisRun = (stat: any) => {
+  const at = stat && stat.mtime ? new Date(stat.mtime).getTime() : 0;
+  return !runStartedAt || (at > 0 && at >= runStartedAt);
+};
+
+/** Files larger than this are left where they are; the workspace holds text, not archives. */
+const MAX_SYNC_BYTES = 1024 * 1024;
+const MAX_SYNC_FILES = 2000;
+
+/**
+ * What the workspace's files look like now, next to what they were when the run began: the
+ * script's writes, the files it made, the ones it removed. Binary files and very large ones are
+ * left alone, as are the runtime's own folders.
+ */
+function collectWorkspaceFileChanges(
+  sent: Record<string, string>,
+  entryPath: string,
+): { path: string; content: string | null }[] {
+  const changes: { path: string; content: string | null }[] = [];
+  const seen = new Set<string>();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+
+  // Only where the workspace itself lives: the folders its files came from, and the script's own.
+  const roots = new Set<string>(["/"]);
+  const workspaceDirs = new Set<string>(["/"]);
+  const noteDir = (path: string) => {
+    const dir = path.slice(0, path.lastIndexOf("/")) || "/";
+    roots.add(dir);
+    let walk = dir;
+    while (walk && walk !== "/") {
+      workspaceDirs.add(walk);
+      walk = walk.slice(0, walk.lastIndexOf("/")) || "/";
+    }
+  };
+  Object.keys(sent).forEach(noteDir);
+  if (entryPath) noteDir(entryPath);
+
+  const walk = (dir: string, depth: number) => {
+    if (depth > 6 || seen.size > MAX_SYNC_FILES) return;
+    let entries: string[] = [];
+    try {
+      entries = pyodide.FS.readdir(dir);
+    } catch (err) {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry === "." || entry === "..") continue;
+      const full = dir === "/" ? `/${entry}` : `${dir}/${entry}`;
+      // A workspace folder may share a name with a system one; only the runtime's are skipped.
+      if (SYSTEM_DIRS.has(entry) && !workspaceDirs.has(full)) continue;
+      let stat: any;
+      try {
+        stat = pyodide.FS.stat(full);
+      } catch (err) {
+        continue;
+      }
+      const ours = workspaceDirs.has(full) || sent[full] !== undefined;
+      if (pyodide.FS.isDir(stat.mode)) {
+        // Somewhere else entirely - a package's install directory - unless this run made it.
+        if (ours || touchedThisRun(stat)) walk(full, depth + 1);
+        continue;
+      }
+      if (!pyodide.FS.isFile(stat.mode) || seen.has(full)) continue;
+      // A file the run never wrote is not a change, whoever put it there.
+      if (!ours && !touchedThisRun(stat)) continue;
+      seen.add(full);
+      if (stat.size > MAX_SYNC_BYTES) continue;
+      let text: string;
+      try {
+        text = decoder.decode(pyodide.FS.readFile(full));
+      } catch (err) {
+        continue; // not text: left where it is
+      }
+      if (sent[full] === text) continue;
+      if (scaffoldedFiles[full] === text) continue; // this worker put it there
+      changes.push({ path: full, content: text });
+    }
+  };
+
+  roots.forEach((root) => walk(root, 0));
+
+  for (const path of Object.keys(sent)) {
+    if (seen.has(path)) continue;
+    try {
+      pyodide.FS.stat(path);
+    } catch (err) {
+      changes.push({ path, content: null }); // the script removed it
+    }
+  }
+
+  return changes;
+}
+
+/** Tells the page what the run left behind, so the workspace can catch up. */
+function reportWorkspaceFileChanges(data: any) {
+  if (!data?.vfs || !pyodide) return;
+  try {
+    const changes = collectWorkspaceFileChanges(data.vfs, data.entryPath || "");
+    if (changes.length) post({ type: "fs_changes", id: data.id, changes });
+  } catch (err) {
+    console.warn("[Pyodide]: Could not read back the workspace files", err);
+  }
+}
+
 self.onmessage = async (e) => {
   const { code, input, id, type, cacheEnabled: msgCacheEnabled, enabledProxies } = e.data;
   if (msgCacheEnabled !== undefined) {
@@ -400,22 +535,8 @@ self.onmessage = async (e) => {
 
     let logBatch: any[] = [];
     flushLogs = () => {
-      try {
-        if (logBatch.length > 0) {
-          self.postMessage({ type: "logs", logs: logBatch });
-          logBatch = [];
-        }
-      } catch (err: any) {
-        logBatch = [
-          {
-            type: "error",
-            args: ["Log Serialization Error: " + err.message],
-            time: getTime(),
-          },
-        ];
-        try {
-          self.postMessage({ type: "logs", logs: logBatch });
-        } catch (err2) { }
+      if (logBatch.length > 0) {
+        post({ type: "logs", logs: logBatch });
         logBatch = [];
       }
     };
@@ -458,7 +579,7 @@ self.onmessage = async (e) => {
       });
       pyodide.setStdin({
         stdin: () => {
-          self.postMessage({
+          post({
             type: "need_prompt",
             sessionId: currentSessionId,
             promptText: "Python input requested",
@@ -539,7 +660,7 @@ self.onmessage = async (e) => {
       if (currentFlushInterval) clearInterval(currentFlushInterval);
       flushLogs();
 
-      self.postMessage({
+      post({
         type: "package_installed",
         packageName,
         installId,
@@ -555,6 +676,8 @@ self.onmessage = async (e) => {
 
     // Otherwise, execute standard user python script
     if (e.data.vfs) {
+      scaffoldedFiles = {};
+      markRunStart();
       try {
         let pySysCode = `
 import sys
@@ -613,6 +736,7 @@ importlib.invalidate_caches()
             try {
               if (!e.data.vfs[dir + "/__init__.py"]) {
                 pyodide.FS.writeFile(dir + "/__init__.py", "");
+                scaffoldedFiles[dir + "/__init__.py"] = "";
               }
             } catch { }
           }
@@ -707,6 +831,8 @@ except Exception:
 
     const result = await pyodide.runPythonAsync(code);
 
+    reportWorkspaceFileChanges(e.data);
+
     let finalResult = result;
     if (result && typeof result.toJs === "function") {
       finalResult = result.toJs({ dict_converter: Object.fromEntries });
@@ -715,44 +841,22 @@ except Exception:
     if (currentFlushInterval) clearInterval(currentFlushInterval);
     flushLogs();
 
-    try {
-      self.postMessage({
-        type: "finish",
-        id,
-        success: true,
-        result: finalResult,
-      });
-    } catch (postErr) {
-      // Safe fallback if the result object is not cloneable (e.g. contains functions or DOM mocks)
-      try {
-        let safeResult = null;
-        if (typeof finalResult === "object" && finalResult !== null) {
-          safeResult = JSON.parse(
-            JSON.stringify(finalResult, (key, value) => {
-              if (typeof value === "function") return undefined;
-              return value;
-            }),
-          );
-        } else {
-          safeResult = String(finalResult);
-        }
-        self.postMessage({
-          type: "finish",
-          id,
-          success: true,
-          result: safeResult,
-        });
-      } catch (err2) {
-        self.postMessage({ type: "finish", id, success: true, result: null });
-      }
-    }
+    post({
+      type: "finish",
+      id,
+      success: true,
+      result: finalResult,
+    });
   } catch (error: any) {
     if (currentFlushInterval) clearInterval(currentFlushInterval);
     try {
       if (typeof flushLogs === "function") flushLogs();
     } catch (e) { }
 
+    // A script that failed half way may still have written something; that counts.
+    reportWorkspaceFileChanges(e.data);
+
     let eMsg = error ? String(error.message || error) : "Unknown Error";
-    self.postMessage({ type: "finish", id, success: false, error: eMsg });
+    post({ type: "finish", id, success: false, error: eMsg });
   }
 };

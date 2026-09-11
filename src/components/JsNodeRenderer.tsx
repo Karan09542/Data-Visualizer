@@ -60,7 +60,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
     (newCode: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        updateNodeValue(path, newCode);
+        updateNodeValue(path, newCode, { fromEditor: true });
       }, 1000);
     },
     [path, updateNodeValue],

@@ -1,5 +1,7 @@
 import { useStore } from "../store/useStore";
-import { buildVirtualFS } from "./vfs";
+import { buildVirtualFS, buildVfsMap } from "./vfs";
+
+export { buildVfsMap };
 
 let isRegistered = false;
 let currentMonaco: any = null;
@@ -125,34 +127,6 @@ export function performWorkspaceRenameScope(
   return updatedData;
 }
 
-export function buildVfsMap(parsedData: any): Record<string, string> {
-  const map: Record<string, string> = {};
-
-  function traverse(obj: any, parentFsPath: string, parentObjPath: string) {
-    if (typeof obj !== "object" || obj === null) return;
-    for (const [key, val] of Object.entries(obj)) {
-      const currentObjPath = parentObjPath ? `${parentObjPath}.${key}` : key;
-      if (typeof val === "string") {
-        const baseName = cleanNodeName(key);
-        const fsPath = parentFsPath
-          ? `${parentFsPath}/${baseName}`
-          : `/${baseName}`;
-        map[fsPath] = currentObjPath;
-      } else if (
-        typeof val === "object" &&
-        val !== null &&
-        !Array.isArray(val)
-      ) {
-        const nextFsPath = parentFsPath ? `${parentFsPath}/${key}` : `/${key}`;
-        traverse(val, nextFsPath, currentObjPath);
-      }
-    }
-  }
-
-  traverse(parsedData, "", "root");
-  return map;
-}
-
 // Extracted logic to update Monaco Models so TS language server knows about files
 export function syncWorkspaceModelsToMonaco(monaco: any, parsedData: any) {
   if (!monaco) return;
@@ -161,6 +135,14 @@ export function syncWorkspaceModelsToMonaco(monaco: any, parsedData: any) {
   // We should create monaco.editor.createModel for every file
   // so that TS server can provide cross-file intellisense
   const availableUris = new Set<string>();
+
+  // A model an editor is showing belongs to that editor: what it holds is the editor's to decide
+  // (it may have unsaved changes), and disposing it leaves the editor blank.
+  const shown = new Set<string>();
+  for (const editor of monaco.editor.getEditors?.() || []) {
+    const model = editor.getModel?.();
+    if (model) shown.add(model.uri.toString());
+  }
 
   for (const [path, content] of Object.entries(vfs)) {
     const uri = monaco.Uri.file(path);
@@ -182,7 +164,7 @@ export function syncWorkspaceModelsToMonaco(monaco: any, parsedData: any) {
       if (model.getLanguageId?.() !== lang) {
         monaco.editor.setModelLanguage(model, lang);
       }
-      if (model.getValue() !== content) {
+      if (!shown.has(uri.toString()) && model.getValue() !== content) {
         model.setValue(content);
       }
     }
@@ -192,7 +174,8 @@ export function syncWorkspaceModelsToMonaco(monaco: any, parsedData: any) {
   monaco.editor.getModels().forEach((model: any) => {
     if (
       model.uri.scheme === "file" &&
-      !availableUris.has(model.uri.toString())
+      !availableUris.has(model.uri.toString()) &&
+      !shown.has(model.uri.toString())
     ) {
       model.dispose();
     }

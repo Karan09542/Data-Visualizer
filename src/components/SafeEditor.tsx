@@ -7,6 +7,7 @@ import {
 import { enableMonacoTouchScroll } from "../utils/monacoTouchScroll";
 import { registerPythonFormattingProvider } from "../utils/pythonFormatter";
 import { handleSafeEditorPaste } from "../utils/clipboardHelper";
+import { cleanNodeName } from "../utils/vfs";
 
 // Catch and gracefully suppress Monaco background worker race conditions on disposed in-memory models
 if (typeof window !== "undefined" && !(window as any).__monacoWorkerDisposedModelFilterRegistered) {
@@ -80,6 +81,9 @@ function SafeEditor(props: EditorProps) {
   else if (lang === "markdown") ext = "md";
   else if (lang === "html") ext = "html";
   else if (lang === "css") ext = "css";
+  else if (lang === "yaml") ext = "yaml";
+  else if (lang === "xml") ext = "xml";
+  else if (lang === "plaintext") ext = "txt";
 
   let resolvedPath = props.path;
   if (resolvedPath) {
@@ -94,44 +98,19 @@ function SafeEditor(props: EditorProps) {
         .split(/\.|(?=\[)/)
         .filter(Boolean);
 
-      const cleanParts = parts.map((part) => {
-        let p = part;
-        if (p.startsWith("[")) p = p.slice(1, -1);
-        if (p.endsWith("_py_node")) return p.replace(/_py_node$/, ".py");
-        if (p.endsWith("_ts_node")) return p.replace(/_ts_node$/, ".ts");
-        if (p.endsWith("_js_node")) return p.replace(/_js_node$/, ".js");
-        if (p.endsWith("_api_node")) return p.replace(/_api_node$/, ".api");
-        if (p.endsWith("_json_node")) return p.replace(/_json_node$/, ".json");
-        if (p.endsWith("_json")) return p.replace(/_json$/, ".json");
-        if (p.endsWith("_yaml")) return p.replace(/_yaml$/, ".yaml");
-        if (p.endsWith("_yml")) return p.replace(/_yml$/, ".yml");
-        if (p.endsWith("_csv")) return p.replace(/_csv$/, ".csv");
-        if (p.endsWith("_xml")) return p.replace(/_xml$/, ".xml");
-        if (p.endsWith("_md")) return p.replace(/_md$/, ".md");
-        if (p.endsWith("_txt")) return p.replace(/_txt$/, ".txt");
-        return p;
+      // The name the workspace's own file sync gives this file (see buildVirtualFS): folders as
+      // they are, the file itself with its extension. Editor and sync then share one model; under
+      // any other name the sync takes the editor's model for a stray and disposes it.
+      const segments = parts.map((part, index) => {
+        const p = part.startsWith("[") ? part.slice(1, -1) : part;
+        return index === parts.length - 1 ? cleanNodeName(p) : p;
       });
 
-      let cleanPath = cleanParts.join("/");
+      let cleanPath = segments.join("/");
 
-      const lowerPath = cleanPath.toLowerCase();
-      const hasExtension =
-        lowerPath.endsWith(".js") ||
-        lowerPath.endsWith(".ts") ||
-        lowerPath.endsWith(".py") ||
-        lowerPath.endsWith(".json") ||
-        lowerPath.endsWith(".md") ||
-        lowerPath.endsWith(".html") ||
-        lowerPath.endsWith(".css") ||
-        lowerPath.endsWith(".api");
-
-      if (!hasExtension) {
-        if (lang === "python") cleanPath += ".py";
-        else if (lang === "typescript") cleanPath += ".ts";
-        else if (lang === "javascript") cleanPath += ".js";
-        else if (lang === "json") cleanPath += ".json";
-        else if (lang === "markdown") cleanPath += ".md";
-        else cleanPath += `.${ext}`;
+      // Only a name with no extension at all takes one from the language.
+      if (!/\.[a-z0-9]+$/i.test(segments[segments.length - 1] || "")) {
+        cleanPath += `.${ext}`;
       }
       resolvedPath = `file:///${cleanPath}`;
     }

@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import katex from 'katex';
 import { useStore } from "../store/useStore";
 import { Terminal as TerminalIcon, Trash2, Copy, Check } from "lucide-react";
-import { ExpandableJSON } from "./ExpandableJSON";
+import { ConsoleValue, logArgsToText } from "./console/ConsoleValue";
+import { useLineCopyMenu } from "./console/useLineCopyMenu";
+// Falls back to the old copy command where the clipboard API is refused.
+import { copyToClipboard } from "./AppErrorPopup";
 import { renderClickableErrorText } from "../utils/errorParser";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { Virtuoso } from "react-virtuoso";
@@ -45,6 +48,18 @@ export function PyNodeTerminalRenderer({
   const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
   
   const { logCount, getLog, clearLogs, startOffset } = useExecutionLogs(path);
+
+  // Right-click a line, or hold it on a touch screen, to copy it.
+  const copyMenu = useLineCopyMenu({
+    onCopyAll: async () => {
+      const lines = [];
+      for (let i = 0; i < logCount; i++) {
+        const entry = getLog(i);
+        if (entry?.args) lines.push(logArgsToText(entry.args));
+      }
+      await copyToClipboard(lines.join("\n"));
+    },
+  });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const error = jsNodeErrors[path];
@@ -139,6 +154,7 @@ export function PyNodeTerminalRenderer({
                     return (
                       <div
                         className={`px-2 py-0.5 flex items-start gap-2 w-full group/log ${log.type === "error" ? "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400" : log.type === "warn" ? "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400" : "hover:bg-slate-50 dark:hover:bg-white/5 text-slate-800 dark:text-slate-200"}`}
+                        {...copyMenu.bind(log.args)}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-start gap-1.5 w-full">
@@ -182,11 +198,10 @@ export function PyNodeTerminalRenderer({
                                 );
                               }
                               return (
-                                <ExpandableJSON
+                                <ConsoleValue
                                   key={argIdx}
                                   value={arg}
                                   defaultExpanded={log.type === "error"}
-                                  level={0}
                                 />
                               );
                             })}
@@ -195,7 +210,7 @@ export function PyNodeTerminalRenderer({
                         <div className="flex items-center gap-1.5 shrink-0 self-start mt-0.5">
                           {log.type === "error" && (
                             <div className="opacity-0 group-hover/log:opacity-100 focus-within:opacity-100 transition-opacity">
-                              <CopyButton text={log.args.map((arg: any) => typeof arg === "string" ? arg : JSON.stringify(arg)).join(" ")} />
+                              <CopyButton text={logArgsToText(log.args)} />
                             </div>
                           )}
                           {log.pos && (
@@ -216,6 +231,7 @@ export function PyNodeTerminalRenderer({
           )}
         </div>
       </div>
+      {copyMenu.menu}
     </div>
   );
 }
