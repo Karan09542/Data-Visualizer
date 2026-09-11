@@ -25,17 +25,12 @@ import {
   Move,
   Folder,
   Menu,
-  Globe,
-  FileCode,
-  Calculator,
-  CheckSquare,
-  ImageIcon,
-  ArrowRightLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { maskParsedData, unmaskParsedData } from "../utils/masker";
 
 import CustomSelect from "./CustomSelect";
+import { SpecialNodePicker } from "./SpecialNodePicker";
 interface LeafField {
   path: string; // e.g. "root.project", "root.settings.theme"
   parentPath: string; // e.g. "root" or "root.settings"
@@ -1038,44 +1033,7 @@ export default function GuiEditorPanel() {
                   <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-3 border-t border-slate-200 dark:border-slate-800/50 pt-2 block">
                     Special Nodes
                   </span>
-                  <div className="grid grid-cols-3 gap-1 mt-1">
-                    {[
-                      { type: "api_node", icon: Globe, label: "API Node" },
-                      { type: "js_node", icon: FileCode, label: "JS Node" },
-                      { type: "ts_node", icon: FileCode, label: "TS Node" },
-                      { type: "py_node", icon: FileCode, label: "Py Node" },
-                      { type: "math_node", icon: Calculator, label: "Math Node" },
-                      { type: "todo_node", icon: CheckSquare, label: "Todo Node" },
-                      { type: "image_node", icon: ImageIcon, label: "Image Node" },
-                      { type: "transfer_node", icon: ArrowRightLeft, label: "Transfer Node" },
-                      { type: "search_node", icon: Search, label: "Search Node" },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      const isSelected = newKeyType === item.type;
-                      return (
-                        <button
-                          key={item.type}
-                          type="button"
-                          onClick={() => setNewKeyType(item.type as any)}
-                          className={`flex flex-col items-center justify-center py-2 px-1 rounded-md border text-[10px] gap-1.5 transition-all ${isSelected
-                              ? "bg-blue-600/10 text-blue-500 dark:text-blue-400 border-blue-500 shadow-lg shadow-blue-500/5 scale-102"
-                              : "border-slate-200 dark:border-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800/30 text-slate-500 dark:text-slate-400"
-                            }`}
-                          title={`Select as ${item.label}`}
-                        >
-                          <Icon
-                            size={14}
-                            className={
-                              isSelected ? "text-blue-500 dark:text-blue-400" : "text-slate-400 dark:text-slate-500"
-                            }
-                          />
-                          <span className="scale-[0.85] font-semibold leading-none">
-                            {item.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SpecialNodePicker value={newKeyType} onChange={(type) => setNewKeyType(type as any)} />
                 </div>
 
                 {/* Contextual description input depending on selected model */}
@@ -1270,31 +1228,7 @@ export default function GuiEditorPanel() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2 border-t border-slate-800 pt-2 block">
                     Special Nodes
                   </span>
-                  <div className="grid grid-cols-3 gap-1.5 mt-1">
-                    {[
-                      { type: "api_node", icon: Globe, label: "API" },
-                      { type: "js_node", icon: FileCode, label: "JS" },
-                      { type: "ts_node", icon: FileCode, label: "TS" },
-                      { type: "py_node", icon: FileCode, label: "Py" },
-                      { type: "math_node", icon: Calculator, label: "Math" },
-                      { type: "todo_node", icon: CheckSquare, label: "Todo" },
-                      { type: "image_node", icon: ImageIcon, label: "Image" },
-                      { type: "transfer_node", icon: ArrowRightLeft, label: "Transfer" },
-                      { type: "search_node", icon: Search, label: "Search" },
-                    ].map((item) => (
-                      <button
-                        key={item.type}
-                        onClick={() => setNewKeyType(item.type as any)}
-                        className={`flex flex-col items-center justify-center p-2 rounded-md border text-[10px] gap-1 ${newKeyType === item.type
-                            ? "bg-blue-600/20 text-blue-400 border-blue-500"
-                            : "bg-[#121824] border-slate-800 text-slate-400"
-                          }`}
-                      >
-                        <item.icon size={13} />
-                        <span>{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <SpecialNodePicker value={newKeyType} onChange={(type) => setNewKeyType(type as any)} alwaysDark />
                 </div>
 
                 <div className="p-3 bg-[#121824] border border-slate-800 rounded">
